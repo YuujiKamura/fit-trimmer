@@ -667,11 +667,11 @@
 
         // --- Drag and drop events setup ---
         function setupDropzone(zone, input, onFileSelected) {
-            zone.addEventListener('click', (e) => {
-                if (e.target !== input) {
-                    input.value = ""; // Reset path to ensure change event fires even for the same file
-                    input.click();
-                }
+            input.addEventListener('click', (e) => e.stopPropagation());
+            
+            zone.addEventListener('click', () => {
+                input.value = ""; // Reset path to ensure change event fires even for the same file
+                input.click();
             });
             zone.addEventListener('dragover', (e) => {
                 e.preventDefault();
