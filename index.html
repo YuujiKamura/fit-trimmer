@@ -1101,67 +1101,16 @@
                     const headerByte = this.bytes[this.offset];
                     this.offset++;
                     
-                    const isDefinition = (headerByte & 0x80) !== 0;
-                    const hasDeveloperData = (headerByte & 0x40) !== 0;
-                    const localId = headerByte & 0x0F;
+                    const isCompressed = (headerByte & 0x80) !== 0;
                     
-                    if (isDefinition) {
-                        this.offset++; // Reserved
-                        const architecture = this.bytes[this.offset];
-                        this.offset++;
-                        const isBigEndian = architecture === 1;
+                    if (isCompressed) {
+                        // Compressed Timestamp Header
+                        const localId = (headerByte & 0x60) >> 5;
+                        const timeOffset = headerByte & 0x1F;
                         
-                        const globalMessageNumber = this.view.getUint16(this.offset, !isBigEndian);
-                        this.offset += 2;
-                        
-                        const fieldCount = this.bytes[this.offset];
-                        this.offset++;
-                        
-                        const fields = [];
-                        for (let i = 0; i < fieldCount; i++) {
-                            const fieldNum = this.bytes[this.offset];
-                            const size = this.bytes[this.offset + 1];
-                            const baseType = this.bytes[this.offset + 2];
-                            this.offset += 3;
-                            fields.push({ fieldNum, size, baseType });
-                        }
-                        
-                        let developerFields = [];
-                        if (hasDeveloperData) {
-                            const devFieldCount = this.bytes[this.offset];
-                            this.offset++;
-                            for (let i = 0; i < devFieldCount; i++) {
-                                const fieldNum = this.bytes[this.offset];
-                                const size = this.bytes[this.offset + 1];
-                                const devIndex = this.bytes[this.offset + 2];
-                                this.offset += 3;
-                                developerFields.push({ fieldNum, size, devIndex });
-                            }
-                        }
-                        
-                        const definedSize = this.offset - recordStart;
-                        const recordBytes = this.bytes.slice(recordStart, this.offset);
-                        
-                        const def = {
-                            isBigEndian,
-                            globalMessageNumber,
-                            fields,
-                            developerFields,
-                            recordBytes
-                        };
-                        
-                        this.definitions[localId] = def;
-                        this.records.push({
-                            isDefinition: true,
-                            localId,
-                            globalMessageNumber,
-                            bytes: recordBytes,
-                            definition: def
-                        });
-                    } else {
                         const def = this.definitions[localId];
                         if (!def) {
-                            throw new Error(`Data message references undefined local ID: ${localId}`);
+                            throw new Error(`Data message references undefined local ID (compressed): ${localId}`);
                         }
                         
                         let dataSize = 0;
@@ -1201,6 +1150,7 @@
                             };
                         }
                         
+                        this.offset = recordEnd;
                         this.records.push({
                             isDefinition: false,
                             localId,
@@ -1209,8 +1159,117 @@
                             fields: parsedFields,
                             def: def
                         });
+                    } else {
+                        // Normal Header
+                        const isDefinition = (headerByte & 0x40) !== 0;
+                        const hasDeveloperData = (headerByte & 0x20) !== 0;
+                        const localId = headerByte & 0x0F;
                         
-                        this.offset = recordEnd;
+                        if (isDefinition) {
+                            this.offset++; // Reserved
+                            const architecture = this.bytes[this.offset];
+                            this.offset++;
+                            const isBigEndian = architecture === 1;
+                            
+                            const globalMessageNumber = this.view.getUint16(this.offset, !isBigEndian);
+                            this.offset += 2;
+                            
+                            const fieldCount = this.bytes[this.offset];
+                            this.offset++;
+                            
+                            const fields = [];
+                            for (let i = 0; i < fieldCount; i++) {
+                                const fieldNum = this.bytes[this.offset];
+                                const size = this.bytes[this.offset + 1];
+                                const baseType = this.bytes[this.offset + 2];
+                                this.offset += 3;
+                                fields.push({ fieldNum, size, baseType });
+                            }
+                            
+                            let developerFields = [];
+                            if (hasDeveloperData) {
+                                const devFieldCount = this.bytes[this.offset];
+                                this.offset++;
+                                for (let i = 0; i < devFieldCount; i++) {
+                                    const fieldNum = this.bytes[this.offset];
+                                    const size = this.bytes[this.offset + 1];
+                                    const devIndex = this.bytes[this.offset + 2];
+                                    this.offset += 3;
+                                    developerFields.push({ fieldNum, size, devIndex });
+                                }
+                            }
+                            
+                            const recordBytes = this.bytes.slice(recordStart, this.offset);
+                            
+                            const def = {
+                                isBigEndian,
+                                globalMessageNumber,
+                                fields,
+                                developerFields,
+                                recordBytes
+                            };
+                            
+                            this.definitions[localId] = def;
+                            this.records.push({
+                                isDefinition: true,
+                                localId,
+                                globalMessageNumber,
+                                bytes: recordBytes,
+                                definition: def
+                            });
+                        } else {
+                            const def = this.definitions[localId];
+                            if (!def) {
+                                throw new Error(`Data message references undefined local ID: ${localId}`);
+                            }
+                            
+                            let dataSize = 0;
+                            for (const f of def.fields) {
+                                dataSize += f.size;
+                            }
+                            for (const f of def.developerFields) {
+                                dataSize += f.size;
+                            }
+                            
+                            const recordEnd = this.offset + dataSize;
+                            const recordBytes = this.bytes.slice(recordStart, recordEnd);
+                            
+                            let currentOffset = recordStart + 1;
+                            const parsedFields = {};
+                            
+                            for (const f of def.fields) {
+                                const fieldStart = currentOffset;
+                                currentOffset += f.size;
+                                
+                                let val = null;
+                                if (f.size === 4 && (f.baseType === 0x86 || f.baseType === 0x0C)) {
+                                    val = this.view.getUint32(fieldStart, !def.isBigEndian);
+                                } else if (f.size === 4 && f.baseType === 0x85) {
+                                    val = this.view.getInt32(fieldStart, !def.isBigEndian);
+                                } else if (f.size === 2 && (f.baseType === 0x84 || f.baseType === 0x0B)) {
+                                    val = this.view.getUint16(fieldStart, !def.isBigEndian);
+                                } else if (f.size === 1 && (f.baseType === 0x02 || f.baseType === 0x0A || f.baseType === 0x00)) {
+                                    val = this.bytes[fieldStart];
+                                }
+                                
+                                parsedFields[f.fieldNum] = {
+                                    offset: fieldStart - recordStart,
+                                    size: f.size,
+                                    baseType: f.baseType,
+                                    value: val
+                                };
+                            }
+                            
+                            this.offset = recordEnd;
+                            this.records.push({
+                                isDefinition: false,
+                                localId,
+                                globalMessageNumber: def.globalMessageNumber,
+                                bytes: recordBytes,
+                                fields: parsedFields,
+                                def: def
+                            });
+                        }
                     }
                 }
             }
