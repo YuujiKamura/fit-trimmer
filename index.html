@@ -565,6 +565,7 @@
         </footer>
     </div>
 
+    <script src="src/parser.js"></script>
     <script>
         // UI Bindings
         const videoDrop = document.getElementById('video-dropzone');
@@ -661,52 +662,11 @@
                 let duration = null;
                 let timescale = null;
                 
-                function scanAtoms(bytes, view, start, end) {
-                    let i = start;
-                    while (i < end - 8) {
-                        const size = view.getUint32(i, false);
-                        const type = String.fromCharCode(bytes[i+4], bytes[i+5], bytes[i+6], bytes[i+7]);
-                        
-                        if (size === 0) break;
-                        
-                        if (size < 8) {
-                            i += 8;
-                            continue;
-                        }
-                        
-                        if (type === 'moov' || type === 'trak' || type === 'mdia') {
-                            if (scanAtoms(bytes, view, i + 8, Math.min(i + size, end))) {
-                                return true;
-                            }
-                        } else if (type === 'mvhd') {
-                            const mvhdStart = i + 8;
-                            const version = bytes[mvhdStart];
-                            
-                            let timeOffset = mvhdStart + 4;
-                            if (version === 1) {
-                                // 64-bit creation time (lower 32-bit is sufficient)
-                                const high = view.getUint32(timeOffset, false);
-                                const low = view.getUint32(timeOffset + 4, false);
-                                creationTime = low;
-                                
-                                timeOffset += 16; // Skip modification time
-                                timescale = view.getUint32(timeOffset, false);
-                                const durHigh = view.getUint32(timeOffset + 4, false);
-                                const durLow = view.getUint32(timeOffset + 8, false);
-                                duration = durLow;
-                            } else {
-                                // 32-bit
-                                creationTime = view.getUint32(timeOffset, false);
-                                timeOffset += 8;
-                                timescale = view.getUint32(timeOffset, false);
-                                duration = view.getUint32(timeOffset + 4, false);
-                            }
-                            return true; // Found mvhd
-                        }
-                        i += size;
-                    }
-                    return false;
-                }
+                const onMvhd = (meta) => {
+                    creationTime = meta.creationTime;
+                    timescale = meta.timescale;
+                    duration = meta.duration;
+                };
                 
                 // 1. Try Front Chunk (header)
                 log("Reading file header (first 100MB)...");
@@ -715,7 +675,7 @@
                 const frontBytes = new Uint8Array(frontBuffer);
                 const frontView = new DataView(frontBuffer);
                 
-                let found = scanAtoms(frontBytes, frontView, 0, frontBuffer.byteLength);
+                let found = scanMp4Atoms(frontBytes, frontView, 0, frontBuffer.byteLength, onMvhd);
                 
                 // 2. Try End Chunk (trailer) if not found at the front
                 if (!found && file.size > scanChunkSize) {
@@ -736,7 +696,7 @@
                     
                     if (moovIdx >= 0) {
                         log("Found 'moov' atom signature at trailer offset. Parsing...");
-                        found = scanAtoms(endBytes, endView, moovIdx, endBytes.length);
+                        found = scanMp4Atoms(endBytes, endView, moovIdx, endBytes.length, onMvhd);
                     }
                 }
                 
