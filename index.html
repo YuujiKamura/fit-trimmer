@@ -1,0 +1,1061 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FIT Video Syncer & Trimmer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --card-bg: rgba(17, 24, 39, 0.7);
+            --border-color: rgba(255, 255, 255, 0.08);
+            --primary: #3b82f6;
+            --primary-glow: rgba(59, 130, 246, 0.15);
+            --accent: #10b981;
+            --accent-glow: rgba(16, 185, 129, 0.15);
+            --text-color: #f3f4f6;
+            --text-muted: #9ca3af;
+            --error: #ef4444;
+            --error-glow: rgba(239, 68, 68, 0.15);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            overflow-x: hidden;
+            background-image: 
+                radial-gradient(circle at 10% 20%, rgba(59, 130, 246, 0.08) 0%, transparent 40%),
+                radial-gradient(circle at 90% 80%, rgba(16, 185, 129, 0.08) 0%, transparent 40%);
+        }
+
+        .container {
+            width: 100%;
+            max-width: 800px;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+            animation: fadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(15px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Card styles with glassmorphism */
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            backdrop-filter: blur(12px);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+            transition: border-color 0.3s, box-shadow 0.3s;
+        }
+
+        .header-card {
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background: linear-gradient(90deg, var(--primary), var(--accent));
+        }
+
+        h1 {
+            font-size: 2.2rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #fff 40%, var(--text-muted) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 8px;
+            letter-spacing: -0.5px;
+        }
+
+        .subtitle {
+            color: var(--text-muted);
+            font-size: 1rem;
+        }
+
+        /* Drop Zone Styles */
+        .drop-zone-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        @media (max-width: 600px) {
+            .drop-zone-container {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .drop-zone {
+            border: 2px dashed var(--border-color);
+            border-radius: 16px;
+            padding: 30px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+            background: rgba(255, 255, 255, 0.01);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 200px;
+            position: relative;
+        }
+
+        .drop-zone:hover {
+            border-color: var(--primary);
+            background: var(--primary-glow);
+            box-shadow: 0 0 20px rgba(59, 130, 246, 0.1);
+        }
+
+        .drop-zone.active {
+            border-color: var(--accent);
+            background: var(--accent-glow);
+        }
+
+        .drop-zone .icon {
+            font-size: 2.5rem;
+            margin-bottom: 12px;
+            transition: transform 0.3s;
+        }
+
+        .drop-zone:hover .icon {
+            transform: scale(1.1);
+        }
+
+        .drop-zone p {
+            font-size: 0.95rem;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .drop-zone span {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        .file-selected {
+            border-style: solid;
+            border-color: rgba(255, 255, 255, 0.15);
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .file-selected.video {
+            border-color: var(--primary);
+        }
+
+        .file-selected.fit {
+            border-color: var(--accent);
+        }
+
+        /* Metadata Details panel */
+        .info-panel {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        @media (max-width: 600px) {
+            .info-panel {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .info-box {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 16px;
+        }
+
+        .info-box h3 {
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.9rem;
+            margin-bottom: 8px;
+            border-bottom: 1px dashed rgba(255, 255, 255, 0.04);
+            padding-bottom: 6px;
+        }
+
+        .info-row:last-child {
+            border: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+
+        .info-val {
+            font-weight: 600;
+        }
+
+        /* Status Banner */
+        .status-banner {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            padding: 12px;
+            border-radius: 12px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            text-align: center;
+            transition: all 0.3s;
+        }
+
+        .status-idle {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-color);
+            color: var(--text-muted);
+        }
+
+        .status-sync {
+            background: var(--accent-glow);
+            border: 1px solid var(--accent);
+            color: #34d399;
+            box-shadow: 0 0 15px rgba(16, 185, 129, 0.1);
+        }
+
+        .status-error {
+            background: var(--error-glow);
+            border: 1px solid var(--error);
+            color: #f87171;
+        }
+
+        /* Action Buttons */
+        .btn {
+            background: linear-gradient(135deg, var(--primary) 0%, #2563eb 100%);
+            color: white;
+            border: none;
+            border-radius: 14px;
+            padding: 16px 32px;
+            font-size: 1.05rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
+        }
+
+        .btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+            background: linear-gradient(135deg, #4f46e5 0%, var(--primary) 100%);
+        }
+
+        .btn:active:not(:disabled) {
+            transform: translateY(0);
+        }
+
+        .btn:disabled {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-color);
+            color: var(--text-muted);
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        /* Console log panel */
+        .console-card {
+            padding: 20px;
+        }
+
+        .console-header {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .console-log {
+            background: #05070c;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            padding: 14px;
+            height: 180px;
+            overflow-y: auto;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            line-height: 1.5;
+            color: #a7f3d0;
+        }
+
+        .log-entry {
+            margin-bottom: 4px;
+        }
+
+        .log-time {
+            color: #6b7280;
+            margin-right: 6px;
+        }
+
+        .log-error {
+            color: #f87171;
+        }
+
+        .log-success {
+            color: #34d399;
+        }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.8rem;
+            margin-top: 10px;
+            padding: 10px;
+        }
+
+        footer a {
+            color: var(--primary);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        footer a:hover {
+            color: #60a5fa;
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <!-- Header -->
+        <div class="card header-card">
+            <h1>FIT Video Syncer & Trimmer</h1>
+            <p class="subtitle">100% Client-side. Drag and drop to sync and trim ride logs with video timelines.</p>
+        </div>
+
+        <!-- File Uploaders -->
+        <div class="drop-zone-container">
+            <div class="drop-zone" id="video-dropzone">
+                <input type="file" id="video-input" accept=".mp4,.lrv,.mov" style="display: none;">
+                <div class="icon">🎥</div>
+                <p id="video-name">Select Video File</p>
+                <span>Drag & drop MP4 / LRV / MOV</span>
+            </div>
+            
+            <div class="drop-zone" id="fit-dropzone">
+                <input type="file" id="fit-input" accept=".fit" style="display: none;">
+                <div class="icon">🚴</div>
+                <p id="fit-name">Select FIT File</p>
+                <span>Drag & drop Garmin / Strava FIT</span>
+            </div>
+        </div>
+
+        <!-- Info Preview Panel -->
+        <div class="card info-panel">
+            <div class="info-box">
+                <h3>🎥 Video Metadata</h3>
+                <div class="info-row">
+                    <span>Start (JST):</span>
+                    <span class="info-val" id="v-start">-</span>
+                </div>
+                <div class="info-row">
+                    <span>Duration:</span>
+                    <span class="info-val" id="v-dur">-</span>
+                </div>
+                <div class="info-row">
+                    <span>End (JST):</span>
+                    <span class="info-val" id="v-end">-</span>
+                </div>
+            </div>
+
+            <div class="info-box">
+                <h3>🚴 FIT Track Metrics</h3>
+                <div class="info-row">
+                    <span>Start (JST):</span>
+                    <span class="info-val" id="f-start">-</span>
+                </div>
+                <div class="info-row">
+                    <span>Total Record:</span>
+                    <span class="info-val" id="f-count">-</span>
+                </div>
+                <div class="info-row">
+                    <span>End (JST):</span>
+                    <span class="info-val" id="f-end">-</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Status Banner -->
+        <div class="status-banner status-idle" id="status-banner">
+            <span>Waiting for files...</span>
+        </div>
+
+        <!-- Action Area -->
+        <button class="btn" id="trim-btn" disabled>
+            ⚡ Trim & Download Synchronized FIT
+        </button>
+
+        <!-- Console Logger -->
+        <div class="card console-card">
+            <div class="console-header">
+                <span>Process Console Log</span>
+                <span style="font-size: 0.75rem; color: #6b7280;">Secure Local Processing</span>
+            </div>
+            <div class="console-log" id="console">
+                <div class="log-entry"><span class="log-time">[Init]</span>Web-based FIT trimmer ready. Ready to drop.</div>
+            </div>
+        </div>
+
+        <footer>
+            Built with pure JavaScript. Host on <a href="https://github.com/YuujiKamura/fit-trimmer" target="_blank">GitHub Pages</a>.
+        </footer>
+    </div>
+
+    <script>
+        // UI Bindings
+        const videoDrop = document.getElementById('video-dropzone');
+        const videoInput = document.getElementById('video-input');
+        const videoName = document.getElementById('video-name');
+        
+        const fitDrop = document.getElementById('fit-dropzone');
+        const fitInput = document.getElementById('fit-input');
+        const fitName = document.getElementById('fit-name');
+        
+        const trimBtn = document.getElementById('trim-btn');
+        const consoleEl = document.getElementById('console');
+        const statusBanner = document.getElementById('status-banner');
+
+        // Global State
+        let videoMeta = null;
+        let fitParsed = null;
+        let fitFileBuffer = null;
+        let fitFilename = "";
+
+        // CRC-16 Calculation Table
+        const CRC_TABLE = [
+            0x0000, 0xCC01, 0xD801, 0x1400, 0xF001, 0x3C00, 0x2800, 0xE401,
+            0xA001, 0x6C00, 0x7800, 0xB401, 0x5000, 0x9C01, 0x8801, 0x4400
+        ];
+
+        function crc16(buffer, crc = 0) {
+            if (!buffer || buffer.length === 0) return crc;
+            for (let i = 0; i < buffer.length; i++) {
+                const byte = buffer[i];
+                let tmp = CRC_TABLE[crc & 0xF];
+                crc = (crc >> 4) & 0x0FFF;
+                crc = crc ^ tmp ^ CRC_TABLE[byte & 0xF];
+                
+                tmp = CRC_TABLE[crc & 0xF];
+                crc = (crc >> 4) & 0x0FFF;
+                crc = crc ^ tmp ^ CRC_TABLE[(byte >> 4) & 0xF];
+            }
+            return crc;
+        }
+
+        // Logger Helper
+        function log(message, type = 'info') {
+            const time = new Date().toTimeString().split(' ')[0];
+            const div = document.createElement('div');
+            div.className = 'log-entry';
+            
+            let classStyle = '';
+            if (type === 'error') classStyle = 'log-error';
+            if (type === 'success') classStyle = 'log-success';
+            
+            div.innerHTML = `<span class="log-time">[${time}]</span><span class="${classStyle}">${message}</span>`;
+            consoleEl.appendChild(div);
+            consoleEl.scrollTop = consoleEl.scrollHeight;
+        }
+
+        // --- Drag and drop events setup ---
+        function setupDropzone(zone, input, onFileSelected) {
+            zone.addEventListener('click', () => input.click());
+            zone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                zone.classList.add('active');
+            });
+            zone.addEventListener('dragleave', () => zone.classList.remove('active'));
+            zone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                zone.classList.remove('active');
+                if (e.dataTransfer.files.length > 0) {
+                    onFileSelected(e.dataTransfer.files[0]);
+                }
+            });
+            input.addEventListener('change', () => {
+                if (input.files.length > 0) {
+                    onFileSelected(input.files[0]);
+                }
+            });
+        }
+
+        setupDropzone(videoDrop, videoInput, handleVideoFile);
+        setupDropzone(fitDrop, fitInput, handleFitFile);
+
+        // --- MP4 Metadata Parser ---
+        async function handleVideoFile(file) {
+            videoDrop.classList.add('file-selected', 'video');
+            videoName.textContent = file.name;
+            log(`Video file selected: ${file.name}`);
+            
+            try {
+                log("Scanning video file structures for metadata...");
+                
+                // Read first 100MB of the video file to locate 'moov' atom
+                const headerSize = 100 * 1024 * 1024;
+                const blob = file.slice(0, Math.min(headerSize, file.size));
+                const arrayBuffer = await blob.arrayBuffer();
+                const bytes = new Uint8Array(arrayBuffer);
+                const view = new DataView(arrayBuffer);
+                
+                let creationTime = null;
+                let duration = null;
+                let timescale = null;
+                
+                function scanAtoms(start, end) {
+                    let i = start;
+                    while (i < end - 8) {
+                        const size = view.getUint32(i, false);
+                        const type = String.fromCharCode(bytes[i+4], bytes[i+5], bytes[i+6], bytes[i+7]);
+                        
+                        if (size === 0) break;
+                        
+                        if (type === 'moov' || type === 'trak' || type === 'mdia') {
+                            scanAtoms(i + 8, i + size);
+                        } else if (type === 'mvhd') {
+                            const mvhdStart = i + 8;
+                            const version = bytes[mvhdStart];
+                            
+                            let timeOffset = mvhdStart + 4;
+                            if (version === 1) {
+                                // 64-bit creation time (lower 32-bit is sufficient)
+                                const high = view.getUint32(timeOffset, false);
+                                const low = view.getUint32(timeOffset + 4, false);
+                                creationTime = low;
+                                
+                                timeOffset += 16; // Skip modification time
+                                timescale = view.getUint32(timeOffset, false);
+                                const durHigh = view.getUint32(timeOffset + 4, false);
+                                const durLow = view.getUint32(timeOffset + 8, false);
+                                duration = durLow;
+                            } else {
+                                // 32-bit
+                                creationTime = view.getUint32(timeOffset, false);
+                                timeOffset += 8;
+                                timescale = view.getUint32(timeOffset, false);
+                                duration = view.getUint32(timeOffset + 4, false);
+                            }
+                            break;
+                        }
+                        i += size;
+                    }
+                }
+                
+                scanAtoms(0, arrayBuffer.byteLength);
+                
+                if (creationTime === null || duration === null || timescale === null) {
+                    throw new Error("Could not find 'mvhd' atom. The file might be missing standard creation timestamps.");
+                }
+                
+                // Mac Epoch (1904/01/01) to Unix Epoch (1970/01/01) seconds offset: 2082844800
+                const macToUnixSec = 2082844800;
+                const unixTimestamp = creationTime - macToUnixSec;
+                const durationSeconds = duration / timescale;
+                
+                const startDt = new Date(unixTimestamp * 1000);
+                const endDt = new Date((unixTimestamp + durationSeconds) * 1000);
+                
+                videoMeta = {
+                    startDt,
+                    endDt,
+                    durationSeconds,
+                    unixTimestamp
+                };
+                
+                // Update UI Info
+                document.getElementById('v-start').textContent = formatJST(startDt);
+                document.getElementById('v-end').textContent = formatJST(endDt);
+                
+                const min = Math.floor(durationSeconds / 60);
+                const sec = Math.floor(durationSeconds % 60);
+                document.getElementById('v-dur').textContent = `${min}m ${sec}s (${durationSeconds.toFixed(1)}s)`;
+                
+                log(`Success: Found creation time: ${formatJST(startDt)}`, 'success');
+                checkSyncCapability();
+                
+            } catch (err) {
+                log(`Failed to resolve video timestamps: ${err.message}`, 'error');
+                document.getElementById('v-start').textContent = "ERROR";
+                document.getElementById('v-dur').textContent = "-";
+                document.getElementById('v-end').textContent = "-";
+                videoMeta = null;
+                checkSyncCapability();
+            }
+        }
+
+        // --- FIT Binary Parser ---
+        async function handleFitFile(file) {
+            fitDrop.classList.add('file-selected', 'fit');
+            fitName.textContent = file.name;
+            fitFilename = file.name;
+            log(`FIT file selected: ${file.name}`);
+            
+            try {
+                log("Decoding FIT binary structure...");
+                const arrayBuffer = await file.arrayBuffer();
+                fitFileBuffer = arrayBuffer;
+                
+                const fit = new FitParser(arrayBuffer);
+                fit.parse();
+                fitParsed = fit;
+                
+                // Get start and end times from records
+                const timestamps = [];
+                let recordCount = 0;
+                for (const r of fit.records) {
+                    if (!r.isDefinition && r.globalMessageNumber === 20) { // 'record'
+                        const tsField = r.fields[253]; // timestamp
+                        if (tsField && tsField.value) {
+                            timestamps.push(tsField.value);
+                            recordCount++;
+                        }
+                    }
+                }
+                
+                if (timestamps.length === 0) {
+                    throw new Error("No detailed record message with timestamps found in the FIT file.");
+                }
+                
+                const minFitSec = Math.min(...timestamps);
+                const maxFitSec = Math.max(...timestamps);
+                
+                // Convert FIT Epoch (1989-12-31 00:00:00 UTC) to JS Dates
+                const fitEpochSec = 631065600;
+                const startDt = new Date((minFitSec + fitEpochSec) * 1000);
+                const endDt = new Date((maxFitSec + fitEpochSec) * 1000);
+                
+                document.getElementById('f-start').textContent = formatJST(startDt);
+                document.getElementById('f-end').textContent = formatJST(endDt);
+                document.getElementById('f-count').textContent = `${recordCount} pts`;
+                
+                log(`Success: Decoded FIT with ${recordCount} record track points.`, 'success');
+                checkSyncCapability();
+                
+            } catch (err) {
+                log(`Failed to parse FIT file: ${err.message}`, 'error');
+                document.getElementById('f-start').textContent = "ERROR";
+                document.getElementById('f-end').textContent = "-";
+                document.getElementById('f-count').textContent = "-";
+                fitParsed = null;
+                checkSyncCapability();
+            }
+        }
+
+        // Check if both files are loaded and overlapping
+        function checkSyncCapability() {
+            if (!videoMeta || !fitParsed) {
+                statusBanner.className = "status-banner status-idle";
+                statusBanner.innerHTML = "<span>Waiting for both video and FIT files...</span>";
+                trimBtn.disabled = true;
+                return;
+            }
+            
+            const vStartSec = Math.floor(videoMeta.startDt.getTime() / 1000);
+            const vEndSec = Math.floor(videoMeta.endDt.getTime() / 1000);
+            
+            // FIT timestamps in Unix
+            const fitEpochSec = 631065600;
+            const fitTimestamps = [];
+            for (const r of fitParsed.records) {
+                if (!r.isDefinition && r.globalMessageNumber === 20) {
+                    const tsField = r.fields[253];
+                    if (tsField && tsField.value) {
+                        fitTimestamps.push(tsField.value + fitEpochSec);
+                    }
+                }
+            }
+            
+            const fStartSec = Math.min(...fitTimestamps);
+            const fEndSec = Math.max(...fitTimestamps);
+            
+            // Check overlap
+            const overlapStart = Math.max(vStartSec, fStartSec);
+            const overlapEnd = Math.min(vEndSec, fEndSec);
+            
+            if (overlapStart < overlapEnd) {
+                // We have overlap!
+                statusBanner.className = "status-banner status-sync";
+                statusBanner.innerHTML = "<span>✓ Synchronized! Time overlap detected. Ready to trim.</span>";
+                trimBtn.disabled = false;
+                log("Overlap validation: Ready to sync and crop timeline.", "success");
+            } else {
+                // No overlap
+                statusBanner.className = "status-banner status-error";
+                statusBanner.innerHTML = "<span>✗ Error: No time overlap between video and FIT track!</span>";
+                trimBtn.disabled = true;
+                log("Overlap validation failed: The recording timeframe of the video and the FIT file do not overlap.", "error");
+            }
+        }
+
+        // Trigger synchronization
+        trimBtn.addEventListener('click', () => {
+            if (!videoMeta || !fitParsed || !fitFileBuffer) return;
+            
+            try {
+                log("Starting synchronized trimming on Web worker context...");
+                
+                const fitEpochSec = 631065600;
+                const videoStartFit = Math.floor(videoMeta.startDt.getTime() / 1000) - fitEpochSec;
+                const videoEndFit = Math.ceil(videoMeta.endDt.getTime() / 1000) - fitEpochSec;
+                
+                log(`Slicing fit timestamps between ${videoStartFit} and ${videoEndFit}`);
+                
+                // 1. Filter records
+                const filteredRecords = [];
+                const recordMessagesInRange = [];
+                
+                for (const r of fitParsed.records) {
+                    if (r.isDefinition) {
+                        filteredRecords.append = filteredRecords.push(r);
+                        continue;
+                    }
+                    
+                    const tsField = r.fields[253];
+                    if (tsField && tsField.value !== null) {
+                        const ts = tsField.value;
+                        if (ts >= videoStartFit && ts <= videoEndFit) {
+                            filteredRecords.push(r);
+                            if (r.globalMessageNumber === 20) { // 'record'
+                                recordMessagesInRange.push(r);
+                            }
+                        }
+                    } else {
+                        // Keep non-timestamped metadata records
+                        filteredRecords.push(r);
+                    }
+                }
+                
+                log(`Original records count: ${fitParsed.records.length} -> Filtered: ${filteredRecords.length}`);
+                log(`Records in range: ${recordMessagesInRange.length}`);
+                
+                if (recordMessagesInRange.length === 0) {
+                    throw new Error("No data points fell within the trimmed video timeline.");
+                }
+                
+                const firstRecordTs = recordMessagesInRange[0].fields[253].value;
+                const lastRecordTs = recordMessagesInRange[recordMessagesInRange.length - 1].fields[253].value;
+                
+                // Find initial distance offset
+                let firstDistance = 0;
+                let lastDistance = 0;
+                
+                const firstDistField = recordMessagesInRange[0].fields[5];
+                if (firstDistField && firstDistField.value !== null) {
+                    firstDistance = firstDistField.value;
+                }
+                const lastDistField = recordMessagesInRange[recordMessagesInRange.length - 1].fields[5];
+                if (lastDistField && lastDistField.value !== null) {
+                    lastDistance = lastDistField.value;
+                }
+                
+                const actualDurationSec = lastRecordTs - firstRecordTs;
+                const actualDistanceM = (lastDistance - firstDistance) / 100.0;
+                
+                log(`Actual track duration: ${actualDurationSec} seconds`);
+                log(`Actual track distance: ${actualDistanceM.toFixed(2)} meters`);
+                
+                // Copy buffer and apply offset modifications
+                // Calculate new record body total byte size
+                let recordBodySize = 0;
+                for (const r of filteredRecords) {
+                    recordBodySize += r.bytes.length;
+                }
+                
+                // Buffer space for new FIT file
+                const headerSize = fitParsed.headerSize;
+                const newFitBuffer = new ArrayBuffer(headerSize + recordBodySize + 2);
+                const newBytes = new Uint8Array(newFitBuffer);
+                const newView = new DataView(newFitBuffer);
+                
+                // 1. Copy header
+                newBytes.set(new Uint8Array(fitFileBuffer, 0, headerSize));
+                // Update header records_size field (4-7 bytes, uint32 little endian)
+                newView.setUint32(4, recordBodySize, true);
+                
+                // Write modified records
+                let currentOffset = headerSize;
+                for (const r of filteredRecords) {
+                    const recBytes = new Uint8Array(r.bytes);
+                    const recOffset = currentOffset;
+                    newBytes.set(recBytes, recOffset);
+                    currentOffset += recBytes.length;
+                    
+                    if (r.isDefinition) continue;
+                    
+                    // Modify distance offset inside record message (message 20)
+                    if (r.globalMessageNumber === 20) {
+                        const distField = r.fields[5];
+                        if (distField && distField.value !== null) {
+                            const curDist = distField.value;
+                            const newDistVal = Math.max(0, curDist - firstDistance);
+                            newView.setUint32(recOffset + distField.offset, newDistVal, !r.def.isBigEndian);
+                        }
+                    }
+                    
+                    // Modify session and lap messages
+                    if (r.globalMessageNumber === 18 || r.globalMessageNumber === 19) {
+                        const startTimeField = r.fields[2];
+                        if (startTimeField) {
+                            newView.setUint32(recOffset + startTimeField.offset, firstRecordTs, !r.def.isBigEndian);
+                        }
+                        
+                        const tsField = r.fields[253];
+                        if (tsField) {
+                            newView.setUint32(recOffset + tsField.offset, lastRecordTs, !r.def.isBigEndian);
+                        }
+                        
+                        // total_elapsed_time (fieldNum 7): uint32 (ms)
+                        const elapsedField = r.fields[7];
+                        if (elapsedField) {
+                            newView.setUint32(recOffset + elapsedField.offset, Math.round(actualDurationSec * 1000), !r.def.isBigEndian);
+                        }
+                        
+                        // total_timer_time (fieldNum 8): uint32 (ms)
+                        const timerField = r.fields[8];
+                        if (timerField) {
+                            newView.setUint32(recOffset + timerField.offset, Math.round(actualDurationSec * 1000), !r.def.isBigEndian);
+                        }
+                        
+                        // total_distance (fieldNum 9): uint32 (cm)
+                        const totalDistField = r.fields[9];
+                        if (totalDistField) {
+                            newView.setUint32(recOffset + totalDistField.offset, Math.round(actualDistanceM * 100), !r.def.isBigEndian);
+                        }
+                    }
+                }
+                
+                // 2. Re-compute Header CRC if present
+                if (headerSize === 14) {
+                    log("Recomputing header block checksum CRC-16...");
+                    const headCrc = crc16(newBytes.subarray(0, 12));
+                    newView.setUint16(12, headCrc, true);
+                }
+                
+                // 3. Re-compute entire File CRC
+                log("Recomputing overall FIT file checksum CRC-16...");
+                const fileCrc = crc16(newBytes.subarray(0, headerSize + recordBodySize));
+                newView.setUint16(headerSize + recordBodySize, fileCrc, true);
+                
+                // Download file
+                log("Downloading synchronized FIT file...", "success");
+                
+                const outBlob = new Blob([newBytes], {type: 'application/octet-stream'});
+                const outUrl = URL.createObjectURL(outBlob);
+                
+                const a = document.createElement('a');
+                const outName = fitFilename.replace(".fit", "_trimmed.fit");
+                a.href = outUrl;
+                a.download = outName;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(outUrl);
+                
+                log(`Success: Trimmed FIT file generated: ${outName}`, 'success');
+                
+            } catch (err) {
+                log(`Trimming failed: ${err.message}`, 'error');
+            }
+        });
+
+        // Helper to format date in JST
+        function formatJST(date) {
+            const pad = (n) => n.toString().padStart(2, '0');
+            const jstTime = new Date(date.getTime() + (9 * 60 * 60 * 1000));
+            const y = jstTime.getUTCFullYear();
+            const m = pad(jstTime.getUTCMonth() + 1);
+            const d = pad(jstTime.getUTCDate());
+            const h = pad(jstTime.getUTCHours());
+            const min = pad(jstTime.getUTCMinutes());
+            const s = pad(jstTime.getUTCSeconds());
+            return `${y}/${m}/${d} ${h}:${min}:${s}`;
+        }
+
+        // FIT File Parser Helper Class
+        class FitParser {
+            constructor(arrayBuffer) {
+                this.bytes = new Uint8Array(arrayBuffer);
+                this.view = new DataView(arrayBuffer);
+                this.offset = 0;
+                
+                this.headerSize = this.bytes[0];
+                this.protocolVersion = this.bytes[1];
+                this.profileVersion = this.view.getUint16(2, true);
+                this.recordsSize = this.view.getUint32(4, true);
+                this.offset = this.headerSize;
+                
+                this.definitions = {};
+                this.records = [];
+            }
+            
+            parse() {
+                const endOffset = this.headerSize + this.recordsSize;
+                while (this.offset < endOffset) {
+                    const recordStart = this.offset;
+                    const headerByte = this.bytes[this.offset];
+                    this.offset++;
+                    
+                    const isDefinition = (headerByte & 0x80) !== 0;
+                    const hasDeveloperData = (headerByte & 0x40) !== 0;
+                    const localId = headerByte & 0x0F;
+                    
+                    if (isDefinition) {
+                        this.offset++; // Reserved
+                        const architecture = this.bytes[this.offset];
+                        this.offset++;
+                        const isBigEndian = architecture === 1;
+                        
+                        const globalMessageNumber = this.view.getUint16(this.offset, !isBigEndian);
+                        this.offset += 2;
+                        
+                        const fieldCount = this.bytes[this.offset];
+                        this.offset++;
+                        
+                        const fields = [];
+                        for (let i = 0; i < fieldCount; i++) {
+                            const fieldNum = this.bytes[this.offset];
+                            const size = this.bytes[this.offset + 1];
+                            const baseType = this.bytes[this.offset + 2];
+                            this.offset += 3;
+                            fields.push({ fieldNum, size, baseType });
+                        }
+                        
+                        let developerFields = [];
+                        if (hasDeveloperData) {
+                            const devFieldCount = this.bytes[this.offset];
+                            this.offset++;
+                            for (let i = 0; i < devFieldCount; i++) {
+                                const fieldNum = this.bytes[this.offset];
+                                const size = this.bytes[this.offset + 1];
+                                const devIndex = this.bytes[this.offset + 2];
+                                this.offset += 3;
+                                developerFields.push({ fieldNum, size, devIndex });
+                            }
+                        }
+                        
+                        const definedSize = this.offset - recordStart;
+                        const recordBytes = this.bytes.slice(recordStart, this.offset);
+                        
+                        const def = {
+                            isBigEndian,
+                            globalMessageNumber,
+                            fields,
+                            developerFields,
+                            recordBytes
+                        };
+                        
+                        this.definitions[localId] = def;
+                        this.records.push({
+                            isDefinition: true,
+                            localId,
+                            globalMessageNumber,
+                            bytes: recordBytes,
+                            definition: def
+                        });
+                    } else {
+                        const def = this.definitions[localId];
+                        if (!def) {
+                            throw new Error(`Data message references undefined local ID: ${localId}`);
+                        }
+                        
+                        let dataSize = 0;
+                        for (const f of def.fields) {
+                            dataSize += f.size;
+                        }
+                        for (const f of def.developerFields) {
+                            dataSize += f.size;
+                        }
+                        
+                        const recordEnd = this.offset + dataSize;
+                        const recordBytes = this.bytes.slice(recordStart, recordEnd);
+                        
+                        let currentOffset = recordStart + 1;
+                        const parsedFields = {};
+                        
+                        for (const f of def.fields) {
+                            const fieldStart = currentOffset;
+                            currentOffset += f.size;
+                            
+                            let val = null;
+                            if (f.size === 4 && (f.baseType === 0x86 || f.baseType === 0x0C)) {
+                                val = this.view.getUint32(fieldStart, !def.isBigEndian);
+                            } else if (f.size === 4 && f.baseType === 0x85) {
+                                val = this.view.getInt32(fieldStart, !def.isBigEndian);
+                            } else if (f.size === 2 && (f.baseType === 0x84 || f.baseType === 0x0B)) {
+                                val = this.view.getUint16(fieldStart, !def.isBigEndian);
+                            } else if (f.size === 1 && (f.baseType === 0x02 || f.baseType === 0x0A || f.baseType === 0x00)) {
+                                val = this.bytes[fieldStart];
+                            }
+                            
+                            parsedFields[f.fieldNum] = {
+                                offset: fieldStart - recordStart,
+                                size: f.size,
+                                baseType: f.baseType,
+                                value: val
+                            };
+                        }
+                        
+                        this.records.push({
+                            isDefinition: false,
+                            localId,
+                            globalMessageNumber: def.globalMessageNumber,
+                            bytes: recordBytes,
+                            fields: parsedFields,
+                            def: def
+                        });
+                        
+                        this.offset = recordEnd;
+                    }
+                }
+            }
+        }
+    </script>
+</body>
+</html>
