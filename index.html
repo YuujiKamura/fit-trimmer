@@ -468,7 +468,7 @@
             <h1>FITTER×FITTER</h1>
             <div style="font-size: 1.1rem; color: var(--text-muted); margin-top: -4px; margin-bottom: 12px; font-weight: 600; letter-spacing: 1px;">フィッターフィッター</div>
             <p class="subtitle" style="margin-bottom: 15px;">FIT形式の走行データを動画の時刻範囲に合わせてトリミング。</p>
-            <div class="build-info">Commit: <span class="commit-hash">4c0d74a</span> | Updated: <span class="update-time">2026-06-21 19:15:09 JST</span></div>
+            <div class="build-info">Commit: <span class="commit-hash">e242f08</span> | Updated: <span class="update-time">2026-06-21 21:21:06 JST</span></div>
         </div>
 
         <!-- File Uploaders -->
@@ -608,8 +608,38 @@
         </footer>
     </div>
 
-    <script src="src/parser.js"></script>
+    <script src="src/parser.js?v=e242f08"></script>
     <script>
+        // Fetch latest commit metadata from GitHub API to bypass cache and show real deploy info
+        async function fetchBuildInfo() {
+            try {
+                const response = await fetch('https://api.github.com/repos/YuujiKamura/fit-trimmer/commits/main');
+                if (!response.ok) return;
+                const data = await response.json();
+                const sha = data.sha.substring(0, 7);
+                const dateStr = data.commit.committer.date;
+                const date = new Date(dateStr);
+                
+                // Format to JST (YYYY-MM-DD HH:mm:ss JST)
+                const offsetDate = new Date(date.getTime() + (9 * 60 * 60 * 1000));
+                const yyyy = offsetDate.getUTCFullYear();
+                const mm = String(offsetDate.getUTCMonth() + 1).padStart(2, '0');
+                const dd = String(offsetDate.getUTCDate()).padStart(2, '0');
+                const hh = String(offsetDate.getUTCHours()).padStart(2, '0');
+                const min = String(offsetDate.getUTCMinutes()).padStart(2, '0');
+                const ss = String(offsetDate.getUTCSeconds()).padStart(2, '0');
+                const formattedDate = `${yyyy}-${mm}-${dd} ${hh}:${min}:${ss} JST`;
+
+                const hashEl = document.querySelector('.commit-hash');
+                const timeEl = document.querySelector('.update-time');
+                if (hashEl) hashEl.textContent = sha;
+                if (timeEl) timeEl.textContent = formattedDate;
+            } catch (e) {
+                console.warn('Failed to fetch latest build info from GitHub API', e);
+            }
+        }
+        fetchBuildInfo();
+
         // UI Bindings
         const videoDrop = document.getElementById('video-dropzone');
         const videoInput = document.getElementById('video-input');
