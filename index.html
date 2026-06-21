@@ -359,6 +359,69 @@
             color: #60a5fa;
             text-decoration: underline;
         }
+
+        /* Guide & FAQ Styles */
+        .guide-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            padding: 24px;
+        }
+
+        .guide-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .faq-item {
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 14px 0;
+        }
+
+        .faq-item:last-child {
+            border: none;
+            padding-bottom: 0;
+        }
+
+        .faq-question {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: var(--text-color);
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            user-select: none;
+        }
+
+        .faq-question::after {
+            content: '＋';
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            transition: transform 0.3s;
+        }
+
+        .faq-item.active .faq-question::after {
+            content: '－';
+        }
+
+        .faq-answer {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s cubic-bezier(0.16, 1, 0.3, 1), margin-top 0.3s;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            line-height: 1.6;
+        }
+
+        .faq-item.active .faq-answer {
+            margin-top: 10px;
+            max-height: 250px;
+        }
     </style>
 </head>
 <body>
@@ -440,6 +503,46 @@
             </div>
             <div class="console-log" id="console">
                 <div class="log-entry"><span class="log-time">[Init]</span>Web-based FIT trimmer ready. Ready to drop.</div>
+            </div>
+        </div>
+
+        <!-- Guide & FAQ -->
+        <div class="card guide-card">
+            <div class="guide-title">📖 使い方 ＆ トラブルシューティング</div>
+            
+            <div class="faq-item">
+                <div class="faq-question">このツールは何をするものですか？</div>
+                <div class="faq-answer">
+                    撮影した動画ファイル（MP4 / LRV / MOV）と、GPSサイクルコンピュータ等で記録した走行ログファイル（.fit）を時間軸で同期し、動画が撮影された区間だけを切り出した新しいFITファイルを自動生成・ダウンロードします。
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question">どうやって同期しているのですか？</div>
+                <div class="faq-answer">
+                    動画ファイルのメタデータ（作成日時・再生時間）をブラウザ側で直接解析し、その時間帯に合致するFITデータのレコード群を切り出しています。この際、切り出し後のデータのスタート地点を 0 メートルに補正し、合計時間や距離のサマリー情報も自動で再計算・更新します。
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question">「✗ Error: No time overlap...」と表示されます</div>
+                <div class="faq-answer">
+                    選択した動画の撮影時間と、FITデータの走行時間が重なっていません。同じ日の同じ時間帯に撮影・記録された正しいファイルであることを確認してください。カメラの内蔵時計が大きくズレている場合も同期できません。
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question">「Failed to resolve video timestamps」エラーが出ます</div>
+                <div class="faq-answer">
+                    動画ファイルに標準的な作成日時（creation_time）メタデータが含まれていません。動画編集ソフトなどで書き出し（エンコード）を行うとメタデータが消去されることがあるため、カメラからPCへ取り出したオリジナルの動画ファイル（またはLRVファイル）をそのままドロップしてください。
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question">「This file is not a valid FIT file」エラーが出ます</div>
+                <div class="faq-answer">
+                    ドロップされたファイルがGarmin/Wahoo/Stravaなどが定める標準FITフォーマットではないか、ファイルが破損しています。拡張子が `.fit` であることを確認してください。
+                </div>
             </div>
         </div>
 
@@ -1065,6 +1168,25 @@
                 }
             }
         }
+        // FAQ Accordion logic
+        document.querySelectorAll('.faq-question').forEach(item => {
+            item.addEventListener('click', () => {
+                const parent = item.parentElement;
+                const wasActive = parent.classList.contains('active');
+                
+                // Close all other FAQs
+                document.querySelectorAll('.faq-item').forEach(child => {
+                    child.classList.remove('active');
+                    child.querySelector('.faq-answer').style.maxHeight = null;
+                });
+                
+                if (!wasActive) {
+                    parent.classList.add('active');
+                    const answer = parent.querySelector('.faq-answer');
+                    answer.style.maxHeight = answer.scrollHeight + 'px';
+                }
+            });
+        });
     </script>
 </body>
 </html>
