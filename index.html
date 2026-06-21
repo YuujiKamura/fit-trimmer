@@ -931,6 +931,15 @@
                 this.recordsSize = this.view.getUint32(4, true);
                 this.offset = this.headerSize;
                 
+                // Validate FIT signature
+                if (this.bytes.length < 12) {
+                    throw new Error("File is too small to be a valid FIT file.");
+                }
+                const tagValue = String.fromCharCode(this.bytes[8], this.bytes[9], this.bytes[10], this.bytes[11]);
+                if (tagValue !== '.FIT') {
+                    throw new Error('This file is not a valid FIT file (missing ".FIT" signature).');
+                }
+                
                 this.definitions = {};
                 this.records = [];
             }
