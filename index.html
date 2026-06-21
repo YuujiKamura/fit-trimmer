@@ -642,18 +642,13 @@
             try {
                 log("Scanning video file structures for metadata...");
                 
-                // Read first 100MB of the video file to locate 'moov' atom
-                const headerSize = 100 * 1024 * 1024;
-                const blob = file.slice(0, Math.min(headerSize, file.size));
-                const arrayBuffer = await blob.arrayBuffer();
-                const bytes = new Uint8Array(arrayBuffer);
-                const view = new DataView(arrayBuffer);
+                const scanChunkSize = 100 * 1024 * 1024; // 100MB chunk to cover tail-located moov atoms
                 
                 let creationTime = null;
                 let duration = null;
                 let timescale = null;
                 
-                function scanAtoms(start, end) {
+                function scanAtoms(bytes, view, start, end) {
                     let i = start;
                     while (i < end - 8) {
                         const size = view.getUint32(i, false);
@@ -661,8 +656,15 @@
                         
                         if (size === 0) break;
                         
+                        if (size < 8) {
+                            i += 8;
+                            continue;
+                        }
+                        
                         if (type === 'moov' || type === 'trak' || type === 'mdia') {
-                            scanAtoms(i + 8, i + size);
+                            if (scanAtoms(bytes, view, i + 8, Math.min(i + size, end))) {
+                                return true;
+                            }
                         } else if (type === 'mvhd') {
                             const mvhdStart = i + 8;
                             const version = bytes[mvhdStart];
@@ -686,13 +688,44 @@
                                 timescale = view.getUint32(timeOffset, false);
                                 duration = view.getUint32(timeOffset + 4, false);
                             }
-                            break;
+                            return true; // Found mvhd
                         }
                         i += size;
                     }
+                    return false;
                 }
                 
-                scanAtoms(0, arrayBuffer.byteLength);
+                // 1. Try Front Chunk (header)
+                log("Reading file header (first 100MB)...");
+                const frontBlob = file.slice(0, Math.min(scanChunkSize, file.size));
+                const frontBuffer = await frontBlob.arrayBuffer();
+                const frontBytes = new Uint8Array(frontBuffer);
+                const frontView = new DataView(frontBuffer);
+                
+                let found = scanAtoms(frontBytes, frontView, 0, frontBuffer.byteLength);
+                
+                // 2. Try End Chunk (trailer) if not found at the front
+                if (!found && file.size > scanChunkSize) {
+                    log("Header 'moov' not found at front. Reading file trailer (last 100MB) for 'moov' atom...");
+                    const endStart = Math.max(0, file.size - scanChunkSize);
+                    const endBlob = file.slice(endStart, file.size);
+                    const endBuffer = await endBlob.arrayBuffer();
+                    const endBytes = new Uint8Array(endBuffer);
+                    const endView = new DataView(endBuffer);
+                    
+                    let moovIdx = -1;
+                    for (let j = 0; j < endBytes.length - 8; j++) {
+                        if (endBytes[j] === 109 && endBytes[j+1] === 111 && endBytes[j+2] === 111 && endBytes[j+3] === 118) { // 'moov'
+                            moovIdx = j - 4; // Start of 'moov' size field
+                            break;
+                        }
+                    }
+                    
+                    if (moovIdx >= 0) {
+                        log("Found 'moov' atom signature at trailer offset. Parsing...");
+                        found = scanAtoms(endBytes, endView, moovIdx, endBytes.length);
+                    }
+                }
                 
                 if (creationTime === null || duration === null || timescale === null) {
                     throw new Error("Could not find 'mvhd' atom. The file might be missing standard creation timestamps.");
