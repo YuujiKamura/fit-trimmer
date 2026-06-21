@@ -315,19 +315,22 @@ class FitParser(private val bytes: ByteArray) {
                 // total_elapsed_time (fieldNum 7): uint32 (ms)
                 val elapsedField = dataRec.fields[7]
                 if (elapsedField != null) {
-                    setUInt(newFitBytes, recOffset + elapsedField.offset, Math.round(actualDurationSec * 1000.0), !dataRec.def.isBigEndian)
+                    val valL = kotlin.math.round(actualDurationSec * 1000.0).toLong()
+                    setUInt(newFitBytes, recOffset + elapsedField.offset, valL, !dataRec.def.isBigEndian)
                 }
 
                 // total_timer_time (fieldNum 8): uint32 (ms)
                 val timerField = dataRec.fields[8]
                 if (timerField != null) {
-                    setUInt(newFitBytes, recOffset + timerField.offset, Math.round(actualDurationSec * 1000.0), !dataRec.def.isBigEndian)
+                    val valL = kotlin.math.round(actualDurationSec * 1000.0).toLong()
+                    setUInt(newFitBytes, recOffset + timerField.offset, valL, !dataRec.def.isBigEndian)
                 }
 
                 // total_distance (fieldNum 9): uint32 (cm)
                 val totalDistField = dataRec.fields[9]
                 if (totalDistField != null) {
-                    setUInt(newFitBytes, recOffset + totalDistField.offset, Math.round(actualDistanceM * 100.0), !dataRec.def.isBigEndian)
+                    val valL = kotlin.math.round(actualDistanceM * 100.0).toLong()
+                    setUInt(newFitBytes, recOffset + totalDistField.offset, valL, !dataRec.def.isBigEndian)
                 }
             }
         }
