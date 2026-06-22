@@ -2,14 +2,20 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
 
 jobs:
-  build-and-deploy:
+  build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -24,26 +30,27 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      - name: Build WasmJs
-        run: ./gradlew :shared-core:wasmJsBrowserDistribution --build-cache --parallel
+      - name: Build with Gradle
+        run: ./gradlew :shared-core:wasmJsBrowserProductionWebpack
 
-      - name: Prepare Deployment Directory
+      - name: Prepare production folder
         run: |
-          mkdir dist
+          mkdir -p dist
           cp index.html dist/
-          # Copy css or other asset directories if they exist
-          [ -d css ] && cp -r css dist/ || true
-          [ -d docs ] && cp -r docs dist/ || true
-          
-          # Copy built Wasm and JS files to dist/
-          cp -r shared-core/build/dist/wasmJs/productionExecutable/* dist/
-          
-          # Prevent peaceiris/actions-gh-pages from ignoring gitignored files (like shared-core.js and WASM)
-          echo '!*' > dist/.gitignore
+          cp -r src dist/
+          cp shared-core/build/dist/wasmJs/productionExecutable/*.js dist/
+          cp shared-core/build/dist/wasmJs/productionExecutable/*.wasm dist/
+          # Ensure there are no large map files in the final artifact
+          rm -f dist/*.map
 
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './dist'
 
       - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./dist
+        id: deployment
+        uses: actions/deploy-pages@v4
