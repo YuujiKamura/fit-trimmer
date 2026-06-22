@@ -5,7 +5,7 @@
   "main": "src/parser.js",
   "scripts": {
     "test": "node --test test/parser.test.js",
-    "build-wasm": ".\gradlew :shared-core:wasmJsBrowserDistribution && copy shared-core\build\dist\wasmJs\productionExecutable\* src\"
+    "build-wasm": "gradlew.bat :shared-core:wasmJsBrowserDistribution && copy shared-core\\build\\dist\\wasmJs\\productionExecutable\\* src\\"
   },
   "keywords": [
     "fit",
