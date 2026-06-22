@@ -52,6 +52,7 @@ fun getFitTelemetry(bytes: Int8Array): Float64Array? {
     try {
         parser.parse()
     } catch (e: Exception) {
+        println("FIT Parse Exception: ${e.message}")
         return null
     }
 

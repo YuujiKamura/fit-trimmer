@@ -16,10 +16,11 @@ function scanMp4Atoms(bytes, view, start, end, onMvhdFound, onMoovFound) {
             continue;
         }
         
-        if (type === 'moov' || type === 'trak' || type === 'mdia') {
+        if (type === 'moov' || type === 'trak' || type === 'mdia' || type === 'minf' || type === 'stbl') {
             if (onMoovFound && type === 'moov') {
                 onMoovFound(i, size);
             }
+            // Recurse into body, but limit to atom size
             if (scanMp4Atoms(bytes, view, i + 8, Math.min(i + size, end), onMvhdFound, onMoovFound)) {
                 return true;
             }
