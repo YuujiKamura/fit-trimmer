@@ -129,32 +129,50 @@ async function parseVideoMetadata(file) {
         const scanSize = Math.min(file.size, 100 * 1024 * 1024); // 100MB
         let metadata = null;
 
-        const processBuffer = (buffer) => {
-            const bytes = new Uint8Array(buffer);
-            const view = new DataView(buffer);
-
-            // 1. Try standard atom scan
-            scanMp4Atoms(bytes, view, 0, bytes.length, (meta) => { metadata = meta; });
-            if (metadata) return true;
-
-            // 2. Fallback: Search for 'moov' signature manually
-            for (let i = 0; i < bytes.length - 8; i++) {
-                if (bytes[i] === 109 && bytes[i+1] === 111 && bytes[i+2] === 111 && bytes[i+3] === 118) { // 'moov'
-                    scanMp4Atoms(bytes, view, i, bytes.length, (meta) => { metadata = meta; });
-                    if (metadata) return true;
+        const findMvhdDirectly = (bytes) => {
+            const view = new DataView(bytes.buffer);
+            for (let i = 0; i < bytes.length - 32; i++) {
+                if (bytes[i] === 109 && bytes[i+1] === 118 && bytes[i+2] === 104 && bytes[i+3] === 100) {
+                    const version = bytes[i + 4];
+                    let creationTime, timescale, duration;
+                    let offset = i + 8;
+                    if (version === 1) {
+                        offset += 8;
+                        creationTime = view.getUint32(offset, false); offset += 4;
+                        offset += 8;
+                        timescale = view.getUint32(offset, false); offset += 4;
+                        offset += 4;
+                        duration = view.getUint32(offset, false);
+                    } else {
+                        creationTime = view.getUint32(offset, false); offset += 4;
+                        offset += 4;
+                        timescale = view.getUint32(offset, false); offset += 4;
+                        duration = view.getUint32(offset, false);
+                    }
+                    if (timescale > 0 && duration > 0 && creationTime > 1000000) {
+                        return { creationTime, timescale, duration };
+                    }
                 }
             }
-            return false;
+            return null;
         };
 
-        let headBuffer = await file.slice(0, scanSize).arrayBuffer();
-        if (!processBuffer(headBuffer)) {
-            log(`Header 'moov' not found at front for ${file.name}. Scanning trailer...`);
-            let tailBuffer = await file.slice(Math.max(0, file.size - scanSize)).arrayBuffer();
-            processBuffer(tailBuffer);
+        const processBuffer = async (offset) => {
+            const blob = file.slice(offset, offset + scanSize);
+            const buffer = await blob.arrayBuffer();
+            const bytes = new Uint8Array(buffer);
+            scanMp4Atoms(bytes, new DataView(buffer), 0, bytes.length, (meta) => { metadata = meta; });
+            if (metadata) return true;
+            metadata = findMvhdDirectly(bytes);
+            return metadata !== null;
+        };
+
+        if (!await processBuffer(0)) {
+            log(`Metadata not found at front. Searching trailer for ${file.name}...`);
+            await processBuffer(Math.max(0, file.size - scanSize));
         }
 
-        if (!metadata) throw new Error("MVHD metadata not found. Please use original camera files.");
+        if (!metadata) throw new Error("MVHD metadata not found. Try a different video file.");
 
         const unixTimestamp = metadata.creationTime - 2082844800;
         const durationSeconds = metadata.duration / metadata.timescale;
