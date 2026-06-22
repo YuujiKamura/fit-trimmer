@@ -958,6 +958,7 @@
         </footer>
     </div>
 
+    <script src="shared-core.js"></script>
     <script>
         // Debug Control Plane Client & Global Error Visualizer
         let debugWs = null;
@@ -1128,7 +1129,7 @@
 
 
         // Load Kotlin Wasm module
-        import("./shared-core.js").then(module => {
+        window["shared-core"].then(module => {
             wasmModule = module;
             log("Kotlin Wasm module loaded and initialized.", "success");
             checkSyncCapability();
