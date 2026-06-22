@@ -86,6 +86,8 @@ class FitParser {
     
     parse() {
         const endOffset = this.headerSize + this.recordsSize;
+        let lastTimestamp = 0;
+
         while (this.offset < endOffset) {
             const recordStart = this.offset;
             const headerByte = this.bytes[this.offset];
@@ -101,6 +103,15 @@ class FitParser {
                 const def = this.definitions[localId];
                 if (!def) {
                     throw new Error(`Data message references undefined local ID (compressed): ${localId}`);
+                }
+
+                // Restore compressed timestamp
+                if (lastTimestamp !== 0) {
+                    let timestamp = (lastTimestamp & 0xFFFFFFE0) + timeOffset;
+                    if (timestamp < lastTimestamp) {
+                        timestamp += 0x00000020;
+                    }
+                    lastTimestamp = timestamp;
                 }
                 
                 let dataSize = 0;
@@ -124,6 +135,7 @@ class FitParser {
                     let val = null;
                     if (f.size === 4 && (f.baseType === 0x86 || f.baseType === 0x0C)) {
                         val = this.view.getUint32(fieldStart, !def.isBigEndian);
+                        if (f.fieldNum === 253) lastTimestamp = val;
                     } else if (f.size === 4 && f.baseType === 0x85) {
                         val = this.view.getInt32(fieldStart, !def.isBigEndian);
                     } else if (f.size === 2 && (f.baseType === 0x84 || f.baseType === 0x0B)) {
@@ -139,6 +151,11 @@ class FitParser {
                         value: val
                     };
                 }
+
+                // Inject restored timestamp if not present in fields
+                if (parsedFields[253] === undefined && lastTimestamp !== 0) {
+                    parsedFields[253] = { value: lastTimestamp, offset: 0, size: 0, baseType: 0 };
+                }
                 
                 this.offset = recordEnd;
                 this.records.push({
@@ -150,6 +167,7 @@ class FitParser {
                     def: def
                 });
             } else {
+                // ... (rest of parse)
                 // Normal Header
                 const isDefinition = (headerByte & 0x40) !== 0;
                 const hasDeveloperData = (headerByte & 0x20) !== 0;
