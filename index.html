@@ -1651,26 +1651,7 @@
             try {
                 log("Packaging telemetry data and HUD layout JSON...");
                 
-                // 1. Gather Telemetry data list matching the video range
                 const fitInt8 = new Int8Array(fitFileBuffer);
-                // Call Wasm core to parse and extract FIT records in full
-                // (Wasm core has getFitTimestamps, we can query raw values if needed or dump parsed JSON)
-                // For direct JSON piping, we can call trimFit to trim the FIT file binary.
-                // However, the script is better off reading the trimmed FIT binary itself, OR we supply
-                // parsed telemetry data directly in the JSON.
-                // Since KMP Wasm has trimFit, we can generate the trimmed FIT data, AND we can write a Python script
-                // that parses FIT using standard libraries, OR we can extract values.
-                // To keep the Python script simple and fast, we can include a small FIT parser directly in Python
-                // using standard struct module or fitparse, OR we write out the time-matched telemetry points.
-                // Let's generate a trimmed FIT data array directly from Wasm and write it to JSON.
-                // To do this, we need Wasm to return telemetry records. Currently Wasm has 'trimFit' returning binary.
-                // Can we write a Python script that decodes the trimmed FIT file?
-                // Yes! Python has 'fitparse' library which is standard for fit parsing.
-                // Let's make the python script read the trimmed FIT file directly. This is much cleaner and avoids
-                // having to dump 100,000 JSON lines.
-                // Thus:
-                // hud_project.json: { "videoFileName": "GH010023.MP4", "fitFileName": "GH010023_trimmed.fit", "syncOffsetSeconds": 0.0, "hudSettings": ... }
-                // This means the user downloads the trimmed FIT file, the video, the settings.json, and the script.
                 
                 // Trimming FIT to output
                 const trimmedFitBinary = wasmModule.trimFit(
@@ -1683,10 +1664,6 @@
                 const videoBaseName = activeVideo.name.substring(0, activeVideo.name.lastIndexOf('.')) || activeVideo.name;
                 const trimmedFitName = `${fitBaseName}_${videoBaseName}.fit`;
                 
-                // Save Trimmed FIT binary file
-                const fitBlob = new Blob([trimmedFitBinary.buffer], {type: 'application/octet-stream'});
-                downloadBlob(fitBlob, trimmedFitName);
-                
                 // Generate Project JSON
                 const projectData = {
                     project: "fit-trimmer-hud",
@@ -1697,15 +1674,29 @@
                     hudSettings: hudConfig
                 };
                 
-                const projectBlob = new Blob([JSON.stringify(projectData, null, 2)], {type: 'application/json'});
-                downloadBlob(projectBlob, "hud_project.json");
+                // Convert trimmed FIT binary to Base64
+                log("Embedding FIT data into Python script...");
+                let fitBase64 = "";
+                if (trimmedFitBinary && trimmedFitBinary.buffer) {
+                    const bytes = new Uint8Array(trimmedFitBinary.buffer);
+                    let binary = "";
+                    const len = bytes.byteLength;
+                    const chunkSize = 8192;
+                    for (let i = 0; i < len; i += chunkSize) {
+                        const chunk = bytes.subarray(i, i + chunkSize);
+                        binary += String.fromCharCode.apply(null, chunk);
+                    }
+                    fitBase64 = window.btoa(binary);
+                }
                 
-                // Generate Python Script
-                const pythonCode = generatePythonRendererScript();
+                // Generate Python Script containing embedded settings & FIT
+                const pythonCode = generatePythonRendererScript(projectData, fitBase64);
                 const pythonBlob = new Blob([pythonCode], {type: 'text/plain;charset=utf-8'});
-                downloadBlob(pythonBlob, "hud_merger.py");
                 
-                log("Export completed! Projects and script downloaded. Place them in the same folder with your video and run: python hud_merger.py", "success");
+                const scriptName = `hud_merger_${videoBaseName}.py`;
+                downloadBlob(pythonBlob, scriptName);
+                
+                log(`Unified Python GUI App generated: ${scriptName}. Put this file in the same folder as your raw video and run it!`, "success");
                 
             } catch (err) {
                 log(`Failed to package HUD project: ${err.message}`, "error");
@@ -1723,13 +1714,17 @@
             URL.revokeObjectURL(url);
         }
 
-        function generatePythonRendererScript() {
+        function generatePythonRendererScript(projectData, fitBase64) {
             return `# -*- coding: utf-8 -*-
 import os
 import sys
 import json
 import subprocess
 import numpy as np
+
+# Embedded configurations from browser trimmer
+EMBEDDED_PROJECT_JSON = """\${JSON.stringify(projectData, null, 2)}"""
+EMBEDDED_FIT_BASE64 = "\${fitBase64}"
 
 # Verify dependencies and install automatically
 def auto_install(package_name, import_name=None):
@@ -1945,25 +1940,51 @@ def detect_encoder():
             continue
     return "libx264"
 
-def process_video(proj_path, progress_callback=None):
-    if not os.path.exists(proj_path):
-        msg = f"Error: Project file '{proj_path}' not found."
-        if progress_callback: progress_callback(0, 1, msg, True)
-        else: print(msg)
-        return False
-        
-    try:
-        with open(proj_path, 'r', encoding='utf-8') as f:
-            proj = json.load(f)
-    except Exception as e:
-        msg = f"Error parsing project JSON: {e}"
-        if progress_callback: progress_callback(0, 1, msg, True)
-        else: print(msg)
-        return False
-        
+def process_video(proj_path=None, progress_callback=None):
+    proj = None
+    if proj_path and os.path.exists(proj_path):
+        try:
+            with open(proj_path, 'r', encoding='utf-8') as f:
+                proj = json.load(f)
+        except Exception as e:
+            msg = f"Error parsing project JSON: {e}"
+            if progress_callback: progress_callback(0, 1, msg, True)
+            else: print(msg)
+            return False
+    else:
+        if EMBEDDED_PROJECT_JSON:
+            try:
+                proj = json.loads(EMBEDDED_PROJECT_JSON)
+            except Exception as e:
+                msg = f"Error parsing embedded project JSON: {e}"
+                if progress_callback: progress_callback(0, 1, msg, True)
+                else: print(msg)
+                return False
+        else:
+            msg = f"Error: Project file '{proj_path}' not found."
+            if progress_callback: progress_callback(0, 1, msg, True)
+            else: print(msg)
+            return False
+            
     video_file = proj["videoFileName"]
     fit_file = proj["fitFileName"]
     
+    # Extract embedded FIT data if not present on disk
+    if not os.path.exists(fit_file) and EMBEDDED_FIT_BASE64:
+        if progress_callback:
+            progress_callback(0, 100, f"Extracting embedded telemetry: {fit_file}...", False)
+        else:
+            print(f"Extracting embedded telemetry to {fit_file}...")
+        try:
+            import base64
+            with open(fit_file, 'wb') as f:
+                f.write(base64.b64decode(EMBEDDED_FIT_BASE64))
+        except Exception as e:
+            msg = f"Failed to extract embedded telemetry: {e}"
+            if progress_callback: progress_callback(0, 1, msg, True)
+            else: print(msg)
+            return False
+            
     if not os.path.exists(video_file):
         matches = [f for f in os.listdir('.') if f.lower() == video_file.lower()]
         if matches: video_file = matches[0]
@@ -1974,13 +1995,10 @@ def process_video(proj_path, progress_callback=None):
             return False
             
     if not os.path.exists(fit_file):
-        matches = [f for f in os.listdir('.') if f.lower() == fit_file.lower()]
-        if matches: fit_file = matches[0]
-        else:
-            msg = f"Error: FIT file '{fit_file}' not found."
-            if progress_callback: progress_callback(0, 1, msg, True)
-            else: print(msg)
-            return False
+        msg = f"Error: FIT file '{fit_file}' not found."
+        if progress_callback: progress_callback(0, 1, msg, True)
+        else: print(msg)
+        return False
             
     if progress_callback:
         progress_callback(0, 100, f"Selected: {video_file} and {fit_file}", False)
@@ -2099,7 +2117,6 @@ def run_gui(default_proj_path="hud_project.json"):
     root.geometry("550x300")
     root.configure(bg="#0b0f19")
     
-    # Custom styling
     style = ttk.Style()
     style.theme_use('clam')
     style.configure("TProgressbar", thickness=15, troughcolor="#1e293b", background="#3b82f6")
@@ -2112,7 +2129,11 @@ def run_gui(default_proj_path="hud_project.json"):
     file_frame = tk.Frame(root, bg="#0b0f19")
     file_frame.pack(fill="x", padx=30, pady=10)
     
-    path_var = tk.StringVar(value=default_proj_path if os.path.exists(default_proj_path) else "")
+    init_path = ""
+    if default_proj_path and os.path.exists(default_proj_path):
+        init_path = default_proj_path
+        
+    path_var = tk.StringVar(value=init_path)
     
     path_entry = tk.Entry(file_frame, textvariable=path_var, width=45, font=(font_family, 10), bg="#1e293b", fg="#f3f4f6", insertbackground="white", borderwidth=1, relief="solid")
     path_entry.pack(side="left", padx=5, ipady=3)
@@ -2125,7 +2146,11 @@ def run_gui(default_proj_path="hud_project.json"):
     browse_btn = tk.Button(file_frame, text="Browse...", command=select_file, font=(font_family, 9, "bold"), bg="#3b82f6", fg="white", activebackground="#2563eb", activeforeground="white", relief="flat", padx=10)
     browse_btn.pack(side="left", padx=5)
     
-    status_label = tk.Label(root, text="Select hud_project.json and click Merge.", font=(font_family, 9), fg="#9ca3af", bg="#0b0f19")
+    init_status = "Select hud_project.json or run with embedded settings."
+    if EMBEDDED_PROJECT_JSON:
+        init_status = "Loaded embedded configurations! Ready to merge."
+        
+    status_label = tk.Label(root, text=init_status, font=(font_family, 9), fg="#10b981" if EMBEDDED_PROJECT_JSON else "#9ca3af", bg="#0b0f19")
     status_label.pack(pady=10)
     
     progress = ttk.Progressbar(root, length=490, mode="determinate")
@@ -2133,7 +2158,7 @@ def run_gui(default_proj_path="hud_project.json"):
     
     def start_merge():
         proj_path = path_var.get()
-        if not proj_path:
+        if not proj_path and not EMBEDDED_PROJECT_JSON:
             messagebox.showerror("Error", "Please select a valid project JSON file.")
             return
             
@@ -2155,10 +2180,13 @@ def run_gui(default_proj_path="hud_project.json"):
                     
         def run_thread():
             orig_cwd = os.getcwd()
-            proj_dir = os.path.dirname(os.path.abspath(proj_path))
-            if proj_dir:
-                os.chdir(proj_dir)
-            process_video(os.path.basename(proj_path), progress_callback=callback)
+            if proj_path:
+                proj_dir = os.path.dirname(os.path.abspath(proj_path))
+                if proj_dir:
+                    os.chdir(proj_dir)
+                process_video(os.path.basename(proj_path), progress_callback=callback)
+            else:
+                process_video(None, progress_callback=callback)
             os.chdir(orig_cwd)
             
         threading.Thread(target=run_thread, daemon=True).start()
@@ -2172,6 +2200,9 @@ def main():
     use_gui = True
     proj_path = "hud_project.json"
     
+    if not os.path.exists(proj_path) and EMBEDDED_PROJECT_JSON:
+        proj_path = None
+        
     if len(sys.argv) > 1:
         if sys.argv[1] == "--cli":
             use_gui = False
@@ -2182,7 +2213,6 @@ def main():
             proj_path = sys.argv[1]
             
     if use_gui:
-        print("Launching GUI mode... (Pass --cli [path] to run in terminal mode)")
         run_gui(proj_path)
     else:
         print("Running in CLI mode...")
