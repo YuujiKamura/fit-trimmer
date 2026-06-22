@@ -733,19 +733,19 @@
 
         <!-- File Uploaders -->
         <div class="drop-zone-container">
-            <div class="drop-zone" id="video-dropzone">
+            <label class="drop-zone" id="video-dropzone" for="video-input">
                 <input type="file" id="video-input" accept=".mp4,.lrv,.mov" style="display: none;" multiple>
                 <div class="icon">🎥</div>
                 <p id="video-name">Select Video File(s)</p>
                 <span>Drag & drop MP4 / LRV / MOV (Multiple OK)</span>
-            </div>
+            </label>
             
-            <div class="drop-zone" id="fit-dropzone">
+            <label class="drop-zone" id="fit-dropzone" for="fit-input">
                 <input type="file" id="fit-input" accept=".fit" style="display: none;">
                 <div class="icon">🚴</div>
                 <p id="fit-name">Select FIT File</p>
                 <span>Drag & drop Garmin / Strava FIT</span>
-            </div>
+            </label>
         </div>
 
         <!-- Info Preview Panel -->
@@ -1078,11 +1078,8 @@
 
         // --- Drag and drop events setup ---
         function setupDropzone(zone, input, onFilesSelected, isMultiple = false) {
-            input.addEventListener('click', (e) => e.stopPropagation());
-            
-            zone.addEventListener('click', () => {
-                input.value = ""; 
-                input.click();
+            zone.addEventListener('mousedown', () => {
+                input.value = "";
             });
             zone.addEventListener('dragover', (e) => {
                 e.preventDefault();
