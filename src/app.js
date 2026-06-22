@@ -126,16 +126,35 @@ async function handleVideoFiles(files) {
 
 async function parseVideoMetadata(file) {
     try {
-        const chunk = 1024 * 1024; // 1MB
+        const scanSize = Math.min(file.size, 100 * 1024 * 1024); // 100MB
         let metadata = null;
-        const scan = async (offset) => {
-            const blob = file.slice(offset, Math.min(offset + chunk, file.size));
-            const buffer = await blob.arrayBuffer();
-            scanMp4Atoms(new Uint8Array(buffer), new DataView(buffer), 0, buffer.byteLength, (meta) => { metadata = meta; });
-            return metadata !== null;
+
+        const processBuffer = (buffer) => {
+            const bytes = new Uint8Array(buffer);
+            const view = new DataView(buffer);
+
+            // 1. Try standard atom scan
+            scanMp4Atoms(bytes, view, 0, bytes.length, (meta) => { metadata = meta; });
+            if (metadata) return true;
+
+            // 2. Fallback: Search for 'moov' signature manually
+            for (let i = 0; i < bytes.length - 8; i++) {
+                if (bytes[i] === 109 && bytes[i+1] === 111 && bytes[i+2] === 111 && bytes[i+3] === 118) { // 'moov'
+                    scanMp4Atoms(bytes, view, i, bytes.length, (meta) => { metadata = meta; });
+                    if (metadata) return true;
+                }
+            }
+            return false;
         };
-        if (!await scan(0)) await scan(Math.max(0, file.size - chunk));
-        if (!metadata) throw new Error("MVHD metadata not found.");
+
+        let headBuffer = await file.slice(0, scanSize).arrayBuffer();
+        if (!processBuffer(headBuffer)) {
+            log(`Header 'moov' not found at front for ${file.name}. Scanning trailer...`);
+            let tailBuffer = await file.slice(Math.max(0, file.size - scanSize)).arrayBuffer();
+            processBuffer(tailBuffer);
+        }
+
+        if (!metadata) throw new Error("MVHD metadata not found. Please use original camera files.");
 
         const unixTimestamp = metadata.creationTime - 2082844800;
         const durationSeconds = metadata.duration / metadata.timescale;
