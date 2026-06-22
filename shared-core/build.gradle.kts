@@ -26,3 +26,24 @@ kotlin {
         }
     }
 }
+
+tasks.register<Copy>("copyWasmToSrc") {
+    from(layout.buildDirectory.dir("dist/wasmJs/productionExecutable"))
+    from(layout.buildDirectory.dir("dist/wasmJs/developmentExecutable"))
+    into(rootProject.layout.projectDirectory.dir("src"))
+    include("*.js", "*.wasm", "*.map")
+    duplicatesStrategy = DuplicatesStrategy.INCLUDE
+}
+
+tasks.named("wasmJsBrowserDistribution") {
+    finalizedBy("copyWasmToSrc")
+}
+tasks.named("wasmJsBrowserProductionWebpack") {
+    finalizedBy("copyWasmToSrc")
+}
+tasks.named("wasmJsBrowserDevelopmentWebpack") {
+    finalizedBy("copyWasmToSrc")
+}
+tasks.named("wasmJsBrowserDevelopmentExecutableDistribution") {
+    finalizedBy("copyWasmToSrc")
+}

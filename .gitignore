@@ -7,3 +7,4 @@ src/shared-core.js
 src/fit-trimmer-shared-core-wasm-js.wasm
 src/fitter-fitter-shared-core-wasm-js.wasm
 src/*.map
+node_modules/
