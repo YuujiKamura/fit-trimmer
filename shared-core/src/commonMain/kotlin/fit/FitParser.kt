@@ -163,6 +163,39 @@ class FitParser(private val bytes: ByteArray) {
         }
     }
 
+    data class TelemetryPoint(
+        val timestamp: Double,
+        val speed: Double,
+        val power: Double,
+        val cadence: Double,
+        val heartRate: Double,
+        val elevation: Double,
+        val grade: Double
+    )
+
+    fun getTelemetry(): List<TelemetryPoint> {
+        val list = mutableListOf<TelemetryPoint>()
+        for (r in records) {
+            if (r is FitRecord.Data && r.globalMessageNumber == 20) {
+                val fields = r.data.fields
+                val ts = fields[253]?.value?.toDouble() ?: continue
+                
+                val rawSpeed = fields[73]?.value ?: fields[6]?.value
+                val speedVal = if (rawSpeed != null) (rawSpeed.toDouble() / 1000.0) * 3.6 else 0.0
+                val powerVal = fields[7]?.value?.toDouble() ?: 0.0
+                val cadenceVal = fields[4]?.value?.toDouble() ?: 0.0
+                val hrVal = fields[3]?.value?.toDouble() ?: 0.0
+                val rawElev = fields[78]?.value ?: fields[2]?.value
+                val elevVal = if (rawElev != null) (rawElev.toDouble() / 5.0) - 500.0 else 0.0
+                val rawGrade = fields[9]?.value
+                val gradeVal = if (rawGrade != null) rawGrade.toDouble() / 100.0 else 0.0
+                
+                list.add(TelemetryPoint(ts, speedVal, powerVal, cadenceVal, hrVal, elevVal, gradeVal))
+            }
+        }
+        return list
+    }
+
     fun trim(videoStartUtcSeconds: Long, videoEndUtcSeconds: Long): ByteArray {
         val fitEpochSec = 631065600L
         val videoStartFit = videoStartUtcSeconds - fitEpochSec
