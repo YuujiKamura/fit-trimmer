@@ -7,7 +7,9 @@ kotlin {
     
     @OptIn(org.jetbrains.kotlin.gradle.targets.js.dsl.ExperimentalWasmDsl::class)
     wasmJs {
-        browser()
+        browser {
+            binaries.executable()
+        }
     }
 
     sourceSets {

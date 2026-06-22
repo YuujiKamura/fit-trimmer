@@ -1,0 +1,46 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Build WasmJs
+        run: ./gradlew :shared-core:wasmJsBrowserDistribution
+
+      - name: Prepare Deployment Directory
+        run: |
+          mkdir dist
+          cp index.html dist/
+          # Copy css or other asset directories if they exist
+          [ -d css ] && cp -r css dist/ || true
+          [ -d docs ] && cp -r docs dist/ || true
+          
+          # Copy built Wasm and JS files to dist/src/
+          mkdir -p dist/src
+          cp -r shared-core/build/dist/wasmJs/productionExecutable/* dist/src/
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
