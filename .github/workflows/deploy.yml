@@ -37,6 +37,10 @@ jobs:
           
           # Copy built Wasm and JS files to dist/
           cp -r shared-core/build/dist/wasmJs/productionExecutable/* dist/
+          
+          # Prevent peaceiris/actions-gh-pages from ignoring gitignored files (like shared-core.js and WASM)
+          echo '!*' > dist/.gitignore
+
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4

@@ -958,8 +958,94 @@
         </footer>
     </div>
 
-    <script src="shared-core.js"></script>
     <script>
+        // Debug Control Plane Client & Global Error Visualizer
+        let debugWs = null;
+        const errorOverlay = document.getElementById('debug-error-overlay');
+        const errorList = document.getElementById('debug-error-list');
+        
+        function showVisualError(msg) {
+            if (errorOverlay) errorOverlay.style.display = 'block';
+            if (errorList) {
+                const div = document.createElement('div');
+                div.style.marginBottom = '4px';
+                div.style.borderBottom = '1px solid rgba(255,255,255,0.2)';
+                div.style.paddingBottom = '4px';
+                div.textContent = msg;
+                errorList.appendChild(div);
+            }
+        }
+
+        if (location.search.includes('debug=true')) {
+            debugWs = new WebSocket('ws://localhost:9000');
+            debugWs.onopen = () => {
+                console.log('Connected to debug control plane.');
+                debugWs.send(JSON.stringify({ type: 'ready' }));
+            };
+            debugWs.onmessage = async (e) => {
+                try {
+                    const cmd = JSON.parse(e.data);
+                    if (cmd.type === 'load_fit') {
+                        const bin = atob(cmd.base64);
+                        const bytes = new Uint8Array(bin.length);
+                        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+                        const file = new File([bytes], cmd.name, { type: 'application/octet-stream' });
+                        log(`Control plane: loading FIT ${cmd.name}...`);
+                        await handleFitFile(file);
+                        debugWs.send(JSON.stringify({ type: 'result', status: 'success', target: 'fit' }));
+                    } else if (cmd.type === 'load_video') {
+                        const frontBin = atob(cmd.frontBase64);
+                        const frontBytes = new Uint8Array(frontBin.length);
+                        for (let i = 0; i < frontBin.length; i++) frontBytes[i] = frontBin.charCodeAt(i);
+                        
+                        let endBytes = new Uint8Array(0);
+                        if (cmd.endBase64) {
+                            const endBin = atob(cmd.endBase64);
+                            endBytes = new Uint8Array(endBin.length);
+                            for (let i = 0; i < endBin.length; i++) endBytes[i] = endBin.charCodeAt(i);
+                        }
+                        
+                        const file = new File([frontBytes, endBytes], cmd.name, { type: 'video/mp4' });
+                        log(`Control plane: loading dummy video ${cmd.name}...`);
+                        await handleVideoFiles([file]);
+                        debugWs.send(JSON.stringify({ type: 'result', status: 'success', target: 'video' }));
+                    }
+                } catch (err) {
+                    if (debugWs && debugWs.readyState === WebSocket.OPEN) {
+                        debugWs.send(JSON.stringify({ type: 'result', status: 'error', message: err.message }));
+                    }
+                }
+            };
+        }
+
+        const origConsoleError = console.error;
+        console.error = function(...args) {
+            origConsoleError.apply(console, args);
+            const text = args.join(' ');
+            showVisualError("[Console Error] " + text);
+            if (debugWs && debugWs.readyState === WebSocket.OPEN) {
+                try { debugWs.send(JSON.stringify({ type: 'console', level: 'error', text })); } catch(e){}
+            }
+        };
+        
+        const origConsoleLog = console.log;
+        console.log = function(...args) {
+            origConsoleLog.apply(console, args);
+            const text = args.join(' ');
+            if (debugWs && debugWs.readyState === WebSocket.OPEN) {
+                try { debugWs.send(JSON.stringify({ type: 'console', level: 'log', text })); } catch(e){}
+            }
+        };
+
+        window.onerror = function(msg, url, line) {
+            const text = `${msg} (at ${url}:${line})`;
+            showVisualError(`[Exception] ${text}`);
+            if (debugWs && debugWs.readyState === WebSocket.OPEN) {
+                try { debugWs.send(JSON.stringify({ type: 'error', text })); } catch(e){}
+            }
+            return false;
+        };
+
         // Fetch latest commit metadata from GitHub API to bypass cache and show real deploy info
         async function fetchBuildInfo() {
             try {
@@ -1039,31 +1125,10 @@
         };
         let syncOffset = 0.0;
 
-        // Global Error Visualizer
-        const errorOverlay = document.getElementById('debug-error-overlay');
-        const errorList = document.getElementById('debug-error-list');
-        function showVisualError(msg) {
-            errorOverlay.style.display = 'block';
-            const div = document.createElement('div');
-            div.style.marginBottom = '4px';
-            div.style.borderBottom = '1px solid rgba(255,255,255,0.2)';
-            div.style.paddingBottom = '4px';
-            div.textContent = msg;
-            errorList.appendChild(div);
-        }
-        
-        const origConsoleError = console.error;
-        console.error = function(...args) {
-            origConsoleError.apply(console, args);
-            showVisualError("[Console Error] " + args.join(' '));
-        };
-        window.onerror = function(msg, url, line) {
-            showVisualError(`[Exception] ${msg} (at ${url}:${line})`);
-            return false;
-        };
+
 
         // Load Kotlin Wasm module
-        window["shared-core"].then(module => {
+        import("./shared-core.js").then(module => {
             wasmModule = module;
             log("Kotlin Wasm module loaded and initialized.", "success");
             checkSyncCapability();
@@ -2285,62 +2350,7 @@ if __name__ == '__main__':
             });
         });
 
-        // Debug Control Plane Client
-        if (location.search.includes('debug=true')) {
-            const debugWs = new WebSocket('ws://localhost:9000');
-            
-            const origConsoleError = console.error;
-            console.error = function(...args) {
-                origConsoleError.apply(console, args);
-                try { debugWs.send(JSON.stringify({ type: 'console', level: 'error', text: args.join(' ') })); } catch(e){}
-            };
-            const origConsoleLog = console.log;
-            console.log = function(...args) {
-                origConsoleLog.apply(console, args);
-                try { debugWs.send(JSON.stringify({ type: 'console', level: 'log', text: args.join(' ') })); } catch(e){}
-            };
-            window.onerror = function(msg, url, line) {
-                try { debugWs.send(JSON.stringify({ type: 'error', text: `${msg} at ${url}:${line}` })); } catch(e){}
-            };
-            
-            debugWs.onmessage = async (e) => {
-                try {
-                    const cmd = JSON.parse(e.data);
-                    if (cmd.type === 'load_fit') {
-                        const bin = atob(cmd.base64);
-                        const bytes = new Uint8Array(bin.length);
-                        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-                        const file = new File([bytes], cmd.name, { type: 'application/octet-stream' });
-                        log(`Control plane: loading FIT ${cmd.name}...`);
-                        await handleFitFile(file);
-                        debugWs.send(JSON.stringify({ type: 'result', status: 'success', target: 'fit' }));
-                    } else if (cmd.type === 'load_video') {
-                        const frontBin = atob(cmd.frontBase64);
-                        const frontBytes = new Uint8Array(frontBin.length);
-                        for (let i = 0; i < frontBin.length; i++) frontBytes[i] = frontBin.charCodeAt(i);
-                        
-                        let endBytes = new Uint8Array(0);
-                        if (cmd.endBase64) {
-                            const endBin = atob(cmd.endBase64);
-                            endBytes = new Uint8Array(endBin.length);
-                            for (let i = 0; i < endBin.length; i++) endBytes[i] = endBin.charCodeAt(i);
-                        }
-                        
-                        const file = new File([frontBytes, endBytes], cmd.name, { type: 'video/mp4' });
-                        log(`Control plane: loading dummy video ${cmd.name}...`);
-                        await handleVideoFiles([file]);
-                        debugWs.send(JSON.stringify({ type: 'result', status: 'success', target: 'video' }));
-                    }
-                } catch (err) {
-                    debugWs.send(JSON.stringify({ type: 'result', status: 'error', message: err.message }));
-                }
-            };
-            
-            debugWs.onopen = () => {
-                console.log('Connected to debug control plane.');
-                debugWs.send(JSON.stringify({ type: 'ready' }));
-            };
-        }
+
     </script>
 </body>
 </html>
