@@ -608,7 +608,7 @@
         </footer>
     </div>
 
-    <script src="src/parser.js?v=a2278ba"></script>
+    <script src="src/shared-core.js"></script>
     <script>
         // Fetch latest commit metadata from GitHub API to bypass cache and show real deploy info
         async function fetchBuildInfo() {
@@ -659,10 +659,20 @@
         const statusBanner = document.getElementById('status-banner');
 
         // Global State
+        let wasmModule = null;
         let videoMeta = null;
-        let fitParsed = null;
         let fitFileBuffer = null;
         let fitFilename = "";
+        let fitTimestamps = [];
+
+        // Load Kotlin Wasm module
+        window["shared-core"].then(module => {
+            wasmModule = module;
+            log("Kotlin Wasm module loaded and initialized.", "success");
+            checkSyncCapability();
+        }).catch(err => {
+            log("Failed to load Wasm module: " + err.message, "error");
+        });
 
         // CRC-16 Calculation Table
         const CRC_TABLE = [
@@ -755,10 +765,18 @@
                 log("Reading file header (first 100MB)...");
                 const frontBlob = file.slice(0, Math.min(scanChunkSize, file.size));
                 const frontBuffer = await frontBlob.arrayBuffer();
-                const frontBytes = new Uint8Array(frontBuffer);
-                const frontView = new DataView(frontBuffer);
                 
-                let found = scanMp4Atoms(frontBytes, frontView, 0, frontBuffer.byteLength, onMvhd);
+                let found = false;
+                const frontInt8 = new Int8Array(frontBuffer);
+                const metadataArray = wasmModule.scanMp4Metadata(frontInt8);
+                if (metadataArray) {
+                    onMvhd({
+                        creationTime: metadataArray[0],
+                        timescale: metadataArray[1],
+                        duration: metadataArray[2]
+                    });
+                    found = true;
+                }
                 
                 // 2. Try End Chunk (trailer) if not found at the front
                 if (!found && file.size > scanChunkSize) {
@@ -767,7 +785,6 @@
                     const endBlob = file.slice(endStart, file.size);
                     const endBuffer = await endBlob.arrayBuffer();
                     const endBytes = new Uint8Array(endBuffer);
-                    const endView = new DataView(endBuffer);
                     
                     let moovIdx = -1;
                     for (let j = 0; j < endBytes.length - 8; j++) {
@@ -779,7 +796,17 @@
                     
                     if (moovIdx >= 0) {
                         log("Found 'moov' atom signature at trailer offset. Parsing...");
-                        found = scanMp4Atoms(endBytes, endView, moovIdx, endBytes.length, onMvhd);
+                        const subBuffer = endBuffer.slice(moovIdx);
+                        const subInt8 = new Int8Array(subBuffer);
+                        const subMetadataArray = wasmModule.scanMp4Metadata(subInt8);
+                        if (subMetadataArray) {
+                            onMvhd({
+                                creationTime: subMetadataArray[0],
+                                timescale: subMetadataArray[1],
+                                duration: subMetadataArray[2]
+                            });
+                            found = true;
+                        }
                     }
                 }
                 
@@ -835,29 +862,22 @@
                 const arrayBuffer = await file.arrayBuffer();
                 fitFileBuffer = arrayBuffer;
                 
-                const fit = new FitParser(arrayBuffer);
-                fit.parse();
-                fitParsed = fit;
+                const fitInt8 = new Int8Array(arrayBuffer);
+                const timestampsArray = wasmModule.getFitTimestamps(fitInt8);
                 
-                // Get start and end times from records
-                const timestamps = [];
-                let recordCount = 0;
-                for (const r of fit.records) {
-                    if (!r.isDefinition && r.globalMessageNumber === 20) { // 'record'
-                        const tsField = r.fields[253]; // timestamp
-                        if (tsField && tsField.value) {
-                            timestamps.push(tsField.value);
-                            recordCount++;
-                        }
-                    }
-                }
-                
-                if (timestamps.length === 0) {
+                if (!timestampsArray) {
                     throw new Error("No detailed record message with timestamps found in the FIT file.");
                 }
                 
-                const minFitSec = Math.min(...timestamps);
-                const maxFitSec = Math.max(...timestamps);
+                // Copy Wasm Float64Array elements to JS array
+                fitTimestamps = [];
+                for (let k = 0; k < timestampsArray.length; k++) {
+                    fitTimestamps.push(timestampsArray[k]);
+                }
+                
+                const recordCount = fitTimestamps.length;
+                const minFitSec = Math.min(...fitTimestamps);
+                const maxFitSec = Math.max(...fitTimestamps);
                 
                 // Convert FIT Epoch (1989-12-31 00:00:00 UTC) to JS Dates
                 const fitEpochSec = 631065600;
@@ -876,14 +896,14 @@
                 document.getElementById('f-start').textContent = "ERROR";
                 document.getElementById('f-end').textContent = "-";
                 document.getElementById('f-count').textContent = "-";
-                fitParsed = null;
+                fitTimestamps = [];
                 checkSyncCapability();
             }
         }
 
         // Check if both files are loaded and overlapping
         function checkSyncCapability() {
-            if (!videoMeta || !fitParsed) {
+            if (!wasmModule || !videoMeta || fitTimestamps.length === 0) {
                 statusBanner.className = "status-banner status-idle";
                 statusBanner.innerHTML = "<span>Waiting for both video and FIT files...</span>";
                 trimBtn.disabled = true;
@@ -895,18 +915,10 @@
             
             // FIT timestamps in Unix
             const fitEpochSec = 631065600;
-            const fitTimestamps = [];
-            for (const r of fitParsed.records) {
-                if (!r.isDefinition && r.globalMessageNumber === 20) {
-                    const tsField = r.fields[253];
-                    if (tsField && tsField.value) {
-                        fitTimestamps.push(tsField.value + fitEpochSec);
-                    }
-                }
-            }
+            const unixTimestamps = fitTimestamps.map(ts => ts + fitEpochSec);
             
-            const fStartSec = Math.min(...fitTimestamps);
-            const fEndSec = Math.max(...fitTimestamps);
+            const fStartSec = Math.min(...unixTimestamps);
+            const fEndSec = Math.max(...unixTimestamps);
             
             // Check overlap
             const overlapStart = Math.max(vStartSec, fStartSec);
@@ -929,157 +941,22 @@
 
         // Trigger synchronization
         trimBtn.addEventListener('click', () => {
-            if (!videoMeta || !fitParsed || !fitFileBuffer) return;
+            if (!videoMeta || fitTimestamps.length === 0 || !fitFileBuffer) return;
             
             try {
-                log("Starting synchronized trimming on Web worker context...");
+                log("Starting synchronized trimming on Kotlin Wasm context...");
                 
-                const fitEpochSec = 631065600;
-                const videoStartFit = Math.floor(videoMeta.startDt.getTime() / 1000) - fitEpochSec;
-                const videoEndFit = Math.ceil(videoMeta.endDt.getTime() / 1000) - fitEpochSec;
-                
-                log(`Slicing fit timestamps between ${videoStartFit} and ${videoEndFit}`);
-                
-                // 1. Filter records
-                const filteredRecords = [];
-                const recordMessagesInRange = [];
-                
-                for (const r of fitParsed.records) {
-                    if (r.isDefinition) {
-                        filteredRecords.append = filteredRecords.push(r);
-                        continue;
-                    }
-                    
-                    const tsField = r.fields[253];
-                    if (tsField && tsField.value !== null) {
-                        const ts = tsField.value;
-                        if (ts >= videoStartFit && ts <= videoEndFit) {
-                            filteredRecords.push(r);
-                            if (r.globalMessageNumber === 20) { // 'record'
-                                recordMessagesInRange.push(r);
-                            }
-                        }
-                    } else {
-                        // Keep non-timestamped metadata records
-                        filteredRecords.push(r);
-                    }
-                }
-                
-                log(`Original records count: ${fitParsed.records.length} -> Filtered: ${filteredRecords.length}`);
-                log(`Records in range: ${recordMessagesInRange.length}`);
-                
-                if (recordMessagesInRange.length === 0) {
-                    throw new Error("No data points fell within the trimmed video timeline.");
-                }
-                
-                const firstRecordTs = recordMessagesInRange[0].fields[253].value;
-                const lastRecordTs = recordMessagesInRange[recordMessagesInRange.length - 1].fields[253].value;
-                
-                // Find initial distance offset
-                let firstDistance = 0;
-                let lastDistance = 0;
-                
-                const firstDistField = recordMessagesInRange[0].fields[5];
-                if (firstDistField && firstDistField.value !== null) {
-                    firstDistance = firstDistField.value;
-                }
-                const lastDistField = recordMessagesInRange[recordMessagesInRange.length - 1].fields[5];
-                if (lastDistField && lastDistField.value !== null) {
-                    lastDistance = lastDistField.value;
-                }
-                
-                const actualDurationSec = lastRecordTs - firstRecordTs;
-                const actualDistanceM = (lastDistance - firstDistance) / 100.0;
-                
-                log(`Actual track duration: ${actualDurationSec} seconds`);
-                log(`Actual track distance: ${actualDistanceM.toFixed(2)} meters`);
-                
-                // Copy buffer and apply offset modifications
-                // Calculate new record body total byte size
-                let recordBodySize = 0;
-                for (const r of filteredRecords) {
-                    recordBodySize += r.bytes.length;
-                }
-                
-                // Buffer space for new FIT file
-                const headerSize = fitParsed.headerSize;
-                const newFitBuffer = new ArrayBuffer(headerSize + recordBodySize + 2);
-                const newBytes = new Uint8Array(newFitBuffer);
-                const newView = new DataView(newFitBuffer);
-                
-                // 1. Copy header
-                newBytes.set(new Uint8Array(fitFileBuffer, 0, headerSize));
-                // Update header records_size field (4-7 bytes, uint32 little endian)
-                newView.setUint32(4, recordBodySize, true);
-                
-                // Write modified records
-                let currentOffset = headerSize;
-                for (const r of filteredRecords) {
-                    const recBytes = new Uint8Array(r.bytes);
-                    const recOffset = currentOffset;
-                    newBytes.set(recBytes, recOffset);
-                    currentOffset += recBytes.length;
-                    
-                    if (r.isDefinition) continue;
-                    
-                    // Modify distance offset inside record message (message 20)
-                    if (r.globalMessageNumber === 20) {
-                        const distField = r.fields[5];
-                        if (distField && distField.value !== null) {
-                            const curDist = distField.value;
-                            const newDistVal = Math.max(0, curDist - firstDistance);
-                            newView.setUint32(recOffset + distField.offset, newDistVal, !r.def.isBigEndian);
-                        }
-                    }
-                    
-                    // Modify session and lap messages
-                    if (r.globalMessageNumber === 18 || r.globalMessageNumber === 19) {
-                        const startTimeField = r.fields[2];
-                        if (startTimeField) {
-                            newView.setUint32(recOffset + startTimeField.offset, firstRecordTs, !r.def.isBigEndian);
-                        }
-                        
-                        const tsField = r.fields[253];
-                        if (tsField) {
-                            newView.setUint32(recOffset + tsField.offset, lastRecordTs, !r.def.isBigEndian);
-                        }
-                        
-                        // total_elapsed_time (fieldNum 7): uint32 (ms)
-                        const elapsedField = r.fields[7];
-                        if (elapsedField) {
-                            newView.setUint32(recOffset + elapsedField.offset, Math.round(actualDurationSec * 1000), !r.def.isBigEndian);
-                        }
-                        
-                        // total_timer_time (fieldNum 8): uint32 (ms)
-                        const timerField = r.fields[8];
-                        if (timerField) {
-                            newView.setUint32(recOffset + timerField.offset, Math.round(actualDurationSec * 1000), !r.def.isBigEndian);
-                        }
-                        
-                        // total_distance (fieldNum 9): uint32 (cm)
-                        const totalDistField = r.fields[9];
-                        if (totalDistField) {
-                            newView.setUint32(recOffset + totalDistField.offset, Math.round(actualDistanceM * 100), !r.def.isBigEndian);
-                        }
-                    }
-                }
-                
-                // 2. Re-compute Header CRC if present
-                if (headerSize === 14) {
-                    log("Recomputing header block checksum CRC-16...");
-                    const headCrc = crc16(newBytes.subarray(0, 12));
-                    newView.setUint16(12, headCrc, true);
-                }
-                
-                // 3. Re-compute entire File CRC
-                log("Recomputing overall FIT file checksum CRC-16...");
-                const fileCrc = crc16(newBytes.subarray(0, headerSize + recordBodySize));
-                newView.setUint16(headerSize + recordBodySize, fileCrc, true);
+                const fitInt8 = new Int8Array(fitFileBuffer);
+                const trimmedInt8 = wasmModule.trimFit(
+                    fitInt8,
+                    videoMeta.startDt.getTime() / 1000,
+                    videoMeta.endDt.getTime() / 1000
+                );
                 
                 // Download file
                 log("Downloading synchronized FIT file...", "success");
                 
-                const outBlob = new Blob([newBytes], {type: 'application/octet-stream'});
+                const outBlob = new Blob([trimmedInt8.buffer], {type: 'application/octet-stream'});
                 const outUrl = URL.createObjectURL(outBlob);
                 
                 const a = document.createElement('a');
