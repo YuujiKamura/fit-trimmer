@@ -5,7 +5,9 @@
   "main": "src/parser.js",
   "scripts": {
     "test": "node --test test/parser.test.js",
-    "build-wasm": "gradlew.bat :shared-core:wasmJsBrowserDistribution && copy shared-core\\build\\dist\\wasmJs\\productionExecutable\\* src\\"
+    "dev": "vite",
+    "build-wasm": "gradlew.bat :shared-core:wasmJsBrowserDistribution",
+    "watch-wasm": "gradlew.bat -t :shared-core:wasmJsBrowserDevelopmentExecutableDistribution"
   },
   "keywords": [
     "fit",
@@ -15,5 +17,8 @@
     "trimmer"
   ],
   "author": "Yuuji Kamura",
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "vite": "^8.0.16"
+  }
 }
