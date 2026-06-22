@@ -190,24 +190,46 @@ async function handleFitFile(file) {
     fitDrop.classList.add('file-selected', 'fit');
     fitName.textContent = file.name;
     fitFilename = file.name;
+    log(`Loading FIT: ${file.name} (${file.size} bytes)...`);
     try {
         const arrayBuffer = await file.arrayBuffer();
+        if (!arrayBuffer || arrayBuffer.byteLength === 0) throw new Error("File is empty or could not be read.");
+
         fitFileBuffer = arrayBuffer;
         fitTimestamps = [];
+
         if (wasmModule?.getFitTelemetry) {
-            fitTelemetryData = wasmModule.getFitTelemetry(new Int8Array(arrayBuffer));
+            const bytes = new Int8Array(arrayBuffer);
+            log(`Parsing FIT in Wasm...`);
+            fitTelemetryData = wasmModule.getFitTelemetry(bytes);
+
             if (fitTelemetryData) {
-                for (let k = 0; k < fitTelemetryData.length; k += 7) fitTimestamps.push(fitTelemetryData[k]);
+                const count = fitTelemetryData.length / 7;
+                for (let k = 0; k < fitTelemetryData.length; k += 7) {
+                    fitTimestamps.push(fitTelemetryData[k]);
+                }
+                log(`Successfully extracted ${count} track points.`, 'success');
+            } else {
+                throw new Error("Wasm returned null telemetry. Check console for 'FIT Error'.");
             }
+        } else {
+            throw new Error("Wasm module not fully initialized.");
         }
-        if (fitTimestamps.length === 0) throw new Error("No track data found.");
+
+        if (fitTimestamps.length === 0) throw new Error("No track data found in FIT file.");
+
         const fitEpochSec = 631065600;
-        document.getElementById('f-start').textContent = formatJST(new Date((Math.min(...fitTimestamps) + fitEpochSec) * 1000));
-        document.getElementById('f-end').textContent = formatJST(new Date((Math.max(...fitTimestamps) + fitEpochSec) * 1000));
+        const minTs = Math.min(...fitTimestamps);
+        const maxTs = Math.max(...fitTimestamps);
+
+        document.getElementById('f-start').textContent = formatJST(new Date((minTs + fitEpochSec) * 1000));
+        document.getElementById('f-end').textContent = formatJST(new Date((maxTs + fitEpochSec) * 1000));
         document.getElementById('f-count').textContent = `${fitTimestamps.length} pts`;
-        log(`Decoded FIT: ${fitTimestamps.length} pts`, 'success');
         checkSyncCapability();
-    } catch (err) { log(`FIT Error: ${err.message}`, 'error'); }
+    } catch (err) {
+        log(`FIT Error: ${err.message}`, 'error');
+        console.error("FIT Detail:", err);
+    }
 }
 
 // --- UI Rendering ---

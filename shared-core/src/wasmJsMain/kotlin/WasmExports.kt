@@ -53,17 +53,21 @@ fun getFitTelemetry(bytes: Int8Array): Float64Array? {
         parser.parse()
     } catch (e: Exception) {
         println("FIT Error: ${e.message}")
+        e.printStackTrace()
         return null
     }
 
     val list = mutableListOf<Double>()
+    var msg20Count = 0
+    var tsFoundCount = 0
     for (r in parser.records) {
         if (r is FitParser.FitRecord.Data && r.globalMessageNumber == 20) {
+            msg20Count++
             val tsField = r.data.fields[253]
             if (tsField?.value != null) {
+                tsFoundCount++
                 val ts = tsField.value.toDouble()
                 
-                // Speed: field 73 (enhanced) or 6 (normal)
                 val rawSpeed = r.data.fields[73]?.value ?: r.data.fields[6]?.value
                 val speedVal = if (rawSpeed != null) (rawSpeed.toDouble() / 1000.0) * 3.6 else 0.0
                 
@@ -71,7 +75,6 @@ fun getFitTelemetry(bytes: Int8Array): Float64Array? {
                 val cadenceVal = r.data.fields[4]?.value?.toDouble() ?: 0.0
                 val hrVal = r.data.fields[3]?.value?.toDouble() ?: 0.0
                 
-                // Elevation: field 78 (enhanced) or 2 (normal)
                 val rawElev = r.data.fields[78]?.value ?: r.data.fields[2]?.value
                 val elevVal = if (rawElev != null) (rawElev.toDouble() / 5.0) - 500.0 else 0.0
                 
@@ -89,8 +92,17 @@ fun getFitTelemetry(bytes: Int8Array): Float64Array? {
         }
     }
 
+    println("FIT Stats: Total Records=${parser.records.size}, Msg20=$msg20Count, TsFound=$tsFoundCount")
+
     if (list.isEmpty()) {
-        println("FIT Error: No record messages (msg 20) found.")
+        if (msg20Count == 0) {
+            val otherMsgs = parser.records.filterIsInstance<FitParser.FitRecord.Data>()
+                .map { it.globalMessageNumber }
+                .distinct()
+            println("FIT Error: No record messages (msg 20) found. Other messages present: $otherMsgs")
+        } else {
+            println("FIT Error: Record messages found ($msg20Count), but none had valid timestamps.")
+        }
         return null
     }
 

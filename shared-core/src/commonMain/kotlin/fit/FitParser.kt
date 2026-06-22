@@ -5,8 +5,8 @@ import crc.Crc16
 class FitParser(private val bytes: ByteArray) {
     var headerSize: Int = bytes[0].toInt() and 0xFF
     var protocolVersion: Int = bytes[1].toInt() and 0xFF
-    var profileVersion: Int = getUShort(bytes, 2, littleEndian = true)
-    var recordsSize: Long = getUInt(bytes, 4, littleEndian = true)
+    var profileVersion: Int = getUShort(bytes, 2, true)
+    var recordsSize: Long = getUInt(bytes, 4, true)
 
     init {
         if (bytes.size < 12) {
@@ -20,14 +20,15 @@ class FitParser(private val bytes: ByteArray) {
 
     class FieldDefinition(val fieldNum: Int, val size: Int, val baseType: Int)
     class DevFieldDefinition(val fieldNum: Int, val size: Int, val devIndex: Int)
-    class DefinitionRecord(val isBigEndian: Boolean, val globalMessageNumber: Int, val fields: List<FieldDefinition>, val developerFields: List<DevFieldDefinition>, val bytes: ByteArray)
+    class DefinitionRecord(val isBigEndian: Boolean, val globalMessageNumber: Int, val fields: List<FieldDefinition>, val developerFields: List<DevFieldDefinition>, val offset: Int, val size: Int)
     class ParsedField(val offset: Int, val size: Int, val baseType: Int, val value: Long?)
-    class DataRecord(val localId: Int, val globalMessageNumber: Int, val bytes: ByteArray, val fields: Map<Int, ParsedField>, val def: DefinitionRecord)
+    class DataRecord(val localId: Int, val globalMessageNumber: Int, val offset: Int, val size: Int, val fields: Map<Int, ParsedField>, val def: DefinitionRecord)
 
     sealed class FitRecord {
-        abstract val bytes: ByteArray
-        class Definition(val localId: Int, val globalMessageNumber: Int, override val bytes: ByteArray, val definition: DefinitionRecord) : FitRecord()
-        class Data(val localId: Int, val globalMessageNumber: Int, override val bytes: ByteArray, val data: DataRecord) : FitRecord()
+        abstract val offset: Int
+        abstract val size: Int
+        class Definition(val localId: Int, val globalMessageNumber: Int, override val offset: Int, override val size: Int, val definition: DefinitionRecord) : FitRecord()
+        class Data(val localId: Int, val globalMessageNumber: Int, override val offset: Int, override val size: Int, val data: DataRecord) : FitRecord()
     }
 
     val definitions = mutableMapOf<Int, DefinitionRecord>()
@@ -38,6 +39,8 @@ class FitParser(private val bytes: ByteArray) {
         var offset = headerSize
         val endOffset = headerSize + recordsSize.toInt()
         lastTimestamp = 0L
+        records.clear()
+        definitions.clear()
 
         while (offset < endOffset && offset < bytes.size) {
             val recordStart = offset
@@ -49,7 +52,7 @@ class FitParser(private val bytes: ByteArray) {
             if (isCompressed) {
                 val localId = (headerByte and 0x60) ushr 5
                 val timeOffset = (headerByte and 0x1F).toLong()
-                val def = definitions[localId] ?: throw IllegalStateException("Data message references undefined local ID (compressed): $localId")
+                val def = definitions[localId] ?: throw IllegalStateException("Data references undefined local ID: $localId")
 
                 if (lastTimestamp != 0L) {
                     var timestamp = (lastTimestamp and 0xFFFFFFE0L) + timeOffset
@@ -64,7 +67,6 @@ class FitParser(private val bytes: ByteArray) {
                 val recordEnd = offset + dataSize
                 if (recordEnd > bytes.size) break
                 
-                val recordBytes = bytes.copyOfRange(recordStart, recordEnd)
                 var currentOffset = recordStart + 1
                 val parsedFields = mutableMapOf<Int, ParsedField>()
 
@@ -72,9 +74,11 @@ class FitParser(private val bytes: ByteArray) {
                     val fieldStart = currentOffset
                     currentOffset += f.size
                     var valObj: Long? = null
-                    if (f.size == 4 && (f.baseType == 0x86 || f.baseType == 0x0C)) {
+                    if (f.fieldNum == 253) {
                         valObj = getUInt(bytes, fieldStart, !def.isBigEndian)
-                        if (f.fieldNum == 253) lastTimestamp = valObj
+                        lastTimestamp = valObj
+                    } else if (f.size == 4 && (f.baseType == 0x86 || f.baseType == 0x0C)) {
+                        valObj = getUInt(bytes, fieldStart, !def.isBigEndian)
                     } else if (f.size == 4 && f.baseType == 0x85) {
                         valObj = getInt(bytes, fieldStart, !def.isBigEndian).toLong()
                     } else if (f.size == 2 && (f.baseType == 0x84 || f.baseType == 0x0B)) {
@@ -89,8 +93,9 @@ class FitParser(private val bytes: ByteArray) {
                     parsedFields[253] = ParsedField(0, 0, 0, lastTimestamp)
                 }
 
+                val dataRecord = DataRecord(localId, def.globalMessageNumber, recordStart, recordEnd - recordStart, parsedFields, def)
+                records.add(FitRecord.Data(localId, def.globalMessageNumber, recordStart, recordEnd - recordStart, dataRecord))
                 offset = recordEnd
-                records.add(FitRecord.Data(localId, def.globalMessageNumber, recordBytes, DataRecord(localId, def.globalMessageNumber, recordBytes, parsedFields, def)))
             } else {
                 val isDefinition = (headerByte and 0x40) != 0
                 val hasDeveloperData = (headerByte and 0x20) != 0
@@ -119,27 +124,28 @@ class FitParser(private val bytes: ByteArray) {
                             offset += 3
                         }
                     }
-                    val recordBytes = bytes.copyOfRange(recordStart, offset)
-                    val def = DefinitionRecord(isBigEndian, globalMessageNumber, fields, developerFields, recordBytes)
+                    val def = DefinitionRecord(isBigEndian, globalMessageNumber, fields, developerFields, recordStart, offset - recordStart)
                     definitions[localId] = def
-                    records.add(FitRecord.Definition(localId, globalMessageNumber, recordBytes, def))
+                    records.add(FitRecord.Definition(localId, globalMessageNumber, recordStart, offset - recordStart, def))
                 } else {
-                    val def = definitions[localId] ?: throw IllegalStateException("Data message references undefined local ID: $localId")
+                    val def = definitions[localId] ?: throw IllegalStateException("Data references undefined local ID: $localId")
                     var dataSize = 0
                     for (f in def.fields) dataSize += f.size
                     for (f in def.developerFields) dataSize += f.size
                     val recordEnd = offset + dataSize
                     if (recordEnd > bytes.size) break
-                    val recordBytes = bytes.copyOfRange(recordStart, recordEnd)
+                    
                     var currentOffset = recordStart + 1
                     val parsedFields = mutableMapOf<Int, ParsedField>()
                     for (f in def.fields) {
                         val fieldStart = currentOffset
                         currentOffset += f.size
                         var valObj: Long? = null
-                        if (f.size == 4 && (f.baseType == 0x86 || f.baseType == 0x0C)) {
+                        if (f.fieldNum == 253) {
                             valObj = getUInt(bytes, fieldStart, !def.isBigEndian)
-                            if (f.fieldNum == 253) lastTimestamp = valObj
+                            lastTimestamp = valObj
+                        } else if (f.size == 4 && (f.baseType == 0x86 || f.baseType == 0x0C)) {
+                            valObj = getUInt(bytes, fieldStart, !def.isBigEndian)
                         } else if (f.size == 4 && f.baseType == 0x85) {
                             valObj = getInt(bytes, fieldStart, !def.isBigEndian).toLong()
                         } else if (f.size == 2 && (f.baseType == 0x84 || f.baseType == 0x0B)) {
@@ -149,8 +155,9 @@ class FitParser(private val bytes: ByteArray) {
                         }
                         parsedFields[f.fieldNum] = ParsedField(fieldStart - recordStart, f.size, f.baseType, valObj)
                     }
+                    val dataRecord = DataRecord(localId, def.globalMessageNumber, recordStart, recordEnd - recordStart, parsedFields, def)
+                    records.add(FitRecord.Data(localId, def.globalMessageNumber, recordStart, recordEnd - recordStart, dataRecord))
                     offset = recordEnd
-                    records.add(FitRecord.Data(localId, def.globalMessageNumber, recordBytes, DataRecord(localId, def.globalMessageNumber, recordBytes, parsedFields, def)))
                 }
             }
         }
@@ -188,7 +195,7 @@ class FitParser(private val bytes: ByteArray) {
         val actualDistanceM = (lastDistance - firstDistance) / 100.0
 
         var bodySize = 0
-        for (r in filteredRecords) bodySize += r.bytes.size
+        for (r in filteredRecords) bodySize += r.size
         val newFitBytes = ByteArray(headerSize + bodySize + 2)
         bytes.copyInto(newFitBytes, 0, 0, headerSize)
         setUInt(newFitBytes, 4, bodySize.toLong(), true)
@@ -196,8 +203,8 @@ class FitParser(private val bytes: ByteArray) {
         var cur = headerSize
         for (r in filteredRecords) {
             val recOffset = cur
-            r.bytes.copyInto(newFitBytes, recOffset)
-            cur += r.bytes.size
+            bytes.copyInto(newFitBytes, recOffset, r.offset, r.offset + r.size)
+            cur += r.size
             if (r is FitRecord.Data) {
                 val dataRec = r.data
                 if (dataRec.globalMessageNumber == 20) {
@@ -207,14 +214,14 @@ class FitParser(private val bytes: ByteArray) {
                 if (dataRec.globalMessageNumber == 18 || dataRec.globalMessageNumber == 19) {
                     dataRec.fields[2]?.let { setUInt(newFitBytes, recOffset + it.offset, firstRecordTs, !dataRec.def.isBigEndian) }
                     dataRec.fields[253]?.let { setUInt(newFitBytes, recOffset + it.offset, lastRecordTs, !dataRec.def.isBigEndian) }
-                    dataRec.fields[7]?.let { setUInt(newFitBytes, recOffset + it.offset, (actualDurationSec * 1000).toLong(), !dataRec.def.isBigEndian) }
-                    dataRec.fields[8]?.let { setUInt(newFitBytes, recOffset + it.offset, (actualDurationSec * 1000).toLong(), !dataRec.def.isBigEndian) }
+                    dataRec.fields[7]?.let { setUInt(newFitBytes, recOffset + it.offset, actualDurationSec * 1000, !dataRec.def.isBigEndian) }
+                    dataRec.fields[8]?.let { setUInt(newFitBytes, recOffset + it.offset, actualDurationSec * 1000, !dataRec.def.isBigEndian) }
                     dataRec.fields[9]?.let { setUInt(newFitBytes, recOffset + it.offset, (actualDistanceM * 100).toLong(), !dataRec.def.isBigEndian) }
                 }
             }
         }
-        if (headerSize == 14) setUShort(newFitBytes, 12, Crc16.calculate(newFitBytes.sliceArray(0..11)), true)
-        setUShort(newFitBytes, headerSize + bodySize, Crc16.calculate(newFitBytes.sliceArray(0 until (headerSize + bodySize))), true)
+        if (headerSize == 14) setUShort(newFitBytes, 12, Crc16.calculate(newFitBytes, offset = 0, length = 12), true)
+        setUShort(newFitBytes, headerSize + bodySize, Crc16.calculate(newFitBytes, offset = 0, length = headerSize + bodySize), true)
         return newFitBytes
     }
 

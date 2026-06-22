@@ -96,11 +96,11 @@ class FitParserTest {
         offset += 9
 
         // 3. Compute CRCs for initial file
-        val headerCrc = Crc16.calculate(bytes.sliceArray(0..11))
-        FitParser.setUShort(bytes, 12, headerCrc, littleEndian = true)
+        val headerCrc = Crc16.calculate(bytes, offset = 0, length = 12)
+        FitParser.setUShort(bytes, 12, headerCrc, true)
 
-        val fileCrc = Crc16.calculate(bytes.sliceArray(0 until (headerSize + recordsSize)))
-        FitParser.setUShort(bytes, headerSize + recordsSize, fileCrc, littleEndian = true)
+        val fileCrc = Crc16.calculate(bytes, offset = 0, length = headerSize + recordsSize)
+        FitParser.setUShort(bytes, headerSize + recordsSize, fileCrc, true)
 
         // 4. Parse the original FIT file
         val parser = FitParser(bytes)
@@ -138,12 +138,12 @@ class FitParserTest {
         assertEquals(10000L, data2.data.fields[5]?.value) // 30000 - 20000 = 10000
 
         // Verify CRCs are correct
-        val newHeaderCrc = Crc16.calculate(trimmedBytes.sliceArray(0..11))
-        val parsedNewHeaderCrc = FitParser.getUShort(trimmedBytes, 12, littleEndian = true)
+        val newHeaderCrc = Crc16.calculate(trimmedBytes, offset = 0, length = 12)
+        val parsedNewHeaderCrc = FitParser.getUShort(trimmedBytes, 12, true)
         assertEquals(newHeaderCrc, parsedNewHeaderCrc)
 
-        val newFileCrc = Crc16.calculate(trimmedBytes.sliceArray(0 until 44))
-        val parsedNewFileCrc = FitParser.getUShort(trimmedBytes, 44, littleEndian = true)
+        val newFileCrc = Crc16.calculate(trimmedBytes, offset = 0, length = 44)
+        val parsedNewFileCrc = FitParser.getUShort(trimmedBytes, 44, true)
         assertEquals(newFileCrc, parsedNewFileCrc)
     }
 }
