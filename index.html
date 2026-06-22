@@ -1731,38 +1731,36 @@ import json
 import subprocess
 import numpy as np
 
-# Verify dependencies
-try:
-    import cv2
-except ImportError:
-    print("Error: opencv-python is not installed. Please run: pip install opencv-python")
-    sys.exit(1)
-
-try:
-    from PIL import Image, ImageDraw, ImageFont
-except ImportError:
-    print("Error: Pillow is not installed. Please run: pip install Pillow")
-    sys.exit(1)
-
-# Helper to decode FIT format in Python without heavy libraries
-# We use fitparse to parse telemetry data from the FIT file.
-try:
-    from fitparse import FitFile
-except ImportError:
-    print("Warning: fitparse is not installed. Trying to install automatically via pip...")
+# Verify dependencies and install automatically
+def auto_install(package_name, import_name=None):
+    if import_name is None:
+        import_name = package_name
     try:
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "fitparse"])
-        from fitparse import FitFile
-    except Exception:
-        print("Error: Automatic install failed. Please run manually: pip install fitparse")
-        sys.exit(1)
+        __import__(import_name)
+    except ImportError:
+        print(f"Installing {package_name} automatically...")
+        try:
+            # Upgrade pip just in case and install package
+            subprocess.check_call([sys.executable, "-m", "pip", "install", package_name])
+        except Exception as e:
+            print(f"Failed to install {package_name} automatically: {e}")
+            print(f"Please install it manually: pip install {package_name}")
+            sys.exit(1)
+
+auto_install("opencv-python", "cv2")
+auto_install("Pillow", "PIL")
+auto_install("fitparse")
+
+import cv2
+from PIL import Image, ImageDraw, ImageFont
+from fitparse import FitFile
 
 def load_font(size):
     font_paths = [
         # Windows
-        "C:\\Windows\\Fonts\\arial.ttf",
-        "C:\\Windows\\Fonts\\msgothic.ttc",
-        "C:\\Windows\\Fonts\\meiryo.ttc",
+        "C:\\\\Windows\\\\Fonts\\\\arial.ttf",
+        "C:\\\\Windows\\\\Fonts\\\\msgothic.ttc",
+        "C:\\\\Windows\\\\Fonts\\\\meiryo.ttc",
         # macOS
         "/Library/Fonts/Arial.ttf",
         "/System/Library/Fonts/Supplemental/Arial.ttf",
@@ -1797,7 +1795,6 @@ def parse_fit_records(fit_path):
             if field.name == "timestamp":
                 data["timestamp"] = field.value
             elif field.name == "enhanced_speed" or field.name == "speed":
-                # Convert m/s to km/h
                 val = field.value
                 if val is not None:
                     data["speed"] = val * 3.6
@@ -1824,10 +1821,8 @@ def find_closest_telemetry(records, current_time_sec, fit_start_time):
     if not records:
         return {}
     
-    # Target timestamp in seconds since fit start
     target_time = fit_start_time + current_time_sec
     
-    # Binary search to find closest timestamp
     low = 0
     high = len(records) - 1
     closest_idx = 0
@@ -1852,7 +1847,6 @@ def find_closest_telemetry(records, current_time_sec, fit_start_time):
     return records[closest_idx]
 
 def draw_hud(frame_np, tel, settings, width, height):
-    # Convert BGR (OpenCV) to RGB (Pillow)
     img = Image.fromarray(cv2.cvtColor(frame_np, cv2.COLOR_BGR2RGB))
     draw = ImageDraw.Draw(img)
     
@@ -1865,11 +1859,9 @@ def draw_hud(frame_np, tel, settings, width, height):
         if not item.get("visible", True):
             continue
             
-        # Map percentage to pixel coordinates
         x = int(item["left"] * width / 100)
         y = int(item["top"] * height / 100)
         
-        # Color parsing
         hex_color = item.get("color", "#ffffff").lstrip('#')
         color_rgb = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
         
@@ -1881,14 +1873,13 @@ def draw_hud(frame_np, tel, settings, width, height):
             box_w = 200
             box_h = 90
             
-        # Draw glassmorphism box panel
         overlay = Image.new('RGBA', img.size, (0,0,0,0))
         overlay_draw = ImageDraw.Draw(overlay)
         overlay_draw.rounded_rectangle(
             [x - 10, y - 10, x + box_w + 10, y + box_h + 10],
             radius=10,
-            fill=(11, 15, 25, 160), # 60% opacity dark panel
-            outline=(255, 255, 255, 25), # Subtle white border
+            fill=(11, 15, 25, 160),
+            outline=(255, 255, 255, 25),
             width=1
         )
         img = Image.alpha_composite(img.convert('RGBA'), overlay)
@@ -1922,14 +1913,12 @@ def draw_hud(frame_np, tel, settings, width, height):
             
         elif key == "powerchart":
             draw.text((x, y), "POWER TREND (60s)", fill=(156, 163, 175), font=font_small)
-            # Simple simulation chart line
             chart_x = x
             chart_y = y + 25
             chart_w = 200
             chart_h = 60
             draw.rectangle([chart_x, chart_y, chart_x + chart_w, chart_y + chart_h], fill=(255, 255, 255, 6), outline=(255,255,255,15))
             
-            # Draw fake wave pattern
             points = []
             for i in range(25):
                 px = chart_x + int(i * chart_w / 24)
@@ -1956,57 +1945,72 @@ def detect_encoder():
             continue
     return "libx264"
 
-def main():
-    proj_path = "hud_project.json"
-    if len(sys.argv) > 1:
-        proj_path = sys.argv[1]
-        
+def process_video(proj_path, progress_callback=None):
     if not os.path.exists(proj_path):
-        print(f"Error: Project file '{proj_path}' not found.")
-        sys.exit(1)
+        msg = f"Error: Project file '{proj_path}' not found."
+        if progress_callback: progress_callback(0, 1, msg, True)
+        else: print(msg)
+        return False
         
-    with open(proj_path, 'r', encoding='utf-8') as f:
-        proj = json.load(f)
+    try:
+        with open(proj_path, 'r', encoding='utf-8') as f:
+            proj = json.load(f)
+    except Exception as e:
+        msg = f"Error parsing project JSON: {e}"
+        if progress_callback: progress_callback(0, 1, msg, True)
+        else: print(msg)
+        return False
         
     video_file = proj["videoFileName"]
     fit_file = proj["fitFileName"]
     
-    # Folder scans
     if not os.path.exists(video_file):
         matches = [f for f in os.listdir('.') if f.lower() == video_file.lower()]
         if matches: video_file = matches[0]
         else:
-            print(f"Error: Video file '{video_file}' not found.")
-            sys.exit(1)
+            msg = f"Error: Video file '{video_file}' not found."
+            if progress_callback: progress_callback(0, 1, msg, True)
+            else: print(msg)
+            return False
             
     if not os.path.exists(fit_file):
         matches = [f for f in os.listdir('.') if f.lower() == fit_file.lower()]
         if matches: fit_file = matches[0]
         else:
-            print(f"Error: FIT file '{fit_file}' not found.")
-            sys.exit(1)
+            msg = f"Error: FIT file '{fit_file}' not found."
+            if progress_callback: progress_callback(0, 1, msg, True)
+            else: print(msg)
+            return False
             
-    print(f"Selected: {video_file} and {fit_file}")
+    if progress_callback:
+        progress_callback(0, 100, f"Selected: {video_file} and {fit_file}", False)
+    else:
+        print(f"Selected: {video_file} and {fit_file}")
     
-    # Parse FIT
     records = parse_fit_records(fit_file)
     if not records:
-        print("Error: No record messages parsed in FIT file.")
-        sys.exit(1)
+        msg = "Error: No record messages parsed in FIT file."
+        if progress_callback: progress_callback(0, 1, msg, True)
+        else: print(msg)
+        return False
         
     fit_start_time = records[0]["timestamp"].timestamp()
     
-    # Open Video
     cap = cv2.VideoCapture(video_file)
     fps = cap.get(cv2.CAP_PROP_FPS)
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     
+    if fps <= 0 or total_frames <= 0:
+        msg = "Error reading video properties."
+        if progress_callback: progress_callback(0, 1, msg, True)
+        else: print(msg)
+        return False
+        
     encoder = detect_encoder()
     output_name = f"hud_{video_file}"
     
-    # FFmpeg Pipe
     ffmpeg_cmd = [
         'ffmpeg', '-y',
         '-f', 'rawvideo', '-vcodec', 'rawvideo',
@@ -2031,12 +2035,18 @@ def main():
     try:
         proc = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE)
     except FileNotFoundError:
-        print("Error: FFmpeg is not installed or not in PATH.")
-        sys.exit(1)
+        msg = "Error: FFmpeg is not installed or not in PATH."
+        if progress_callback: progress_callback(0, 1, msg, True)
+        else: print(msg)
+        return False
         
     sync_offset = proj.get("syncOffsetSeconds", 0.0)
     
-    print("\nMerging HUD overlay... (Press Ctrl+C to stop)")
+    if progress_callback:
+        progress_callback(0, total_frames, "Merging HUD overlay...", False)
+    else:
+        print("\\\\nMerging HUD overlay... (Press Ctrl+C to stop)")
+        
     frame_idx = 0
     try:
         while cap.isOpened():
@@ -2044,31 +2054,139 @@ def main():
             if not ret:
                 break
                 
-            # Compute current JST/UTC timestamp offset relative to video
             current_offset_sec = (frame_idx / fps) + sync_offset
-            
-            # Match
             tel = find_closest_telemetry(records, current_offset_sec, fit_start_time)
-            
-            # Draw
             hud_frame = draw_hud(frame, tel, proj, width, height)
-            
-            # Pipe
             proc.stdin.write(hud_frame.tobytes())
             
             frame_idx += 1
-            if frame_idx % 50 == 0 or frame_idx == total_frames:
-                progress = (frame_idx / total_frames) * 100
-                print(f"Progress: {frame_idx}/{total_frames} frames ({progress:.1f}%)", end='\r')
-                
+            if frame_idx % 30 == 0 or frame_idx == total_frames:
+                progress_val = (frame_idx / total_frames) * 100
+                msg = f"Processing: {frame_idx}/{total_frames} frames ({progress_val:.1f}%)"
+                if progress_callback:
+                    progress_callback(frame_idx, total_frames, msg, False)
+                else:
+                    print(f"Progress: {frame_idx}/{total_frames} frames ({progress_val:.1f}%)", end='\\\\r')
+                    
+        if progress_callback:
+            progress_callback(total_frames, total_frames, f"Done! Output saved: {output_name}", False)
+        else:
+            print(f"\\\\nDone! Video output saved as: {output_name}")
+        return True
     except KeyboardInterrupt:
-        print("\nProcessing interrupted. Saving output...")
+        if not progress_callback:
+            print("\\\\nProcessing interrupted.")
+        return False
     finally:
         if proc.stdin:
             proc.stdin.close()
         proc.wait()
         cap.release()
-        print(f"\nDone! Video output saved as: {output_name}")
+
+def run_gui(default_proj_path="hud_project.json"):
+    try:
+        import tkinter as tk
+        from tkinter import filedialog, messagebox
+        from tkinter import ttk
+        import threading
+    except ImportError:
+        print("Tkinter is not available. Running in terminal mode.")
+        process_video(default_proj_path)
+        return
+
+    root = tk.Tk()
+    root.title("FIT TRIMMER - HUD Merger")
+    root.geometry("550x300")
+    root.configure(bg="#0b0f19")
+    
+    # Custom styling
+    style = ttk.Style()
+    style.theme_use('clam')
+    style.configure("TProgressbar", thickness=15, troughcolor="#1e293b", background="#3b82f6")
+    
+    font_family = "Helvetica"
+    
+    title_label = tk.Label(root, text="🎨 FIT TRIMMER - HUD Merger", font=(font_family, 14, "bold"), fg="#3b82f6", bg="#0b0f19")
+    title_label.pack(pady=15)
+    
+    file_frame = tk.Frame(root, bg="#0b0f19")
+    file_frame.pack(fill="x", padx=30, pady=10)
+    
+    path_var = tk.StringVar(value=default_proj_path if os.path.exists(default_proj_path) else "")
+    
+    path_entry = tk.Entry(file_frame, textvariable=path_var, width=45, font=(font_family, 10), bg="#1e293b", fg="#f3f4f6", insertbackground="white", borderwidth=1, relief="solid")
+    path_entry.pack(side="left", padx=5, ipady=3)
+    
+    def select_file():
+        fn = filedialog.askopenfilename(filetypes=[("JSON Project", "*.json"), ("All Files", "*.*")])
+        if fn:
+            path_var.set(fn)
+            
+    browse_btn = tk.Button(file_frame, text="Browse...", command=select_file, font=(font_family, 9, "bold"), bg="#3b82f6", fg="white", activebackground="#2563eb", activeforeground="white", relief="flat", padx=10)
+    browse_btn.pack(side="left", padx=5)
+    
+    status_label = tk.Label(root, text="Select hud_project.json and click Merge.", font=(font_family, 9), fg="#9ca3af", bg="#0b0f19")
+    status_label.pack(pady=10)
+    
+    progress = ttk.Progressbar(root, length=490, mode="determinate")
+    progress.pack(pady=5)
+    
+    def start_merge():
+        proj_path = path_var.get()
+        if not proj_path:
+            messagebox.showerror("Error", "Please select a valid project JSON file.")
+            return
+            
+        start_btn.config(state="disabled")
+        browse_btn.config(state="disabled")
+        path_entry.config(state="disabled")
+        
+        def callback(curr, total, msg, is_err):
+            percent = (curr / total) * 100
+            root.after(0, lambda: progress.config(value=percent))
+            root.after(0, lambda: status_label.config(text=msg, fg="#ef4444" if is_err else "#10b981" if curr==total else "#9ca3af"))
+            
+            if curr == total or is_err:
+                root.after(0, lambda: start_btn.config(state="normal"))
+                root.after(0, lambda: browse_btn.config(state="normal"))
+                root.after(0, lambda: path_entry.config(state="normal"))
+                if not is_err and curr == total:
+                    root.after(0, lambda: messagebox.showinfo("Success", "HUD Video generation completed successfully!"))
+                    
+        def run_thread():
+            orig_cwd = os.getcwd()
+            proj_dir = os.path.dirname(os.path.abspath(proj_path))
+            if proj_dir:
+                os.chdir(proj_dir)
+            process_video(os.path.basename(proj_path), progress_callback=callback)
+            os.chdir(orig_cwd)
+            
+        threading.Thread(target=run_thread, daemon=True).start()
+        
+    start_btn = tk.Button(root, text="⚡ Start HUD Merge", command=start_merge, font=(font_family, 11, "bold"), bg="#10b981", fg="white", activebackground="#059669", activeforeground="white", relief="flat", pady=8, padx=20)
+    start_btn.pack(pady=15)
+    
+    root.mainloop()
+
+def main():
+    use_gui = True
+    proj_path = "hud_project.json"
+    
+    if len(sys.argv) > 1:
+        if sys.argv[1] == "--cli":
+            use_gui = False
+            if len(sys.argv) > 2:
+                proj_path = sys.argv[2]
+        else:
+            use_gui = False
+            proj_path = sys.argv[1]
+            
+    if use_gui:
+        print("Launching GUI mode... (Pass --cli [path] to run in terminal mode)")
+        run_gui(proj_path)
+    else:
+        print("Running in CLI mode...")
+        process_video(proj_path)
 
 if __name__ == '__main__':
     main()
