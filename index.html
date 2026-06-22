@@ -453,6 +453,105 @@
             margin-top: 10px;
             max-height: 250px;
         }
+
+        /* Multiple video list layout */
+        .video-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 14px 18px;
+            gap: 15px;
+            transition: all 0.3s;
+        }
+        .video-item:hover {
+            border-color: rgba(255, 255, 255, 0.12);
+            background: rgba(255, 255, 255, 0.04);
+        }
+        .video-info {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            flex-grow: 1;
+        }
+        .video-title {
+            font-weight: 600;
+            font-size: 0.95rem;
+            color: var(--text-color);
+            word-break: break-all;
+        }
+        .video-meta-detail {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+        .video-status {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+        .status-tag {
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+        }
+        .status-tag.sync {
+            background: rgba(16, 185, 129, 0.15);
+            color: #34d399;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+        .status-tag.no-sync {
+            background: rgba(239, 68, 68, 0.15);
+            color: #f87171;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+        .video-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .btn-mini {
+            background: linear-gradient(135deg, var(--primary) 0%, #2563eb 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-mini:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 10px rgba(59, 130, 246, 0.2);
+        }
+        .btn-mini:disabled {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-color);
+            color: var(--text-muted);
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+        .btn-remove {
+            background: transparent;
+            color: var(--text-muted);
+            border: none;
+            cursor: pointer;
+            font-size: 1.1rem;
+            padding: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
+            transition: all 0.2s;
+        }
+        .btn-remove:hover {
+            color: var(--error);
+            background: rgba(239, 68, 68, 0.1);
+        }
     </style>
 </head>
 <body>
@@ -474,10 +573,10 @@
         <!-- File Uploaders -->
         <div class="drop-zone-container">
             <div class="drop-zone" id="video-dropzone">
-                <input type="file" id="video-input" accept=".mp4,.lrv,.mov" style="display: none;">
+                <input type="file" id="video-input" accept=".mp4,.lrv,.mov" style="display: none;" multiple>
                 <div class="icon">🎥</div>
-                <p id="video-name">Select Video File</p>
-                <span>Drag & drop MP4 / LRV / MOV</span>
+                <p id="video-name">Select Video File(s)</p>
+                <span>Drag & drop MP4 / LRV / MOV (Multiple OK)</span>
             </div>
             
             <div class="drop-zone" id="fit-dropzone">
@@ -489,23 +588,7 @@
         </div>
 
         <!-- Info Preview Panel -->
-        <div class="card info-panel">
-            <div class="info-box">
-                <h3>🎥 Video Metadata</h3>
-                <div class="info-row">
-                    <span>Start (JST):</span>
-                    <span class="info-val" id="v-start">-</span>
-                </div>
-                <div class="info-row">
-                    <span>Duration:</span>
-                    <span class="info-val" id="v-dur">-</span>
-                </div>
-                <div class="info-row">
-                    <span>End (JST):</span>
-                    <span class="info-val" id="v-end">-</span>
-                </div>
-            </div>
-
+        <div class="card info-panel" style="grid-template-columns: 1fr;">
             <div class="info-box">
                 <h3>🚴 FIT Track Metrics</h3>
                 <div class="info-row">
@@ -523,6 +606,14 @@
             </div>
         </div>
 
+        <!-- Loaded Videos List -->
+        <div class="card" id="video-list-card" style="display: none;">
+            <h3 style="font-size: 1.1rem; font-weight: 600; display: flex; align-items: center; gap: 8px; margin-bottom: 15px;">🎥 Loaded Videos</h3>
+            <div id="video-list" style="display: flex; flex-direction: column; gap: 12px;">
+                <!-- Dynamically populated -->
+            </div>
+        </div>
+
         <!-- Status Banner -->
         <div class="status-banner status-idle" id="status-banner">
             <span>Waiting for files...</span>
@@ -530,7 +621,7 @@
 
         <!-- Action Area -->
         <button class="btn" id="trim-btn" disabled>
-            ⚡ Trim & Download Synchronized FIT
+            ⚡ Download All Trimmed FITs (0)
         </button>
 
         <!-- Console Logger -->
@@ -657,10 +748,12 @@
         const trimBtn = document.getElementById('trim-btn');
         const consoleEl = document.getElementById('console');
         const statusBanner = document.getElementById('status-banner');
+        const videoListCard = document.getElementById('video-list-card');
+        const videoListContainer = document.getElementById('video-list');
 
         // Global State
         let wasmModule = null;
-        let videoMeta = null;
+        let videoFilesList = []; // List of video objects
         let fitFileBuffer = null;
         let fitFilename = "";
         let fitTimestamps = [];
@@ -711,11 +804,11 @@
         }
 
         // --- Drag and drop events setup ---
-        function setupDropzone(zone, input, onFileSelected) {
+        function setupDropzone(zone, input, onFilesSelected, isMultiple = false) {
             input.addEventListener('click', (e) => e.stopPropagation());
             
             zone.addEventListener('click', () => {
-                input.value = ""; // Reset path to ensure change event fires even for the same file
+                input.value = ""; 
                 input.click();
             });
             zone.addEventListener('dragover', (e) => {
@@ -727,30 +820,46 @@
                 e.preventDefault();
                 zone.classList.remove('active');
                 if (e.dataTransfer.files.length > 0) {
-                    onFileSelected(e.dataTransfer.files[0]);
+                    onFilesSelected(isMultiple ? e.dataTransfer.files : e.dataTransfer.files[0]);
                 }
             });
             input.addEventListener('change', () => {
                 if (input.files.length > 0) {
-                    onFileSelected(input.files[0]);
+                    onFilesSelected(isMultiple ? input.files : input.files[0]);
                 }
             });
         }
 
-        setupDropzone(videoDrop, videoInput, handleVideoFile);
-        setupDropzone(fitDrop, fitInput, handleFitFile);
+        setupDropzone(videoDrop, videoInput, handleVideoFiles, true);
+        setupDropzone(fitDrop, fitInput, handleFitFile, false);
 
-        // --- MP4 Metadata Parser ---
-        async function handleVideoFile(file) {
+        // --- Multiple Video Metadata Parser ---
+        async function handleVideoFiles(files) {
             videoDrop.classList.add('file-selected', 'video');
-            videoName.textContent = file.name;
-            log(`Video file selected: ${file.name}`);
-            
+            let added = 0;
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                if (videoFilesList.some(v => v.name === file.name && v.file.size === file.size)) {
+                    log(`Video ${file.name} is already added.`, 'info');
+                    continue;
+                }
+                log(`Processing video file: ${file.name}...`);
+                await parseVideoMetadata(file);
+                added++;
+            }
+            if (videoFilesList.length > 0) {
+                videoName.textContent = `${videoFilesList.length} video(s) selected`;
+            } else {
+                videoName.textContent = "Select Video File(s)";
+                videoDrop.classList.remove('file-selected', 'video');
+            }
+            renderVideoList();
+            checkSyncCapability();
+        }
+
+        async function parseVideoMetadata(file) {
             try {
-                log("Scanning video file structures for metadata...");
-                
-                const scanChunkSize = 100 * 1024 * 1024; // 100MB chunk to cover tail-located moov atoms
-                
+                const scanChunkSize = 100 * 1024 * 1024; 
                 let creationTime = null;
                 let duration = null;
                 let timescale = null;
@@ -761,8 +870,6 @@
                     duration = meta.duration;
                 };
                 
-                // 1. Try Front Chunk (header)
-                log("Reading file header (first 100MB)...");
                 const frontBlob = file.slice(0, Math.min(scanChunkSize, file.size));
                 const frontBuffer = await frontBlob.arrayBuffer();
                 
@@ -778,9 +885,8 @@
                     found = true;
                 }
                 
-                // 2. Try End Chunk (trailer) if not found at the front
                 if (!found && file.size > scanChunkSize) {
-                    log("Header 'moov' not found at front. Reading file trailer (last 100MB) for 'moov' atom...");
+                    log(`Header 'moov' not found at front for ${file.name}. Scanning trailer...`);
                     const endStart = Math.max(0, file.size - scanChunkSize);
                     const endBlob = file.slice(endStart, file.size);
                     const endBuffer = await endBlob.arrayBuffer();
@@ -788,14 +894,14 @@
                     
                     let moovIdx = -1;
                     for (let j = 0; j < endBytes.length - 8; j++) {
-                        if (endBytes[j] === 109 && endBytes[j+1] === 111 && endBytes[j+2] === 111 && endBytes[j+3] === 118) { // 'moov'
-                            moovIdx = j - 4; // Start of 'moov' size field
+                        if (endBytes[j] === 109 && endBytes[j+1] === 111 && endBytes[j+2] === 111 && endBytes[j+3] === 118) {
+                            moovIdx = j - 4;
                             break;
                         }
                     }
                     
                     if (moovIdx >= 0) {
-                        log("Found 'moov' atom signature at trailer offset. Parsing...");
+                        log(`Found 'moov' atom signature at trailer for ${file.name}. Parsing...`);
                         const subBuffer = endBuffer.slice(moovIdx);
                         const subInt8 = new Int8Array(subBuffer);
                         const subMetadataArray = wasmModule.scanMp4Metadata(subInt8);
@@ -811,10 +917,9 @@
                 }
                 
                 if (creationTime === null || duration === null || timescale === null) {
-                    throw new Error("Could not find 'mvhd' atom. The file might be missing standard creation timestamps.");
+                    throw new Error("Could not find 'mvhd' atom metadata.");
                 }
                 
-                // Mac Epoch (1904/01/01) to Unix Epoch (1970/01/01) seconds offset: 2082844800
                 const macToUnixSec = 2082844800;
                 const unixTimestamp = creationTime - macToUnixSec;
                 const durationSeconds = duration / timescale;
@@ -822,32 +927,98 @@
                 const startDt = new Date(unixTimestamp * 1000);
                 const endDt = new Date((unixTimestamp + durationSeconds) * 1000);
                 
-                videoMeta = {
+                videoFilesList.push({
+                    id: Date.now() + "_" + Math.random().toString(36).substr(2, 5),
+                    file: file,
+                    name: file.name,
                     startDt,
                     endDt,
                     durationSeconds,
-                    unixTimestamp
-                };
+                    unixTimestamp,
+                    isSyncable: false
+                });
                 
-                // Update UI Info
-                document.getElementById('v-start').textContent = formatJST(startDt);
-                document.getElementById('v-end').textContent = formatJST(endDt);
-                
-                const min = Math.floor(durationSeconds / 60);
-                const sec = Math.floor(durationSeconds % 60);
-                document.getElementById('v-dur').textContent = `${min}m ${sec}s (${durationSeconds.toFixed(1)}s)`;
-                
-                log(`Success: Found creation time: ${formatJST(startDt)}`, 'success');
-                checkSyncCapability();
+                log(`Success: Loaded ${file.name} metadata.`, 'success');
                 
             } catch (err) {
-                log(`Failed to resolve video timestamps: ${err.message}`, 'error');
-                document.getElementById('v-start').textContent = "ERROR";
-                document.getElementById('v-dur').textContent = "-";
-                document.getElementById('v-end').textContent = "-";
-                videoMeta = null;
-                checkSyncCapability();
+                log(`Failed to parse video ${file.name}: ${err.message}`, 'error');
             }
+        }
+
+        // Render Loaded Videos UI List
+        function renderVideoList() {
+            videoListContainer.innerHTML = "";
+            if (videoFilesList.length === 0) {
+                videoListCard.style.display = "none";
+                return;
+            }
+            videoListCard.style.display = "block";
+            
+            videoFilesList.forEach(video => {
+                const item = document.createElement('div');
+                item.className = 'video-item';
+                
+                const info = document.createElement('div');
+                info.className = 'video-info';
+                
+                const title = document.createElement('div');
+                title.className = 'video-title';
+                title.textContent = video.name;
+                
+                const details = document.createElement('div');
+                details.className = 'video-meta-detail';
+                const min = Math.floor(video.durationSeconds / 60);
+                const sec = Math.floor(video.durationSeconds % 60);
+                details.innerHTML = `
+                    <span>Start: ${formatJST(video.startDt)}</span> | 
+                    <span>End: ${formatJST(video.endDt)}</span> | 
+                    <span>Dur: ${min}m ${sec}s</span>
+                `;
+                
+                info.appendChild(title);
+                info.appendChild(details);
+                
+                const status = document.createElement('div');
+                status.className = 'video-status';
+                
+                const tag = document.createElement('span');
+                tag.className = `status-tag ${video.isSyncable ? 'sync' : 'no-sync'}`;
+                tag.textContent = video.isSyncable ? 'Syncable' : 'No Overlap';
+                status.appendChild(tag);
+                
+                const actions = document.createElement('div');
+                actions.className = 'video-actions';
+                
+                const dlBtn = document.createElement('button');
+                dlBtn.className = 'btn-mini';
+                dlBtn.textContent = 'Trim & DL';
+                dlBtn.disabled = !video.isSyncable;
+                dlBtn.addEventListener('click', () => trimAndDownloadSingle(video));
+                
+                const removeBtn = document.createElement('button');
+                removeBtn.className = 'btn-remove';
+                removeBtn.innerHTML = '✕';
+                removeBtn.title = 'Remove';
+                removeBtn.addEventListener('click', () => {
+                    videoFilesList = videoFilesList.filter(v => v.id !== video.id);
+                    if (videoFilesList.length > 0) {
+                        videoName.textContent = `${videoFilesList.length} video(s) selected`;
+                    } else {
+                        videoName.textContent = "Select Video File(s)";
+                        videoDrop.classList.remove('file-selected', 'video');
+                    }
+                    renderVideoList();
+                    checkSyncCapability();
+                });
+                
+                actions.appendChild(dlBtn);
+                actions.appendChild(removeBtn);
+                
+                item.appendChild(info);
+                item.appendChild(status);
+                item.appendChild(actions);
+                videoListContainer.appendChild(item);
+            });
         }
 
         // --- FIT Binary Parser ---
@@ -869,7 +1040,6 @@
                     throw new Error("No detailed record message with timestamps found in the FIT file.");
                 }
                 
-                // Copy Wasm Float64Array elements to JS array
                 fitTimestamps = [];
                 for (let k = 0; k < timestampsArray.length; k++) {
                     fitTimestamps.push(timestampsArray[k]);
@@ -879,7 +1049,6 @@
                 const minFitSec = Math.min(...fitTimestamps);
                 const maxFitSec = Math.max(...fitTimestamps);
                 
-                // Convert FIT Epoch (1989-12-31 00:00:00 UTC) to JS Dates
                 const fitEpochSec = 631065600;
                 const startDt = new Date((minFitSec + fitEpochSec) * 1000);
                 const endDt = new Date((maxFitSec + fitEpochSec) * 1000);
@@ -901,78 +1070,100 @@
             }
         }
 
-        // Check if both files are loaded and overlapping
+        // Validate overlap for all loaded videos
         function checkSyncCapability() {
-            if (!wasmModule || !videoMeta || fitTimestamps.length === 0) {
+            if (!wasmModule || videoFilesList.length === 0 || fitTimestamps.length === 0) {
                 statusBanner.className = "status-banner status-idle";
-                statusBanner.innerHTML = "<span>Waiting for both video and FIT files...</span>";
+                statusBanner.innerHTML = "<span>Waiting for files...</span>";
                 trimBtn.disabled = true;
+                trimBtn.textContent = "⚡ Download All Trimmed FITs (0)";
+                
+                videoFilesList.forEach(v => v.isSyncable = false);
+                renderVideoList();
                 return;
             }
             
-            const vStartSec = Math.floor(videoMeta.startDt.getTime() / 1000);
-            const vEndSec = Math.floor(videoMeta.endDt.getTime() / 1000);
-            
-            // FIT timestamps in Unix
             const fitEpochSec = 631065600;
             const unixTimestamps = fitTimestamps.map(ts => ts + fitEpochSec);
-            
             const fStartSec = Math.min(...unixTimestamps);
             const fEndSec = Math.max(...unixTimestamps);
             
-            // Check overlap
-            const overlapStart = Math.max(vStartSec, fStartSec);
-            const overlapEnd = Math.min(vEndSec, fEndSec);
+            let syncableCount = 0;
             
-            if (overlapStart < overlapEnd) {
-                // We have overlap!
+            videoFilesList.forEach(video => {
+                const vStartSec = Math.floor(video.startDt.getTime() / 1000);
+                const vEndSec = Math.floor(video.endDt.getTime() / 1000);
+                
+                const overlapStart = Math.max(vStartSec, fStartSec);
+                const overlapEnd = Math.min(vEndSec, fEndSec);
+                
+                video.isSyncable = overlapStart < overlapEnd;
+                if (video.isSyncable) syncableCount++;
+            });
+            
+            renderVideoList();
+            
+            if (syncableCount > 0) {
                 statusBanner.className = "status-banner status-sync";
-                statusBanner.innerHTML = "<span>✓ Synchronized! Time overlap detected. Ready to trim.</span>";
+                statusBanner.innerHTML = `<span>✓ Synchronized! ${syncableCount} / ${videoFilesList.length} video(s) have time overlap.</span>`;
                 trimBtn.disabled = false;
-                log("Overlap validation: Ready to sync and crop timeline.", "success");
+                trimBtn.textContent = `⚡ Download All Trimmed FITs (${syncableCount})`;
             } else {
-                // No overlap
                 statusBanner.className = "status-banner status-error";
-                statusBanner.innerHTML = "<span>✗ Error: No time overlap between video and FIT track!</span>";
+                statusBanner.innerHTML = "<span>✗ Error: No video overlaps with the FIT timeframe!</span>";
                 trimBtn.disabled = true;
-                log("Overlap validation failed: The recording timeframe of the video and the FIT file do not overlap.", "error");
+                trimBtn.textContent = "⚡ Download All Trimmed FITs (0)";
             }
         }
 
-        // Trigger synchronization
-        trimBtn.addEventListener('click', () => {
-            if (!videoMeta || fitTimestamps.length === 0 || !fitFileBuffer) return;
+        // Perform Single Trimming & Download
+        function trimAndDownloadSingle(video) {
+            if (!wasmModule || !fitFileBuffer || !video.isSyncable) return;
             
             try {
-                log("Starting synchronized trimming on Kotlin Wasm context...");
-                
+                log(`Starting synchronized trimming for ${video.name}...`);
                 const fitInt8 = new Int8Array(fitFileBuffer);
                 const trimmedInt8 = wasmModule.trimFit(
                     fitInt8,
-                    videoMeta.startDt.getTime() / 1000,
-                    videoMeta.endDt.getTime() / 1000
+                    video.startDt.getTime() / 1000,
+                    video.endDt.getTime() / 1000
                 );
                 
-                // Download file
-                log("Downloading synchronized FIT file...", "success");
-                
+                log(`Generating download link for ${video.name}...`, "success");
                 const outBlob = new Blob([trimmedInt8.buffer], {type: 'application/octet-stream'});
                 const outUrl = URL.createObjectURL(outBlob);
                 
                 const a = document.createElement('a');
-                const outName = fitFilename.replace(".fit", "_trimmed.fit");
+                const baseName = video.name.substring(0, video.name.lastIndexOf('.')) || video.name;
+                const outName = `${fitFilename.replace(".fit", "")}_${baseName}.fit`;
                 a.href = outUrl;
                 a.download = outName;
                 document.body.appendChild(a);
                 a.click();
                 document.body.removeChild(a);
                 URL.revokeObjectURL(outUrl);
-                
-                log(`Success: Trimmed FIT file generated: ${outName}`, 'success');
-                
+                log(`Success: Generated ${outName}`, 'success');
             } catch (err) {
-                log(`Trimming failed: ${err.message}`, 'error');
+                log(`Trimming failed for ${video.name}: ${err.message}`, 'error');
             }
+        }
+
+        // Perform Batch Trimming & Download
+        trimBtn.addEventListener('click', async () => {
+            if (!wasmModule || videoFilesList.length === 0 || !fitFileBuffer) return;
+            
+            const syncableVideos = videoFilesList.filter(v => v.isSyncable);
+            if (syncableVideos.length === 0) return;
+            
+            log(`Running batch trimming for ${syncableVideos.length} video(s)...`);
+            
+            for (let i = 0; i < syncableVideos.length; i++) {
+                const video = syncableVideos[i];
+                trimAndDownloadSingle(video);
+                // Slight delay to prevent browser from blocking concurrent downloads
+                await new Promise(resolve => setTimeout(resolve, 300));
+            }
+            log("Batch download sequence completed.", "success");
         });
 
         // Helper to format date in JST
