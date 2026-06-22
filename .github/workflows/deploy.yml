@@ -25,7 +25,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
 
       - name: Build WasmJs
-        run: ./gradlew :shared-core:wasmJsBrowserDistribution
+        run: ./gradlew :shared-core:wasmJsBrowserDistribution --build-cache --parallel
 
       - name: Prepare Deployment Directory
         run: |
