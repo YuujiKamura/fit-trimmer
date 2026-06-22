@@ -1,22 +1,8 @@
 import fit.FitParser
-import mp4.Mp4Parser
 import org.khronos.webgl.Int8Array
 import org.khronos.webgl.Float64Array
 import org.khronos.webgl.get
 import org.khronos.webgl.set
-
-@OptIn(ExperimentalJsExport::class)
-@JsExport
-fun scanMp4Metadata(bytes: Int8Array): Float64Array? {
-    val parser = Mp4Parser()
-    val kBytes = bytes.toByteArray()
-    val meta = parser.parse(kBytes) ?: return null
-    val array = Float64Array(3)
-    array[0] = meta.creationTimeSeconds.toDouble()
-    array[1] = meta.timescale.toDouble()
-    array[2] = meta.duration.toDouble()
-    return array
-}
 
 @OptIn(ExperimentalJsExport::class)
 @JsExport
