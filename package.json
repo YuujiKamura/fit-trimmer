@@ -19,6 +19,7 @@
   "author": "Yuuji Kamura",
   "license": "MIT",
   "devDependencies": {
-    "vite": "^8.0.16"
+    "vite": "^8.0.16",
+    "ws": "^8.21.0"
   }
 }

@@ -30,9 +30,10 @@ kotlin {
 tasks.register<Copy>("copyWasmToSrc") {
     from(layout.buildDirectory.dir("dist/wasmJs/productionExecutable"))
     from(layout.buildDirectory.dir("dist/wasmJs/developmentExecutable"))
-    into(rootProject.layout.projectDirectory.dir("src"))
+    into(rootProject.layout.projectDirectory)
     include("*.js", "*.wasm", "*.map")
     duplicatesStrategy = DuplicatesStrategy.INCLUDE
+    doNotTrackState("Copying to root directory which contains untrackable .gradle files")
 }
 
 tasks.named("wasmJsBrowserDistribution") {
