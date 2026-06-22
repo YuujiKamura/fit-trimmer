@@ -25,21 +25,12 @@ fun getFitTimestamps(bytes: Int8Array): Float64Array? {
         return null
     }
 
-    val timestamps = mutableListOf<Double>()
-    for (r in parser.records) {
-        if (r is FitParser.FitRecord.Data && r.globalMessageNumber == 20) {
-            val ts = r.data.fields[253]?.value
-            if (ts != null) {
-                timestamps.add(ts.toDouble())
-            }
-        }
-    }
+    val telemetry = parser.getTelemetry()
+    if (telemetry.isEmpty()) return null
 
-    if (timestamps.isEmpty()) return null
-
-    val array = Float64Array(timestamps.size)
-    for (i in timestamps.indices) {
-        array[i] = timestamps[i]
+    val array = Float64Array(telemetry.size)
+    for (i in telemetry.indices) {
+        array[i] = telemetry[i].timestamp
     }
     return array
 }
@@ -53,64 +44,31 @@ fun getFitTelemetry(bytes: Int8Array): Float64Array? {
         parser.parse()
     } catch (e: Exception) {
         println("FIT Error: ${e.message}")
-        e.printStackTrace()
         return null
     }
 
-    val list = mutableListOf<Double>()
-    var msg20Count = 0
-    var tsFoundCount = 0
-    for (r in parser.records) {
-        if (r is FitParser.FitRecord.Data && r.globalMessageNumber == 20) {
-            msg20Count++
-            val tsField = r.data.fields[253]
-            if (tsField?.value != null) {
-                tsFoundCount++
-                val ts = tsField.value.toDouble()
-                
-                val rawSpeed = r.data.fields[73]?.value ?: r.data.fields[6]?.value
-                val speedVal = if (rawSpeed != null) (rawSpeed.toDouble() / 1000.0) * 3.6 else 0.0
-                
-                val powerVal = r.data.fields[7]?.value?.toDouble() ?: 0.0
-                val cadenceVal = r.data.fields[4]?.value?.toDouble() ?: 0.0
-                val hrVal = r.data.fields[3]?.value?.toDouble() ?: 0.0
-                
-                val rawElev = r.data.fields[78]?.value ?: r.data.fields[2]?.value
-                val elevVal = if (rawElev != null) (rawElev.toDouble() / 5.0) - 500.0 else 0.0
-                
-                val rawGrade = r.data.fields[9]?.value
-                val gradeVal = if (rawGrade != null) rawGrade.toDouble() / 100.0 else 0.0
-                
-                list.add(ts)
-                list.add(speedVal)
-                list.add(powerVal)
-                list.add(cadenceVal)
-                list.add(hrVal)
-                list.add(elevVal)
-                list.add(gradeVal)
-            }
-        }
-    }
-
-    println("FIT Stats: Total Records=${parser.records.size}, Msg20=$msg20Count, TsFound=$tsFoundCount")
-
-    if (list.isEmpty()) {
-        if (msg20Count == 0) {
-            val otherMsgs = parser.records.filterIsInstance<FitParser.FitRecord.Data>()
-                .map { it.globalMessageNumber }
-                .distinct()
-            println("FIT Error: No record messages (msg 20) found. Other messages present: $otherMsgs")
-        } else {
-            println("FIT Error: Record messages found ($msg20Count), but none had valid timestamps.")
-        }
+    val telemetry = parser.getTelemetry()
+    if (telemetry.isEmpty()) {
+        println("FIT Error: No telemetry extracted via common parser.")
         return null
     }
 
-    val array = Float64Array(list.size)
-    for (i in list.indices) {
-        array[i] = list[i]
+    // Flatten data for JS: [ts, speed, power, cadence, hr, elev, grade, ...]
+    val result = Float64Array(telemetry.size * 7)
+    for (i in telemetry.indices) {
+        val p = telemetry[i]
+        val offset = i * 7
+        result[offset] = p.timestamp
+        result[offset + 1] = p.speed
+        result[offset + 2] = p.power
+        result[offset + 3] = p.cadence
+        result[offset + 4] = p.heartRate
+        result[offset + 5] = p.elevation
+        result[offset + 6] = p.grade
     }
-    return array
+
+    println("FIT Success: Extracted ${telemetry.size} points via common core.")
+    return result
 }
 
 private fun Int8Array.toByteArray(): ByteArray {
