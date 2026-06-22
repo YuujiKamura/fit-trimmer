@@ -552,6 +552,167 @@
             color: var(--error);
             background: rgba(239, 68, 68, 0.1);
         }
+
+        /* HUD Layout Editor Styles */
+        .hud-editor-card {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        .preview-container {
+            width: 100%;
+            aspect-ratio: 16 / 9;
+            background: #000;
+            border-radius: 12px;
+            overflow: hidden;
+            position: relative;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+        }
+        
+        #preview-video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            pointer-events: none;
+        }
+        
+        .hud-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 5;
+            pointer-events: auto;
+        }
+        
+        .draggable-hud {
+            position: absolute;
+            background: rgba(11, 15, 25, 0.7);
+            border: 1.5px dashed rgba(255, 255, 255, 0.25);
+            backdrop-filter: blur(8px);
+            border-radius: 10px;
+            color: #fff;
+            padding: 8px 12px;
+            cursor: move;
+            user-select: none;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-width: 110px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            transition: border-color 0.2s, background-color 0.2s;
+        }
+        
+        .draggable-hud:hover {
+            border-color: var(--primary);
+            background: rgba(17, 24, 39, 0.85);
+        }
+        
+        .draggable-hud.dragging {
+            border-color: var(--accent);
+            background: rgba(17, 24, 39, 0.95);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+            z-index: 10;
+        }
+        
+        .hud-label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            margin-bottom: 2px;
+        }
+        
+        .hud-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.1rem;
+            font-weight: 700;
+        }
+        
+        .hud-chart-placeholder {
+            width: 150px;
+            height: 55px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 6px;
+            margin-top: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            color: var(--text-muted);
+        }
+        
+        .editor-controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 16px;
+            background: rgba(255, 255, 255, 0.01);
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            padding: 20px;
+        }
+        
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .control-label {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-muted);
+        }
+        
+        .switch-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.9rem;
+            padding: 6px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+        }
+        
+        .switch-row:last-child {
+            border: none;
+        }
+        
+        .switch-input {
+            cursor: pointer;
+            width: 36px;
+            height: 18px;
+        }
+
+        .slider-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .slider-input {
+            flex-grow: 1;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+            cursor: pointer;
+        }
+
+        .offset-val-badge {
+            background: rgba(59, 130, 246, 0.15);
+            color: var(--primary);
+            padding: 2px 8px;
+            border-radius: 6px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            font-weight: 600;
+            min-width: 65px;
+            text-align: center;
+        }
     </style>
 </head>
 <body>
@@ -612,6 +773,96 @@
             <div id="video-list" style="display: flex; flex-direction: column; gap: 12px;">
                 <!-- Dynamically populated -->
             </div>
+        </div>
+
+        <!-- HUD Layout Editor & Local Export -->
+        <div class="card hud-editor-card" id="hud-editor-card" style="display: none; margin-top: 24px;">
+            <h3 style="font-size: 1.1rem; font-weight: 600; display: flex; align-items: center; gap: 8px;">🎨 HUD Layout & Sync Editor</h3>
+            <p class="subtitle" style="font-size: 0.85rem;">動画上のメーター位置をドラッグして配置し、ズレを手動調整します。</p>
+            
+            <div class="preview-container">
+                <video id="preview-video" style="display: none;" controls></video>
+                <!-- Dummy Background when video element is not source-loaded yet -->
+                <div id="preview-dummy-bg" style="position: absolute; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: radial-gradient(circle, #1e293b 0%, #0f172a 100%); color: var(--text-muted); font-size: 0.85rem;">
+                    <span>🎥 select a video file to enable visual preview</span>
+                </div>
+                <div class="hud-overlay" id="hud-overlay">
+                    <!-- Draggable meters -->
+                    <div class="draggable-hud" id="hud-speed" style="top: 10%; left: 10%;">
+                        <span class="hud-label">Speed</span>
+                        <span class="hud-value" id="hud-val-speed">32.4 km/h</span>
+                    </div>
+                    <div class="draggable-hud" id="hud-power" style="top: 10%; left: 35%;">
+                        <span class="hud-label">Power</span>
+                        <span class="hud-value" id="hud-val-power">245 W</span>
+                    </div>
+                    <div class="draggable-hud" id="hud-cadence" style="top: 10%; left: 60%;">
+                        <span class="hud-label">Cadence</span>
+                        <span class="hud-value" id="hud-val-cadence">92 rpm</span>
+                    </div>
+                    <div class="draggable-hud" id="hud-heartrate" style="top: 10%; left: 80%;">
+                        <span class="hud-label">Heart Rate</span>
+                        <span class="hud-value" id="hud-val-heartrate">142 bpm</span>
+                    </div>
+                    <div class="draggable-hud" id="hud-elevation" style="top: 60%; left: 10%;">
+                        <span class="hud-label">Elevation & Grade</span>
+                        <span class="hud-value" id="hud-val-elevation">120m (1.5%)</span>
+                    </div>
+                    <div class="draggable-hud" id="hud-powerchart" style="top: 60%; left: 60%;">
+                        <span class="hud-label">Power Trend</span>
+                        <div class="hud-chart-placeholder">📈 60s Line Chart</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="editor-controls">
+                <div class="control-group">
+                    <span class="control-label">📏 Show / Hide HUD Elements</span>
+                    <div class="switch-row">
+                        <span>Speed Indicator</span>
+                        <input type="checkbox" class="switch-input" id="switch-speed" checked>
+                    </div>
+                    <div class="switch-row">
+                        <span>Power Indicator</span>
+                        <input type="checkbox" class="switch-input" id="switch-power" checked>
+                    </div>
+                    <div class="switch-row">
+                        <span>Cadence Indicator</span>
+                        <input type="checkbox" class="switch-input" id="switch-cadence" checked>
+                    </div>
+                </div>
+                
+                <div class="control-group">
+                    <span class="control-label">&nbsp;</span>
+                    <div class="switch-row">
+                        <span>Heart Rate</span>
+                        <input type="checkbox" class="switch-input" id="switch-heartrate" checked>
+                    </div>
+                    <div class="switch-row">
+                        <span>Elevation & Grade</span>
+                        <input type="checkbox" class="switch-input" id="switch-elevation" checked>
+                    </div>
+                    <div class="switch-row">
+                        <span>Power Trend Chart</span>
+                        <input type="checkbox" class="switch-input" id="switch-powerchart" checked>
+                    </div>
+                </div>
+                
+                <div class="control-group" style="grid-column: span 2;">
+                    <span class="control-label">⏳ Video-Data Sync Fine Offset</span>
+                    <div class="slider-row" style="margin-top: 10px;">
+                        <span style="font-size: 0.8rem; color: var(--text-muted);">Video Behind</span>
+                        <input type="range" class="slider-input" id="offset-slider" min="-30" max="30" step="0.1" value="0">
+                        <span style="font-size: 0.8rem; color: var(--text-muted);">Video Ahead</span>
+                        <div class="offset-val-badge" id="offset-val-badge">0.0s</div>
+                    </div>
+                    <p style="font-size: 0.72rem; color: var(--text-muted); margin-top: 6px;">※サイコンとカメラの内蔵時計の数秒単位のズレをスライドで微調整できます。</p>
+                </div>
+            </div>
+            
+            <button class="btn" id="export-hud-btn" style="background: linear-gradient(135deg, var(--accent) 0%, #059669 100%); box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);">
+                ⚡ Export HUD Project & Local Python Script
+            </button>
         </div>
 
         <!-- Status Banner -->
@@ -751,12 +1002,34 @@
         const videoListCard = document.getElementById('video-list-card');
         const videoListContainer = document.getElementById('video-list');
 
+        // HUD Editor UI Bindings
+        const hudEditorCard = document.getElementById('hud-editor-card');
+        const previewVideo = document.getElementById('preview-video');
+        const previewDummyBg = document.getElementById('preview-dummy-bg');
+        const hudOverlay = document.getElementById('hud-overlay');
+        const offsetSlider = document.getElementById('offset-slider');
+        const offsetValBadge = document.getElementById('offset-val-badge');
+        const exportHudBtn = document.getElementById('export-hud-btn');
+
         // Global State
         let wasmModule = null;
         let videoFilesList = []; // List of video objects
         let fitFileBuffer = null;
         let fitFilename = "";
         let fitTimestamps = [];
+        let fitTelemetryData = null; // Parsed telemetry array [ts, speed, power, cadence, hr, elev, grade]
+        let activeVideo = null; // Currently selected video for preview
+
+        // HUD Configuration
+        const hudConfig = {
+            speed: { visible: true, left: 10, top: 10, color: "#3b82f6" },
+            power: { visible: true, left: 35, top: 10, color: "#10b981" },
+            cadence: { visible: true, left: 60, top: 10, color: "#8b5cf6" },
+            heartrate: { visible: true, left: 80, top: 10, color: "#ef4444" },
+            elevation: { visible: true, left: 10, top: 60, color: "#f59e0b" },
+            powerchart: { visible: true, left: 60, top: 60, color: "#ec4899" }
+        };
+        let syncOffset = 0.0;
 
         // Load Kotlin Wasm module
         window["shared-core"].then(module => {
@@ -957,9 +1230,15 @@
             videoFilesList.forEach(video => {
                 const item = document.createElement('div');
                 item.className = 'video-item';
+                if (activeVideo && activeVideo.id === video.id) {
+                    item.style.borderColor = 'var(--primary)';
+                    item.style.background = 'rgba(59, 130, 246, 0.04)';
+                }
                 
                 const info = document.createElement('div');
                 info.className = 'video-info';
+                info.style.cursor = 'pointer';
+                info.addEventListener('click', () => selectActiveVideo(video));
                 
                 const title = document.createElement('div');
                 title.className = 'video-title';
@@ -993,14 +1272,29 @@
                 dlBtn.className = 'btn-mini';
                 dlBtn.textContent = 'Trim & DL';
                 dlBtn.disabled = !video.isSyncable;
-                dlBtn.addEventListener('click', () => trimAndDownloadSingle(video));
+                dlBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    trimAndDownloadSingle(video);
+                });
                 
                 const removeBtn = document.createElement('button');
                 removeBtn.className = 'btn-remove';
                 removeBtn.innerHTML = '✕';
                 removeBtn.title = 'Remove';
-                removeBtn.addEventListener('click', () => {
+                removeBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
                     videoFilesList = videoFilesList.filter(v => v.id !== video.id);
+                    if (activeVideo && activeVideo.id === video.id) {
+                        activeVideo = null;
+                        previewVideo.style.display = "none";
+                        previewDummyBg.style.display = "flex";
+                        hudEditorCard.style.display = "none";
+                        if (previewVideo.src) {
+                            URL.revokeObjectURL(previewVideo.src);
+                            previewVideo.removeAttribute('src');
+                            previewVideo.load();
+                        }
+                    }
                     if (videoFilesList.length > 0) {
                         videoName.textContent = `${videoFilesList.length} video(s) selected`;
                     } else {
@@ -1021,6 +1315,28 @@
             });
         }
 
+        // Select active video for HUD layout editor preview
+        function selectActiveVideo(video) {
+            activeVideo = video;
+            log(`Selecting video for HUD layout: ${video.name}`);
+            
+            // Render selected state in list
+            renderVideoList();
+            
+            // Set up video preview object URL
+            if (previewVideo.src) {
+                URL.revokeObjectURL(previewVideo.src);
+            }
+            const videoUrl = URL.createObjectURL(video.file);
+            previewVideo.src = videoUrl;
+            previewVideo.style.display = "block";
+            previewDummyBg.style.display = "none";
+            hudEditorCard.style.display = "block";
+            previewVideo.load();
+            
+            checkSyncCapability();
+        }
+
         // --- FIT Binary Parser ---
         async function handleFitFile(file) {
             fitDrop.classList.add('file-selected', 'fit');
@@ -1034,15 +1350,28 @@
                 fitFileBuffer = arrayBuffer;
                 
                 const fitInt8 = new Int8Array(arrayBuffer);
-                const timestampsArray = wasmModule.getFitTimestamps(fitInt8);
+                fitTelemetryData = null;
+                fitTimestamps = [];
                 
-                if (!timestampsArray) {
-                    throw new Error("No detailed record message with timestamps found in the FIT file.");
+                if (wasmModule.getFitTelemetry) {
+                    const telArray = wasmModule.getFitTelemetry(fitInt8);
+                    if (telArray) {
+                        fitTelemetryData = telArray;
+                        for (let k = 0; k < fitTelemetryData.length; k += 7) {
+                            fitTimestamps.push(fitTelemetryData[k]);
+                        }
+                    }
+                } else {
+                    const timestampsArray = wasmModule.getFitTimestamps(fitInt8);
+                    if (timestampsArray) {
+                        for (let k = 0; k < timestampsArray.length; k++) {
+                            fitTimestamps.push(timestampsArray[k]);
+                        }
+                    }
                 }
                 
-                fitTimestamps = [];
-                for (let k = 0; k < timestampsArray.length; k++) {
-                    fitTimestamps.push(timestampsArray[k]);
+                if (fitTimestamps.length === 0) {
+                    throw new Error("No detailed record message with timestamps found in the FIT file.");
                 }
                 
                 const recordCount = fitTimestamps.length;
@@ -1165,6 +1494,586 @@
             }
             log("Batch download sequence completed.", "success");
         });
+
+        // --- HUD Layout Editor Logic & Interaction ---
+        
+        // Offset slider listener
+        offsetSlider.addEventListener('input', () => {
+            syncOffset = parseFloat(offsetSlider.value);
+            offsetValBadge.textContent = (syncOffset >= 0 ? "+" : "") + syncOffset.toFixed(1) + "s";
+            updateHudPreview();
+        });
+
+        // Telemetry lookup and overlay preview update
+        function findTelemetryAt(targetTimestamp) {
+            if (!fitTelemetryData || fitTelemetryData.length === 0) return null;
+            
+            const recordSize = 7;
+            const len = fitTelemetryData.length / recordSize;
+            let low = 0;
+            let high = len - 1;
+            let closestIdx = 0;
+            let minDiff = Infinity;
+            
+            while (low <= high) {
+                const mid = Math.floor((low + high) / 2);
+                const ts = fitTelemetryData[mid * recordSize];
+                const diff = Math.abs(ts - targetTimestamp);
+                
+                if (diff < minDiff) {
+                    minDiff = diff;
+                    closestIdx = mid;
+                }
+                
+                if (ts < targetTimestamp) {
+                    low = mid + 1;
+                } else if (ts > targetTimestamp) {
+                    high = mid - 1;
+                } else {
+                    return getTelemetryObject(mid);
+                }
+            }
+            return getTelemetryObject(closestIdx);
+        }
+
+        function getTelemetryObject(idx) {
+            const recordSize = 7;
+            const offset = idx * recordSize;
+            return {
+                timestamp: fitTelemetryData[offset],
+                speed: fitTelemetryData[offset + 1],
+                power: fitTelemetryData[offset + 2],
+                cadence: fitTelemetryData[offset + 3],
+                heartRate: fitTelemetryData[offset + 4],
+                elevation: fitTelemetryData[offset + 5],
+                grade: fitTelemetryData[offset + 6]
+            };
+        }
+
+        function updateHudPreview() {
+            if (!activeVideo || !fitTelemetryData) return;
+            
+            const currentOffsetSec = previewVideo.currentTime + syncOffset;
+            const fitEpochSec = 631065600;
+            const targetFitTimestamp = (activeVideo.unixTimestamp - fitEpochSec) + currentOffsetSec;
+            
+            const tel = findTelemetryAt(targetFitTimestamp);
+            if (!tel) return;
+            
+            document.getElementById('hud-val-speed').textContent = tel.speed.toFixed(1) + " km/h";
+            document.getElementById('hud-val-power').textContent = Math.round(tel.power) + " W";
+            document.getElementById('hud-val-cadence').textContent = Math.round(tel.cadence) + " rpm";
+            document.getElementById('hud-val-heartrate').textContent = Math.round(tel.heartRate) + " bpm";
+            document.getElementById('hud-val-elevation').textContent = tel.elevation.toFixed(1) + "m (" + (tel.grade >= 0 ? "+" : "") + tel.grade.toFixed(1) + "%)";
+        }
+
+        previewVideo.addEventListener('timeupdate', updateHudPreview);
+        previewVideo.addEventListener('seeked', updateHudPreview);
+
+        // Bind visibility switches
+        function setupHudSwitch(id, key) {
+            const el = document.getElementById(id);
+            const hudEl = document.getElementById('hud-' + key);
+            el.addEventListener('change', () => {
+                hudConfig[key].visible = el.checked;
+                hudEl.style.display = el.checked ? 'flex' : 'none';
+            });
+        }
+        setupHudSwitch('switch-speed', 'speed');
+        setupHudSwitch('switch-power', 'power');
+        setupHudSwitch('switch-cadence', 'cadence');
+        setupHudSwitch('switch-heartrate', 'heartrate');
+        setupHudSwitch('switch-elevation', 'elevation');
+        setupHudSwitch('switch-powerchart', 'powerchart');
+
+        // Draggable HUD handler
+        function makeHudDraggable(hudId, key) {
+            const el = document.getElementById(hudId);
+            let isDragging = false;
+            let startX, startY;
+            let origLeft, origTop;
+
+            el.addEventListener('mousedown', (e) => {
+                isDragging = true;
+                el.classList.add('dragging');
+                startX = e.clientX;
+                startY = e.clientY;
+                origLeft = el.offsetLeft;
+                origTop = el.offsetTop;
+                e.preventDefault();
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (!isDragging) return;
+                const container = el.parentElement;
+                const dx = e.clientX - startX;
+                const dy = e.clientY - startY;
+
+                let newLeft = origLeft + dx;
+                let newTop = origTop + dy;
+
+                // Restrict boundaries inside preview overlay
+                const maxLeft = container.clientWidth - el.clientWidth;
+                const maxTop = container.clientHeight - el.clientHeight;
+                newLeft = Math.max(0, Math.min(newLeft, maxLeft));
+                newTop = Math.max(0, Math.min(newTop, maxTop));
+
+                el.style.left = newLeft + 'px';
+                el.style.top = newTop + 'px';
+
+                // Map to percentage coordinates
+                hudConfig[key].left = parseFloat((newLeft / container.clientWidth * 100).toFixed(2));
+                hudConfig[key].top = parseFloat((newTop / container.clientHeight * 100).toFixed(2));
+            });
+
+            document.addEventListener('mouseup', () => {
+                if (isDragging) {
+                    isDragging = false;
+                    el.classList.remove('dragging');
+                }
+            });
+        }
+        makeHudDraggable('hud-speed', 'speed');
+        makeHudDraggable('hud-power', 'power');
+        makeHudDraggable('hud-cadence', 'cadence');
+        makeHudDraggable('hud-heartrate', 'heartrate');
+        makeHudDraggable('hud-elevation', 'elevation');
+        makeHudDraggable('hud-powerchart', 'powerchart');
+
+        // --- Export HUD Project & Local Script ---
+
+        exportHudBtn.addEventListener('click', async () => {
+            if (!activeVideo || !fitFileBuffer) {
+                log("Error: Please select a video and load a FIT file first.", "error");
+                return;
+            }
+            
+            try {
+                log("Packaging telemetry data and HUD layout JSON...");
+                
+                // 1. Gather Telemetry data list matching the video range
+                const fitInt8 = new Int8Array(fitFileBuffer);
+                // Call Wasm core to parse and extract FIT records in full
+                // (Wasm core has getFitTimestamps, we can query raw values if needed or dump parsed JSON)
+                // For direct JSON piping, we can call trimFit to trim the FIT file binary.
+                // However, the script is better off reading the trimmed FIT binary itself, OR we supply
+                // parsed telemetry data directly in the JSON.
+                // Since KMP Wasm has trimFit, we can generate the trimmed FIT data, AND we can write a Python script
+                // that parses FIT using standard libraries, OR we can extract values.
+                // To keep the Python script simple and fast, we can include a small FIT parser directly in Python
+                // using standard struct module or fitparse, OR we write out the time-matched telemetry points.
+                // Let's generate a trimmed FIT data array directly from Wasm and write it to JSON.
+                // To do this, we need Wasm to return telemetry records. Currently Wasm has 'trimFit' returning binary.
+                // Can we write a Python script that decodes the trimmed FIT file?
+                // Yes! Python has 'fitparse' library which is standard for fit parsing.
+                // Let's make the python script read the trimmed FIT file directly. This is much cleaner and avoids
+                // having to dump 100,000 JSON lines.
+                // Thus:
+                // hud_project.json: { "videoFileName": "GH010023.MP4", "fitFileName": "GH010023_trimmed.fit", "syncOffsetSeconds": 0.0, "hudSettings": ... }
+                // This means the user downloads the trimmed FIT file, the video, the settings.json, and the script.
+                
+                // Trimming FIT to output
+                const trimmedFitBinary = wasmModule.trimFit(
+                    fitInt8,
+                    activeVideo.startDt.getTime() / 1000,
+                    activeVideo.endDt.getTime() / 1000
+                );
+                
+                const fitBaseName = fitFilename.replace(".fit", "");
+                const videoBaseName = activeVideo.name.substring(0, activeVideo.name.lastIndexOf('.')) || activeVideo.name;
+                const trimmedFitName = `${fitBaseName}_${videoBaseName}.fit`;
+                
+                // Save Trimmed FIT binary file
+                const fitBlob = new Blob([trimmedFitBinary.buffer], {type: 'application/octet-stream'});
+                downloadBlob(fitBlob, trimmedFitName);
+                
+                // Generate Project JSON
+                const projectData = {
+                    project: "fit-trimmer-hud",
+                    version: "1.0",
+                    videoFileName: activeVideo.name,
+                    fitFileName: trimmedFitName,
+                    syncOffsetSeconds: syncOffset,
+                    hudSettings: hudConfig
+                };
+                
+                const projectBlob = new Blob([JSON.stringify(projectData, null, 2)], {type: 'application/json'});
+                downloadBlob(projectBlob, "hud_project.json");
+                
+                // Generate Python Script
+                const pythonCode = generatePythonRendererScript();
+                const pythonBlob = new Blob([pythonCode], {type: 'text/plain;charset=utf-8'});
+                downloadBlob(pythonBlob, "hud_merger.py");
+                
+                log("Export completed! Projects and script downloaded. Place them in the same folder with your video and run: python hud_merger.py", "success");
+                
+            } catch (err) {
+                log(`Failed to package HUD project: ${err.message}`, "error");
+            }
+        });
+
+        function downloadBlob(blob, filename) {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function generatePythonRendererScript() {
+            return `# -*- coding: utf-8 -*-
+import os
+import sys
+import json
+import subprocess
+import numpy as np
+
+# Verify dependencies
+try:
+    import cv2
+except ImportError:
+    print("Error: opencv-python is not installed. Please run: pip install opencv-python")
+    sys.exit(1)
+
+try:
+    from PIL import Image, ImageDraw, ImageFont
+except ImportError:
+    print("Error: Pillow is not installed. Please run: pip install Pillow")
+    sys.exit(1)
+
+# Helper to decode FIT format in Python without heavy libraries
+# We use fitparse to parse telemetry data from the FIT file.
+try:
+    from fitparse import FitFile
+except ImportError:
+    print("Warning: fitparse is not installed. Trying to install automatically via pip...")
+    try:
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "fitparse"])
+        from fitparse import FitFile
+    except Exception:
+        print("Error: Automatic install failed. Please run manually: pip install fitparse")
+        sys.exit(1)
+
+def load_font(size):
+    font_paths = [
+        # Windows
+        "C:\\Windows\\Fonts\\arial.ttf",
+        "C:\\Windows\\Fonts\\msgothic.ttc",
+        "C:\\Windows\\Fonts\\meiryo.ttc",
+        # macOS
+        "/Library/Fonts/Arial.ttf",
+        "/System/Library/Fonts/Supplemental/Arial.ttf",
+        "/System/Library/Fonts/Helvetica.ttf",
+        # Linux
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+        "DejaVuSans.ttf"
+    ]
+    for path in font_paths:
+        if os.path.exists(path):
+            try:
+                return ImageFont.truetype(path, size)
+            except Exception:
+                continue
+    for name in ["arial.ttf", "arial", "Helvetica", "DejaVuSans"]:
+        try:
+            return ImageFont.truetype(name, size)
+        except Exception:
+            continue
+    return ImageFont.load_default()
+
+def parse_fit_records(fit_path):
+    print(f"Parsing FIT file: {fit_path}...")
+    fit = FitFile(fit_path)
+    records = []
+    
+    # Iterate over FIT records to collect telemetry fields
+    for record in fit.get_messages("record"):
+        data = {}
+        for field in record:
+            if field.name == "timestamp":
+                data["timestamp"] = field.value
+            elif field.name == "enhanced_speed" or field.name == "speed":
+                # Convert m/s to km/h
+                val = field.value
+                if val is not None:
+                    data["speed"] = val * 3.6
+            elif field.name == "power":
+                data["power"] = field.value
+            elif field.name == "cadence":
+                data["cadence"] = field.value
+            elif field.name == "heart_rate":
+                data["heartRate"] = field.value
+            elif field.name == "enhanced_altitude" or field.name == "altitude":
+                data["elevation"] = field.value
+            elif field.name == "grade":
+                data["grade"] = field.value
+                
+        if "timestamp" in data:
+            records.append(data)
+            
+    # Sort by timestamp
+    records.sort(key=lambda r: r["timestamp"])
+    print(f"Decoded {len(records)} data records.")
+    return records
+
+def find_closest_telemetry(records, current_time_sec, fit_start_time):
+    if not records:
+        return {}
+    
+    # Target timestamp in seconds since fit start
+    target_time = fit_start_time + current_time_sec
+    
+    # Binary search to find closest timestamp
+    low = 0
+    high = len(records) - 1
+    closest_idx = 0
+    min_diff = float("inf")
+    
+    while low <= high:
+        mid = (low + high) // 2
+        rec_time = records[mid]["timestamp"].timestamp()
+        diff = abs(rec_time - target_time)
+        
+        if diff < min_diff:
+            min_diff = diff
+            closest_idx = mid
+            
+        if rec_time < target_time:
+            low = mid + 1
+        elif rec_time > target_time:
+            high = mid - 1
+        else:
+            return records[mid]
+            
+    return records[closest_idx]
+
+def draw_hud(frame_np, tel, settings, width, height):
+    # Convert BGR (OpenCV) to RGB (Pillow)
+    img = Image.fromarray(cv2.cvtColor(frame_np, cv2.COLOR_BGR2RGB))
+    draw = ImageDraw.Draw(img)
+    
+    font_large = load_font(32)
+    font_small = load_font(14)
+        
+    hud_sets = settings.get("hudSettings", {})
+    
+    for key, item in hud_sets.items():
+        if not item.get("visible", True):
+            continue
+            
+        # Map percentage to pixel coordinates
+        x = int(item["left"] * width / 100)
+        y = int(item["top"] * height / 100)
+        
+        # Color parsing
+        hex_color = item.get("color", "#ffffff").lstrip('#')
+        color_rgb = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+        
+        box_w = 160
+        box_h = 55
+        if key == "elevation":
+            box_w = 220
+        elif key == "powerchart":
+            box_w = 200
+            box_h = 90
+            
+        # Draw glassmorphism box panel
+        overlay = Image.new('RGBA', img.size, (0,0,0,0))
+        overlay_draw = ImageDraw.Draw(overlay)
+        overlay_draw.rounded_rectangle(
+            [x - 10, y - 10, x + box_w + 10, y + box_h + 10],
+            radius=10,
+            fill=(11, 15, 25, 160), # 60% opacity dark panel
+            outline=(255, 255, 255, 25), # Subtle white border
+            width=1
+        )
+        img = Image.alpha_composite(img.convert('RGBA'), overlay)
+        draw = ImageDraw.Draw(img)
+        
+        if key == "speed":
+            speed = tel.get("speed", 0.0)
+            draw.text((x, y), "SPEED", fill=(156, 163, 175), font=font_small)
+            draw.text((x, y + 16), f"{speed:.1f} km/h", fill=color_rgb, font=font_large)
+            
+        elif key == "power":
+            power = tel.get("power", 0)
+            draw.text((x, y), "POWER", fill=(156, 163, 175), font=font_small)
+            draw.text((x, y + 16), f"{power} W", fill=color_rgb, font=font_large)
+            
+        elif key == "cadence":
+            cadence = tel.get("cadence", 0)
+            draw.text((x, y), "CADENCE", fill=(156, 163, 175), font=font_small)
+            draw.text((x, y + 16), f"{cadence} rpm", fill=color_rgb, font=font_large)
+            
+        elif key == "heartrate":
+            hr = tel.get("heartRate", 0)
+            draw.text((x, y), "HEART RATE", fill=(156, 163, 175), font=font_small)
+            draw.text((x, y + 16), f"{hr} bpm", fill=color_rgb, font=font_large)
+            
+        elif key == "elevation":
+            elev = tel.get("elevation", 0.0)
+            grade = tel.get("grade", 0.0)
+            draw.text((x, y), "ELEVATION & GRADE", fill=(156, 163, 175), font=font_small)
+            draw.text((x, y + 16), f"{elev:.1f}m ({grade:+.1f}%)", fill=color_rgb, font=font_large)
+            
+        elif key == "powerchart":
+            draw.text((x, y), "POWER TREND (60s)", fill=(156, 163, 175), font=font_small)
+            # Simple simulation chart line
+            chart_x = x
+            chart_y = y + 25
+            chart_w = 200
+            chart_h = 60
+            draw.rectangle([chart_x, chart_y, chart_x + chart_w, chart_y + chart_h], fill=(255, 255, 255, 6), outline=(255,255,255,15))
+            
+            # Draw fake wave pattern
+            points = []
+            for i in range(25):
+                px = chart_x + int(i * chart_w / 24)
+                py = chart_y + chart_h - 10 - int(np.sin(i / 3) * 15 + 15)
+                points.append((px, py))
+            draw.line(points, fill=color_rgb, width=2)
+            
+    return cv2.cvtColor(np.array(img.convert('RGB')), cv2.COLOR_RGB2BGR)
+
+def detect_encoder():
+    if sys.platform == "darwin":
+        encoders = ["h264_videotoolbox", "libx264"]
+    else:
+        encoders = ["h264_nvenc", "h264_qsv", "h264_amf", "libx264"]
+        
+    for enc in encoders:
+        cmd = ["ffmpeg", "-f", "lavfi", "-i", "color=c=black:s=64x64", "-c:v", enc, "-t", "0.1", "-f", "null", "-"]
+        try:
+            res = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            if res.returncode == 0:
+                print(f"Detected hardware video encoder: {enc}")
+                return enc
+        except Exception:
+            continue
+    return "libx264"
+
+def main():
+    proj_path = "hud_project.json"
+    if len(sys.argv) > 1:
+        proj_path = sys.argv[1]
+        
+    if not os.path.exists(proj_path):
+        print(f"Error: Project file '{proj_path}' not found.")
+        sys.exit(1)
+        
+    with open(proj_path, 'r', encoding='utf-8') as f:
+        proj = json.load(f)
+        
+    video_file = proj["videoFileName"]
+    fit_file = proj["fitFileName"]
+    
+    # Folder scans
+    if not os.path.exists(video_file):
+        matches = [f for f in os.listdir('.') if f.lower() == video_file.lower()]
+        if matches: video_file = matches[0]
+        else:
+            print(f"Error: Video file '{video_file}' not found.")
+            sys.exit(1)
+            
+    if not os.path.exists(fit_file):
+        matches = [f for f in os.listdir('.') if f.lower() == fit_file.lower()]
+        if matches: fit_file = matches[0]
+        else:
+            print(f"Error: FIT file '{fit_file}' not found.")
+            sys.exit(1)
+            
+    print(f"Selected: {video_file} and {fit_file}")
+    
+    # Parse FIT
+    records = parse_fit_records(fit_file)
+    if not records:
+        print("Error: No record messages parsed in FIT file.")
+        sys.exit(1)
+        
+    fit_start_time = records[0]["timestamp"].timestamp()
+    
+    # Open Video
+    cap = cv2.VideoCapture(video_file)
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    
+    encoder = detect_encoder()
+    output_name = f"hud_{video_file}"
+    
+    # FFmpeg Pipe
+    ffmpeg_cmd = [
+        'ffmpeg', '-y',
+        '-f', 'rawvideo', '-vcodec', 'rawvideo',
+        '-pix_fmt', 'bgr24', '-s', f"{width}x{height}", '-r', f"{fps:.2f}",
+        '-i', '-',
+        '-i', video_file,
+        '-map', '0:v', '-map', '1:a?',
+        '-c:v', encoder,
+    ]
+    
+    if encoder == "h264_nvenc":
+        ffmpeg_cmd.extend(['-preset', 'fast', '-b:v', '15M'])
+    elif encoder == "h264_videotoolbox":
+        ffmpeg_cmd.extend(['-b:v', '15M'])
+    elif encoder == "libx264":
+        ffmpeg_cmd.extend(['-preset', 'veryfast', '-crf', '20'])
+    else:
+        ffmpeg_cmd.extend(['-b:v', '15M'])
+        
+    ffmpeg_cmd.extend(['-c:a', 'aac', output_name])
+    
+    try:
+        proc = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE)
+    except FileNotFoundError:
+        print("Error: FFmpeg is not installed or not in PATH.")
+        sys.exit(1)
+        
+    sync_offset = proj.get("syncOffsetSeconds", 0.0)
+    
+    print("\nMerging HUD overlay... (Press Ctrl+C to stop)")
+    frame_idx = 0
+    try:
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                break
+                
+            # Compute current JST/UTC timestamp offset relative to video
+            current_offset_sec = (frame_idx / fps) + sync_offset
+            
+            # Match
+            tel = find_closest_telemetry(records, current_offset_sec, fit_start_time)
+            
+            # Draw
+            hud_frame = draw_hud(frame, tel, proj, width, height)
+            
+            # Pipe
+            proc.stdin.write(hud_frame.tobytes())
+            
+            frame_idx += 1
+            if frame_idx % 50 == 0 or frame_idx == total_frames:
+                progress = (frame_idx / total_frames) * 100
+                print(f"Progress: {frame_idx}/{total_frames} frames ({progress:.1f}%)", end='\r')
+                
+    except KeyboardInterrupt:
+        print("\nProcessing interrupted. Saving output...")
+    finally:
+        if proc.stdin:
+            proc.stdin.close()
+        proc.wait()
+        cap.release()
+        print(f"\nDone! Video output saved as: {output_name}")
+
+if __name__ == '__main__':
+    main()
+`;
+        }
 
         // Helper to format date in JST
         function formatJST(date) {

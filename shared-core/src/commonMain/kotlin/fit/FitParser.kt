@@ -106,8 +106,12 @@ class FitParser(private val bytes: ByteArray) {
                         valObj = getInt(bytes, fieldStart, !def.isBigEndian).toLong()
                     } else if (f.size == 2 && (f.baseType == 0x84 || f.baseType == 0x0B)) {
                         valObj = getUShort(bytes, fieldStart, !def.isBigEndian).toLong()
+                    } else if (f.size == 2 && f.baseType == 0x83) {
+                        valObj = getUShort(bytes, fieldStart, !def.isBigEndian).toShort().toLong()
                     } else if (f.size == 1 && (f.baseType == 0x02 || f.baseType == 0x0A || f.baseType == 0x00)) {
                         valObj = bytes[fieldStart].toLong() and 0xFF
+                    } else if (f.size == 1 && (f.baseType == 0x01 || f.baseType == 0x81)) {
+                        valObj = bytes[fieldStart].toLong()
                     }
 
                     parsedFields[f.fieldNum] = ParsedField(
@@ -195,8 +199,12 @@ class FitParser(private val bytes: ByteArray) {
                             valObj = getInt(bytes, fieldStart, !def.isBigEndian).toLong()
                         } else if (f.size == 2 && (f.baseType == 0x84 || f.baseType == 0x0B)) {
                             valObj = getUShort(bytes, fieldStart, !def.isBigEndian).toLong()
+                        } else if (f.size == 2 && f.baseType == 0x83) {
+                            valObj = getUShort(bytes, fieldStart, !def.isBigEndian).toShort().toLong()
                         } else if (f.size == 1 && (f.baseType == 0x02 || f.baseType == 0x0A || f.baseType == 0x00)) {
                             valObj = bytes[fieldStart].toLong() and 0xFF
+                        } else if (f.size == 1 && (f.baseType == 0x01 || f.baseType == 0x81)) {
+                            valObj = bytes[fieldStart].toLong()
                         }
 
                         parsedFields[f.fieldNum] = ParsedField(
