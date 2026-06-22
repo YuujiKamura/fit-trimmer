@@ -34,7 +34,7 @@ BR  = 4         # bar border-radius
 
 # ── カラーパレット ─────────────────────────────────────────────
 C = {
-    'bg':       (6,  10,  22, 215),
+    'bg':       (6,  10,  22, 110),
     'stroke':   (59, 130, 246,  60),
     'header':   (59, 130, 246),
     'text':     (235, 240, 250),
@@ -146,9 +146,14 @@ def draw_hud_frame(row: dict, elapsed_sec: float, ftp: int, max_hr: int, all_row
         all_rows = [row]
         current_idx = 0
 
-    # ── 背景パネル ──────────────────────────────────────────
-    _rounded_rect(draw, [0, 0, HUD_W, HUD_H], 14, fill=C['bg'])
-    _rounded_rect(draw, [0, 0, HUD_W, HUD_H], 14, outline=C['stroke'], width=1)
+    # ── 背景パネル (左右分割) ──────────────────────────────────
+    # 左側パネル: 幅440px
+    _rounded_rect(draw, [0, 0, 440, HUD_H], 14, fill=C['bg'])
+    _rounded_rect(draw, [0, 0, 440, HUD_H], 14, outline=C['stroke'], width=1)
+
+    # 右側パネル: 幅340px (460px〜800px)
+    _rounded_rect(draw, [460, 0, HUD_W, HUD_H], 14, fill=C['bg'])
+    _rounded_rect(draw, [460, 0, HUD_W, HUD_H], 14, outline=C['stroke'], width=1)
 
     # ── ヘッダー ────────────────────────────────────────────
     h_y  = M
@@ -235,20 +240,17 @@ def draw_hud_frame(row: dict, elapsed_sec: float, ftp: int, max_hr: int, all_row
     draw.text((M, gr_y + 16), f"{row['grade']:+.1f}%", font=FONTS['val_sm'], fill=grade_color)
 
     # ── 右側セクション ─────────────────────────────────────
-    # 左右境界線
-    draw.line([440, M, 440, HUD_H - M], fill=C['div'], width=1)
-
-    # セクションヘッダー
-    draw.rectangle([440 + M, h_y + 4, 440 + M + 4, h_y + 18], fill=C['header'])
-    draw.text((440 + M + 12, h_y + 2), 'RIDE ANALYTICS & PROFILE', font=FONTS['header'], fill=C['text'])
+    # セクションヘッダー (460px基準)
+    draw.rectangle([460 + M, h_y + 4, 460 + M + 4, h_y + 18], fill=C['header'])
+    draw.text((460 + M + 12, h_y + 2), 'RIDE ANALYTICS & PROFILE', font=FONTS['header'], fill=C['text'])
 
     # 1. POWER / HR リアルタイム履歴 (過去90秒)
-    gx1, gy1 = 440 + 20, 70
+    gx1, gy1 = 460 + 20, 70
     gx2, gy2 = HUD_W - 20, 200
     gw, gh = gx2 - gx1, gy2 - gy1
     
     draw.text((gx1, gy1 - 18), 'POWER & HEART RATE (LAST 90S)', font=FONTS['label'], fill=C['muted'])
-    draw.rectangle([gx1, gy1, gx2, gy2], fill=(12, 16, 30, 255), outline=(59, 130, 246, 40))
+    draw.rectangle([gx1, gy1, gx2, gy2], fill=(12, 16, 30, 110), outline=(59, 130, 246, 40))
     for i in range(1, 4):
         y = gy1 + gh * i // 4
         draw.line([gx1, y, gx2, y], fill=(59, 130, 246, 20))
@@ -290,12 +292,12 @@ def draw_hud_frame(row: dict, elapsed_sec: float, ftp: int, max_hr: int, all_row
         draw.line(h_points, fill=(239, 68, 68, 220), width=2)
 
     # 2. 全体高度プロファイル (ライド全体)
-    egx1, egy1 = 440 + 20, 240
+    egx1, egy1 = 460 + 20, 240
     egx2, egy2 = HUD_W - 20, 310
     egw, egh = egx2 - egx1, egy2 - egy1
 
     draw.text((egx1, egy1 - 18), 'ELEVATION PROFILE & POSITION', font=FONTS['label'], fill=C['muted'])
-    draw.rectangle([egx1, egy1, egx2, egy2], fill=(12, 16, 30, 255), outline=(59, 130, 246, 40))
+    draw.rectangle([egx1, egy1, egx2, egy2], fill=(12, 16, 30, 110), outline=(59, 130, 246, 40))
 
     altitudes = [r['alt'] for r in all_rows]
     min_alt = min(altitudes) if altitudes else 0.0
@@ -325,7 +327,7 @@ def draw_hud_frame(row: dict, elapsed_sec: float, ftp: int, max_hr: int, all_row
         draw.ellipse([curr_x - 7, curr_y - 7, curr_x + 7, curr_y + 7], outline=(239, 68, 68, 120), width=1)
 
     # 3. 勾配（斜度）履歴 (過去60秒)
-    ggx1, ggy1 = 440 + 20, 350
+    ggx1, ggy1 = 460 + 20, 350
     ggx2, ggy2 = HUD_W - 20, 420
     ggw, ggh = ggx2 - ggx1, ggy2 - ggy1
     g_mid = ggy1 + ggh // 2
@@ -338,7 +340,7 @@ def draw_hud_frame(row: dict, elapsed_sec: float, ftp: int, max_hr: int, all_row
     max_g = max([abs(r['grade']) for r in g_sub_rows] + [10.0])
 
     draw.text((ggx1, ggy1 - 18), f'GRADE HISTORY (max {max_g:.1f}%)', font=FONTS['label'], fill=C['muted'])
-    draw.rectangle([ggx1, ggy1, ggx2, ggy2], fill=(12, 16, 30, 255), outline=(59, 130, 246, 40))
+    draw.rectangle([ggx1, ggy1, ggx2, ggy2], fill=(12, 16, 30, 110), outline=(59, 130, 246, 40))
     draw.line([ggx1, g_mid, ggx2, g_mid], fill=(100, 110, 130, 80)) # 0% 基準線
 
     for idx, r in enumerate(g_sub_rows):
