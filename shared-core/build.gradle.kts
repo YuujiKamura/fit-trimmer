@@ -1,5 +1,6 @@
 plugins {
     kotlin("multiplatform")
+    application
 }
 
 kotlin {
@@ -24,7 +25,23 @@ kotlin {
                 implementation(kotlin("test"))
             }
         }
+        val desktopMain by getting {
+            dependencies {
+            }
+        }
+        val desktopTest by getting {
+            dependencies {
+                implementation(kotlin("test"))
+            }
+        }
     }
+}
+
+tasks.register<JavaExec>("runFitCLI") {
+    group = "application"
+    mainClass.set("MainKt")
+    val compilation = kotlin.jvm("desktop").compilations.getByName("main")
+    classpath = compilation.output.classesDirs + compilation.runtimeDependencyFiles
 }
 
 tasks.register<Copy>("copyWasmToSrc") {

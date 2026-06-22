@@ -6,10 +6,11 @@ object Crc16 {
         0xA001, 0x6C00, 0x7800, 0xB401, 0x5000, 0x9C01, 0x8801, 0x4400
     )
 
-    fun calculate(bytes: ByteArray, initialCrc: Int = 0): Int {
+    fun calculate(bytes: ByteArray, initialCrc: Int = 0, offset: Int = 0, length: Int = bytes.size): Int {
         var crc = initialCrc
-        for (b in bytes) {
-            val byteVal = b.toInt() and 0xFF
+        val end = offset + length
+        for (i in offset until end) {
+            val byteVal = bytes[i].toInt() and 0xFF
             // First nibble
             var temp = CRC_TABLE[crc and 0xF]
             crc = (crc ushr 4) and 0x0FFF
