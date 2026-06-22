@@ -31,17 +31,32 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
 
       - name: Build with Gradle
-        run: ./gradlew :shared-core:wasmJsBrowserProductionWebpack
+        run: ./gradlew :shared-core:wasmJsBrowserDistribution
 
       - name: Prepare production folder
         run: |
           mkdir -p dist
           cp index.html dist/
-          cp -r src dist/
-          cp shared-core/build/dist/wasmJs/productionExecutable/*.js dist/
-          cp shared-core/build/dist/wasmJs/productionExecutable/*.wasm dist/
-          # Ensure there are no large map files in the final artifact
+          # Copy src if exists
+          if [ -d "src" ]; then cp -r src dist/; fi
+          
+          # Find and copy JS/Wasm files
+          # Standard KMP Wasm output directory
+          SEARCH_DIR="shared-core/build/dist/wasmJs/productionExecutable"
+          if [ -d "$SEARCH_DIR" ]; then
+            cp "$SEARCH_DIR"/*.js dist/ 2>/dev/null || true
+            cp "$SEARCH_DIR"/*.wasm dist/ 2>/dev/null || true
+          else
+            echo "Warning: $SEARCH_DIR not found. Searching elsewhere..."
+            find shared-core/build/dist -name "*.js" -exec cp {} dist/ \;
+            find shared-core/build/dist -name "*.wasm" -exec cp {} dist/ \;
+          fi
+          
+          # Clean up source maps to save space and context
           rm -f dist/*.map
+          
+          echo "Production folder content:"
+          ls -R dist
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
