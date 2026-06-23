@@ -37,11 +37,8 @@ jobs:
         run: |
           mkdir -p dist
           cp index.html dist/
-          # Copy src if exists
           if [ -d "src" ]; then cp -r src dist/; fi
-          
-          # Find and copy JS/Wasm files
-          # Standard KMP Wasm output directory
+
           SEARCH_DIR="shared-core/build/dist/wasmJs/productionExecutable"
           if [ -d "$SEARCH_DIR" ]; then
             cp "$SEARCH_DIR"/*.js dist/ 2>/dev/null || true
@@ -51,12 +48,11 @@ jobs:
             find shared-core/build/dist -name "*.js" -exec cp {} dist/ \;
             find shared-core/build/dist -name "*.wasm" -exec cp {} dist/ \;
           fi
-          
-          # Clean up source maps to save space and context
+
           rm -f dist/*.map
-          
+
           echo "Production folder content:"
-          ls -R dist
+          ls -lR dist
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
@@ -66,6 +62,13 @@ jobs:
         with:
           path: './dist'
 
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
