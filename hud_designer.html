@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>FitTrimmer - Pro HUD Designer</title>
+    <style>
+        :root { --accent: #3b82f6; --bg-dark: #0a0b10; --panel-bg: #161822; }
+        body { margin: 0; background: #222; color: #fff; font-family: "Segoe UI", "Meiryo", sans-serif; display: flex; height: 100vh; overflow: hidden; }
+
+        /* Sidebar */
+        .sidebar { width: 350px; background: var(--panel-bg); padding: 25px; border-right: 1px solid #333; overflow-y: auto; box-shadow: 5px 0 15px rgba(0,0,0,0.5); z-index: 10; }
+        h2 { font-size: 1.2rem; color: var(--accent); margin-bottom: 25px; letter-spacing: 1px; }
+        .control-group { margin-bottom: 20px; }
+        label { display: block; font-size: 11px; color: #888; margin-bottom: 8px; text-transform: uppercase; font-weight: bold; }
+        input[type="range"] { width: 100%; cursor: pointer; }
+        .val-display { float: right; color: var(--accent); font-family: monospace; }
+
+        /* Main Viewport */
+        .viewport { flex-grow: 1; display: flex; align-items: center; justify-content: center; background: #333; padding: 40px; position: relative; }
+
+        /* 16:9 Canvas MOCK */
+        .canvas-container {
+            position: relative;
+            background: #000;
+            width: 960px; /* 1920/2 */
+            height: 540px; /* 1080/2 */
+            border: 2px solid #fff;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.8);
+            overflow: hidden;
+        }
+
+        #bg-video {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            object-fit: cover;
+            opacity: 0.8;
+        }
+
+        /* HUD Components (CSSで密度を完璧に制御) */
+        .hud-overlay { position: absolute; top: 0; left: 0; pointer-events: none; }
+        .metric-unit { display: flex; flex-direction: column; margin-bottom: var(--item-spacing); }
+        .label { font-size: var(--lbl-size); color: #aaa; text-transform: uppercase; font-weight: bold; line-height: 1; }
+        .value-box { display: flex; align-items: baseline; margin-top: var(--tightness); line-height: 0.9; }
+        .value { font-size: var(--val-size); font-weight: 800; font-family: "Segoe UI Bold", sans-serif; letter-spacing: -1px; }
+        .unit { font-size: calc(var(--val-size) * 0.4); margin-left: 8px; color: var(--color); font-weight: bold; }
+
+        .graph-box {
+            width: var(--graph-w); height: var(--graph-h);
+            background: rgba(30,35,50, 0.6); border: 1px solid rgba(255,255,255,0.1);
+            margin-top: 5px; position: relative;
+        }
+        .marker { position: absolute; top: -10px; width: 0; height: 0; border-left: 8px solid transparent; border-right: 8px solid transparent; border-top: 10px solid #ef4444; }
+
+        .btn-copy {
+            width: 100%; padding: 12px; background: var(--accent); border: none; color: #fff;
+            font-weight: bold; border-radius: 4px; cursor: pointer; margin-top: 20px; transition: 0.2s;
+        }
+        .btn-copy:hover { background: #2563eb; }
+        #json-out { width: 100%; background: #000; color: #0f0; font-family: monospace; font-size: 10px; padding: 10px; margin-top: 15px; border: 1px solid #333; }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <h2>FIT TRIMMER PRO</h2>
+
+        <div class="control-group">
+            <label>Font Size (Numerical) <span class="val-display" id="v-val-size">45</span></label>
+            <input type="range" id="val-size" min="10" max="150" value="45">
+        </div>
+
+        <div class="control-group">
+            <label>Metric Tightness (Gap) <span class="val-display" id="v-tightness">1</span></label>
+            <input type="range" id="tightness" min="-10" max="20" value="1">
+        </div>
+
+        <div class="control-group">
+            <label>Vertical Spacing <span class="val-display" id="v-item-spacing">20</span></label>
+            <input type="range" id="item-spacing" min="0" max="100" value="20">
+        </div>
+
+        <div class="control-group">
+            <label>X-Offset <span class="val-display" id="v-x-offset">60</span></label>
+            <input type="range" id="x-offset" min="0" max="500" value="60">
+        </div>
+
+        <div class="control-group">
+            <label>Graph Height <span class="val-display" id="v-graph-h">60</span></label>
+            <input type="range" id="graph-h" min="20" max="200" value="60">
+        </div>
+
+        <div class="control-group">
+            <label>Graph Width <span class="val-display" id="v-graph-w">240</span></label>
+            <input type="range" id="graph-w" min="50" max="800" value="240">
+        </div>
+
+        <div class="control-group" style="border-top: 1px solid #333; padding-top: 20px;">
+            <label>Load Background Video</label>
+            <input type="file" id="video-input" accept="video/mp4,video/webm" style="font-size: 10px;">
+        </div>
+
+        <button class="btn-copy" onclick="copyConfig()">💾 COPY JSON CONFIG</button>
+        <textarea id="json-out" readonly></textarea>
+    </div>
+
+    <div class="viewport">
+        <div class="canvas-container" id="canvas">
+            <video id="bg-video" loop muted></video>
+            <div class="hud-overlay" id="hud" style="left: 60px; top: 60px;">
+                <!-- JSで動的に生成 -->
+            </div>
+        </div>
+        <div style="position: absolute; bottom: 20px; color: #666; font-size: 12px;">1920x1080 (Preview Scaled 0.5x)</div>
+    </div>
+
+    <script>
+        const config = {
+            valSize: 45, tightness: 1, spacing: 20, x: 60, y: 60, graphH: 60, graphW: 240
+        };
+
+        const metrics = [
+            { label: "SPEED", val: "26.2", unit: "km/h", color: "#3b82f6" },
+            { label: "CADENCE", val: "79", unit: "rpm", color: "#a78bfa" },
+            { label: "POWER", val: "175", unit: "W", color: "#10b981" },
+            { label: "HEART RATE", val: "148", unit: "bpm", color: "#ef4444" },
+            { label: "GRADE", val: "4.0", unit: "%", color: "#fbbf24" },
+            { label: "W/KG", val: "2.1", unit: "w/kg", color: "#2dd4bf" }
+        ];
+
+        function update() {
+            document.body.style.setProperty('--val-size', config.valSize + 'px');
+            document.body.style.setProperty('--lbl-size', Math.max(10, config.valSize * 0.25) + 'px');
+            document.body.style.setProperty('--tightness', config.tightness + 'px');
+            document.body.style.setProperty('--item-spacing', config.spacing + 'px');
+            document.body.style.setProperty('--graph-h', config.graphH + 'px');
+            document.body.style.setProperty('--graph-w', config.graphW + 'px');
+
+            const hud = document.getElementById('hud');
+            hud.style.left = config.x + 'px';
+            hud.style.top = config.y + 'px';
+
+            let html = '';
+            metrics.forEach(m => {
+                html += `
+                    <div class="metric-unit" style="--color: ${m.color}">
+                        <div class="label">${m.label}</div>
+                        <div class="value-box">
+                            <span class="value">${m.val}</span>
+                            <span class="unit">${m.unit}</span>
+                        </div>
+                    </div>
+                `;
+            });
+
+            html += `
+                <div class="control-group">
+                    <div class="label">POWER TREND</div>
+                    <div class="graph-box"></div>
+                </div>
+                <div class="control-group" style="margin-top: 15px;">
+                    <div class="label">ELEVATION</div>
+                    <div class="graph-box"><div class="marker" style="left: 70%"></div></div>
+                </div>
+            `;
+            hud.innerHTML = html;
+            document.getElementById('json-out').value = JSON.stringify(config, null, 2);
+        }
+
+        // Event Handlers
+        const ids = ['val-size', 'tightness', 'item-spacing', 'x-offset', 'graph-h', 'graph-w'];
+        ids.forEach(id => {
+            document.getElementById(id).addEventListener('input', (e) => {
+                const val = parseInt(e.target.value);
+                document.getElementById('v-' + id).innerText = val;
+                if(id==='val-size') config.valSize = val;
+                if(id==='tightness') config.tightness = val;
+                if(id==='item-spacing') config.spacing = val;
+                if(id==='x-offset') config.x = val;
+                if(id==='graph-h') config.graphH = val;
+                if(id==='graph-w') config.graphW = val;
+                update();
+            });
+        });
+
+        function copyConfig() {
+            navigator.clipboard.writeText(document.getElementById('json-out').value);
+            alert("Config copied!");
+        }
+
+        document.getElementById('video-input').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const url = URL.createObjectURL(file);
+                const video = document.getElementById('bg-video');
+                video.src = url;
+                video.play();
+            }
+        });
+
+        update();
+    </script>
+</body>
+</html>

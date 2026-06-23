@@ -1,71 +1,104 @@
 # -*- coding: utf-8 -*-
-import sqlite3, json, os
+import os, json
 from PIL import Image, ImageDraw, ImageFont
 
-DB_PATH = "rails-hub/db/development.sqlite3"
+class FinalCell:
+    """背景なし、超密着、高密度のデータユニット"""
+    def __init__(self, label, value, unit, color, fonts):
+        self.label, self.value, self.unit = label, str(value), unit
+        self.color, self.f = color, fonts
+        self.m_giant = self.f['giant'].getmetrics()
+        self.m_label = self.f['label'].getmetrics()
+        self.val_w = self.f['giant'].getlength(self.value)
+        # 高さを計算: ラベル(A+D) + 密着(1) + 数値(A)
+        self.height = (self.m_label[0] + self.m_label[1]) + 1 + self.m_giant[0]
 
-def get_layout(layout_id):
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-    cur.execute("SELECT settings FROM hud_layouts WHERE id = ?", (layout_id,))
-    row = cur.fetchone()
-    conn.close()
-    return json.loads(row[0]) if row else None
+    def draw(self, draw, x, y):
+        def draw_t(pos, text, font, fill, anchor):
+            # 視認性確保のための極薄アウトライン（座布団代わり）
+            for dx, dy in [(-1,-1),(1,1),(0,1),(0,-1)]:
+                draw.text((pos[0]+dx, pos[1]+dy), text, font=font, fill=(0,0,0,180), anchor=anchor)
+            draw.text(pos, text, font=font, fill=fill, anchor=anchor)
 
-def render_preview(layout_id, output_name):
-    s = get_layout(layout_id)
-    if not s: return
+        # 1. Label
+        draw_t((x, y), self.label, self.f['label'], (160, 160, 160), "la")
+        # 2. Value (1px 密着)
+        val_y = y + (self.m_label[0] + self.m_label[1]) + 1
+        baseline_y = val_y + self.m_giant[0]
+        draw_t((x, baseline_y), self.value, self.f['giant'], (255, 255, 255), "ls")
+        # 3. Unit
+        draw_t((x + self.val_w + 6, baseline_y - 2), self.unit, self.f['unit'], self.color, "ls")
 
-    # 1080p Canvas
-    img = Image.new('RGBA', (1920, 1080), (20, 20, 25, 255))
+class FinalGraph:
+    """背景なしのグラフモジュール"""
+    def __init__(self, label, data, w, h, fonts, mode="bar"):
+        self.label, self.data, self.w, self.h = label, data, w, h
+        self.f, self.mode = fonts, mode
+        self.m_label = self.f['label'].getmetrics()
+        self.height = (self.m_label[0] + self.m_label[1]) + h + 5
+
+    def draw(self, draw, x, y, current_ratio=0.0):
+        draw.text((x, y), self.label, font=self.f['label'], fill=(160, 160, 160), anchor="la")
+        gy = y + (self.m_label[0] + self.m_label[1]) + 4
+
+        # グラフ本体（枠線なし、塗りつぶしのみ）
+        if self.mode == "bar":
+            bw = self.w / len(self.data)
+            for i, v in enumerate(self.data):
+                bh = (v / 400) * self.h
+                # パワーゾーンカラーをシミュレート
+                c = (16, 185, 129) if v < 250 else (234, 179, 8)
+                draw.rectangle([x+i*bw, gy+self.h-bh, x+(i+1)*bw-1, gy+self.h], fill=c)
+        else:
+            pts = [(x + (i/(len(self.data)-1))*self.w, gy + self.h - (v/200)*self.h) for i, v in enumerate(self.data)]
+            split = int((len(self.data)-1) * current_ratio)
+            draw.line(pts[:split+1], fill=(59, 130, 246), width=2)
+            draw.polygon(pts[:split+1] + [(pts[split][0], gy+self.h), (x, gy+self.h)], fill=(59, 130, 246, 60))
+            draw.line(pts[split:], fill=(140, 140, 140), width=1)
+            # 現在地マーカー
+            cx = x + self.w * current_ratio
+            draw.polygon([(cx-8, gy-8), (cx+8, gy-8), (cx, gy)], fill=(239, 68, 68))
+
+def render_preview(output_name):
+    f_path = "C:/Windows/Fonts/segoeuib.ttf"
+    if not os.path.exists(f_path): f_path = "arial.ttf"
+    fonts = {
+        'giant': ImageFont.truetype(f_path, 40), # 絶妙なサイズ感
+        'label': ImageFont.truetype(f_path, 11),
+        'unit':  ImageFont.truetype(f_path, 14)
+    }
+
+    img = Image.new('RGBA', (1920, 1080), (12, 13, 15, 255))
     draw = ImageDraw.Draw(img)
 
-    # Fonts
-    font_path = "C:/Windows/Fonts/ariblk.ttf"
-    def f(size):
-        try: return ImageFont.truetype(font_path, size)
-        except: return ImageFont.load_default()
-
-    f_giant = f(s['font_giant'])
-    f_label = f(s['font_label'])
-    f_unit  = f(s.get('font_unit', 32))
-    f_small = f(s.get('font_small', 24))
-
-    # Position
-    bx, by = (1920 - s['width']) // 2, 1080 - s['height'] - 60
-
-    # Background
-    alpha = s.get('bg_alpha', 230)
-    draw.rounded_rectangle([bx, by, bx + s['width'], by + s['height']], radius=15, fill=(5, 8, 15, alpha), outline=(255,255,255,80), width=3)
-
-    # Metrics (Simplified spacing)
-    metrics = [
-        ("SPD", "34.2", "km/h", (59, 130, 246)),
-        ("PWR", "285", "W", (16, 185, 129)),
-        ("HR", "162", "bpm", (239, 68, 68))
+    # 6数値 + 2グラフ = 全8構成要素
+    cells = [
+        FinalCell("SPEED", "26.2", "km/h", (59, 130, 246), fonts),
+        FinalCell("CADENCE", "79", "rpm", (167, 139, 250), fonts),
+        FinalCell("POWER", "175", "W", (16, 185, 129), fonts),
+        FinalCell("HEART RATE", "148", "bpm", (239, 68, 68), fonts),
+        FinalCell("GRADE", "4.0", "%", (251, 191, 36), fonts),
+        FinalCell("W/KG", "2.1", "w/kg", (45, 212, 191), fonts)
     ]
 
-    x_off = 40
-    for label, val, unit, color in metrics:
-        draw.text((bx + x_off, by + 20), label, font=f_label, fill=(148, 163, 184))
-        draw.text((bx + x_off, by + 45), val, font=f_giant, fill=(255,255,255))
-        # Calc width for unit pos
-        vw = f_giant.getbbox(val)[2] - f_giant.getbbox(val)[0]
-        draw.text((bx + x_off + vw + 8, by + 45 + s['font_giant'] - 40), unit, font=f_unit, fill=color)
+    cx, cy = 60, 60
+    for c in cells:
+        c.draw(draw, cx, cy)
+        cy += c.height + 20
 
-        # Bar
-        draw.rounded_rectangle([bx + x_off, by + s['height'] - 65, bx + x_off + 250, by + s['height'] - 50], radius=5, fill=(40, 45, 60))
-        draw.rounded_rectangle([bx + x_off, by + s['height'] - 65, bx + x_off + 180, by + s['height'] - 50], radius=5, fill=color)
-        x_off += (s['width'] - 80) // 3 + 20
+    # パワーグラフ
+    p_data = [100, 120, 200, 280, 240, 180] * 3
+    p_graph = FinalGraph("POWER TREND", p_data, 300, 60, fonts, mode="bar")
+    p_graph.draw(draw, cx, cy)
+    cy += p_graph.height + 20
 
-    # Footer
-    draw.text((bx + 40, by + s['height'] - 35), "CAD: 92 | ALT: 124m | GRD: +2.4%", font=f_small, fill=(148, 163, 184))
-    draw.text((bx + s['width'] - 140, by + s['height'] - 35), "0:12:45", font=f_small, fill=(59, 130, 246))
+    # 高度グラフ
+    a_data = [10, 20, 50, 100, 150, 140, 130, 160, 180]
+    a_graph = FinalGraph("ELEVATION", a_data, 300, 60, fonts, mode="line")
+    a_graph.draw(draw, cx, cy, current_ratio=0.7)
 
     img.save(output_name)
-    print(f"Rendered: {output_name}")
+    print(f"TRULY FINAL HUD Rendered: {output_name}")
 
 if __name__ == "__main__":
-    import sys
-    layout_id = sys.argv[1] if len(sys.argv) > 1 else 1
-    render_preview(int(layout_id), f"knead_layout_{layout_id}.png")
+    render_preview("fit_trimmer_truly_final.png")
