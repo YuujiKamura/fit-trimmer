@@ -272,7 +272,7 @@ fun startGui() = application {
                 val cacheFile = File(System.getProperty("user.home"), ".fittrimmer_gui_cache.json")
                 if (cacheFile.exists()) {
                     val content = cacheFile.readText()
-                    Json.decodeFromString<GuiPathCache>(content)
+                    kotlinx.serialization.json.Json { ignoreUnknownKeys = true }.decodeFromString<GuiPathCache>(content)
                 } else null
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -406,9 +406,9 @@ fun startGui() = application {
         val textMeasurer = rememberTextMeasurer()
 
         MaterialTheme(colors = darkColors()) {
-            Row(modifier = Modifier.fillMaxSize().background(Color(0xFF0A0A0C))) {
+            Row(modifier = Modifier.fillMaxSize().background(Color(0xFF000000))) {
                 Column(
-                    modifier = Modifier.width(300.dp).fillMaxHeight().background(Color(0xFF16171D))
+                    modifier = Modifier.width(300.dp).fillMaxHeight().background(Color(0xFF111111))
                         .verticalScroll(rememberScrollState()).padding(12.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
@@ -422,7 +422,7 @@ fun startGui() = application {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text("⚙️ HUD LAYOUT SETTINGS", color = Color.LightGray, fontWeight = FontWeight.Bold, fontSize = 11.sp)
-                        Text(if (hudSettingsExpanded) "▼" else "▶", color = Color.Gray, fontSize = 10.sp)
+                        Text(if (hudSettingsExpanded) "▼" else "▶", color = Color(0xFF888888), fontSize = 10.sp)
                     }
 
                     if (hudSettingsExpanded) {
@@ -444,7 +444,7 @@ fun startGui() = application {
                             OutlinedTextField(
                                 value = fitPath,
                                 onValueChange = { fitPath = it },
-                                label = { Text("FIT File Path", color = Color.Gray, fontSize = 10.sp) },
+                                label = { Text("FIT File Path", color = Color(0xFF888888), fontSize = 10.sp) },
                                 modifier = Modifier.weight(1f).height(50.dp),
                                 textStyle = TextStyle(color = Color.White, fontSize = 11.sp),
                                 singleLine = true
@@ -461,7 +461,7 @@ fun startGui() = application {
                             OutlinedTextField(
                                 value = videoPath,
                                 onValueChange = { videoPath = it },
-                                label = { Text("MP4 File Path", color = Color.Gray, fontSize = 10.sp) },
+                                label = { Text("MP4 File Path", color = Color(0xFF888888), fontSize = 10.sp) },
                                 modifier = Modifier.weight(1f).height(50.dp),
                                 textStyle = TextStyle(color = Color.White, fontSize = 11.sp),
                                 singleLine = true
@@ -478,7 +478,7 @@ fun startGui() = application {
                             OutlinedTextField(
                                 value = outputDir,
                                 onValueChange = { outputDir = it },
-                                label = { Text("Output Directory", color = Color.Gray, fontSize = 10.sp) },
+                                label = { Text("Output Directory", color = Color(0xFF888888), fontSize = 10.sp) },
                                 modifier = Modifier.weight(1f).height(50.dp),
                                 textStyle = TextStyle(color = Color.White, fontSize = 11.sp),
                                 singleLine = true
@@ -494,7 +494,7 @@ fun startGui() = application {
                         OutlinedTextField(
                             value = videoStartUtc,
                             onValueChange = { videoStartUtc = it },
-                            label = { Text("Video Start UTC", color = Color.Gray, fontSize = 10.sp) },
+                            label = { Text("Video Start UTC", color = Color(0xFF888888), fontSize = 10.sp) },
                             modifier = Modifier.fillMaxWidth().height(50.dp),
                             textStyle = TextStyle(color = Color.White, fontSize = 11.sp),
                             singleLine = true
@@ -549,7 +549,7 @@ fun startGui() = application {
                         onClick = onNativeEncodeClick,
                         modifier = Modifier.fillMaxWidth(),
                         enabled = !isEncoding && fitPath.isNotEmpty() && videoPath.isNotEmpty(),
-                        colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF6366F1))
+                        colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF0A84FF))
                     ) {
                         Text("🚀 RUN NATIVE ENCODE", color = Color.White, fontWeight = FontWeight.Bold)
                     }
@@ -590,7 +590,7 @@ fun startGui() = application {
                                 }
                             },
                             modifier = Modifier.weight(1f).height(36.dp),
-                            colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF6366F1)),
+                            colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF0A84FF)),
                             shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
                         ) {
                             Text("HOT RELOAD RENDERER", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
@@ -640,7 +640,7 @@ fun startGui() = application {
                         onClick = onSampleEncodeClick,
                         modifier = Modifier.fillMaxWidth(),
                         enabled = !isEncoding && fitPath.isNotEmpty() && videoPath.isNotEmpty(),
-                        colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFF43F5E))
+                        colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFFF453A))
                     ) {
                         Text("⏱️ RUN 5s SAMPLE", color = Color.White, fontWeight = FontWeight.Bold)
                     }
@@ -801,13 +801,36 @@ fun startGui() = application {
                                         if (split > 0) {
                                             // Traveled path
                                             for (k in 0 until split) {
+                                                val grade = telemetryPoints.getOrNull(k)?.grade ?: 0.0
+                                                val segColor = when {
+                                                    grade < -4.0 -> Color(0xFF3B82F6) // Blue
+                                                    grade < 1.0 -> Color(0xFF32D74B)  // Apple Green
+                                                    grade < 5.0 -> Color(0xFFFBBF24)  // Yellow
+                                                    grade < 8.0 -> Color(0xFFFF453A)  // Apple Red
+                                                    else -> Color(0xFF991B1B)         // Dark Red
+                                                }
                                                 drawLine(
-                                                    color = Color(0xFF3B82F6),
+                                                    color = segColor,
                                                     start = pts[k],
                                                     end = pts[k + 1],
-                                                    strokeWidth = 2f * scale
+                                                    strokeWidth = 3f * scale
                                                 )
                                             }
+                                            
+                                            // Draw current position pin
+                                            if (pts.isNotEmpty() && split in pts.indices) {
+                                                drawCircle(
+                                                    color = Color.White,
+                                                    radius = 4f * scale,
+                                                    center = pts[split]
+                                                )
+                                                drawCircle(
+                                                    color = Color(0xFF0A84FF),
+                                                    radius = 2.5f * scale,
+                                                    center = pts[split]
+                                                )
+                                            }
+
                                             // Traveled area shading
                                             val polyPath = androidx.compose.ui.graphics.Path().apply {
                                                 moveTo(pts[0].x, pts[0].y)
@@ -828,11 +851,20 @@ fun startGui() = application {
                                         if (split < elevData.size - 1) {
                                             // Future path
                                             for (k in split until elevData.size - 1) {
+                                                val grade = telemetryPoints.getOrNull(k)?.grade ?: 0.0
+                                                val segColor = when {
+                                                    grade < -4.0 -> Color(0xFF3B82F6) // Blue
+                                                    grade < 1.0 -> Color(0xFF32D74B)  // Apple Green
+                                                    grade < 5.0 -> Color(0xFFFBBF24)  // Yellow
+                                                    grade < 8.0 -> Color(0xFFFF453A)  // Apple Red
+                                                    else -> Color(0xFF991B1B)         // Dark Red
+                                                }
                                                 drawLine(
-                                                    color = Color(0xFF8C8C8C),
+                                                    color = segColor,
                                                     start = pts[k],
                                                     end = pts[k + 1],
-                                                    strokeWidth = 1f * scale
+                                                    strokeWidth = 2f * scale,
+                                                    alpha = 0.5f
                                                 )
                                             }
                                         }
@@ -885,7 +917,7 @@ fun startGui() = application {
                                     colors = SliderDefaults.colors(
                                         thumbColor = Color(0xFF3B82F6),
                                         activeTrackColor = Color(0xFF3B82F6),
-                                        inactiveTrackColor = Color(0xFF334155)
+                                        inactiveTrackColor = Color(0xFF3A3A3C)
                                     )
                                 )
 
@@ -961,8 +993,8 @@ suspend fun fireEncode(
 fun ControlSlider(label: String, value: Float, min: Float, max: Float, onValueChange: (Float) -> Unit) {
     Column(modifier = Modifier.padding(vertical = 1.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(label, color = Color(0xFF94A3B8), fontSize = 10.sp, fontWeight = FontWeight.Bold)
-            Text("%.1f".format(value), color = Color(0xFF6366F1), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            Text(label, color = Color(0xFFE2E8F0), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            Text("%.1f".format(value), color = Color(0xFF0A84FF), fontSize = 10.sp, fontWeight = FontWeight.Bold)
         }
         Slider(
             value = value, 
@@ -970,9 +1002,9 @@ fun ControlSlider(label: String, value: Float, min: Float, max: Float, onValueCh
             valueRange = min..max,
             modifier = Modifier.height(20.dp),
             colors = SliderDefaults.colors(
-                thumbColor = Color(0xFF6366F1),
-                activeTrackColor = Color(0xFF6366F1),
-                inactiveTrackColor = Color(0xFF334155)
+                thumbColor = Color(0xFF0A84FF),
+                activeTrackColor = Color(0xFF0A84FF),
+                inactiveTrackColor = Color(0xFF3A3A3C)
             )
         )
     }
