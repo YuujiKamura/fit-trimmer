@@ -170,7 +170,7 @@ class FitParser(private val bytes: ByteArray) {
         val cadence: Double,
         val heartRate: Double,
         val elevation: Double,
-        val grade: Double
+        var grade: Double
     )
 
     fun getTelemetry(): List<TelemetryPoint> {
@@ -193,6 +193,34 @@ class FitParser(private val bytes: ByteArray) {
                 list.add(TelemetryPoint(ts, speedVal, powerVal, cadenceVal, hrVal, elevVal, gradeVal))
             }
         }
+        
+        // Calculate grade if it's missing
+        val hasGrade = list.any { kotlin.math.abs(it.grade) > 0.01 }
+        if (!hasGrade && list.isNotEmpty()) {
+            val window = 5 // 5 seconds half-window
+            for (i in list.indices) {
+                val startIdx = maxOf(0, i - window)
+                val endIdx = minOf(list.size - 1, i + window)
+                val startPt = list[startIdx]
+                val endPt = list[endIdx]
+                
+                val dt = endPt.timestamp - startPt.timestamp
+                if (dt > 0) {
+                    val dElev = endPt.elevation - startPt.elevation
+                    var sumSpeed = 0.0
+                    for (j in startIdx..endIdx) {
+                        sumSpeed += list[j].speed / 3.6 // m/s
+                    }
+                    val avgSpeedMs = sumSpeed / (endIdx - startIdx + 1)
+                    val dist = avgSpeedMs * dt
+                    
+                    if (dist > 5.0) {
+                        list[i].grade = (dElev / dist) * 100.0
+                    }
+                }
+            }
+        }
+        
         return list
     }
 

@@ -15,3 +15,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "fit-trimmer"
 include(":shared-core")
+include(":composeApp")

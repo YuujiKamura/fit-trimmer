@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>FitTrimmer - Pro HUD Designer</title>
+    <style>
+        :root { --accent: #3b82f6; --bg-dark: #0a0b10; --panel-bg: #161822; }
+        body { margin: 0; background: #222; color: #fff; font-family: "Segoe UI", sans-serif; display: flex; height: 100vh; overflow: hidden; }
+
+        /* Sidebar */
+        .sidebar { width: 380px; background: var(--panel-bg); padding: 30px; border-right: 1px solid #333; overflow-y: auto; box-shadow: 5px 0 15px rgba(0,0,0,0.5); z-index: 10; }
+        h2 { font-size: 1.4rem; color: var(--accent); margin-bottom: 30px; letter-spacing: 1px; font-weight: 800; }
+        .control-group { margin-bottom: 22px; }
+        label { display: block; font-size: 11px; color: #888; margin-bottom: 10px; text-transform: uppercase; font-weight: bold; letter-spacing: 0.5px; }
+        input[type="range"] { width: 100%; cursor: pointer; height: 6px; border-radius: 5px; background: #2d333b; appearance: none; }
+        input[type="range"]::-webkit-slider-thumb { appearance: none; width: 16px; height: 16px; background: var(--accent); border-radius: 50%; cursor: pointer; }
+        .val-display { float: right; color: var(--accent); font-family: monospace; font-weight: bold; }
+
+        /* Main Viewport */
+        .viewport { flex-grow: 1; display: flex; align-items: center; justify-content: center; background: #111; padding: 40px; position: relative; }
+
+        /* 16:9 Canvas MOCK */
+        .canvas-container {
+            position: relative; background: #000; width: 960px; height: 540px; border: 2px solid #555;
+            box-shadow: 0 30px 60px rgba(0,0,0,0.9); overflow: hidden;
+            background-image: linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+            background-size: 40px 40px;
+        }
+
+        /* HUD Components */
+        .hud-overlay { position: absolute; top: 0; left: 0; pointer-events: none; }
+        .metric-unit { display: flex; flex-direction: column; margin-bottom: var(--item-spacing); }
+        .label { font-size: var(--lbl-size); color: #94a3b8; text-transform: uppercase; font-weight: 800; line-height: 1; }
+        .value-box { display: flex; align-items: baseline; margin-top: var(--tightness); line-height: 0.85; }
+        .value { font-size: var(--val-size); font-weight: 900; letter-spacing: -0.5px; }
+        .unit { font-size: calc(var(--val-size) * 0.5); margin-left: 8px; color: var(--color); font-weight: 800; }
+
+        .graph-unit { margin-bottom: var(--item-spacing); }
+        .graph-box {
+            width: var(--graph-w); height: var(--graph-h);
+            background: rgba(30,35,50, 0.6); border: 1px solid rgba(255,255,255,0.1);
+            margin-top: 6px; position: relative;
+        }
+
+        /* Action Buttons */
+        .btn-group { margin-top: 30px; display: flex; flex-direction: column; gap: 12px; }
+        .btn {
+            width: 100%; padding: 14px; border: none; color: #fff; font-weight: 800; border-radius: 6px;
+            cursor: pointer; transition: 0.2s; font-size: 13px; text-transform: uppercase; letter-spacing: 1px;
+        }
+        .btn-save { background: #374151; }
+        .btn-save:hover { background: #4b5563; }
+        .btn-fire { background: #e11d48; border: 2px solid transparent; }
+        .btn-fire:hover { background: #f43f5e; box-shadow: 0 0 20px rgba(225, 29, 72, 0.4); }
+
+        .status-badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 10px; background: #065f46; color: #34d399; margin-top: 15px; display: none; }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <h2>HUD DESIGNER</h2>
+
+        <div class="control-group">
+            <label>Font Size <span class="val-display" id="v-val-size">23</span></label>
+            <input type="range" id="val-size" min="10" max="100" value="23">
+        </div>
+
+        <div class="control-group">
+            <label>L-V Tightness <span class="val-display" id="v-tightness">1</span></label>
+            <input type="range" id="tightness" min="-10" max="20" value="1">
+        </div>
+
+        <div class="control-group">
+            <label>Item Spacing <span class="val-display" id="v-item-spacing">16</span></label>
+            <input type="range" id="item-spacing" min="0" max="60" value="16">
+        </div>
+
+        <div class="control-group">
+            <label>X Offset <span class="val-display" id="v-x-offset">25</span></label>
+            <input type="range" id="x-offset" min="0" max="400" value="25">
+        </div>
+
+        <div class="control-group">
+            <label>Graph Width <span class="val-display" id="v-graph-w">139</span></label>
+            <input type="range" id="graph-w" min="50" max="500" value="139">
+        </div>
+
+        <div class="btn-group">
+            <button class="btn btn-save" onclick="saveSettings()">💾 Save Current Design</button>
+            <button class="btn btn-fire" onclick="fireEncode()">🔥 FIRE ENCODE (START JOB)</button>
+        </div>
+        <div id="save-status" class="status-badge">SETTINGS SAVED</div>
+        <div id="fire-status" class="status-badge" style="background:#991b1b; color:#fca5a5;">JOB FIRED! CHECK MONITOR</div>
+    </div>
+
+    <div class="viewport">
+        <div class="canvas-container">
+            <div class="hud-overlay" id="hud"></div>
+        </div>
+        <div style="position: absolute; bottom: 20px; color: #666; font-size: 11px; font-weight: bold; letter-spacing: 1px;">1080P MASTER CANVAS (PREVIEW SCALED 0.5X)</div>
+    </div>
+
+    <script>
+        const config = <%= @settings.to_json.html_safe %>;
+        const metrics = [
+            { label: "SPEED", val: "26.2", unit: "km/h", color: "#3b82f6" },
+            { label: "CADENCE", val: "79", unit: "rpm", color: "#a78bfa" },
+            { label: "POWER", val: "175", unit: "W", color: "#10b981" },
+            { label: "HEART RATE", val: "148", unit: "bpm", color: "#ef4444" },
+            { label: "GRADE", val: "4.0", unit: "%", color: "#fbbf24" },
+            { label: "W/KG", val: "2.1", unit: "w/kg", color: "#2dd4bf" }
+        ];
+
+        function update() {
+            document.body.style.setProperty('--val-size', config.valSize + 'px');
+            document.body.style.setProperty('--lbl-size', Math.max(10, config.valSize * 0.45) + 'px');
+            document.body.style.setProperty('--tightness', config.tightness + 'px');
+            document.body.style.setProperty('--item-spacing', config.spacing + 'px');
+            document.body.style.setProperty('--graph-h', '60px');
+            document.body.style.setProperty('--graph-w', config.graphW + 'px');
+
+            const hud = document.getElementById('hud');
+            hud.style.left = config.x + 'px';
+            hud.style.top = config.y + 'px';
+
+            let html = '';
+            metrics.forEach(m => {
+                html += `
+                    <div class="metric-unit" style="--color: ${m.color}">
+                        <div class="label">${m.label}</div>
+                        <div class="value-box">
+                            <span class="value">${m.val}</span>
+                            <span class="unit">${m.unit}</span>
+                        </div>
+                    </div>
+                `;
+            });
+            html += `
+                <div class="graph-unit">
+                    <div class="label" style="font-size:var(--lbl-size)">POWER TREND</div>
+                    <div class="graph-box"></div>
+                </div>
+                <div class="graph-unit">
+                    <div class="label" style="font-size:var(--lbl-size)">ELEVATION</div>
+                    <div class="graph-box"></div>
+                </div>
+            `;
+            hud.innerHTML = html;
+        }
+
+        ['val-size', 'tightness', 'item-spacing', 'x-offset', 'graph-w'].forEach(id => {
+            const el = document.getElementById(id);
+            el.value = (id === 'val-size') ? config.valSize : (id === 'tightness') ? config.tightness : (id === 'item-spacing') ? config.spacing : (id === 'x-offset') ? config.x : config.graphW;
+            document.getElementById('v-' + id).innerText = el.value;
+
+            el.addEventListener('input', (e) => {
+                const val = parseInt(e.target.value);
+                document.getElementById('v-' + id).innerText = val;
+                if(id==='val-size') config.valSize = val;
+                if(id==='tightness') config.tightness = val;
+                if(id==='item-spacing') config.spacing = val;
+                if(id==='x-offset') config.x = val;
+                if(id==='graph-w') config.graphW = val;
+                update();
+            });
+        });
+
+        async function saveSettings() {
+            await fetch('/hud_layouts/<%= @layout.id %>/update_settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ settings: config })
+            });
+            showStatus('save-status');
+        }
+
+        async function fireEncode() {
+            await saveSettings();
+            const res = await fetch('/hud_layouts/<%= @layout.id %>/fire', { method: 'POST' });
+            const data = await res.json();
+            showStatus('fire-status');
+            alert("FIRE! HUD encoding started for: " + data.video_name);
+        }
+
+        function showStatus(id) {
+            const el = document.getElementById(id);
+            el.style.display = 'inline-block';
+            setTimeout(() => { el.style.display = 'none'; }, 3000);
+        }
+
+        update();
+    </script>
+</body>
+</html>
