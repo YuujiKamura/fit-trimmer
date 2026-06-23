@@ -4,6 +4,7 @@
 
 // Global State
 let wasmModule = null;
+let wasmInitPromise = null;
 let videoFilesList = [];
 let fitFileBuffer = null;
 let fitFilename = "";
@@ -61,12 +62,20 @@ async function fetchBuildInfo() {
 }
 
 if (window["shared-core"]) {
-    window["shared-core"].then(module => {
+    wasmInitPromise = window["shared-core"].then(module => {
         wasmModule = module;
         isWasmLoaded = true;
         log("Kotlin Wasm module loaded.", "success");
         checkSyncCapability();
-    }).catch(err => log("Wasm Load Failed: " + err.message, "error"));
+        return module;
+    }).catch(err => {
+        log("Wasm Load Failed: " + err.message, "error");
+        console.error("Wasm init error detail:", err);
+        wasmInitPromise = null;
+        throw err;
+    });
+} else {
+    log("Warning: shared-core.js not detected. Wasm features unavailable.", "error");
 }
 
 // --- Logging & Errors ---
@@ -198,6 +207,21 @@ async function handleFitFile(file) {
         fitFileBuffer = arrayBuffer;
         fitTimestamps = [];
 
+        // Wait for wasm to finish initializing if it hasn't yet
+        if (!wasmModule && wasmInitPromise) {
+            log("Waiting for Wasm module to initialize...");
+            try {
+                await Promise.race([
+                    wasmInitPromise,
+                    new Promise((_, reject) => setTimeout(() => reject(new Error(
+                        "Wasm initialization timed out (15s). Your browser may not support Wasm GC. Try Chrome 119+ or Firefox 120+."
+                    )), 15000))
+                ]);
+            } catch (waitErr) {
+                throw new Error("Wasm module failed to load: " + waitErr.message);
+            }
+        }
+
         if (wasmModule?.getFitTelemetry) {
             const bytes = new Int8Array(arrayBuffer);
             log(`Parsing FIT in Wasm...`);
@@ -213,7 +237,10 @@ async function handleFitFile(file) {
                 throw new Error("Wasm returned null telemetry. Check console for 'FIT Error'.");
             }
         } else {
-            throw new Error("Wasm module not fully initialized.");
+            const detail = !wasmModule ? "Module is null (init failed or not loaded)" 
+                : !wasmModule.getFitTelemetry ? "Module loaded but getFitTelemetry not found (keys: " + Object.keys(wasmModule).join(", ") + ")" 
+                : "Unknown";
+            throw new Error("Wasm module not available. " + detail);
         }
 
         if (fitTimestamps.length === 0) throw new Error("No track data found in FIT file.");
