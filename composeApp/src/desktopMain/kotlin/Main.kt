@@ -446,7 +446,8 @@ fun startGui() = application {
                                 onValueChange = { fitPath = it },
                                 label = { Text("FIT File Path", color = Color.Gray, fontSize = 10.sp) },
                                 modifier = Modifier.weight(1f).height(50.dp),
-                                textStyle = TextStyle(color = Color.White, fontSize = 11.sp)
+                                textStyle = TextStyle(color = Color.White, fontSize = 11.sp),
+                                singleLine = true
                             )
                             Button(
                                 onClick = {
@@ -462,7 +463,8 @@ fun startGui() = application {
                                 onValueChange = { videoPath = it },
                                 label = { Text("MP4 File Path", color = Color.Gray, fontSize = 10.sp) },
                                 modifier = Modifier.weight(1f).height(50.dp),
-                                textStyle = TextStyle(color = Color.White, fontSize = 11.sp)
+                                textStyle = TextStyle(color = Color.White, fontSize = 11.sp),
+                                singleLine = true
                             )
                             Button(
                                 onClick = {
@@ -478,7 +480,8 @@ fun startGui() = application {
                                 onValueChange = { outputDir = it },
                                 label = { Text("Output Directory", color = Color.Gray, fontSize = 10.sp) },
                                 modifier = Modifier.weight(1f).height(50.dp),
-                                textStyle = TextStyle(color = Color.White, fontSize = 11.sp)
+                                textStyle = TextStyle(color = Color.White, fontSize = 11.sp),
+                                singleLine = true
                             )
                             Button(
                                 onClick = {
@@ -493,7 +496,8 @@ fun startGui() = application {
                             onValueChange = { videoStartUtc = it },
                             label = { Text("Video Start UTC", color = Color.Gray, fontSize = 10.sp) },
                             modifier = Modifier.fillMaxWidth().height(50.dp),
-                            textStyle = TextStyle(color = Color.White, fontSize = 11.sp)
+                            textStyle = TextStyle(color = Color.White, fontSize = 11.sp),
+                            singleLine = true
                         )
                     }
 
