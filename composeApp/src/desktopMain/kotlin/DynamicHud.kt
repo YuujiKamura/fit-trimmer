@@ -24,6 +24,8 @@ class HotReloadClassLoader(urls: Array<URL>, parent: ClassLoader) : URLClassLoad
 class DynamicRendererProxy(private val config: HudConfig) {
     private var delegate: Any? = null
     private var renderMethod: java.lang.reflect.Method? = null
+    private var previousTempDir: File? = null
+    private var previousClassLoader: java.net.URLClassLoader? = null
 
     init {
         reload()
@@ -48,6 +50,19 @@ class DynamicRendererProxy(private val config: HudConfig) {
                 Float::class.java
             )
             println("✅ Hot reloaded HudRenderer successfully!")
+            
+            // Clean up previous temp dir to prevent infinite accumulation
+            previousClassLoader?.let {
+                try { it.close() } catch (e: Exception) { /* ignore */ }
+            }
+            previousTempDir?.let {
+                try { it.deleteRecursively() } catch (e: Exception) {
+                    println("⚠️ Failed to delete previous temp dir: ${e.message}")
+                }
+            }
+            previousClassLoader = cl
+            previousTempDir = tempDir
+            
             return true
         } catch (e: Exception) {
             println("❌ Failed to hot reload: ${e.message}")
