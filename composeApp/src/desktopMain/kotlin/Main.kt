@@ -37,9 +37,7 @@ import org.jetbrains.skia.Image
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import androidx.compose.ui.awt.SwingPanel
-import uk.co.caprica.vlcj.factory.discovery.NativeDiscovery
-import uk.co.caprica.vlcj.player.component.CallbackMediaPlayerComponent
+// VLC dependency removed
 
 
 @Serializable
@@ -186,12 +184,24 @@ fun startGui(args: Array<String>) = application {
     // Output Move State
     var moveOutputToSource by remember { mutableStateOf(false) }
 
-    // VLC / Telemetry state
-    var vlcAvailable by remember { mutableStateOf(false) }
+    // Telemetry state
+    val vlcAvailable = false
     var telemetryPoints by remember { mutableStateOf<List<FitParser.TelemetryPoint>>(emptyList()) }
     var isPlaying by remember { mutableStateOf(false) }
     var videoLengthMs by remember { mutableStateOf(0L) }
     var videoCurrentTimeMs by remember { mutableStateOf(0L) }
+    var previewTimeMs by remember { mutableStateOf(0L) }
+
+    LaunchedEffect(videoCurrentTimeMs, isPlaying) {
+        if (!isPlaying) {
+            previewTimeMs = videoCurrentTimeMs
+        } else {
+            while (isPlaying) {
+                previewTimeMs = videoCurrentTimeMs
+                kotlinx.coroutines.delay(250)
+            }
+        }
+    }
 
     val fitStartInstant = remember(telemetryPoints) {
         if (telemetryPoints.isNotEmpty()) {
@@ -259,12 +269,6 @@ fun startGui(args: Array<String>) = application {
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
-            try {
-                vlcAvailable = NativeDiscovery().discover()
-            } catch (e: Throwable) {
-                e.printStackTrace()
-                vlcAvailable = false
-            }
             // Auto-cleanup temporary workspaces on startup
             try {
                 val workDir = File(System.getProperty("user.dir"), "temp_work")
@@ -312,108 +316,35 @@ fun startGui(args: Array<String>) = application {
         }
     }
 
-    val mediaPlayerComponent = remember(vlcAvailable) {
-        if (vlcAvailable) {
-            try {
-                CallbackMediaPlayerComponent()
-            } catch (e: Throwable) {
-                e.printStackTrace()
-                null
-            }
-        } else null
-    }
-
-    DisposableEffect(mediaPlayerComponent) {
-        onDispose {
-            mediaPlayerComponent?.release()
-        }
-    }
-
     val togglePlay = {
-        if (vlcAvailable && mediaPlayerComponent != null) {
-            val player = mediaPlayerComponent.mediaPlayer()
-            if (isPlaying) {
-                player.controls().pause()
-                isPlaying = false
-            } else {
-                player.controls().play()
-                isPlaying = true
-            }
+        if (isPlaying) {
+            isPlaying = false
         } else {
-            if (isPlaying) {
-                isPlaying = false
-            } else {
-                if (videoCurrentTimeMs >= videoLengthMs) {
-                    videoCurrentTimeMs = 0L
-                }
-                isPlaying = true
+            if (videoCurrentTimeMs >= videoLengthMs) {
+                videoCurrentTimeMs = 0L
             }
+            isPlaying = true
         }
     }
 
     val seekTo = { timeMs: Long ->
-        val target = timeMs.coerceIn(0L, videoLengthMs)
-        if (vlcAvailable && mediaPlayerComponent != null) {
-            mediaPlayerComponent.mediaPlayer().controls().setTime(target)
-            videoCurrentTimeMs = target
-        } else {
-            videoCurrentTimeMs = target
-        }
+        videoCurrentTimeMs = timeMs.coerceIn(0L, videoLengthMs)
     }
 
-    LaunchedEffect(videoPath, mediaPlayerComponent) {
-        if (mediaPlayerComponent != null && videoPath.isNotEmpty() && File(videoPath).exists()) {
-            val player = mediaPlayerComponent.mediaPlayer()
-            player.media().startPaused(videoPath)
-            withContext(Dispatchers.IO) {
-                var attempts = 0
-                while (attempts < 20) {
-                    val len = player.status().length()
-                    if (len > 0) {
-                        videoLengthMs = len
-                        break
-                    }
-                    kotlinx.coroutines.delay(100)
-                    attempts++
-                }
-                
-                // Force rendering of the first frame
-                kotlinx.coroutines.delay(200)
-                player.controls().setTime(0)
-                player.controls().nextFrame()
-            }
-            videoCurrentTimeMs = 0L
-            isPlaying = false
-        }
-    }
-
-    LaunchedEffect(isPlaying, mediaPlayerComponent, vlcAvailable) {
+    LaunchedEffect(isPlaying) {
         if (isPlaying) {
-            if (vlcAvailable && mediaPlayerComponent != null) {
-                while (isPlaying) {
-                    val player = mediaPlayerComponent.mediaPlayer()
-                    val isStillPlaying = player.status().isPlaying()
-                    if (!isStillPlaying) {
-                        isPlaying = false
-                        break
-                    }
-                    videoCurrentTimeMs = player.status().time()
-                    kotlinx.coroutines.delay(50)
+            val startTime = System.currentTimeMillis()
+            val startMs = videoCurrentTimeMs
+            while (isPlaying) {
+                val elapsed = System.currentTimeMillis() - startTime
+                val nextMs = startMs + elapsed
+                if (nextMs >= videoLengthMs) {
+                    videoCurrentTimeMs = videoLengthMs
+                    isPlaying = false
+                    break
                 }
-            } else {
-                val startTime = System.currentTimeMillis()
-                val startMs = videoCurrentTimeMs
-                while (isPlaying) {
-                    val elapsed = System.currentTimeMillis() - startTime
-                    val nextMs = startMs + elapsed
-                    if (nextMs >= videoLengthMs) {
-                        videoCurrentTimeMs = videoLengthMs
-                        isPlaying = false
-                        break
-                    }
-                    videoCurrentTimeMs = nextMs
-                    kotlinx.coroutines.delay(30)
-                }
+                videoCurrentTimeMs = nextMs
+                kotlinx.coroutines.delay(30)
             }
         }
     }
@@ -509,9 +440,10 @@ fun startGui(args: Array<String>) = application {
     LaunchedEffect(videoPath) {
         if (videoPath.isNotEmpty() && File(videoPath).exists()) {
             withContext(Dispatchers.IO) {
+                val ffmpegPath = fit.findFfmpegPath()
                 try {
                     // Extract duration using ffmpeg -i output if VLC isn't active
-                    val pbDur = ProcessBuilder("ffmpeg", "-i", videoPath)
+                    val pbDur = ProcessBuilder(ffmpegPath, "-i", videoPath)
                     pbDur.redirectErrorStream(true)
                     val pDur = pbDur.start()
                     val output = pDur.inputStream.bufferedReader().readText()
@@ -525,9 +457,7 @@ fun startGui(args: Array<String>) = application {
                         val s = durMatch.groupValues[3].toInt()
                         val ms = durMatch.groupValues[4].padEnd(3, '0').take(3).toInt()
                         val totalMs = (h * 3600 + m * 60 + s) * 1000L + ms
-                        if (!vlcAvailable) {
-                            videoLengthMs = totalMs
-                        }
+                        videoLengthMs = totalMs
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()
@@ -573,7 +503,7 @@ fun startGui(args: Array<String>) = application {
 
                 try {
                     val tempThumb = File("temp_preview.jpg")
-                    val pb = ProcessBuilder("ffmpeg", "-y", "-i", videoPath, "-ss", "00:00:01", "-vframes", "1", tempThumb.absolutePath)
+                    val pb = ProcessBuilder(ffmpegPath, "-y", "-i", videoPath, "-ss", "00:00:01", "-vframes", "1", tempThumb.absolutePath)
                     pb.start().waitFor()
                     if (tempThumb.exists()) {
                         videoPreviewImage = Image.makeFromEncoded(tempThumb.readBytes()).asImageBitmap()
@@ -584,15 +514,16 @@ fun startGui(args: Array<String>) = application {
         }
     }
 
-    LaunchedEffect(videoPath, videoCurrentTimeMs, vlcAvailable) {
-        if (!vlcAvailable && videoPath.isNotEmpty() && File(videoPath).exists()) {
-            kotlinx.coroutines.delay(100)
+    LaunchedEffect(videoPath, previewTimeMs) {
+        if (videoPath.isNotEmpty() && File(videoPath).exists()) {
+            kotlinx.coroutines.delay(50)
             withContext(Dispatchers.IO) {
+                val ffmpegPath = fit.findFfmpegPath()
                 var proc: Process? = null
                 try {
-                    val timeSec = videoCurrentTimeMs / 1000.0
+                    val timeSec = previewTimeMs / 1000.0
                     val pb = ProcessBuilder(
-                        "ffmpeg", "-y",
+                        ffmpegPath, "-y",
                         "-loglevel", "quiet",
                         "-ss", String.format(java.util.Locale.US, "%.3f", timeSec),
                         "-i", videoPath,
@@ -606,7 +537,7 @@ fun startGui(args: Array<String>) = application {
                     proc.waitFor()
                     if (proc.exitValue() == 0 && bytes.isNotEmpty()) {
                         val bitmap = Image.makeFromEncoded(bytes).asImageBitmap()
-                        withContext(Dispatchers.Main) {
+                        javax.swing.SwingUtilities.invokeLater {
                             videoPreviewImage = bitmap
                         }
                     }
@@ -1209,22 +1140,14 @@ fun startGui(args: Array<String>) = application {
                                 .border(1.dp, Color(0xFF3A3A3C), shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
                                 .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
                         ) {
-                            if (vlcAvailable && mediaPlayerComponent != null) {
-                                SwingPanel(
-                                    background = Color.Black,
-                                    factory = { mediaPlayerComponent },
-                                    modifier = Modifier.fillMaxSize()
+                            videoPreviewImage?.let {
+                                androidx.compose.foundation.Image(
+                                    bitmap = it,
+                                    contentDescription = null,
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = androidx.compose.ui.layout.ContentScale.Fit
                                 )
-                            } else {
-                                videoPreviewImage?.let {
-                                    androidx.compose.foundation.Image(
-                                        bitmap = it,
-                                        contentDescription = null,
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentScale = androidx.compose.ui.layout.ContentScale.Fit
-                                    )
-                                } ?: Box(Modifier.fillMaxSize().background(Color.Black))
-                            }
+                            } ?: Box(Modifier.fillMaxSize().background(Color.Black))
 
                             if (isEncoding) {
                                 encodingPreviewImage?.let { hudImg ->

@@ -9,6 +9,47 @@ import java.nio.file.StandardCopyOption
 import java.io.InputStreamReader
 import java.io.FileOutputStream
 
+fun findFfmpegPath(): String {
+    val os = System.getProperty("os.name").lowercase()
+    val isWindows = os.contains("win")
+    
+    // 1. Query Python's imageio_ffmpeg (Preferred as it typically installs a modern ffmpeg build)
+    try {
+        val pythonCmd = if (isWindows) "python.exe" else "python"
+        val pb = ProcessBuilder(pythonCmd, "-c", "import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())")
+        val p = pb.start()
+        val path = p.inputStream.bufferedReader().readText().trim()
+        p.waitFor()
+        if (p.exitValue() == 0 && path.isNotEmpty() && File(path).exists()) {
+            return path
+        }
+    } catch (e: Exception) {}
+
+    // 2. Check system PATH
+    val ffmpegCmd = if (isWindows) "ffmpeg.exe" else "ffmpeg"
+    try {
+        val pb = ProcessBuilder(ffmpegCmd, "-version")
+        val p = pb.start()
+        p.waitFor()
+        if (p.exitValue() == 0) {
+            return ffmpegCmd
+        }
+    } catch (e: Exception) {}
+
+    // 3. Fallback to default paths
+    val defaultPaths = listOf(
+        "C:\\Users\\yuuji\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\imageio_ffmpeg\\binaries\\ffmpeg-win-x86_64-v7.1.exe",
+        "ffmpeg"
+    )
+    for (path in defaultPaths) {
+        if (File(path).exists()) {
+            return path
+        }
+    }
+    
+    return "ffmpeg"
+}
+
 class NativeHudEncoder(
     val settings: HudSettings, 
     val onProgress: (Float, String) -> Unit = { _, _ -> },
@@ -98,46 +139,7 @@ class NativeHudEncoder(
         }
     }
 
-    private fun findFfmpegPath(): String {
-        val os = System.getProperty("os.name").lowercase()
-        val isWindows = os.contains("win")
-        
-        // 1. Query Python's imageio_ffmpeg (Preferred as it typically installs a modern ffmpeg build)
-        try {
-            val pythonCmd = if (isWindows) "python.exe" else "python"
-            val pb = ProcessBuilder(pythonCmd, "-c", "import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())")
-            val p = pb.start()
-            val path = p.inputStream.bufferedReader().readText().trim()
-            p.waitFor()
-            if (p.exitValue() == 0 && path.isNotEmpty() && File(path).exists()) {
-                return path
-            }
-        } catch (e: Exception) {}
 
-        // 2. Check system PATH
-        val ffmpegCmd = if (isWindows) "ffmpeg.exe" else "ffmpeg"
-        try {
-            val pb = ProcessBuilder(ffmpegCmd, "-version")
-            val p = pb.start()
-            p.waitFor()
-            if (p.exitValue() == 0) {
-                return ffmpegCmd
-            }
-        } catch (e: Exception) {}
-
-        // 3. Fallback to default paths
-        val defaultPaths = listOf(
-            "C:\\Users\\yuuji\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\imageio_ffmpeg\\binaries\\ffmpeg-win-x86_64-v7.1.exe",
-            "ffmpeg"
-        )
-        for (path in defaultPaths) {
-            if (File(path).exists()) {
-                return path
-            }
-        }
-        
-        return "ffmpeg"
-    }
 
     private fun isGoogleDrivePath(path: String): Boolean {
         val normalized = path.replace("\\", "/").lowercase()
