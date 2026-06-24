@@ -1625,6 +1625,31 @@ fun startGui(args: Array<String>) = application {
                                     modifier = Modifier.padding(horizontal = 4.dp)
                                 )
                             }
+                            
+                            Spacer(Modifier.height(4.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                val seekBtnModifier = Modifier.weight(1f).height(24.dp)
+                                val seekBtnColors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF1C1C1E))
+                                val seekSpecs = listOf(
+                                    "-10s" to -10000L,
+                                    "-1s" to -1000L,
+                                    "+1s" to 1000L,
+                                    "+10s" to 10000L
+                                )
+                                for ((label, delta) in seekSpecs) {
+                                    OutlinedButton(
+                                        onClick = { seekTo((videoCurrentTimeMs + delta).coerceIn(0L, maxOf(0L, videoLengthMs))) },
+                                        modifier = seekBtnModifier,
+                                        colors = seekBtnColors,
+                                        contentPadding = PaddingValues(0.dp)
+                                    ) {
+                                        Text(label, fontSize = 9.sp)
+                                    }
+                                }
+                            }
                         }
 
                         Text("1920x1080 Overlay Preview", color = Color(0xFF1C1C1E), fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
