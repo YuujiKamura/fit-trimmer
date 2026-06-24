@@ -391,7 +391,6 @@ fun startGui(args: Array<String>) = application {
         )
     )
 
-    val playerState = rememberVideoPlayerState()
 
     var settings by remember { mutableStateOf(initialCache?.settings ?: HudSettings()) }
     var fitPath by remember { mutableStateOf(initialCache?.fitPath ?: "") }
@@ -489,10 +488,7 @@ fun startGui(args: Array<String>) = application {
     // Telemetry state
     val vlcAvailable = false
     var telemetryPoints by remember { mutableStateOf<List<FitParser.TelemetryPoint>>(emptyList()) }
-    var isPlaying by remember { mutableStateOf(false) }
     var videoLengthMs by remember { mutableStateOf(0L) }
-    var videoCurrentTimeMs by remember { mutableStateOf(0L) }
-    var previewTimeMs by remember { mutableStateOf(0L) }
     var lastPreviewRequestId by remember { mutableStateOf(0L) }
 
     val fitStartInstant = remember(telemetryPoints) {
@@ -667,31 +663,6 @@ fun startGui(args: Array<String>) = application {
         }
     }
 
-    val togglePlay = {
-        if (playerState.isPlaying) {
-            playerState.pause()
-        } else {
-            if (videoCurrentTimeMs >= videoLengthMs) {
-                playerState.seekTo(0f)
-            }
-            playerState.play()
-        }
-    }
-
-    val seekTo = { timeMs: Long ->
-        val target = timeMs.coerceIn(0L, videoLengthMs)
-        val ratio = if (videoLengthMs > 0) target.toFloat() / videoLengthMs.toFloat() else 0f
-        playerState.seekTo(ratio * 1000f)
-    }
-
-    LaunchedEffect(playerState.isPlaying) {
-        isPlaying = playerState.isPlaying
-        if (isPlaying) {
-            playerState.volume = 0f
-            println("DEBUG: Enforced volume = 0f on play start")
-        }
-        println("DEBUG: PlayerState isPlaying state changed: isPlaying=${playerState.isPlaying}")
-    }
 
     LaunchedEffect(fitPath) {
         if (fitPath.isNotEmpty() && File(fitPath).exists()) {
@@ -714,35 +685,7 @@ fun startGui(args: Array<String>) = application {
         }
     }
 
-    val currentPoint = remember(videoCurrentTimeMs, telemetryPoints, adjustedStartUtc) {
-        if (telemetryPoints.isEmpty() || adjustedStartUtc.isEmpty()) null
-        else {
-            try {
-                val startTime = java.time.Instant.parse(adjustedStartUtc)
-                val fitEpoch = java.time.Instant.parse("1989-12-31T00:00:00Z").epochSecond
-                val elapsedSeconds = videoCurrentTimeMs / 1000.0
-                val currentUtc = startTime.toEpochMilli() / 1000.0 + elapsedSeconds
-                val currentFitTs = currentUtc - fitEpoch
-                telemetryPoints.find { it.timestamp >= currentFitTs } ?: telemetryPoints.lastOrNull()
-            } catch (e: Exception) {
-                e.printStackTrace()
-                null
-            }
-        }
-    }
 
-    val currentTrendPoints = remember(currentPoint, telemetryPoints) {
-        if (currentPoint == null || telemetryPoints.isEmpty()) emptyList<Double>()
-        else {
-            val idx = telemetryPoints.indexOfFirst { it.timestamp >= currentPoint.timestamp }
-            if (idx == -1) {
-                emptyList()
-            } else {
-                val startIdx = maxOf(0, idx - 30)
-                telemetryPoints.subList(startIdx, idx + 1).map { it.power }
-            }
-        }
-    }
 
     // Save path cache when modified
     LaunchedEffect(fitPath, videoPath, videoStartUtc, timeOffsetState.millis, settings, moveOutputToSource, showLivePreview, windowState.position, windowState.size) {
@@ -780,29 +723,13 @@ fun startGui(args: Array<String>) = application {
         }
     }
 
-    LaunchedEffect(playerState.sliderPos, playerState.metadata.duration) {
-        val durationMs = playerState.metadata.duration ?: 0L
-        if (durationMs > 0L) {
-            videoLengthMs = durationMs
-        }
-        val currentDuration = if (videoLengthMs > 0L) videoLengthMs else durationMs
-        videoCurrentTimeMs = ((playerState.sliderPos / 1000f) * currentDuration).toLong()
-        println("DEBUG: PlayerState durationMs=$durationMs, videoLengthMs=$videoLengthMs, sliderPos=${playerState.sliderPos}, videoCurrentTimeMs=$videoCurrentTimeMs, isPlaying=${playerState.isPlaying}")
-    }
 
-    LaunchedEffect(playerState.error) {
-        playerState.error?.let { err ->
-            println("DEBUG: VideoPlayerState error: $err")
-        }
-    }
 
     LaunchedEffect(videoPath) {
         val originalPathAtStart = videoPath
         // Initialize states immediately on video changes to prevent obsolete metadata leak (Requirement 2)
         videoLengthMs = 0L
         videoStartUtc = ""
-        previewTimeMs = 0L
-        videoCurrentTimeMs = 0L
 
         if (videoPath.isNotEmpty() && File(videoPath).exists()) {
             val originalFile = File(videoPath)
@@ -835,8 +762,6 @@ fun startGui(args: Array<String>) = application {
                 }
             }
             
-            playerState.openUri(targetVideoPath)
-            
             withContext(Dispatchers.IO) {
                 try {
                     val duration = getVideoDuration(targetVideoPath)
@@ -864,8 +789,6 @@ fun startGui(args: Array<String>) = application {
                     e.printStackTrace()
                 }
             }
-        } else {
-            playerState.stop()
         }
     }
 
@@ -881,7 +804,6 @@ fun startGui(args: Array<String>) = application {
                             cmd.startUtc?.let { videoStartUtc = it }
                         }
                         is CpCommand.Fire -> {
-                            playerState.pause()
                             scope.launch {
                                 encodingPreviewImage = null
                                 isEncoding = true
@@ -892,13 +814,6 @@ fun startGui(args: Array<String>) = application {
                                         onProgress = { prog, status ->
                                             progress = prog
                                             statusText = status
-                                            if (videoLengthMs > 0) {
-                                                val currentMs = (prog * videoLengthMs).toLong()
-                                                javax.swing.SwingUtilities.invokeLater {
-                                                    videoCurrentTimeMs = currentMs
-                                                    previewTimeMs = currentMs
-                                                }
-                                            }
                                         },
                                         onFrame = { bufferedImg ->
                                             val bitmap = bufferedImg.toComposeImageBitmap()
@@ -1021,7 +936,6 @@ fun startGui(args: Array<String>) = application {
                                 }
                             }
                             if (proceed) {
-                                playerState.pause()
                                 scope.launch {
                                     encodingPreviewImage = null
                                     isSampleEncoding = false
@@ -1033,13 +947,6 @@ fun startGui(args: Array<String>) = application {
                                             onProgress = { prog, status ->
                                                 progress = prog
                                                 statusText = status
-                                                if (videoLengthMs > 0) {
-                                                    val currentMs = (prog * videoLengthMs).toLong()
-                                                    javax.swing.SwingUtilities.invokeLater {
-                                                        videoCurrentTimeMs = currentMs
-                                                        previewTimeMs = currentMs
-                                                    }
-                                                }
                                             },
                                             onFrame = { bufferedImg ->
                                                 val bitmap = bufferedImg.toComposeImageBitmap()
@@ -1111,7 +1018,6 @@ fun startGui(args: Array<String>) = application {
                                 }
                             }
                             if (proceed) {
-                                playerState.pause()
                                 scope.launch {
                                     encodingPreviewImage = null
                                     isSampleEncoding = true
@@ -1123,13 +1029,6 @@ fun startGui(args: Array<String>) = application {
                                             onProgress = { prog, status ->
                                                 progress = prog
                                                 statusText = status
-                                                if (videoLengthMs > 0) {
-                                                    val currentMs = (prog * videoLengthMs).toLong()
-                                                    javax.swing.SwingUtilities.invokeLater {
-                                                        videoCurrentTimeMs = currentMs
-                                                        previewTimeMs = currentMs
-                                                    }
-                                                }
                                             },
                                             onFrame = { bufferedImg ->
                                                 val bitmap = bufferedImg.toComposeImageBitmap()
@@ -1682,164 +1581,31 @@ fun startGui(args: Array<String>) = application {
 
                 Box(modifier = Modifier.fillMaxSize().background(Color.White).padding(40.dp), contentAlignment = Alignment.Center) {
                     Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Box(
-                            modifier = Modifier
-                                .aspectRatio(16f / 9f)
-                                .fillMaxWidth()
-                                .background(Color.Black, shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
-                                .border(1.dp, Color(0xFFE5E5EA), shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
-                                .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
-                        ) {
-                            if (videoPath.isNotEmpty() && !isEncoding) {
-                                VideoPlayerSurface(
-                                    playerState = playerState,
-                                    modifier = Modifier.fillMaxSize()
-                                )
-                            } else {
-                                Box(Modifier.fillMaxSize().background(Color.Black))
-                            }
-
-                            if (isEncoding) {
-                                if (showLivePreview) {
-                                    encodingPreviewImage?.let { hudImg ->
-                                         Canvas(modifier = Modifier.fillMaxSize()) {
-                                             drawImage(
-                                                 image = hudImg,
-                                                 dstSize = IntSize(size.width.toInt(), size.height.toInt())
-                                             )
-                                         }
-                                    }
-                                } else {
-                                    Box(
-                                        modifier = Modifier.fillMaxSize().background(Color(0xE0101012)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            "Live Preview Disabled\n(Encoding is running)",
-                                            color = Color.Gray,
-                                            fontSize = 14.sp,
-                                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                                        )
-                                    }
-                                }
-                                
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
-                                    horizontalArrangement = Arrangement.SpaceEvenly
-                                ) {
-                                    Button(
-                                        onClick = { isPaused = !isPaused },
-                                        colors = ButtonDefaults.buttonColors(
-                                            backgroundColor = if (isPaused) Color(0xFF10B981) else Color(0xFFF59E0B)
-                                        )
-                                    ) {
-                                        Text(if (isPaused) "▶ RESUME" else "⏸ PAUSE", color = Color.White, fontWeight = FontWeight.Bold)
-                                    }
-                                    
-                                    Button(
-                                        onClick = { isCanceled = true },
-                                        colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFEF4444))
-                                    ) {
-                                        Text("⏹ CANCEL", color = Color.White, fontWeight = FontWeight.Bold)
-                                    }
-                                }
-                            } else {
-                                val density = androidx.compose.ui.platform.LocalDensity.current.density
-                                Canvas(modifier = Modifier.fillMaxSize()) {
-                                    val scale = size.width / 1920f
-                                    val currentRatio = if (videoLengthMs > 0) videoCurrentTimeMs.toFloat() / videoLengthMs.toFloat() else 0f
-                                    val telemetryPoint = currentPoint ?: fit.FitParser.TelemetryPoint(
-                                        timestamp = 0.0,
-                                        speed = 26.2,
-                                        power = 175.0,
-                                        cadence = 79.0,
-                                        heartRate = 148.0,
-                                        elevation = 63.2,
-                                        grade = 4.0
-                                    )
-                                    val pBuf = currentTrendPoints.map { it }
-                                    val composeCanvas = ComposeHudCanvas(this, textMeasurer, scale, density)
-                                    settings.hashCode()
-                                    rendererProxy.renderFrame(
-                                        composeCanvas,
-                                        telemetryPoint,
-                                        trimmedTelemetryPoints,
-                                        pBuf,
-                                        currentRatio
-                                    )
-                                }
-                            }
-                        }
-
-                        // Video Player Control UI
-                        if (videoPath.isNotEmpty()) {
-                            Spacer(Modifier.height(8.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Button(
-                                    onClick = togglePlay,
-                                    colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF007AFF))
-                                ) {
-                                    Text(if (isPlaying) "⏸ PAUSE" else "▶ PLAY", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
-                                }
-
-                                Text(
-                                    text = "${formatTime(videoCurrentTimeMs)} / ${formatTime(videoLengthMs)}",
-                                    color = Color(0xFF1C1C1E),
-                                    fontSize = 11.sp
-                                )
-
-                                Slider(
-                                    value = if (videoLengthMs > 0) videoCurrentTimeMs.toFloat() / videoLengthMs.toFloat() else 0f,
-                                    onValueChange = { ratio ->
-                                        val targetTime = (ratio * videoLengthMs).toLong()
-                                        seekTo(targetTime)
-                                    },
-                                    modifier = Modifier.weight(1f),
-                                    colors = SliderDefaults.colors(
-                                        thumbColor = Color(0xFF007AFF),
-                                        activeTrackColor = Color(0xFF007AFF),
-                                        inactiveTrackColor = Color(0xFFE5E5EA)
-                                    )
-                                )
-
-                                // VLC Status Badge
-                                Text(
-                                    text = if (vlcAvailable) "VLC ACTIVE" else "NO VLC (SIM)",
-                                    color = if (vlcAvailable) Color(0xFF2E7D32) else Color(0xFFD84315),
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 4.dp)
-                                )
-                            }
-                            
-                            Spacer(Modifier.height(4.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                val seekBtnModifier = Modifier.weight(1f).height(24.dp)
-                                val seekBtnColors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF1C1C1E))
-                                val seekSpecs = listOf(
-                                    "-10s" to -10000L,
-                                    "-1s" to -1000L,
-                                    "+1s" to 1000L,
-                                    "+10s" to 10000L
-                                )
-                                for ((label, delta) in seekSpecs) {
-                                    OutlinedButton(
-                                        onClick = { seekTo((videoCurrentTimeMs + delta).coerceIn(0L, maxOf(0L, videoLengthMs))) },
-                                        modifier = seekBtnModifier,
-                                        colors = seekBtnColors,
-                                        contentPadding = PaddingValues(0.dp)
-                                    ) {
-                                        Text(label, fontSize = 9.sp)
-                                    }
-                                }
-                            }
+                        if (!isEncoding) {
+                            VideoPreviewArea(
+                                videoPath = videoPath,
+                                videoLengthMs = videoLengthMs,
+                                adjustedStartUtc = adjustedStartUtc,
+                                telemetryPoints = telemetryPoints,
+                                trimmedTelemetryPoints = trimmedTelemetryPoints,
+                                settings = settings,
+                                rendererProxy = rendererProxy,
+                                vlcAvailable = vlcAvailable,
+                                textMeasurer = textMeasurer,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        } else {
+                            EncodingProgressArea(
+                                progress = progress,
+                                statusText = statusText,
+                                encodingPreviewImage = encodingPreviewImage,
+                                showLivePreview = showLivePreview,
+                                isPaused = isPaused,
+                                videoLengthMs = videoLengthMs,
+                                onPauseToggle = { isPaused = !isPaused },
+                                onCancel = { isCanceled = true },
+                                modifier = Modifier.fillMaxWidth()
+                            )
                         }
 
                         Text("1920x1080 Overlay Preview", color = Color(0xFF1C1C1E), fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
@@ -2159,6 +1925,312 @@ fun TimeAlignmentCard(
                         Text(label, fontSize = 9.sp)
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun VideoPreviewArea(
+    videoPath: String,
+    videoLengthMs: Long,
+    adjustedStartUtc: String,
+    telemetryPoints: List<FitParser.TelemetryPoint>,
+    trimmedTelemetryPoints: List<FitParser.TelemetryPoint>,
+    settings: HudSettings,
+    rendererProxy: fit.DynamicRendererProxy,
+    vlcAvailable: Boolean,
+    textMeasurer: androidx.compose.ui.text.TextMeasurer,
+    modifier: Modifier = Modifier
+) {
+    val playerState = rememberVideoPlayerState()
+    var isPlaying by remember { mutableStateOf(false) }
+    var videoCurrentTimeMs by remember { mutableStateOf(0L) }
+
+    val togglePlay = {
+        if (playerState.isPlaying) {
+            playerState.pause()
+        } else {
+            if (videoCurrentTimeMs >= videoLengthMs) {
+                playerState.seekTo(0f)
+            }
+            playerState.play()
+        }
+    }
+
+    val seekTo = { timeMs: Long ->
+        val target = timeMs.coerceIn(0L, videoLengthMs)
+        val ratio = if (videoLengthMs > 0) target.toFloat() / videoLengthMs.toFloat() else 0f
+        playerState.seekTo(ratio * 1000f)
+    }
+
+    LaunchedEffect(playerState.isPlaying) {
+        isPlaying = playerState.isPlaying
+        if (isPlaying) {
+            playerState.volume = 0f
+            println("DEBUG: Enforced volume = 0f on play start")
+        }
+        println("DEBUG: PlayerState isPlaying state changed: isPlaying=${playerState.isPlaying}")
+    }
+
+    LaunchedEffect(playerState.sliderPos, playerState.metadata.duration) {
+        val durationMs = playerState.metadata.duration ?: 0L
+        val currentDuration = if (videoLengthMs > 0L) videoLengthMs else durationMs
+        videoCurrentTimeMs = ((playerState.sliderPos / 1000f) * currentDuration).toLong()
+    }
+
+    // Video path change side effect inside the player area
+    LaunchedEffect(videoPath) {
+        if (videoPath.isNotEmpty() && File(videoPath).exists()) {
+            val originalFile = File(videoPath)
+            var targetVideoPath = videoPath
+            if (videoPath.startsWith("H:\\", ignoreCase = true)) {
+                try {
+                    val tempDir = System.getProperty("java.io.tmpdir")
+                    val junctionFolder = File(tempDir, "fit_trimmer_video_junction")
+                    if (junctionFolder.exists()) {
+                        ProcessBuilder("cmd.exe", "/c", "rmdir", junctionFolder.absolutePath).start().waitFor()
+                    }
+                    val parentDir = originalFile.parentFile.absolutePath
+                    val pb = ProcessBuilder("cmd.exe", "/c", "mklink", "/j", junctionFolder.absolutePath, parentDir)
+                    val p = pb.start()
+                    p.waitFor()
+                    if (junctionFolder.exists()) {
+                        targetVideoPath = File(junctionFolder, originalFile.name).absolutePath
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+            playerState.openUri(targetVideoPath)
+        } else {
+            playerState.stop()
+        }
+    }
+
+    val currentPoint = remember(videoCurrentTimeMs, telemetryPoints, adjustedStartUtc) {
+        if (telemetryPoints.isEmpty() || adjustedStartUtc.isEmpty()) null
+        else {
+            try {
+                val startTime = java.time.Instant.parse(adjustedStartUtc)
+                val fitEpoch = java.time.Instant.parse("1989-12-31T00:00:00Z").epochSecond
+                val elapsedSeconds = videoCurrentTimeMs / 1000.0
+                val currentUtc = startTime.toEpochMilli() / 1000.0 + elapsedSeconds
+                val currentFitTs = currentUtc - fitEpoch
+                telemetryPoints.find { it.timestamp >= currentFitTs } ?: telemetryPoints.lastOrNull()
+            } catch (e: Exception) {
+                e.printStackTrace()
+                null
+            }
+        }
+    }
+
+    val currentTrendPoints = remember(currentPoint, telemetryPoints) {
+        if (currentPoint == null || telemetryPoints.isEmpty()) emptyList<Double>()
+        else {
+            val idx = telemetryPoints.indexOfFirst { it.timestamp >= currentPoint.timestamp }
+            if (idx == -1) {
+                emptyList()
+            } else {
+                val startIdx = maxOf(0, idx - 30)
+                telemetryPoints.subList(startIdx, idx + 1).map { it.power }
+            }
+        }
+    }
+
+    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(
+            modifier = Modifier
+                .aspectRatio(16f / 9f)
+                .fillMaxWidth()
+                .background(Color.Black, shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                .border(1.dp, Color(0xFFE5E5EA), shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+        ) {
+            if (videoPath.isNotEmpty()) {
+                VideoPlayerSurface(
+                    playerState = playerState,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Box(Modifier.fillMaxSize().background(Color.Black))
+            }
+
+            val density = androidx.compose.ui.platform.LocalDensity.current.density
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val scale = size.width / 1920f
+                val currentRatio = if (videoLengthMs > 0) videoCurrentTimeMs.toFloat() / videoLengthMs.toFloat() else 0f
+                val telemetryPoint = currentPoint ?: fit.FitParser.TelemetryPoint(
+                    timestamp = 0.0, speed = 26.2, power = 175.0, cadence = 79.0, heartRate = 148.0, elevation = 63.2, grade = 4.0
+                )
+                val pBuf = currentTrendPoints.map { it }
+                val composeCanvas = ComposeHudCanvas(this, textMeasurer, scale, density)
+                rendererProxy.renderFrame(
+                    composeCanvas,
+                    telemetryPoint,
+                    trimmedTelemetryPoints,
+                    pBuf,
+                    currentRatio
+                )
+            }
+        }
+
+        // Video Player Control UI
+        if (videoPath.isNotEmpty()) {
+            Spacer(Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Button(
+                    onClick = togglePlay,
+                    colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF007AFF))
+                ) {
+                    Text(if (isPlaying) "⏸ PAUSE" else "▶ PLAY", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                }
+
+                Text(
+                    text = "${formatTime(videoCurrentTimeMs)} / ${formatTime(videoLengthMs)}",
+                    color = Color(0xFF1C1C1E),
+                    fontSize = 11.sp
+                )
+
+                Slider(
+                    value = if (videoLengthMs > 0) videoCurrentTimeMs.toFloat() / videoLengthMs.toFloat() else 0f,
+                    onValueChange = { ratio ->
+                        val targetTime = (ratio * videoLengthMs).toLong()
+                        seekTo(targetTime)
+                    },
+                    modifier = Modifier.weight(1f),
+                    colors = SliderDefaults.colors(
+                        thumbColor = Color(0xFF007AFF),
+                        activeTrackColor = Color(0xFF007AFF),
+                        inactiveTrackColor = Color(0xFFE5E5EA)
+                    )
+                )
+
+                Text(
+                    text = if (vlcAvailable) "VLC ACTIVE" else "NO VLC (SIM)",
+                    color = if (vlcAvailable) Color(0xFF2E7D32) else Color(0xFFD84315),
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 4.dp)
+                )
+            }
+
+            Spacer(Modifier.height(4.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                val seekBtnModifier = Modifier.weight(1f).height(24.dp)
+                val seekBtnColors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF1C1C1E))
+                val seekSpecs = listOf(
+                    "-10s" to -10000L,
+                    "-1s" to -1000L,
+                    "+1s" to 1000L,
+                    "+10s" to 10000L
+                )
+                for ((label, delta) in seekSpecs) {
+                    OutlinedButton(
+                        onClick = { seekTo((videoCurrentTimeMs + delta).coerceIn(0L, maxOf(0L, videoLengthMs))) },
+                        modifier = seekBtnModifier,
+                        colors = seekBtnColors,
+                        contentPadding = PaddingValues(0.dp)
+                    ) {
+                        Text(label, fontSize = 9.sp)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun EncodingProgressArea(
+    progress: Float,
+    statusText: String,
+    encodingPreviewImage: androidx.compose.ui.graphics.ImageBitmap?,
+    showLivePreview: Boolean,
+    isPaused: Boolean,
+    videoLengthMs: Long,
+    onPauseToggle: () -> Unit,
+    onCancel: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val currentMs = (progress * videoLengthMs).toLong()
+
+    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(
+            modifier = Modifier
+                .aspectRatio(16f / 9f)
+                .fillMaxWidth()
+                .background(Color.Black, shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                .border(1.dp, Color(0xFFE5E5EA), shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+        ) {
+            if (showLivePreview) {
+                encodingPreviewImage?.let { hudImg ->
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        drawImage(
+                            image = hudImg,
+                            dstSize = IntSize(size.width.toInt(), size.height.toInt())
+                        )
+                    }
+                }
+            } else {
+                Box(
+                    modifier = Modifier.fillMaxSize().background(Color(0xE0101012)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        "Live Preview Disabled\n(Encoding is running)",
+                        color = Color.Gray,
+                        fontSize = 14.sp,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        // Progress bar and controls
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Button(
+                onClick = onPauseToggle,
+                colors = ButtonDefaults.buttonColors(
+                    backgroundColor = if (isPaused) Color(0xFF10B981) else Color(0xFFF59E0B)
+                )
+            ) {
+                Text(if (isPaused) "▶ RESUME" else "⏸ PAUSE", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+            }
+
+            Text(
+                text = "${formatTime(currentMs)} / ${formatTime(videoLengthMs)} (${(progress * 100).toInt()}%)",
+                color = Color(0xFF1C1C1E),
+                fontSize = 11.sp
+            )
+
+            LinearProgressIndicator(
+                progress = progress,
+                modifier = Modifier.weight(1f).height(6.dp),
+                color = Color(0xFF007AFF),
+                backgroundColor = Color(0xFFE5E5EA)
+            )
+
+            Spacer(Modifier.width(8.dp))
+
+            Button(
+                onClick = onCancel,
+                colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFEF4444))
+            ) {
+                Text("⏹ CANCEL", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
             }
         }
     }
