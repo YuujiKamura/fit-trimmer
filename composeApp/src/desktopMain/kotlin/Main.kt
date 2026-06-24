@@ -25,8 +25,11 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 import java.io.File
 import java.awt.FileDialog
 import java.awt.Frame
@@ -72,6 +75,72 @@ fun pickFolder(title: String): String? {
     return if (chooser.showOpenDialog(null) == javax.swing.JFileChooser.APPROVE_OPTION) {
         chooser.selectedFile.absolutePath
     } else null
+}
+
+suspend fun extractPreviewFrame(
+    ffmpegPath: String,
+    videoPath: String,
+    timeMs: Long,
+    scaleWidth: Int
+): Result<androidx.compose.ui.graphics.ImageBitmap> = withContext(Dispatchers.IO) {
+    suspendCancellableCoroutine { continuation ->
+        val timeSec = timeMs / 1000.0
+        val pb = ProcessBuilder(
+            ffmpegPath, "-y",
+            "-loglevel", "quiet",
+            "-ss", String.format(java.util.Locale.US, "%.3f", timeSec),
+            "-i", videoPath,
+            "-vframes", "1",
+            "-vf", "scale=$scaleWidth:-1",
+            "-f", "image2pipe",
+            "-vcodec", "mjpeg",
+            "-"
+        )
+        
+        var proc: Process? = null
+        try {
+            proc = pb.start()
+            val finalProc = proc
+            
+            continuation.invokeOnCancellation {
+                finalProc.destroyForcibly()
+            }
+            
+            this.launch {
+                try {
+                    val bytes = finalProc.inputStream.use { it.readBytes() }
+                    val exitCode = finalProc.waitFor()
+                    if (continuation.isActive) {
+                        if (exitCode == 0 && bytes.isNotEmpty()) {
+                            val bitmap = org.jetbrains.skia.Image.makeFromEncoded(bytes).toComposeImageBitmap()
+                            continuation.resume(Result.success(bitmap))
+                        } else {
+                            continuation.resume(Result.failure(Exception("FFmpeg exited with code $exitCode")))
+                        }
+                    }
+                } catch (e: Exception) {
+                    finalProc.destroyForcibly()
+                    try {
+                        finalProc.waitFor(1, java.util.concurrent.TimeUnit.SECONDS)
+                    } catch (ioe: Exception) {}
+                    if (continuation.isActive) {
+                        continuation.resume(Result.failure(e))
+                    }
+                } finally {
+                    if (finalProc.isAlive) {
+                        finalProc.destroyForcibly()
+                        try {
+                            finalProc.waitFor(1, java.util.concurrent.TimeUnit.SECONDS)
+                        } catch (ioe: Exception) {}
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            if (continuation.isActive) {
+                continuation.resume(Result.failure(e))
+            }
+        }
+    }
 }
 
 @OptIn(ExperimentalTextApi::class)
@@ -246,17 +315,7 @@ fun startGui(args: Array<String>) = application {
     var videoLengthMs by remember { mutableStateOf(0L) }
     var videoCurrentTimeMs by remember { mutableStateOf(0L) }
     var previewTimeMs by remember { mutableStateOf(0L) }
-
-    LaunchedEffect(isPlaying) {
-        if (isPlaying) {
-            while (isPlaying) {
-                previewTimeMs = videoCurrentTimeMs
-                kotlinx.coroutines.delay(250)
-            }
-        } else {
-            previewTimeMs = videoCurrentTimeMs
-        }
-    }
+    var lastPreviewRequestId by remember { mutableStateOf(0L) }
 
     val fitStartInstant = remember(telemetryPoints) {
         if (telemetryPoints.isNotEmpty()) {
@@ -634,7 +693,7 @@ fun startGui(args: Array<String>) = application {
                     val pb = ProcessBuilder(ffmpegPath, "-y", "-i", videoPath, "-ss", "00:00:01", "-vframes", "1", tempThumb.absolutePath)
                     pb.start().waitFor()
                     if (tempThumb.exists()) {
-                        videoPreviewImage = Image.makeFromEncoded(tempThumb.readBytes()).asImageBitmap()
+                        videoPreviewImage = Image.makeFromEncoded(tempThumb.readBytes()).toComposeImageBitmap()
                         tempThumb.delete()
                     }
                 } catch (e: Exception) { e.printStackTrace() }
@@ -643,40 +702,22 @@ fun startGui(args: Array<String>) = application {
     }
 
     LaunchedEffect(videoPath, previewTimeMs, isEncoding) {
+        val reqId = ++lastPreviewRequestId
         if (isEncoding) return@LaunchedEffect
         if (videoPath.isNotEmpty() && File(videoPath).exists()) {
+            val targetTimeMs = previewTimeMs
+            val targetVideoPath = videoPath
             kotlinx.coroutines.delay(50)
-            withContext(Dispatchers.IO) {
-                val ffmpegPath = fit.findFfmpegPath()
-                var proc: Process? = null
-                try {
-                    val timeSec = previewTimeMs / 1000.0
-                    val pb = ProcessBuilder(
-                        ffmpegPath, "-y",
-                        "-loglevel", "quiet",
-                        "-ss", String.format(java.util.Locale.US, "%.3f", timeSec),
-                        "-i", videoPath,
-                        "-vframes", "1",
-                        "-f", "image2pipe",
-                        "-vcodec", "mjpeg",
-                        "-"
-                    )
-                    proc = pb.start()
-                    val bytes = proc.inputStream.readBytes()
-                    proc.waitFor()
-                    if (proc.exitValue() == 0 && bytes.isNotEmpty()) {
-                        val bitmap = Image.makeFromEncoded(bytes).asImageBitmap()
-                        javax.swing.SwingUtilities.invokeLater {
-                            videoPreviewImage = bitmap
-                        }
+            ensureActive()
+            val ffmpegPath = withContext(Dispatchers.IO) { fit.findFfmpegPath() }
+            val result = extractPreviewFrame(ffmpegPath, targetVideoPath, targetTimeMs, 480)
+            ensureActive()
+            result.onSuccess { bitmap ->
+                javax.swing.SwingUtilities.invokeLater {
+                    // Ensure we only update the preview image if the slider hasn't moved and the video file hasn't changed
+                    if (lastPreviewRequestId == reqId && videoPath == targetVideoPath) {
+                        videoPreviewImage = bitmap
                     }
-                } catch (e: kotlinx.coroutines.CancellationException) {
-                    proc?.destroyForcibly()
-                    throw e
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                } finally {
-                    proc?.destroy()
                 }
             }
         }
