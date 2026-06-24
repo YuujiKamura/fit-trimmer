@@ -1235,6 +1235,41 @@ fun startGui(args: Array<String>) = application {
                                     fontWeight = FontWeight.Bold
                                 )
                             }
+
+                            Divider(color = Color(0xFF2C2C30), modifier = Modifier.padding(vertical = 4.dp))
+
+                            OutlinedButton(
+                                onClick = {
+                                    scope.launch(Dispatchers.IO) {
+                                        try {
+                                            val projectDir = File(System.getProperty("user.dir"))
+                                            val workDir1 = File(projectDir, "temp_work")
+                                            val workDir2 = File(File(projectDir, "composeApp"), "temp_work")
+                                            if (workDir1.exists()) {
+                                                workDir1.listFiles()?.forEach { it.deleteRecursively() }
+                                            }
+                                            if (workDir2.exists()) {
+                                                workDir2.listFiles()?.forEach { it.deleteRecursively() }
+                                            }
+                                            appTempSpaceGB = 0.0
+                                            println("🧹 Manually cleared temp_work directory successfully.")
+                                        } catch (e: Exception) {
+                                            e.printStackTrace()
+                                        }
+                                    }
+                                },
+                                enabled = !isEncoding,
+                                modifier = Modifier.fillMaxWidth().height(28.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = Color(0xFFFF453A),
+                                    disabledContentColor = Color(0xFF8E8E93)
+                                ),
+                                border = BorderStroke(1.dp, if (!isEncoding) Color(0xFFFF453A).copy(alpha = 0.5f) else Color(0xFF2C2C30)),
+                                shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp),
+                                contentPadding = PaddingValues(0.dp)
+                            ) {
+                                Text("CLEAR ALL APP TEMP FILES", fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+                            }
                         }
                     }
 
