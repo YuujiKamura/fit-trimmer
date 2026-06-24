@@ -708,9 +708,7 @@ fun startGui(args: Array<String>) = application {
                         .verticalScroll(rememberScrollState()).padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Text("CONTROL PLANE", color = Color(0xFFF5F5F7), fontWeight = FontWeight.Bold, fontSize = 16.sp, letterSpacing = 1.sp)
-                    
-                    Divider(color = Color(0xFF2C2C2E))
+
 
                     val onNativeEncodeClick = remember(settings, fitPath, videoPath, videoStartUtc, moveOutputToSource, isVideoInFitRange) {
                         {
@@ -901,21 +899,6 @@ fun startGui(args: Array<String>) = application {
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             Text("ENCODER SETUP", color = Color(0xFFF5F5F7), fontWeight = FontWeight.SemiBold, fontSize = 12.sp, letterSpacing = 0.5.sp)
-                            
-                            OutlinedTextField(
-                                value = videoStartUtc,
-                                onValueChange = { videoStartUtc = it },
-                                label = { Text("Video Start UTC", color = Color(0xFF8E8E93), fontSize = 10.sp) },
-                                modifier = Modifier.fillMaxWidth(),
-                                textStyle = TextStyle(color = Color.White, fontSize = 11.sp),
-                                singleLine = true,
-                                enabled = !isEncoding,
-                                colors = TextFieldDefaults.outlinedTextFieldColors(
-                                    backgroundColor = Color(0xFF141416),
-                                    focusedBorderColor = Color(0xFF0A84FF),
-                                    unfocusedBorderColor = Color(0xFF3A3A3C)
-                                )
-                            )
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 OutlinedTextField(
                                     value = fitPath,
