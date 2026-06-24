@@ -321,12 +321,27 @@ fun startGui(args: Array<String>) = application {
         }
     }
 
+    /**
+     * Estimates the required disk space in GiB for re-encoding the video.
+     *
+     * Safety multiplier factor is set to 5.5:
+     * 1. CRF 18 high-quality encoding can expand compressed videos (especially 4K) by up to 2.5x.
+     * 2. During the final segment concat merge, the temporary .ts chunks and the final output video
+     *    co-exist on the disk temporarily, adding another 2.5x file size footprint (2.5x + 2.5x = 5.0x).
+     * 3. A safety multiplier of 5.5 (plus an extra safety buffer of 2.0 GiB) helps prevent running out of space.
+     */
+    fun estimateRequiredSpaceGiB(sizeBytes: Long): Double {
+        val safetyMultiplier = 5.5
+        val bufferGiB = 2.0
+        val gibBytes = 1024.0 * 1024.0 * 1024.0
+        return (sizeBytes * safetyMultiplier) / gibBytes + bufferGiB
+    }
+
     LaunchedEffect(videoPath) {
         if (videoPath.isNotEmpty()) {
             val f = File(videoPath)
             if (f.exists()) {
-                val sizeBytes = f.length()
-                requiredSpaceGB = (sizeBytes * 1.5) / (1024.0 * 1024.0 * 1024.0) + 2.0
+                requiredSpaceGB = estimateRequiredSpaceGiB(f.length())
             } else {
                 requiredSpaceGB = 2.0
             }
