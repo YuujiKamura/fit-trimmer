@@ -9,6 +9,8 @@ import java.nio.file.StandardCopyOption
 import java.io.InputStreamReader
 import java.io.FileOutputStream
 
+var globalActiveJobDir: java.io.File? = null
+
 fun findFfmpegPath(): String {
     val os = System.getProperty("os.name").lowercase()
     val isWindows = os.contains("win")
@@ -229,7 +231,8 @@ class NativeHudEncoder(
     }
 
     fun encode(fitPath: String, videoPath: String, output: String, startUtc: String, maxDurationSeconds: Int = -1) {
-        val ffmpegPath = findFfmpegPath()
+        try {
+            val ffmpegPath = findFfmpegPath()
         
         val workDir = PathResolver.getTempWorkDir()
         if (!workDir.exists()) workDir.mkdirs()
@@ -316,6 +319,7 @@ class NativeHudEncoder(
         val jobHash = kotlin.math.abs((fitPath + videoPath + startUtc + maxDurationSeconds + config.hashCode()).hashCode()).toString()
         val jobDir = File(workDir, "job_$jobHash")
         if (!jobDir.exists()) jobDir.mkdirs()
+        globalActiveJobDir = jobDir
 
         // Clean up any stray temp files in the job directory
         jobDir.listFiles { _, name -> name.endsWith(".tmp") }?.forEach {
@@ -654,6 +658,9 @@ class NativeHudEncoder(
             jobDir.deleteRecursively() // Cleanup the whole job folder
             
             onProgress(1.0f, "✨ Finished Successfully!")
+        }
+        } finally {
+            globalActiveJobDir = null
         }
     }
 

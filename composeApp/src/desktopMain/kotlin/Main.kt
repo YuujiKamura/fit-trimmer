@@ -161,6 +161,8 @@ fun startGui(args: Array<String>) = application {
     var cDriveTotalSpaceGB by remember { mutableStateOf(0.0) }
     var requiredSpaceGB by remember { mutableStateOf(2.0) }
     var hasEnoughSpace by remember { mutableStateOf(true) }
+    var hasEnoughSpaceForSample by remember { mutableStateOf(true) }
+    var isSampleEncoding by remember { mutableStateOf(false) }
     var appTempSpaceGB by remember { mutableStateOf(0.0) }
 
     // Dynamic Hud Proxy & Hot Reload State
@@ -337,6 +339,16 @@ fun startGui(args: Array<String>) = application {
         return (sizeBytes * safetyMultiplier) / gibBytes + bufferGiB
     }
 
+    val sampleRequiredSpaceGB = remember(videoPath, videoLengthMs) {
+        val f = File(videoPath)
+        if (f.exists() && videoLengthMs > 0) {
+            val ratio = minOf(1.0, 5.0 / (videoLengthMs / 1000.0))
+            estimateRequiredSpaceGiB((f.length() * ratio).toLong())
+        } else {
+            2.0
+        }
+    }
+
     LaunchedEffect(videoPath) {
         if (videoPath.isNotEmpty()) {
             val f = File(videoPath)
@@ -350,34 +362,45 @@ fun startGui(args: Array<String>) = application {
         }
     }
 
-    LaunchedEffect(requiredSpaceGB, isEncoding, isPaused) {
+    LaunchedEffect(requiredSpaceGB, sampleRequiredSpaceGB, isEncoding, isPaused, isSampleEncoding) {
         launch(Dispatchers.IO) {
             while (true) {
                 try {
                     val file = File("C:\\")
                     cDriveFreeSpaceGB = file.freeSpace / (1024.0 * 1024.0 * 1024.0)
                     cDriveTotalSpaceGB = file.totalSpace / (1024.0 * 1024.0 * 1024.0)
-                    hasEnoughSpace = cDriveFreeSpaceGB >= requiredSpaceGB
                     
-                    if (isEncoding && !hasEnoughSpace && !isPaused) {
+                    // Measure size of only the current active job directory directly from the encoding layer
+                    var totalBytes = 0L
+                    if (isEncoding) {
+                        val jobDir = fit.globalActiveJobDir
+                        if (jobDir != null && jobDir.exists()) {
+                            fun getDirSize(dir: File): Long {
+                                var size = 0L
+                                dir.listFiles()?.forEach { f ->
+                                    size += if (f.isDirectory) getDirSize(f) else f.length()
+                                }
+                                return size
+                            }
+                            totalBytes += getDirSize(jobDir)
+                        }
+                    }
+                    appTempSpaceGB = totalBytes / (1024.0 * 1024.0 * 1024.0)
+
+                    // The temp files are already stored in temp_work and thus already consuming C: drive space.
+                    // The remaining required space is (total estimated required space) - (already written temp space).
+                    // We only subtract appTempSpaceGB for the currently active encoding mode to prevent underestimating the non-active mode.
+                    val remainingNative = if (isEncoding && !isSampleEncoding) maxOf(2.0, requiredSpaceGB - appTempSpaceGB) else requiredSpaceGB
+                    val remainingSample = if (isEncoding && isSampleEncoding) maxOf(2.0, sampleRequiredSpaceGB - appTempSpaceGB) else sampleRequiredSpaceGB
+
+                    hasEnoughSpace = cDriveFreeSpaceGB >= remainingNative
+                    hasEnoughSpaceForSample = cDriveFreeSpaceGB >= remainingSample
+                    
+                    val currentHasEnough = if (isSampleEncoding) hasEnoughSpaceForSample else hasEnoughSpace
+                    if (isEncoding && !currentHasEnough && !isPaused) {
                         isPaused = true
                         statusText = "PAUSED (Not enough space on C: drive!)"
                     }
-
-                    // Calculate temp_work size dynamically
-                    val workDir = fit.PathResolver.getTempWorkDir()
-                    var totalBytes = 0L
-                    
-                    fun getDirSize(dir: File): Long {
-                        var size = 0L
-                        dir.listFiles()?.forEach { f ->
-                            size += if (f.isDirectory) getDirSize(f) else f.length()
-                        }
-                        return size
-                    }
-                    
-                    if (workDir.exists()) totalBytes += getDirSize(workDir)
-                    appTempSpaceGB = totalBytes / (1024.0 * 1024.0 * 1024.0)
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
@@ -773,6 +796,7 @@ fun startGui(args: Array<String>) = application {
                             if (proceed) {
                                 scope.launch {
                                     encodingPreviewImage = null
+                                    isSampleEncoding = false
                                     isEncoding = true
                                     isPaused = false
                                     isCanceled = false
@@ -834,6 +858,7 @@ fun startGui(args: Array<String>) = application {
                                         }
                                     } finally {
                                         isEncoding = false
+                                        isSampleEncoding = false
                                     }
                                 }
                             }
@@ -860,6 +885,7 @@ fun startGui(args: Array<String>) = application {
                             if (proceed) {
                                 scope.launch {
                                     encodingPreviewImage = null
+                                    isSampleEncoding = true
                                     isEncoding = true
                                     isPaused = false
                                     isCanceled = false
@@ -922,6 +948,7 @@ fun startGui(args: Array<String>) = application {
                                         }
                                     } finally {
                                         isEncoding = false
+                                        isSampleEncoding = false
                                         if (args.contains("--auto-sample")) {
                                             println("🏁 Auto-sample test finished. Exiting application...")
                                             exitApplication()
@@ -1226,10 +1253,23 @@ fun startGui(args: Array<String>) = application {
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Text("Est. Required Space:", color = Color(0xFF636366), fontSize = 10.sp)
+                                Text("Est. Required Space (Native):", color = Color(0xFF636366), fontSize = 10.sp)
                                 Text(
                                     "%.2f GB".format(requiredSpaceGB),
-                                    color = if (hasEnoughSpace) Color(0xFF1C1C1E) else Color(0xFFE02424),
+                                    color = if (hasEnoughSpace || !isEncoding || isSampleEncoding) Color(0xFF1C1C1E) else Color(0xFFE02424),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                            
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("Est. Required Space (Sample):", color = Color(0xFF636366), fontSize = 10.sp)
+                                Text(
+                                    "%.2f GB".format(sampleRequiredSpaceGB),
+                                    color = if (hasEnoughSpaceForSample || !isEncoding || !isSampleEncoding) Color(0xFF1C1C1E) else Color(0xFFE02424),
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Medium
                                 )
@@ -1364,15 +1404,16 @@ fun startGui(args: Array<String>) = application {
 
                         Spacer(modifier = Modifier.height(4.dp))
 
+                        val isSampleEnabled = hasEnoughSpaceForSample && fitPath.isNotEmpty() && videoPath.isNotEmpty()
                         OutlinedButton(
                             onClick = onSampleEncodeClick,
                             modifier = Modifier.fillMaxWidth().height(44.dp),
-                            enabled = hasEnoughSpace && fitPath.isNotEmpty() && videoPath.isNotEmpty(),
+                            enabled = isSampleEnabled,
                             colors = ButtonDefaults.outlinedButtonColors(
                                 contentColor = Color(0xFF007AFF),
                                 disabledContentColor = Color(0xFF8E8E93)
                             ),
-                            border = BorderStroke(1.5.dp, if (hasEnoughSpace && fitPath.isNotEmpty() && videoPath.isNotEmpty()) Color(0xFF007AFF) else Color(0xFFE5E5EA)),
+                            border = BorderStroke(1.5.dp, if (isSampleEnabled) Color(0xFF007AFF) else Color(0xFFE5E5EA)),
                             shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
                         ) {
                             Text("RUN 5s SAMPLE", fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
