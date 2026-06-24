@@ -22,6 +22,14 @@ interface HudCanvas {
 }
 
 class HudRenderer(val config: HudConfig) {
+    // Cache fields for elevation points to avoid recalculation/reallocation every frame
+    private var cachedOriginalPoints: List<FitParser.TelemetryPoint>? = null
+    private var cachedCx: Float = 0f
+    private var cachedEGy: Float = 0f
+    private var cachedGraphW: Float = 0f
+    private var cachedGraphH: Float = 0f
+    private var cachedPts: List<Pair<Float, Float>> = emptyList()
+
     fun renderFrame(
         canvas: HudCanvas, 
         telemetry: FitParser.TelemetryPoint, 
@@ -82,7 +90,7 @@ class HudRenderer(val config: HudConfig) {
         drawCell("W/KG", wkgStr, "w/kg", "#2dd4bf")
 
         // 6. POWER TREND (Bar graph)
-        canvas.drawText("POWER TREND", cx, cy, labelSize, "#a0a0a0", bold = true)
+        canvas.drawText("POWER TREND (30s, 1s/bar)", cx, cy, labelSize, "#a0a0a0", bold = true)
         val pGy = cy + labelSize + 4f
         
         if (pBuf.isNotEmpty()) {
@@ -115,19 +123,36 @@ class HudRenderer(val config: HudConfig) {
         val eGy = cy + labelSize + 4f
         
         if (allPoints.size > 1) {
-            val altitudes = allPoints.map { it.elevation }
-            var minAlt = altitudes.firstOrNull() ?: 0.0
-            var maxAlt = altitudes.firstOrNull() ?: 100.0
-            for (alt in altitudes) {
-                if (alt < minAlt) minAlt = alt
-                if (alt > maxAlt) maxAlt = alt
-            }
-            val altDiff = max(maxAlt - minAlt, 10.0)
+            val pts: List<Pair<Float, Float>>
+            if (allPoints === cachedOriginalPoints &&
+                cx == cachedCx &&
+                eGy == cachedEGy &&
+                graphW == cachedGraphW &&
+                graphH == cachedGraphH
+            ) {
+                pts = cachedPts
+            } else {
+                val altitudes = allPoints.map { it.elevation }
+                var minAlt = altitudes.firstOrNull() ?: 0.0
+                var maxAlt = altitudes.firstOrNull() ?: 100.0
+                for (alt in altitudes) {
+                    if (alt < minAlt) minAlt = alt
+                    if (alt > maxAlt) maxAlt = alt
+                }
+                val altDiff = max(maxAlt - minAlt, 10.0)
 
-            val pts = allPoints.mapIndexed { idx, pt ->
-                val px = cx + (idx.toFloat() / (allPoints.size - 1)) * graphW
-                val py = (eGy + graphH - ((pt.elevation - minAlt) / altDiff) * graphH).toFloat()
-                px to py
+                pts = allPoints.mapIndexed { idx, pt ->
+                    val px = cx + (idx.toFloat() / (allPoints.size - 1)) * graphW
+                    val py = (eGy + graphH - ((pt.elevation - minAlt) / altDiff) * graphH).toFloat()
+                    px to py
+                }
+                
+                cachedOriginalPoints = allPoints
+                cachedCx = cx
+                cachedEGy = eGy
+                cachedGraphW = graphW
+                cachedGraphH = graphH
+                cachedPts = pts
             }
 
             // Draw colored terrain polygon segments
@@ -155,10 +180,13 @@ class HudRenderer(val config: HudConfig) {
             canvas.drawLine(pts, "#ffffff", 1f, alpha = 0.5f)
 
             // Current position marker pin and vertical guide line
-            var currentIdx = allPoints.indexOfFirst { it.timestamp >= telemetry.timestamp }
-            if (currentIdx == -1) {
-                currentIdx = (allPoints.size * currentRatio).toInt().coerceIn(0, allPoints.size - 1)
+            var currentIdx = allPoints.binarySearch {
+                it.timestamp.compareTo(telemetry.timestamp)
             }
+            if (currentIdx < 0) {
+                currentIdx = -currentIdx - 1
+            }
+            currentIdx = currentIdx.coerceIn(allPoints.indices)
             if (currentIdx in pts.indices) {
                 val currX = pts[currentIdx].first
                 val currY = pts[currentIdx].second
@@ -172,6 +200,24 @@ class HudRenderer(val config: HudConfig) {
                 )
                 canvas.drawPolygon(pinPoly, "#ef4444", alpha = 1.0f)
             }
+
+            // Start/End Elevation Markers and Labels
+            val startPt = pts.first()
+            val endPt = pts.last()
+            
+            // Draw marker dots (small white squares)
+            canvas.drawRect(startPt.first - 2.5f, startPt.second - 2.5f, 5f, 5f, "#ffffff", alpha = 1.0f)
+            canvas.drawRect(endPt.first - 2.5f, endPt.second - 2.5f, 5f, 5f, "#ffffff", alpha = 1.0f)
+            
+            // Draw start and end elevation text labels
+            val startAlt = allPoints.first().elevation
+            val endAlt = allPoints.last().elevation
+            val startText = "${startAlt.roundToInt()}m"
+            val endText = "${endAlt.roundToInt()}m"
+            
+            val graphLabelSize = 9f
+            canvas.drawText(startText, startPt.first, startPt.second - 4f, graphLabelSize, "#ffffff", bold = true, anchor = "bottom-left")
+            canvas.drawText(endText, endPt.first, endPt.second - 4f, graphLabelSize, "#ffffff", bold = true, anchor = "bottom-right")
         }
     }
 

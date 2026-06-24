@@ -418,6 +418,7 @@ class NativeHudEncoder(
                 }
             }
             
+            var telemetryIdx = 0
             try {
                 loop@ for (i in resumeSeconds until currentChunkEnd) {
                     if (cancelSupplier()) {
@@ -435,7 +436,11 @@ class NativeHudEncoder(
                     val loopStart = System.currentTimeMillis()
                     val currentUtc = startTime.plusSeconds(i.toLong()).epochSecond
                     val currentFitTs = currentUtc - fitEpoch
-                    val point = telemetry.find { it.timestamp >= currentFitTs } ?: telemetry.last()
+                    
+                    while (telemetryIdx < telemetry.size - 1 && telemetry[telemetryIdx].timestamp < currentFitTs) {
+                        telemetryIdx++
+                    }
+                    val point = telemetry.getOrNull(telemetryIdx) ?: telemetry.last()
                     
                     pBuf.add(point.power)
                     if (pBuf.size > 30) pBuf.removeAt(0)
@@ -481,9 +486,11 @@ class NativeHudEncoder(
                     val statusText = "Encoding: $progressPercent% | $processedStr / $totalStr | Speed: $fpsStr ($speedStr) | ETA: $remainingStr"
                     onProgress(progressRatio, statusText)
                     
-                    val copy = BufferedImage(img.width, img.height, img.type)
+                    val targetW = 960
+                    val targetH = (videoHeight * (targetW.toFloat() / videoWidth)).toInt().coerceAtLeast(1)
+                    val copy = BufferedImage(targetW, targetH, img.type)
                     val g2d = copy.createGraphics()
-                    g2d.drawImage(img, 0, 0, null)
+                    g2d.drawImage(img, 0, 0, targetW, targetH, null)
                     g2d.dispose()
                     onFrameRendered(copy)
                 }

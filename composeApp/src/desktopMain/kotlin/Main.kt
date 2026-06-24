@@ -271,10 +271,18 @@ fun startGui(args: Array<String>) = application {
         withContext(Dispatchers.IO) {
             // Auto-cleanup temporary workspaces on startup
             try {
-                val workDir = File(System.getProperty("user.dir"), "temp_work")
                 val hudDir = File(System.getProperty("user.dir"), "tmp_hud")
-                if (workDir.exists()) workDir.deleteRecursively()
                 if (hudDir.exists()) hudDir.deleteRecursively()
+                
+                // Clean up only orphaned tmp files in temp_work, keeping job directories intact for crash recovery
+                val workDir = File(System.getProperty("user.dir"), "temp_work")
+                if (workDir.exists()) {
+                    workDir.listFiles()?.forEach { file ->
+                        if (file.isFile && file.name.endsWith(".tmp")) {
+                            file.delete()
+                        }
+                    }
+                }
             } catch (e: Exception) {
                 e.printStackTrace()
             }
