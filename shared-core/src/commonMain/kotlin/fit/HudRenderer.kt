@@ -68,24 +68,20 @@ class HudRenderer(val config: HudConfig) {
         val cadStr = telemetry.cadence.roundToInt().toString()
         drawCell("CADENCE", cadStr, "rpm", "#a78bfa")
 
-        // 3. POWER
-        val pwrStr = telemetry.power.roundToInt().toString()
-        drawCell("POWER", pwrStr, "W", "#10b981")
-
-        // 4. HEART RATE
+        // 3. HEART RATE
         val hrStr = telemetry.heartRate.roundToInt().toString()
         drawCell("HEART RATE", hrStr, "bpm", "#ef4444")
 
-        // 5. GRADE
-        val grdStr = formatGrade(telemetry.grade)
-        drawCell("GRADE", grdStr, "%", "#fbbf24")
+        // 4. POWER
+        val pwrStr = telemetry.power.roundToInt().toString()
+        drawCell("POWER", pwrStr, "W", "#10b981")
 
-        // 6. W/KG
+        // 5. W/KG
         val wkgVal = telemetry.power / 83.3
         val wkgStr = formatOneDecimal(wkgVal)
         drawCell("W/KG", wkgStr, "w/kg", "#2dd4bf")
 
-        // 7. POWER TREND (Bar graph)
+        // 6. POWER TREND (Bar graph)
         canvas.drawText("POWER TREND", cx, cy, labelSize, "#a0a0a0", bold = true)
         val pGy = cy + labelSize + 4f
         
@@ -109,6 +105,10 @@ class HudRenderer(val config: HudConfig) {
             }
         }
         cy += labelSize + 4f + graphH + itemSpacing
+
+        // 7. GRADE
+        val grdStr = formatGrade(telemetry.grade)
+        drawCell("GRADE", grdStr, "%", "#fbbf24")
 
         // 8. ELEVATION (Line graph with terrain and pin)
         canvas.drawText("ELEVATION", cx, cy, labelSize, "#a0a0a0", bold = true)

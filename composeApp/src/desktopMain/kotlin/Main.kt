@@ -116,7 +116,10 @@ fun startGui() = application {
     }
     
     var reloadTrigger by remember { mutableStateOf(0) }
-    val rendererProxy = remember(hudConfig, reloadTrigger) { fit.DynamicRendererProxy(hudConfig) }
+    val rendererProxy = remember(reloadTrigger) { fit.DynamicRendererProxy(hudConfig) }
+    LaunchedEffect(hudConfig) {
+        rendererProxy.updateConfig(hudConfig)
+    }
     var isCompiling by remember { mutableStateOf(false) }
     
     var lastClassModified by remember { mutableStateOf(0L) }
@@ -1092,6 +1095,7 @@ fun startGui() = application {
                                     )
                                     val pBuf = currentTrendPoints.map { it }
                                     val composeCanvas = ComposeHudCanvas(this, textMeasurer, scale)
+                                    settings.hashCode()
                                     rendererProxy.renderFrame(
                                         composeCanvas,
                                         telemetryPoint,
