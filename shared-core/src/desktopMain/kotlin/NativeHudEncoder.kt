@@ -56,7 +56,8 @@ class NativeHudEncoder(
     val onFrameRendered: (BufferedImage) -> Unit = {},
     val pauseSupplier: () -> Boolean = { false },
     val cancelSupplier: () -> Boolean = { false },
-    val customRenderer: ((HudCanvas, fit.FitParser.TelemetryPoint, List<fit.FitParser.TelemetryPoint>, List<Double>, Float) -> Unit)? = null
+    val customRenderer: ((HudCanvas, fit.FitParser.TelemetryPoint, List<fit.FitParser.TelemetryPoint>, List<Double>, Float) -> Unit)? = null,
+    val showLivePreviewSupplier: () -> Boolean = { true }
 ) {
 
     class DesktopHudCanvas(val g: Graphics2D, val scale: Float) : HudCanvas {
@@ -486,13 +487,15 @@ class NativeHudEncoder(
                     val statusText = "Encoding: $progressPercent% | $processedStr / $totalStr | Speed: $fpsStr ($speedStr) | ETA: $remainingStr"
                     onProgress(progressRatio, statusText)
                     
-                    val targetW = 960
-                    val targetH = (videoHeight * (targetW.toFloat() / videoWidth)).toInt().coerceAtLeast(1)
-                    val copy = BufferedImage(targetW, targetH, img.type)
-                    val g2d = copy.createGraphics()
-                    g2d.drawImage(img, 0, 0, targetW, targetH, null)
-                    g2d.dispose()
-                    onFrameRendered(copy)
+                    if (showLivePreviewSupplier()) {
+                        val targetW = 960
+                        val targetH = (videoHeight * (targetW.toFloat() / videoWidth)).toInt().coerceAtLeast(1)
+                        val copy = BufferedImage(targetW, targetH, img.type)
+                        val g2d = copy.createGraphics()
+                        g2d.drawImage(img, 0, 0, targetW, targetH, null)
+                        g2d.dispose()
+                        onFrameRendered(copy)
+                    }
                 }
             } catch (e: Exception) {
                 println("\n❌ Pipe Write Error: ${e.message}")

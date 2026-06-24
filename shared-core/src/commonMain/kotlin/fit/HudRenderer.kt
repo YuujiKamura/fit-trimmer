@@ -90,7 +90,7 @@ class HudRenderer(val config: HudConfig) {
         drawCell("W/KG", wkgStr, "w/kg", "#2dd4bf")
 
         // 6. POWER TREND (Bar graph)
-        canvas.drawText("POWER TREND (30s, 1s/bar)", cx, cy, labelSize, "#a0a0a0", bold = true)
+        canvas.drawText("POWER TREND (30s, 1s)", cx, cy, labelSize, "#a0a0a0", bold = true)
         val pGy = cy + labelSize + 4f
         
         if (pBuf.isNotEmpty()) {
