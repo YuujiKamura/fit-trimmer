@@ -192,14 +192,14 @@ fun startGui(args: Array<String>) = application {
     var videoCurrentTimeMs by remember { mutableStateOf(0L) }
     var previewTimeMs by remember { mutableStateOf(0L) }
 
-    LaunchedEffect(videoCurrentTimeMs, isPlaying) {
-        if (!isPlaying) {
-            previewTimeMs = videoCurrentTimeMs
-        } else {
+    LaunchedEffect(isPlaying) {
+        if (isPlaying) {
             while (isPlaying) {
                 previewTimeMs = videoCurrentTimeMs
                 kotlinx.coroutines.delay(250)
             }
+        } else {
+            previewTimeMs = videoCurrentTimeMs
         }
     }
 
@@ -328,7 +328,9 @@ fun startGui(args: Array<String>) = application {
     }
 
     val seekTo = { timeMs: Long ->
-        videoCurrentTimeMs = timeMs.coerceIn(0L, videoLengthMs)
+        val target = timeMs.coerceIn(0L, videoLengthMs)
+        videoCurrentTimeMs = target
+        previewTimeMs = target
     }
 
     LaunchedEffect(isPlaying) {
@@ -575,6 +577,13 @@ fun startGui(args: Array<String>) = application {
                                         onProgress = { prog, status ->
                                             progress = prog
                                             statusText = status
+                                            if (videoLengthMs > 0) {
+                                                val currentMs = (prog * videoLengthMs).toLong()
+                                                javax.swing.SwingUtilities.invokeLater {
+                                                    videoCurrentTimeMs = currentMs
+                                                    previewTimeMs = currentMs
+                                                }
+                                            }
                                         },
                                         onFrame = { bufferedImg ->
                                             val bitmap = bufferedImg.toComposeImageBitmap()
@@ -706,6 +715,13 @@ fun startGui(args: Array<String>) = application {
                                             onProgress = { prog, status ->
                                                 progress = prog
                                                 statusText = status
+                                                if (videoLengthMs > 0) {
+                                                    val currentMs = (prog * videoLengthMs).toLong()
+                                                    javax.swing.SwingUtilities.invokeLater {
+                                                        videoCurrentTimeMs = currentMs
+                                                        previewTimeMs = currentMs
+                                                    }
+                                                }
                                             },
                                             onFrame = { bufferedImg ->
                                                 val bitmap = bufferedImg.toComposeImageBitmap()
@@ -785,6 +801,13 @@ fun startGui(args: Array<String>) = application {
                                             onProgress = { prog, status ->
                                                 progress = prog
                                                 statusText = status
+                                                if (videoLengthMs > 0) {
+                                                    val currentMs = (prog * videoLengthMs).toLong()
+                                                    javax.swing.SwingUtilities.invokeLater {
+                                                        videoCurrentTimeMs = currentMs
+                                                        previewTimeMs = currentMs
+                                                    }
+                                                }
                                             },
                                             onFrame = { bufferedImg ->
                                                 val bitmap = bufferedImg.toComposeImageBitmap()
