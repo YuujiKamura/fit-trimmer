@@ -161,6 +161,7 @@ fun startGui(args: Array<String>) = application {
     var cDriveTotalSpaceGB by remember { mutableStateOf(0.0) }
     var requiredSpaceGB by remember { mutableStateOf(2.0) }
     var hasEnoughSpace by remember { mutableStateOf(true) }
+    var appTempSpaceGB by remember { mutableStateOf(0.0) }
 
     // Dynamic Hud Proxy & Hot Reload State
     val hudConfig = remember(settings) {
@@ -347,6 +348,24 @@ fun startGui(args: Array<String>) = application {
                         isPaused = true
                         statusText = "PAUSED (Not enough space on C: drive!)"
                     }
+
+                    // Calculate temp_work size dynamically
+                    var projectDir = File(System.getProperty("user.dir"))
+                    val workDir1 = File(projectDir, "temp_work")
+                    val workDir2 = File(File(projectDir, "composeApp"), "temp_work")
+                    var totalBytes = 0L
+                    
+                    fun getDirSize(dir: File): Long {
+                        var size = 0L
+                        dir.listFiles()?.forEach { f ->
+                            size += if (f.isDirectory) getDirSize(f) else f.length()
+                        }
+                        return size
+                    }
+                    
+                    if (workDir1.exists()) totalBytes += getDirSize(workDir1)
+                    if (workDir2.exists()) totalBytes += getDirSize(workDir2)
+                    appTempSpaceGB = totalBytes / (1024.0 * 1024.0 * 1024.0)
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
@@ -1186,6 +1205,34 @@ fun startGui(args: Array<String>) = application {
                                     color = if (hasEnoughSpace) Color.White else Color(0xFFFF453A),
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Medium
+                                )
+                            }
+
+                            Divider(color = Color(0xFF2C2C30), modifier = Modifier.padding(vertical = 2.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("App Temp Space:", color = Color(0xFF8E8E93), fontSize = 10.sp)
+                                Text(
+                                    "%.2f GB".format(appTempSpaceGB),
+                                    color = Color(0xFFFF9F0A),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("Released on Finish:", color = Color(0xFF8E8E93), fontSize = 10.sp)
+                                Text(
+                                    "~ %.2f GB".format(appTempSpaceGB),
+                                    color = Color(0xFF30D158),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold
                                 )
                             }
                         }
