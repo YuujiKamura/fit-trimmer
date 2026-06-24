@@ -91,7 +91,7 @@ fun showSystemNotification(title: String, message: String) {
     try {
         val tray = java.awt.SystemTray.getSystemTray()
         val image = java.awt.image.BufferedImage(16, 16, java.awt.image.BufferedImage.TYPE_INT_ARGB)
-        val trayIcon = java.awt.TrayIcon(image, "FitTrimmer")
+        val trayIcon = java.awt.TrayIcon(image, "HUD エンコーダー")
         trayIcon.isImageAutoSize = true
         tray.add(trayIcon)
         trayIcon.displayMessage(title, message, java.awt.TrayIcon.MessageType.INFO)
@@ -621,7 +621,7 @@ fun startGui(args: Array<String>) = application {
                                         println("TEST_NOTIFICATION_SUCCESS: Encoding Finished Successfully!")
                                     } else {
                                         showSystemNotification(
-                                            "FitTrimmer",
+                                            "HUD エンコーダー",
                                             "Encoding Finished Successfully!"
                                         )
                                     }
@@ -631,7 +631,7 @@ fun startGui(args: Array<String>) = application {
                                         println("TEST_NOTIFICATION_ERROR: Encoding Failed: ${e.message}")
                                     } else {
                                         showSystemNotification(
-                                            "FitTrimmer - Error",
+                                            "HUD エンコーダー - Error",
                                             "Encoding Failed: ${e.message}"
                                         )
                                     }
@@ -660,7 +660,7 @@ fun startGui(args: Array<String>) = application {
 
     Window(
         onCloseRequest = ::exitApplication,
-        title = "FitTrimmer CP Console",
+        title = "HUD エンコーダー",
         state = rememberWindowState(width = 1400.dp, height = 900.dp)
     ) {
         val textMeasurer = rememberTextMeasurer()
@@ -765,7 +765,7 @@ fun startGui(args: Array<String>) = application {
                                                 println("TEST_NOTIFICATION_SUCCESS: Encoding Finished Successfully!")
                                             } else {
                                                 showSystemNotification(
-                                                    "FitTrimmer",
+                                                    "HUD エンコーダー",
                                                     "Encoding Finished Successfully!"
                                                 )
                                             }
@@ -776,7 +776,7 @@ fun startGui(args: Array<String>) = application {
                                             println("TEST_NOTIFICATION_ERROR: Encoding Failed: ${e.message}")
                                         } else {
                                             showSystemNotification(
-                                                "FitTrimmer - Error",
+                                                "HUD エンコーダー - Error",
                                                 "Encoding Failed: ${e.message}"
                                             )
                                         }
@@ -845,7 +845,7 @@ fun startGui(args: Array<String>) = application {
                                                 println("TEST_NOTIFICATION_SUCCESS: Sample Encoding Finished Successfully!")
                                             } else {
                                                 showSystemNotification(
-                                                    "FitTrimmer",
+                                                    "HUD エンコーダー",
                                                     "Sample Encoding Finished Successfully!"
                                                 )
                                             }
@@ -856,7 +856,7 @@ fun startGui(args: Array<String>) = application {
                                             println("TEST_NOTIFICATION_ERROR: Sample Encoding Failed: ${e.message}")
                                         } else {
                                             showSystemNotification(
-                                                "FitTrimmer - Error",
+                                                "HUD エンコーダー - Error",
                                                 "Sample Encoding Failed: ${e.message}"
                                             )
                                         }
