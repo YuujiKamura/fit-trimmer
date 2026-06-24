@@ -193,6 +193,52 @@ fun startGui(args: Array<String>) = application {
     var videoLengthMs by remember { mutableStateOf(0L) }
     var videoCurrentTimeMs by remember { mutableStateOf(0L) }
 
+    val fitStartInstant = remember(telemetryPoints) {
+        if (telemetryPoints.isNotEmpty()) {
+            try {
+                java.time.Instant.ofEpochSecond(telemetryPoints.first().timestamp.toLong() + 631065600L)
+            } catch (e: Exception) {
+                null
+            }
+        } else null
+    }
+
+    val fitEndInstant = remember(telemetryPoints) {
+        if (telemetryPoints.isNotEmpty()) {
+            try {
+                java.time.Instant.ofEpochSecond(telemetryPoints.last().timestamp.toLong() + 631065600L)
+            } catch (e: Exception) {
+                null
+            }
+        } else null
+    }
+
+    val videoStartInstant = remember(videoStartUtc) {
+        try {
+            if (videoStartUtc.isNotEmpty()) java.time.Instant.parse(videoStartUtc) else null
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    val videoEndInstant = remember(videoStartInstant, videoLengthMs) {
+        if (videoStartInstant != null && videoLengthMs > 0) {
+            try {
+                videoStartInstant.plusMillis(videoLengthMs)
+            } catch (e: Exception) {
+                null
+            }
+        } else null
+    }
+
+    val isVideoInFitRange = remember(fitStartInstant, fitEndInstant, videoStartInstant, videoEndInstant) {
+        if (fitStartInstant != null && fitEndInstant != null && videoStartInstant != null && videoEndInstant != null) {
+            (!videoStartInstant.isBefore(fitStartInstant)) && (!videoEndInstant.isAfter(fitEndInstant))
+        } else {
+            true
+        }
+    }
+
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
@@ -650,130 +696,160 @@ fun startGui(args: Array<String>) = application {
                     
                     Divider(color = Color(0xFF2C2C2E))
 
-                    val onNativeEncodeClick = remember(settings, fitPath, videoPath, videoStartUtc, moveOutputToSource) {
+                    val onNativeEncodeClick = remember(settings, fitPath, videoPath, videoStartUtc, moveOutputToSource, isVideoInFitRange) {
                         {
-                            scope.launch {
-                                encodingPreviewImage = null
-                                isEncoding = true
-                                isPaused = false
-                                isCanceled = false
-                                try {
-                                    val outPath = fireEncode(settings, fitPath, videoPath, outputDir, videoStartUtc,
-                                        onProgress = { prog, status ->
-                                            progress = prog
-                                            statusText = status
-                                        },
-                                        onFrame = { bufferedImg ->
-                                            val bitmap = bufferedImg.toComposeImageBitmap()
-                                            javax.swing.SwingUtilities.invokeLater {
-                                                encodingPreviewImage = bitmap
-                                            }
-                                        },
-                                        pauseSupplier = { isPaused },
-                                        cancelSupplier = { isCanceled }
-                                    )
-                                    if (moveOutputToSource && !isCanceled) {
-                                        statusText = "Moving file to source directory..."
-                                        val sourceDir = File(videoPath).parentFile
-                                        val outFile = File(outPath)
-                                        if (sourceDir != null && sourceDir.exists()) {
-                                            val destFile = File(sourceDir, outFile.name)
-                                            withContext(Dispatchers.IO) {
-                                                java.nio.file.Files.copy(outFile.toPath(), destFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
-                                                outFile.delete()
+                            var proceed = true
+                            if (!isVideoInFitRange && !args.contains("--auto-sample")) {
+                                val result = javax.swing.JOptionPane.showConfirmDialog(
+                                    null,
+                                    "警告: 動画の記録範囲がFITデータの範囲内に収まっていません。\nエンコードを続行しますか？\n(Warning: The video timeline is not within the FIT activity range. Proceed with encoding?)",
+                                    "確認 (Confirmation)",
+                                    javax.swing.JOptionPane.YES_NO_OPTION,
+                                    javax.swing.JOptionPane.WARNING_MESSAGE
+                                )
+                                if (result != javax.swing.JOptionPane.YES_OPTION) {
+                                    proceed = false
+                                }
+                            }
+                            if (proceed) {
+                                scope.launch {
+                                    encodingPreviewImage = null
+                                    isEncoding = true
+                                    isPaused = false
+                                    isCanceled = false
+                                    try {
+                                        val outPath = fireEncode(settings, fitPath, videoPath, outputDir, videoStartUtc,
+                                            onProgress = { prog, status ->
+                                                progress = prog
+                                                statusText = status
+                                            },
+                                            onFrame = { bufferedImg ->
+                                                val bitmap = bufferedImg.toComposeImageBitmap()
+                                                javax.swing.SwingUtilities.invokeLater {
+                                                    encodingPreviewImage = bitmap
+                                                }
+                                            },
+                                            pauseSupplier = { isPaused },
+                                            cancelSupplier = { isCanceled }
+                                        )
+                                        if (moveOutputToSource && !isCanceled) {
+                                            statusText = "Moving file to source directory..."
+                                            val sourceDir = File(videoPath).parentFile
+                                            val outFile = File(outPath)
+                                            if (sourceDir != null && sourceDir.exists()) {
+                                                val destFile = File(sourceDir, outFile.name)
+                                                withContext(Dispatchers.IO) {
+                                                    java.nio.file.Files.copy(outFile.toPath(), destFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                                                    outFile.delete()
+                                                }
                                             }
                                         }
-                                    }
-                                    statusText = if (isCanceled) "Encoding Canceled" else "✨ Finished Successfully!"
-                                    if (!isCanceled) {
+                                        statusText = if (isCanceled) "Encoding Canceled" else "✨ Finished Successfully!"
+                                        if (!isCanceled) {
+                                            if (args.contains("--auto-sample")) {
+                                                println("TEST_NOTIFICATION_SUCCESS: Encoding Finished Successfully!")
+                                            } else {
+                                                showSystemNotification(
+                                                    "FitTrimmer",
+                                                    "Encoding Finished Successfully!"
+                                                )
+                                            }
+                                        }
+                                    } catch (e: Exception) {
+                                        // Handled and displayed in statusText
                                         if (args.contains("--auto-sample")) {
-                                            println("TEST_NOTIFICATION_SUCCESS: Encoding Finished Successfully!")
+                                            println("TEST_NOTIFICATION_ERROR: Encoding Failed: ${e.message}")
                                         } else {
                                             showSystemNotification(
-                                                "FitTrimmer",
-                                                "Encoding Finished Successfully!"
+                                                "FitTrimmer - Error",
+                                                "Encoding Failed: ${e.message}"
                                             )
                                         }
+                                    } finally {
+                                        isEncoding = false
                                     }
-                                } catch (e: Exception) {
-                                    // Handled and displayed in statusText
-                                    if (args.contains("--auto-sample")) {
-                                        println("TEST_NOTIFICATION_ERROR: Encoding Failed: ${e.message}")
-                                    } else {
-                                        showSystemNotification(
-                                            "FitTrimmer - Error",
-                                            "Encoding Failed: ${e.message}"
-                                        )
-                                    }
-                                } finally {
-                                    isEncoding = false
                                 }
                             }
                             Unit
                         }
                     }
 
-                    val onSampleEncodeClick = remember(settings, fitPath, videoPath, videoStartUtc, moveOutputToSource) {
+                    val onSampleEncodeClick = remember(settings, fitPath, videoPath, videoStartUtc, moveOutputToSource, isVideoInFitRange) {
                         {
-                            scope.launch {
-                                encodingPreviewImage = null
-                                isEncoding = true
-                                isPaused = false
-                                isCanceled = false
-                                try {
-                                    val outPath = fireEncode(settings, fitPath, videoPath, outputDir, videoStartUtc,
-                                        onProgress = { prog, status ->
-                                            progress = prog
-                                            statusText = status
-                                        },
-                                        onFrame = { bufferedImg ->
-                                            val bitmap = bufferedImg.toComposeImageBitmap()
-                                            javax.swing.SwingUtilities.invokeLater {
-                                                encodingPreviewImage = bitmap
-                                            }
-                                        },
-                                        maxDurationSeconds = 5,
-                                        pauseSupplier = { isPaused },
-                                        cancelSupplier = { isCanceled }
-                                    )
-                                    if (moveOutputToSource && !isCanceled) {
-                                        statusText = "Moving file to source directory..."
-                                        val sourceDir = File(videoPath).parentFile
-                                        val outFile = File(outPath)
-                                        if (sourceDir != null && sourceDir.exists()) {
-                                            val destFile = File(sourceDir, outFile.name)
-                                            withContext(Dispatchers.IO) {
-                                                java.nio.file.Files.copy(outFile.toPath(), destFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
-                                                outFile.delete()
+                            var proceed = true
+                            if (!isVideoInFitRange && !args.contains("--auto-sample")) {
+                                val result = javax.swing.JOptionPane.showConfirmDialog(
+                                    null,
+                                    "警告: 動画の記録範囲がFITデータの範囲内に収まっていません。\nエンコードを続行しますか？\n(Warning: The video timeline is not within the FIT activity range. Proceed with encoding?)",
+                                    "確認 (Confirmation)",
+                                    javax.swing.JOptionPane.YES_NO_OPTION,
+                                    javax.swing.JOptionPane.WARNING_MESSAGE
+                                )
+                                if (result != javax.swing.JOptionPane.YES_OPTION) {
+                                    proceed = false
+                                }
+                            }
+                            if (proceed) {
+                                scope.launch {
+                                    encodingPreviewImage = null
+                                    isEncoding = true
+                                    isPaused = false
+                                    isCanceled = false
+                                    try {
+                                        val outPath = fireEncode(settings, fitPath, videoPath, outputDir, videoStartUtc,
+                                            onProgress = { prog, status ->
+                                                progress = prog
+                                                statusText = status
+                                            },
+                                            onFrame = { bufferedImg ->
+                                                val bitmap = bufferedImg.toComposeImageBitmap()
+                                                javax.swing.SwingUtilities.invokeLater {
+                                                    encodingPreviewImage = bitmap
+                                                }
+                                            },
+                                            maxDurationSeconds = 5,
+                                            pauseSupplier = { isPaused },
+                                            cancelSupplier = { isCanceled }
+                                        )
+                                        if (moveOutputToSource && !isCanceled) {
+                                            statusText = "Moving file to source directory..."
+                                            val sourceDir = File(videoPath).parentFile
+                                            val outFile = File(outPath)
+                                            if (sourceDir != null && sourceDir.exists()) {
+                                                val destFile = File(sourceDir, outFile.name)
+                                                withContext(Dispatchers.IO) {
+                                                    java.nio.file.Files.copy(outFile.toPath(), destFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                                                    outFile.delete()
+                                                }
                                             }
                                         }
-                                    }
-                                    statusText = if (isCanceled) "Encoding Canceled" else "✨ Sample Finished Successfully!"
-                                    if (!isCanceled) {
+                                        statusText = if (isCanceled) "Encoding Canceled" else "✨ Sample Finished Successfully!"
+                                        if (!isCanceled) {
+                                            if (args.contains("--auto-sample")) {
+                                                println("TEST_NOTIFICATION_SUCCESS: Sample Encoding Finished Successfully!")
+                                            } else {
+                                                showSystemNotification(
+                                                    "FitTrimmer",
+                                                    "Sample Encoding Finished Successfully!"
+                                                )
+                                            }
+                                        }
+                                    } catch (e: Exception) {
+                                        // Handled and displayed in statusText
                                         if (args.contains("--auto-sample")) {
-                                            println("TEST_NOTIFICATION_SUCCESS: Sample Encoding Finished Successfully!")
+                                            println("TEST_NOTIFICATION_ERROR: Sample Encoding Failed: ${e.message}")
                                         } else {
                                             showSystemNotification(
-                                                "FitTrimmer",
-                                                "Sample Encoding Finished Successfully!"
+                                                "FitTrimmer - Error",
+                                                "Sample Encoding Failed: ${e.message}"
                                             )
                                         }
-                                    }
-                                } catch (e: Exception) {
-                                    // Handled and displayed in statusText
-                                    if (args.contains("--auto-sample")) {
-                                        println("TEST_NOTIFICATION_ERROR: Sample Encoding Failed: ${e.message}")
-                                    } else {
-                                        showSystemNotification(
-                                            "FitTrimmer - Error",
-                                            "Sample Encoding Failed: ${e.message}"
-                                        )
-                                    }
-                                } finally {
-                                    isEncoding = false
-                                    if (args.contains("--auto-sample")) {
-                                        println("🏁 Auto-sample test finished. Exiting application...")
-                                        exitApplication()
+                                    } finally {
+                                        isEncoding = false
+                                        if (args.contains("--auto-sample")) {
+                                            println("🏁 Auto-sample test finished. Exiting application...")
+                                            exitApplication()
+                                        }
                                     }
                                 }
                             }
@@ -916,6 +992,60 @@ fun startGui(args: Array<String>) = application {
                                      )
                                  )
                              }
+
+                              // Display FIT start/end timestamp and warning if video range is out of bounds
+                              if (fitStartInstant != null && fitEndInstant != null) {
+                                  val fitStartStr = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+                                      .withZone(java.time.ZoneId.systemDefault()).format(fitStartInstant)
+                                  val fitEndStr = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+                                      .withZone(java.time.ZoneId.systemDefault()).format(fitEndInstant)
+
+                                  Divider(color = Color(0xFF2C2C30), modifier = Modifier.padding(vertical = 4.dp))
+                                  
+                                  Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                      Text("FIT TIMELINE", color = Color(0xFF8E8E93), fontWeight = FontWeight.Bold, fontSize = 9.sp)
+                                      Text("$fitStartStr  ~\n$fitEndStr", color = Color(0xFFE5E5EA), fontSize = 11.sp)
+                                  }
+
+                                  if (videoStartInstant != null && videoEndInstant != null) {
+                                      val videoStartStr = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+                                          .withZone(java.time.ZoneId.systemDefault()).format(videoStartInstant)
+                                      val videoEndStr = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+                                          .withZone(java.time.ZoneId.systemDefault()).format(videoEndInstant)
+
+                                      Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                          Text("VIDEO TIMELINE", color = Color(0xFF8E8E93), fontWeight = FontWeight.Bold, fontSize = 9.sp)
+                                          Text("$videoStartStr  ~\n$videoEndStr", color = Color(0xFFE5E5EA), fontSize = 11.sp)
+                                      }
+
+                                      Spacer(modifier = Modifier.height(2.dp))
+
+                                      if (isVideoInFitRange) {
+                                          Row(
+                                              verticalAlignment = Alignment.CenterVertically,
+                                              horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                              modifier = Modifier
+                                                  .fillMaxWidth()
+                                                  .background(Color(0xFF1C3A27), shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                                                  .padding(horizontal = 8.dp, vertical = 6.dp)
+                                          ) {
+                                              Text("✓ VIDEO WITHIN FIT RANGE", color = Color(0xFF30D158), fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                                          }
+                                      } else {
+                                          Row(
+                                              verticalAlignment = Alignment.CenterVertically,
+                                              horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                              modifier = Modifier
+                                                  .fillMaxWidth()
+                                                  .background(Color(0xFF4C1F1F), shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                                                  .border(BorderStroke(1.dp, Color(0xFFFF453A)), shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                                                  .padding(horizontal = 8.dp, vertical = 6.dp)
+                                          ) {
+                                              Text("⚠️ VIDEO OUTSIDE FIT RANGE", color = Color(0xFFFF453A), fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                                          }
+                                      }
+                                  }
+                              }
                         }
                     }
 
