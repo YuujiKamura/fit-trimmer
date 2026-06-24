@@ -239,6 +239,22 @@ fun startGui(args: Array<String>) = application {
         }
     }
 
+    val trimmedTelemetryPoints = remember(telemetryPoints, videoStartInstant, videoEndInstant) {
+        if (telemetryPoints.isNotEmpty() && videoStartInstant != null && videoEndInstant != null) {
+            try {
+                val fitEpoch = java.time.Instant.parse("1989-12-31T00:00:00Z").epochSecond
+                val videoStartFit = videoStartInstant.epochSecond - fitEpoch
+                val videoEndFit = videoEndInstant.epochSecond - fitEpoch
+                val filtered = telemetryPoints.filter { it.timestamp in videoStartFit.toDouble()..videoEndFit.toDouble() }
+                if (filtered.isNotEmpty()) filtered else telemetryPoints
+            } catch (e: Exception) {
+                telemetryPoints
+            }
+        } else {
+            telemetryPoints
+        }
+    }
+
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
@@ -1230,7 +1246,7 @@ fun startGui(args: Array<String>) = application {
                                     rendererProxy.renderFrame(
                                         composeCanvas,
                                         telemetryPoint,
-                                        telemetryPoints,
+                                        trimmedTelemetryPoints,
                                         pBuf,
                                         currentRatio
                                     )
