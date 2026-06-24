@@ -72,15 +72,19 @@ fun main(args: Array<String>) {
         runTest()
         return
     }
+    if (args.contains("--auto-sample")) {
+        startGui(args)
+        return
+    }
     if (args.isNotEmpty()) {
         runCli(args)
         return
     }
-    startGui()
+    startGui(emptyArray())
 }
 
 @OptIn(ExperimentalTextApi::class)
-fun startGui() = application {
+fun startGui(args: Array<String>) = application {
     var settings by remember { mutableStateOf(HudSettings()) }
     var fitPath by remember { mutableStateOf("") }
     var videoPath by remember { mutableStateOf("") }
@@ -514,8 +518,32 @@ fun startGui() = application {
                                         cancelSupplier = { isCanceled }
                                     )
                                     statusText = "✨ Finished Successfully!"
+                                    if (args.contains("--auto-sample")) {
+                                        println("TEST_NOTIFICATION_SUCCESS: Encoding Finished Successfully!")
+                                    } else {
+                                        javax.swing.SwingUtilities.invokeLater {
+                                            javax.swing.JOptionPane.showMessageDialog(
+                                                null,
+                                                "Encoding Finished Successfully!",
+                                                "Success",
+                                                javax.swing.JOptionPane.INFORMATION_MESSAGE
+                                            )
+                                        }
+                                    }
                                 } catch (e: Exception) {
                                     // Error string is set inside fireEncode's onProgress callback
+                                    if (args.contains("--auto-sample")) {
+                                        println("TEST_NOTIFICATION_ERROR: Encoding Failed: ${e.message}")
+                                    } else {
+                                        javax.swing.SwingUtilities.invokeLater {
+                                            javax.swing.JOptionPane.showMessageDialog(
+                                                null,
+                                                "Encoding Failed:\n${e.message}",
+                                                "Error",
+                                                javax.swing.JOptionPane.ERROR_MESSAGE
+                                            )
+                                        }
+                                    }
                                 } finally {
                                     isEncoding = false
                                 }
@@ -592,8 +620,34 @@ fun startGui() = application {
                                         }
                                     }
                                     statusText = if (isCanceled) "Encoding Canceled" else "✨ Finished Successfully!"
+                                    if (!isCanceled) {
+                                        if (args.contains("--auto-sample")) {
+                                            println("TEST_NOTIFICATION_SUCCESS: Encoding Finished Successfully!")
+                                        } else {
+                                            javax.swing.SwingUtilities.invokeLater {
+                                                javax.swing.JOptionPane.showMessageDialog(
+                                                    null,
+                                                    "Encoding Finished Successfully!",
+                                                    "Success",
+                                                    javax.swing.JOptionPane.INFORMATION_MESSAGE
+                                                )
+                                            }
+                                        }
+                                    }
                                 } catch (e: Exception) {
                                     // Handled and displayed in statusText
+                                    if (args.contains("--auto-sample")) {
+                                        println("TEST_NOTIFICATION_ERROR: Encoding Failed: ${e.message}")
+                                    } else {
+                                        javax.swing.SwingUtilities.invokeLater {
+                                            javax.swing.JOptionPane.showMessageDialog(
+                                                null,
+                                                "Encoding Failed:\n${e.message}",
+                                                "Error",
+                                                javax.swing.JOptionPane.ERROR_MESSAGE
+                                            )
+                                        }
+                                    }
                                 } finally {
                                     isEncoding = false
                                 }
@@ -638,13 +692,54 @@ fun startGui() = application {
                                         }
                                     }
                                     statusText = if (isCanceled) "Encoding Canceled" else "✨ Sample Finished Successfully!"
+                                    if (!isCanceled) {
+                                        if (args.contains("--auto-sample")) {
+                                            println("TEST_NOTIFICATION_SUCCESS: Sample Encoding Finished Successfully!")
+                                        } else {
+                                            javax.swing.SwingUtilities.invokeLater {
+                                                javax.swing.JOptionPane.showMessageDialog(
+                                                    null,
+                                                    "Sample Encoding Finished Successfully!",
+                                                    "Success",
+                                                    javax.swing.JOptionPane.INFORMATION_MESSAGE
+                                                )
+                                            }
+                                        }
+                                    }
                                 } catch (e: Exception) {
                                     // Handled and displayed in statusText
+                                    if (args.contains("--auto-sample")) {
+                                        println("TEST_NOTIFICATION_ERROR: Sample Encoding Failed: ${e.message}")
+                                    } else {
+                                        javax.swing.SwingUtilities.invokeLater {
+                                            javax.swing.JOptionPane.showMessageDialog(
+                                                null,
+                                                "Sample Encoding Failed:\n${e.message}",
+                                                "Error",
+                                                javax.swing.JOptionPane.ERROR_MESSAGE
+                                            )
+                                        }
+                                    }
                                 } finally {
                                     isEncoding = false
+                                    if (args.contains("--auto-sample")) {
+                                        println("🏁 Auto-sample test finished. Exiting application...")
+                                        exitApplication()
+                                    }
                                 }
                             }
                             Unit
+                        }
+                    }
+
+                    if (args.contains("--auto-sample")) {
+                        LaunchedEffect(isLoaded) {
+                            if (isLoaded) {
+                                // Wait for UI to render
+                                kotlinx.coroutines.delay(1000)
+                                println("🚀 Auto-sample test triggered")
+                                onSampleEncodeClick()
+                            }
                         }
                     }
 
@@ -898,12 +993,20 @@ fun startGui() = application {
                                 modifier = Modifier.padding(12.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                LinearProgressIndicator(
-                                    progress = progress,
-                                    modifier = Modifier.fillMaxWidth(),
-                                    color = if (isPaused) Color(0xFFFF9F0A) else Color(0xFF0A84FF),
-                                    backgroundColor = Color(0xFF2C2C2E)
-                                )
+                                if (statusText.contains("Merging", ignoreCase = true)) {
+                                    LinearProgressIndicator(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        color = Color(0xFF30D158),
+                                        backgroundColor = Color(0xFF2C2C2E)
+                                    )
+                                } else {
+                                    LinearProgressIndicator(
+                                        progress = progress,
+                                        modifier = Modifier.fillMaxWidth(),
+                                        color = if (isPaused) Color(0xFFFF9F0A) else Color(0xFF0A84FF),
+                                        backgroundColor = Color(0xFF2C2C2E)
+                                    )
+                                }
                                 Text(if (isPaused) "PAUSED (Not enough space or paused manually)\n$statusText" else statusText, color = Color.White, fontSize = 12.sp)
                                 
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1081,6 +1184,7 @@ fun startGui() = application {
                                     }
                                 }
                             } else {
+                                val density = androidx.compose.ui.platform.LocalDensity.current.density
                                 Canvas(modifier = Modifier.fillMaxSize()) {
                                     val scale = size.width / 1920f
                                     val currentRatio = if (videoLengthMs > 0) videoCurrentTimeMs.toFloat() / videoLengthMs.toFloat() else 0f
@@ -1094,7 +1198,7 @@ fun startGui() = application {
                                         grade = 4.0
                                     )
                                     val pBuf = currentTrendPoints.map { it }
-                                    val composeCanvas = ComposeHudCanvas(this, textMeasurer, scale)
+                                    val composeCanvas = ComposeHudCanvas(this, textMeasurer, scale, density)
                                     settings.hashCode()
                                     rendererProxy.renderFrame(
                                         composeCanvas,
@@ -1307,7 +1411,8 @@ fun formatTime(ms: Long): String {
 class ComposeHudCanvas(
     private val drawScope: androidx.compose.ui.graphics.drawscope.DrawScope,
     private val textMeasurer: androidx.compose.ui.text.TextMeasurer,
-    private val scale: Float
+    private val scale: Float,
+    private val density: Float
 ) : fit.HudCanvas {
 
     private fun parseColor(colorStr: String): androidx.compose.ui.graphics.Color {
@@ -1328,8 +1433,9 @@ class ComposeHudCanvas(
     override fun drawText(text: String, x: Float, y: Float, size: Float, color: String, bold: Boolean, anchor: String) {
         val c = parseColor(color)
         val style = androidx.compose.ui.text.TextStyle(
+            fontFamily = androidx.compose.ui.text.font.FontFamily.SansSerif,
             color = c,
-            fontSize = (size * scale).sp,
+            fontSize = (size * scale / density).sp,
             fontWeight = if (bold) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal
         )
         val layout = textMeasurer.measure(text, style)
@@ -1386,7 +1492,8 @@ class ComposeHudCanvas(
 
     override fun getTextWidth(text: String, size: Float, bold: Boolean): Float {
         val style = androidx.compose.ui.text.TextStyle(
-            fontSize = size.sp,
+            fontFamily = androidx.compose.ui.text.font.FontFamily.SansSerif,
+            fontSize = (size / density).sp,
             fontWeight = if (bold) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal
         )
         val layout = textMeasurer.measure(text, style)

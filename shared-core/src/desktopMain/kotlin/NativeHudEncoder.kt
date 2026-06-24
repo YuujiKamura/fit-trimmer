@@ -22,25 +22,39 @@ class NativeHudEncoder(
         override fun drawText(text: String, x: Float, y: Float, size: Float, color: String, bold: Boolean, anchor: String) {
             g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
             val scaledSize = (size * scale).toInt().coerceAtLeast(1)
-            val font = Font("Segoe UI", if (bold) Font.BOLD else Font.PLAIN, scaledSize)
+            val font = Font(Font.SANS_SERIF, if (bold) Font.BOLD else Font.PLAIN, scaledSize)
             g.font = font
             
             val metrics = g.getFontMetrics(font)
-            val sx = x * scale
-            // Use precise font metrics ascent to convert top-left y-coordinate into AWT baseline coordinate
-            val sy = y * scale + metrics.ascent
+            val stringWidth = metrics.stringWidth(text).toFloat()
+            val stringHeight = metrics.height.toFloat()
+            
+            // Adjust x based on anchor
+            val drawX = x * scale - when (anchor) {
+                "center" -> stringWidth / 2f
+                "top-right", "bottom-right" -> stringWidth
+                else -> 0f
+            }
+            
+            // Adjust y based on anchor
+            val drawY = y * scale - when (anchor) {
+                "center" -> stringHeight / 2f
+                "bottom-left", "bottom-right" -> stringHeight
+                else -> 0f
+            }
+            val sy = drawY + metrics.ascent
             val shadowOffset = (1f * scale).coerceAtLeast(1f).toInt()
             
             g.color = Color(0, 0, 0, 180)
             for (dx in -shadowOffset..shadowOffset) {
                 for (dy in -shadowOffset..shadowOffset) {
                     if (dx == 0 && dy == 0) continue
-                    g.drawString(text, sx + dx, sy + dy)
+                    g.drawString(text, drawX + dx, sy + dy)
                 }
             }
             
             g.color = Color.decode(color)
-            g.drawString(text, sx, sy)
+            g.drawString(text, drawX, sy)
         }
 
         override fun drawRect(x: Float, y: Float, w: Float, h: Float, color: String, alpha: Float, outline: Boolean) {
@@ -79,7 +93,7 @@ class NativeHudEncoder(
         }
 
         override fun getTextWidth(text: String, size: Float, bold: Boolean): Float {
-            val font = Font("Segoe UI", if (bold) Font.BOLD else Font.PLAIN, size.toInt())
+            val font = Font(Font.SANS_SERIF, if (bold) Font.BOLD else Font.PLAIN, size.toInt())
             return g.getFontMetrics(font).stringWidth(text).toFloat()
         }
     }
