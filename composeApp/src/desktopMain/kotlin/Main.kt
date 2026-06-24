@@ -95,6 +95,7 @@ suspend fun extractPreviewFrame(
         "-vcodec", "mjpeg",
         "-"
     )
+    pb.redirectError(ProcessBuilder.Redirect.DISCARD)
     
     var proc: Process? = null
     val job = coroutineContext[kotlinx.coroutines.Job]
@@ -135,6 +136,138 @@ suspend fun extractPreviewFrame(
             } catch (ioe: Exception) {}
         }
     }
+}
+
+suspend fun getVideoDuration(ffmpegPath: String, videoPath: String): Long? = withContext(Dispatchers.IO) {
+    try {
+        val pbDur = ProcessBuilder(ffmpegPath, "-i", videoPath)
+        pbDur.redirectErrorStream(true)
+        val pDur = pbDur.start()
+        
+        val job = coroutineContext[kotlinx.coroutines.Job]
+        val handle = job?.invokeOnCompletion { pDur.destroyForcibly() }
+        try {
+            val output = pDur.inputStream.bufferedReader().readText()
+            pDur.waitFor()
+            val durRegex = Regex("""Duration:\s*(\d+):(\d+):(\d+)\.(\d+)""")
+            val durMatch = durRegex.find(output)
+            if (durMatch != null) {
+                val h = durMatch.groupValues[1].toInt()
+                val m = durMatch.groupValues[2].toInt()
+                val s = durMatch.groupValues[3].toInt()
+                val ms = durMatch.groupValues[4].padEnd(3, '0').take(3).toInt()
+                return@withContext (h * 3600 + m * 60 + s) * 1000L + ms
+            }
+        } finally {
+            handle?.dispose()
+            if (pDur.isAlive) {
+                pDur.destroyForcibly()
+                pDur.waitFor(1, java.util.concurrent.TimeUnit.SECONDS)
+            }
+        }
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        e.printStackTrace()
+    }
+    null
+}
+
+suspend fun getVideoStartUtc(videoPath: String): String? = withContext(Dispatchers.IO) {
+    try {
+        val videoFile = File(videoPath)
+        if (videoFile.exists()) {
+            ensureActive()
+            val parser = mp4.Mp4Parser()
+            // Using 16MB scan size instead of 100MB to limit latency on network virtual files (Google DriveFS)
+            val scanSize = minOf(videoFile.length(), 16L * 1024 * 1024).toInt()
+            
+            var meta: mp4.Mp4Parser.Metadata? = null
+            
+            // 1. Scan head using RandomAccessFile
+            java.io.RandomAccessFile(videoFile, "r").use { raf ->
+                val buf = ByteArray(scanSize)
+                var bytesRead = 0
+                while (bytesRead < scanSize) {
+                    ensureActive()
+                    val read = raf.read(buf, bytesRead, minOf(buf.size - bytesRead, 65536))
+                    if (read == -1) break
+                    bytesRead += read
+                }
+                val headBytes = if (bytesRead == buf.size) buf else buf.copyOf(bytesRead)
+                meta = parser.parse(headBytes)
+            }
+            ensureActive()
+            
+            // 2. Scan tail using native seek if mvhd was not found in head
+            if (meta == null && videoFile.length() > scanSize) {
+                val tailOffset = videoFile.length() - scanSize
+                java.io.RandomAccessFile(videoFile, "r").use { raf ->
+                    raf.seek(tailOffset)
+                    val buf = ByteArray(scanSize)
+                    var bytesRead = 0
+                    while (bytesRead < scanSize) {
+                        ensureActive()
+                        val read = raf.read(buf, bytesRead, minOf(buf.size - bytesRead, 65536))
+                        if (read == -1) break
+                        bytesRead += read
+                    }
+                    val tailBytes = if (bytesRead == buf.size) buf else buf.copyOf(bytesRead)
+                    meta = parser.parse(tailBytes)
+                }
+            }
+            
+            if (meta != null) {
+                val unixStart = meta!!.creationTimeSeconds - 2082844800L
+                return@withContext java.time.Instant.ofEpochSecond(unixStart).toString()
+            }
+        }
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        println("DEBUG: Exception during video start UTC parse: ${e.message}")
+        e.printStackTrace()
+    }
+    null
+}
+
+suspend fun generateInitialThumbnail(ffmpegPath: String, videoPath: String): androidx.compose.ui.graphics.ImageBitmap? = withContext(Dispatchers.IO) {
+    try {
+        val pb = ProcessBuilder(
+            ffmpegPath, "-y",
+            "-loglevel", "quiet",
+            "-ss", "00:00:01",
+            "-i", videoPath,
+            "-vframes", "1",
+            "-f", "image2pipe",
+            "-vcodec", "mjpeg",
+            "-"
+        )
+        pb.redirectError(ProcessBuilder.Redirect.DISCARD)
+        val p = pb.start()
+        
+        val job = coroutineContext[kotlinx.coroutines.Job]
+        val handle = job?.invokeOnCompletion { p.destroyForcibly() }
+        try {
+            val bytes = p.inputStream.use { it.readBytes() }
+            p.waitFor()
+            if (bytes.isNotEmpty()) {
+                val skiaImage = org.jetbrains.skia.Image.makeFromEncoded(bytes)
+                return@withContext skiaImage?.toComposeImageBitmap()
+            }
+        } finally {
+            handle?.dispose()
+            if (p.isAlive) {
+                p.destroyForcibly()
+                p.waitFor(1, java.util.concurrent.TimeUnit.SECONDS)
+            }
+        }
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        e.printStackTrace()
+    }
+    null
 }
 
 @OptIn(ExperimentalTextApi::class)
@@ -619,78 +752,49 @@ fun startGui(args: Array<String>) = application {
     }
 
     LaunchedEffect(videoPath) {
+        // Initialize states immediately on video changes to prevent obsolete metadata leak (Requirement 2)
+        videoLengthMs = 0L
+        videoPreviewImage = null
+        videoStartUtc = ""
+        previewTimeMs = 0L
+        videoCurrentTimeMs = 0L
+
         if (videoPath.isNotEmpty() && File(videoPath).exists()) {
+            val targetVideoPath = videoPath
             withContext(Dispatchers.IO) {
                 val ffmpegPath = fit.findFfmpegPath()
                 try {
-                    // Extract duration using ffmpeg -i output if VLC isn't active
-                    val pbDur = ProcessBuilder(ffmpegPath, "-i", videoPath)
-                    pbDur.redirectErrorStream(true)
-                    val pDur = pbDur.start()
-                    val output = pDur.inputStream.bufferedReader().readText()
-                    pDur.waitFor()
-                    
-                    val durRegex = Regex("""Duration:\s*(\d+):(\d+):(\d+)\.(\d+)""")
-                    val durMatch = durRegex.find(output)
-                    if (durMatch != null) {
-                        val h = durMatch.groupValues[1].toInt()
-                        val m = durMatch.groupValues[2].toInt()
-                        val s = durMatch.groupValues[3].toInt()
-                        val ms = durMatch.groupValues[4].padEnd(3, '0').take(3).toInt()
-                        val totalMs = (h * 3600 + m * 60 + s) * 1000L + ms
-                        videoLengthMs = totalMs
+                    val duration = getVideoDuration(ffmpegPath, targetVideoPath)
+                    duration?.let { dur ->
+                        withContext(Dispatchers.Main) {
+                            if (videoPath == targetVideoPath) {
+                                videoLengthMs = dur
+                            }
+                        }
                     }
+
+                    val startUtc = getVideoStartUtc(targetVideoPath)
+                    startUtc?.let { utc ->
+                        withContext(Dispatchers.Main) {
+                            if (videoPath == targetVideoPath) {
+                                videoStartUtc = utc
+                            }
+                        }
+                    }
+
+                    val thumb = generateInitialThumbnail(ffmpegPath, targetVideoPath)
+                    thumb?.let { bitmap ->
+                        withContext(Dispatchers.Main) {
+                            if (videoPath == targetVideoPath) {
+                                videoPreviewImage = bitmap
+                            }
+                        }
+                    }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
-
-                try {
-                    val videoFile = File(videoPath)
-                    println("DEBUG: LaunchedEffect(videoPath) - file exists: ${videoFile.exists()}, size: ${videoFile.length()}")
-                    if (videoFile.exists()) {
-                        val parser = mp4.Mp4Parser()
-                        val scanSize = minOf(videoFile.length(), 100L * 1024 * 1024).toInt()
-                        
-                        // 1. Scan head
-                        val headBytes = videoFile.inputStream().use { it.readNBytes(scanSize) }
-                        var meta = parser.parse(headBytes)
-                        
-                        // 2. If not found, scan tail
-                        if (meta == null && videoFile.length() > scanSize) {
-                            println("DEBUG: mvhd not found in head 100MB. Scanning tail 100MB...")
-                            val tailOffset = videoFile.length() - scanSize
-                            videoFile.inputStream().use { input ->
-                                input.skip(tailOffset)
-                                val tailBytes = input.readNBytes(scanSize)
-                                meta = parser.parse(tailBytes)
-                            }
-                        }
-                        
-                        if (meta != null) {
-                            val unixStart = meta.creationTimeSeconds - 2082844800L
-                            val startUtcStr = java.time.Instant.ofEpochSecond(unixStart).toString()
-                            javax.swing.SwingUtilities.invokeLater {
-                                videoStartUtc = startUtcStr
-                            }
-                            println("DEBUG: Successfully parsed video Start UTC: $startUtcStr")
-                        } else {
-                            println("DEBUG: Failed to parse video metadata (mvhd not found in head or tail)")
-                        }
-                    }
-                } catch (e: Exception) {
-                    println("DEBUG: Exception during video start UTC parse: ${e.message}")
-                    e.printStackTrace()
-                }
-
-                try {
-                    val tempThumb = File("temp_preview.jpg")
-                    val pb = ProcessBuilder(ffmpegPath, "-y", "-i", videoPath, "-ss", "00:00:01", "-vframes", "1", tempThumb.absolutePath)
-                    pb.start().waitFor()
-                    if (tempThumb.exists()) {
-                        videoPreviewImage = Image.makeFromEncoded(tempThumb.readBytes()).toComposeImageBitmap()
-                        tempThumb.delete()
-                    }
-                } catch (e: Exception) { e.printStackTrace() }
             }
         }
     }
@@ -707,7 +811,7 @@ fun startGui(args: Array<String>) = application {
             val result = extractPreviewFrame(ffmpegPath, targetVideoPath, targetTimeMs, 480)
             ensureActive()
             result.onSuccess { bitmap ->
-                javax.swing.SwingUtilities.invokeLater {
+                withContext(Dispatchers.Main) {
                     // Ensure we only update the preview image if the slider hasn't moved and the video file hasn't changed
                     if (lastPreviewRequestId == reqId && videoPath == targetVideoPath) {
                         videoPreviewImage = bitmap
