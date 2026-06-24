@@ -26,6 +26,7 @@ class DynamicRendererProxy(private val config: HudConfig) {
     private var renderMethod: java.lang.reflect.Method? = null
     private var previousTempDir: File? = null
     private var previousClassLoader: java.net.URLClassLoader? = null
+    private var fallbackRenderer: HudRenderer? = null
 
     init {
         reload()
@@ -33,8 +34,15 @@ class DynamicRendererProxy(private val config: HudConfig) {
 
     fun reload(): Boolean {
         try {
-            val classesDir = File(System.getProperty("user.dir"), "shared-core/build/classes/kotlin/desktop/main")
-            if (!classesDir.exists()) return false
+            var projectDir = File(System.getProperty("user.dir"))
+            if (!File(projectDir, "shared-core").exists() && File(projectDir.parentFile, "shared-core").exists()) {
+                projectDir = projectDir.parentFile
+            }
+            val classesDir = File(projectDir, "shared-core/build/classes/kotlin/desktop/main")
+            if (!classesDir.exists()) {
+                println("⚠️ classesDir does not exist at: ${classesDir.absolutePath}")
+                return false
+            }
             val tempDir = File(System.getProperty("java.io.tmpdir"), "hud_hotreload_${System.currentTimeMillis()}")
             classesDir.copyRecursively(tempDir, overwrite = true)
             
@@ -72,7 +80,17 @@ class DynamicRendererProxy(private val config: HudConfig) {
     }
 
     fun renderFrame(canvas: HudCanvas, point: TelemetryPoint, allPoints: List<TelemetryPoint>, powerBuffer: List<Double>, progressRatio: Float) {
-        if (delegate == null) reload()
-        renderMethod?.invoke(delegate, canvas, point, allPoints, powerBuffer, progressRatio)
+        if (delegate != null && renderMethod != null) {
+            try {
+                renderMethod?.invoke(delegate, canvas, point, allPoints, powerBuffer, progressRatio)
+                return
+            } catch (e: Exception) {
+                println("⚠️ Failed to invoke hot-reloaded renderer, falling back to static renderer: ${e.message}")
+            }
+        }
+        if (fallbackRenderer == null) {
+            fallbackRenderer = HudRenderer(config)
+        }
+        fallbackRenderer?.renderFrame(canvas, point, allPoints, powerBuffer, progressRatio)
     }
 }

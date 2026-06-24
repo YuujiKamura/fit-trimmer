@@ -44,7 +44,8 @@ data class GuiPathCache(
     val fitPath: String,
     val videoPath: String,
     val videoStartUtc: String,
-    val settings: HudSettings = HudSettings()
+    val settings: HudSettings = HudSettings(),
+    val moveOutputToSource: Boolean = false
 )
 
 fun pickFile(title: String, extensions: List<String>): String? {
@@ -67,6 +68,10 @@ fun main(args: Array<String>) {
     System.setProperty("compose.interop.blending", "true")
     System.setProperty("sun.java2d.noddraw", "true")
     System.setProperty("jna.library.path", "C:\\Program Files\\VideoLAN\\VLC")
+    if (args.contains("--test")) {
+        runTest()
+        return
+    }
     if (args.isNotEmpty()) {
         runCli(args)
         return
@@ -88,8 +93,63 @@ fun startGui() = application {
     var videoPreviewImage by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
     var encodingPreviewImage by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
     var statusText by remember { mutableStateOf("") }
-    var hudSettingsExpanded by remember { mutableStateOf(true) }
+    var hudSettingsExpanded by remember { mutableStateOf(false) }
     var isLoaded by remember { mutableStateOf(false) }
+
+    // C Drive Monitor State
+    var cDriveFreeSpaceGB by remember { mutableStateOf(0.0) }
+    var cDriveTotalSpaceGB by remember { mutableStateOf(0.0) }
+    var requiredSpaceGB by remember { mutableStateOf(2.0) }
+    var hasEnoughSpace by remember { mutableStateOf(true) }
+
+    // Dynamic Hud Proxy & Hot Reload State
+    val hudConfig = remember(settings) {
+        fit.HudConfig(
+            valSize = settings.valSize,
+            tightness = settings.tightness,
+            spacing = settings.spacing,
+            xOffset = settings.xOffset,
+            yOffset = settings.yOffset,
+            graphH = settings.graphH,
+            graphW = settings.graphW
+        )
+    }
+    
+    var reloadTrigger by remember { mutableStateOf(0) }
+    val rendererProxy = remember(hudConfig, reloadTrigger) { fit.DynamicRendererProxy(hudConfig) }
+    var isCompiling by remember { mutableStateOf(false) }
+    
+    var lastClassModified by remember { mutableStateOf(0L) }
+    LaunchedEffect(rendererProxy) {
+        withContext(Dispatchers.IO) {
+            var projectDir = File(System.getProperty("user.dir"))
+            if (!File(projectDir, "shared-core").exists() && File(projectDir.parentFile, "shared-core").exists()) {
+                projectDir = projectDir.parentFile
+            }
+            val classFile = File(projectDir, "shared-core/build/classes/kotlin/desktop/main/fit/HudRenderer.class")
+            while (true) {
+                if (!isCompiling && classFile.exists()) {
+                    val m = classFile.lastModified()
+                    if (m != lastClassModified) {
+                        if (lastClassModified != 0L) {
+                            println("🔄 Class file change detected, reloading HudRenderer...")
+                            val ok = rendererProxy.reload()
+                            if (ok) {
+                                javax.swing.SwingUtilities.invokeLater {
+                                    reloadTrigger++
+                                }
+                            }
+                        }
+                        lastClassModified = m
+                    }
+                }
+                kotlinx.coroutines.delay(1000)
+            }
+        }
+    }
+    
+    // Output Move State
+    var moveOutputToSource by remember { mutableStateOf(false) }
 
     // VLC / Telemetry state
     var vlcAvailable by remember { mutableStateOf(false) }
@@ -107,6 +167,41 @@ fun startGui() = application {
             } catch (e: Throwable) {
                 e.printStackTrace()
                 vlcAvailable = false
+            }
+        }
+    }
+
+    LaunchedEffect(videoPath) {
+        if (videoPath.isNotEmpty()) {
+            val f = File(videoPath)
+            if (f.exists()) {
+                val sizeBytes = f.length()
+                requiredSpaceGB = (sizeBytes * 1.5) / (1024.0 * 1024.0 * 1024.0) + 2.0
+            } else {
+                requiredSpaceGB = 2.0
+            }
+        } else {
+            requiredSpaceGB = 2.0
+        }
+    }
+
+    LaunchedEffect(requiredSpaceGB, isEncoding, isPaused) {
+        launch(Dispatchers.IO) {
+            while (true) {
+                try {
+                    val file = File("C:\\")
+                    cDriveFreeSpaceGB = file.freeSpace / (1024.0 * 1024.0 * 1024.0)
+                    cDriveTotalSpaceGB = file.totalSpace / (1024.0 * 1024.0 * 1024.0)
+                    hasEnoughSpace = cDriveFreeSpaceGB >= requiredSpaceGB
+                    
+                    if (isEncoding && !hasEnoughSpace && !isPaused) {
+                        isPaused = true
+                        statusText = "PAUSED (Not enough space on C: drive!)"
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+                kotlinx.coroutines.delay(5000)
             }
         }
     }
@@ -284,18 +379,19 @@ fun startGui() = application {
             videoPath = cache.videoPath
             videoStartUtc = cache.videoStartUtc
             settings = cache.settings
+            moveOutputToSource = cache.moveOutputToSource
         }
         isLoaded = true
     }
 
     // Save path cache when modified
-    LaunchedEffect(fitPath, videoPath, videoStartUtc, settings) {
+    LaunchedEffect(fitPath, videoPath, videoStartUtc, settings, moveOutputToSource) {
         if (isLoaded) {
             withContext(Dispatchers.IO) {
                 try {
                     // Save GUI Cache to home directory (always, even if paths are empty)
                     val cacheFile = File(System.getProperty("user.home"), ".fittrimmer_gui_cache.json")
-                    val cache = GuiPathCache(fitPath, videoPath, videoStartUtc, settings)
+                    val cache = GuiPathCache(fitPath, videoPath, videoStartUtc, settings, moveOutputToSource)
                     cacheFile.writeText(Json.encodeToString(cache))
                 } catch (e: Exception) {
                     e.printStackTrace()
@@ -389,6 +485,10 @@ fun startGui() = application {
                             isEncoding = cmd.isEncoding
                         }
                         CpCommand.GetState -> {} 
+                        CpCommand.ReloadHud -> {
+                            rendererProxy.reload()
+                            reloadTrigger++
+                        }
                     }
                 }
             },
@@ -408,111 +508,15 @@ fun startGui() = application {
         MaterialTheme(colors = darkColors()) {
             Row(modifier = Modifier.fillMaxSize().background(Color(0xFF000000))) {
                 Column(
-                    modifier = Modifier.width(300.dp).fillMaxHeight().background(Color(0xFF111111))
-                        .verticalScroll(rememberScrollState()).padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    modifier = Modifier.width(320.dp).fillMaxHeight().background(Color(0xFF111111))
+                        .verticalScroll(rememberScrollState()).padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Text("📡 CONTROL PLANE", color = Color(0xFF3B82F6), fontWeight = FontWeight.Black, fontSize = 16.sp)
+                    Text("CONTROL PLANE", color = Color(0xFFF5F5F7), fontWeight = FontWeight.Bold, fontSize = 16.sp, letterSpacing = 1.sp)
                     
-                    Divider(color = Color.DarkGray)
+                    Divider(color = Color(0xFF2C2C2E))
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth().clickable { hudSettingsExpanded = !hudSettingsExpanded }.padding(vertical = 4.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("⚙️ HUD LAYOUT SETTINGS", color = Color.LightGray, fontWeight = FontWeight.Bold, fontSize = 11.sp)
-                        Text(if (hudSettingsExpanded) "▼" else "▶", color = Color(0xFF888888), fontSize = 10.sp)
-                    }
-
-                    if (hudSettingsExpanded) {
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            ControlSlider("VAL SIZE", settings.valSize, 10f, 150f) { settings = settings.copy(valSize = it) }
-                            ControlSlider("TIGHTNESS", settings.tightness, -10f, 40f) { settings = settings.copy(tightness = it) }
-                            ControlSlider("SPACING", settings.spacing, 0f, 100f) { settings = settings.copy(spacing = it) }
-                            ControlSlider("X OFFSET", settings.xOffset, 0f, 500f) { settings = settings.copy(xOffset = it) }
-                            ControlSlider("Y OFFSET", settings.yOffset, 0f, 500f) { settings = settings.copy(yOffset = it) }
-                            ControlSlider("GRAPH H", settings.graphH, 20f, 300f) { settings = settings.copy(graphH = it) }
-                            ControlSlider("GRAPH W", settings.graphW, 50f, 800f) { settings = settings.copy(graphW = it) }
-                        }
-                    }
-
-                    Divider(color = Color.DarkGray)
-
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            OutlinedTextField(
-                                value = fitPath,
-                                onValueChange = { fitPath = it },
-                                label = { Text("FIT File Path", color = Color(0xFF888888), fontSize = 10.sp) },
-                                modifier = Modifier.weight(1f).height(50.dp),
-                                textStyle = TextStyle(color = Color.White, fontSize = 11.sp),
-                                singleLine = true
-                            )
-                            Button(
-                                onClick = {
-                                    val path = pickFile("Select FIT File", listOf("*.fit"))
-                                    if (path != null) fitPath = path
-                                },
-                                modifier = Modifier.height(50.dp)
-                            ) { Text("...", fontSize = 11.sp) }
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            OutlinedTextField(
-                                value = videoPath,
-                                onValueChange = { videoPath = it },
-                                label = { Text("MP4 File Path", color = Color(0xFF888888), fontSize = 10.sp) },
-                                modifier = Modifier.weight(1f).height(50.dp),
-                                textStyle = TextStyle(color = Color.White, fontSize = 11.sp),
-                                singleLine = true
-                            )
-                            Button(
-                                onClick = {
-                                    val path = pickFile("Select MP4 File", listOf("*.mp4", "*.mov"))
-                                    if (path != null) videoPath = path
-                                },
-                                modifier = Modifier.height(50.dp)
-                            ) { Text("...", fontSize = 11.sp) }
-                        }
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            OutlinedTextField(
-                                value = outputDir,
-                                onValueChange = { outputDir = it },
-                                label = { Text("Output Directory", color = Color(0xFF888888), fontSize = 10.sp) },
-                                modifier = Modifier.weight(1f).height(50.dp),
-                                textStyle = TextStyle(color = Color.White, fontSize = 11.sp),
-                                singleLine = true
-                            )
-                            Button(
-                                onClick = {
-                                    val path = pickFolder("Select Output Directory")
-                                    if (path != null) outputDir = path
-                                },
-                                modifier = Modifier.height(50.dp)
-                            ) { Text("...", fontSize = 11.sp) }
-                        }
-                        OutlinedTextField(
-                            value = videoStartUtc,
-                            onValueChange = { videoStartUtc = it },
-                            label = { Text("Video Start UTC", color = Color(0xFF888888), fontSize = 10.sp) },
-                            modifier = Modifier.fillMaxWidth().height(50.dp),
-                            textStyle = TextStyle(color = Color.White, fontSize = 11.sp),
-                            singleLine = true
-                        )
-                    }
-
-                    if (isEncoding) {
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            LinearProgressIndicator(
-                                progress = progress,
-                                modifier = Modifier.fillMaxWidth(),
-                                color = Color(0xFF3B82F6)
-                            )
-                            Text(statusText, color = Color.White, fontSize = 12.sp)
-                        }
-                    }
-
-                    val onNativeEncodeClick = remember(settings, fitPath, videoPath, videoStartUtc) {
+                    val onNativeEncodeClick = remember(settings, fitPath, videoPath, videoStartUtc, moveOutputToSource) {
                         {
                             scope.launch {
                                 encodingPreviewImage = null
@@ -520,7 +524,7 @@ fun startGui() = application {
                                 isPaused = false
                                 isCanceled = false
                                 try {
-                                    fireEncode(settings, fitPath, videoPath, outputDir, videoStartUtc,
+                                    val outPath = fireEncode(settings, fitPath, videoPath, outputDir, videoStartUtc,
                                         onProgress = { prog, status ->
                                             progress = prog
                                             statusText = status
@@ -534,7 +538,19 @@ fun startGui() = application {
                                         pauseSupplier = { isPaused },
                                         cancelSupplier = { isCanceled }
                                     )
-                                    statusText = "✨ Finished Successfully!"
+                                    if (moveOutputToSource && !isCanceled) {
+                                        statusText = "Moving file to source directory..."
+                                        val sourceDir = File(videoPath).parentFile
+                                        val outFile = File(outPath)
+                                        if (sourceDir != null && sourceDir.exists()) {
+                                            val destFile = File(sourceDir, outFile.name)
+                                            withContext(Dispatchers.IO) {
+                                                java.nio.file.Files.copy(outFile.toPath(), destFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                                                outFile.delete()
+                                            }
+                                        }
+                                    }
+                                    statusText = if (isCanceled) "Encoding Canceled" else "✨ Finished Successfully!"
                                 } catch (e: Exception) {
                                     // Handled and displayed in statusText
                                 } finally {
@@ -545,64 +561,7 @@ fun startGui() = application {
                         }
                     }
 
-                    Button(
-                        onClick = onNativeEncodeClick,
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = !isEncoding && fitPath.isNotEmpty() && videoPath.isNotEmpty(),
-                        colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF0A84FF))
-                    ) {
-                        Text("🚀 RUN NATIVE ENCODE", color = Color.White, fontWeight = FontWeight.Bold)
-                    }
-
-                    Spacer(Modifier.height(8.dp))
-
-                    var hotReloadStatus by remember { mutableStateOf("") }
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Button(
-                            onClick = {
-                                scope.launch(Dispatchers.IO) {
-                                    try {
-                                        hotReloadStatus = "Compiling..."
-                                        val pb = ProcessBuilder("cmd.exe", "/c", ".\\gradlew.bat", ":shared-core:compileKotlinDesktop")
-                                        pb.directory(File(System.getProperty("user.dir")))
-                                        val p = pb.start()
-                                        if (p.waitFor() == 0) {
-                                            hotReloadStatus = "Reloading..."
-                                            val proxy = globalRendererProxy
-                                            if (proxy != null) {
-                                                val success = proxy.reload()
-                                                if (success) {
-                                                    hotReloadStatus = "✅ Reloaded!"
-                                                } else {
-                                                    hotReloadStatus = "❌ Reload Failed"
-                                                }
-                                            } else {
-                                                hotReloadStatus = "❌ No Proxy"
-                                            }
-                                        } else {
-                                            hotReloadStatus = "❌ Compile Failed"
-                                        }
-                                    } catch(e:Exception) {
-                                        hotReloadStatus = "❌ Error: ${e.message}"
-                                    }
-                                    kotlinx.coroutines.delay(3000)
-                                    hotReloadStatus = ""
-                                }
-                            },
-                            modifier = Modifier.weight(1f).height(36.dp),
-                            colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF0A84FF)),
-                            shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
-                        ) {
-                            Text("HOT RELOAD RENDERER", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                        }
-                        if (hotReloadStatus.isNotEmpty()) {
-                            Text(hotReloadStatus, color = Color(0xFF10B981), fontSize = 11.sp)
-                        }
-                    }
-
-                    Spacer(Modifier.height(8.dp))
-
-                    val onSampleEncodeClick = remember(settings, fitPath, videoPath, videoStartUtc) {
+                    val onSampleEncodeClick = remember(settings, fitPath, videoPath, videoStartUtc, moveOutputToSource) {
                         {
                             scope.launch {
                                 encodingPreviewImage = null
@@ -610,7 +569,7 @@ fun startGui() = application {
                                 isPaused = false
                                 isCanceled = false
                                 try {
-                                    fireEncode(settings, fitPath, videoPath, outputDir, videoStartUtc,
+                                    val outPath = fireEncode(settings, fitPath, videoPath, outputDir, videoStartUtc,
                                         onProgress = { prog, status ->
                                             progress = prog
                                             statusText = status
@@ -625,7 +584,19 @@ fun startGui() = application {
                                         pauseSupplier = { isPaused },
                                         cancelSupplier = { isCanceled }
                                     )
-                                    statusText = "✨ Sample Finished Successfully!"
+                                    if (moveOutputToSource && !isCanceled) {
+                                        statusText = "Moving file to source directory..."
+                                        val sourceDir = File(videoPath).parentFile
+                                        val outFile = File(outPath)
+                                        if (sourceDir != null && sourceDir.exists()) {
+                                            val destFile = File(sourceDir, outFile.name)
+                                            withContext(Dispatchers.IO) {
+                                                java.nio.file.Files.copy(outFile.toPath(), destFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                                                outFile.delete()
+                                            }
+                                        }
+                                    }
+                                    statusText = if (isCanceled) "Encoding Canceled" else "✨ Sample Finished Successfully!"
                                 } catch (e: Exception) {
                                     // Handled and displayed in statusText
                                 } finally {
@@ -636,13 +607,385 @@ fun startGui() = application {
                         }
                     }
 
-                    Button(
-                        onClick = onSampleEncodeClick,
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = !isEncoding && fitPath.isNotEmpty() && videoPath.isNotEmpty(),
-                        colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFFF453A))
+                    // 1. ENCODER SETUP Card
+                    Card(
+                        backgroundColor = Color(0xFF1C1C1E),
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                        elevation = 0.dp,
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("⏱️ RUN 5s SAMPLE", color = Color.White, fontWeight = FontWeight.Bold)
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Text("ENCODER SETUP", color = Color(0xFFF5F5F7), fontWeight = FontWeight.SemiBold, fontSize = 12.sp, letterSpacing = 0.5.sp)
+                            
+                            OutlinedTextField(
+                                value = videoStartUtc,
+                                onValueChange = { videoStartUtc = it },
+                                label = { Text("Video Start UTC", color = Color(0xFF8E8E93), fontSize = 10.sp) },
+                                modifier = Modifier.fillMaxWidth(),
+                                textStyle = TextStyle(color = Color.White, fontSize = 11.sp),
+                                singleLine = true,
+                                colors = TextFieldDefaults.outlinedTextFieldColors(
+                                    focusedBorderColor = Color(0xFF0A84FF),
+                                    unfocusedBorderColor = Color(0xFF2C2C2E)
+                                )
+                            )
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                OutlinedTextField(
+                                    value = fitPath,
+                                    onValueChange = { fitPath = it },
+                                    label = { Text("FIT File Path", color = Color(0xFF8E8E93), fontSize = 10.sp) },
+                                    modifier = Modifier.weight(1f),
+                                    textStyle = TextStyle(color = Color.White, fontSize = 11.sp),
+                                    singleLine = true,
+                                    colors = TextFieldDefaults.outlinedTextFieldColors(
+                                        focusedBorderColor = Color(0xFF0A84FF),
+                                        unfocusedBorderColor = Color(0xFF2C2C2E)
+                                    )
+                                )
+                                Button(
+                                    onClick = {
+                                        val path = pickFile("Select FIT File", listOf("*.fit"))
+                                        if (path != null) fitPath = path
+                                    },
+                                    modifier = Modifier.height(56.dp),
+                                    colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF2C2C2E)),
+                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
+                                ) { Text("...", color = Color.White, fontSize = 11.sp) }
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                OutlinedTextField(
+                                    value = videoPath,
+                                    onValueChange = { videoPath = it },
+                                    label = { Text("MP4 File Path", color = Color(0xFF8E8E93), fontSize = 10.sp) },
+                                    modifier = Modifier.weight(1f),
+                                    textStyle = TextStyle(color = Color.White, fontSize = 11.sp),
+                                    singleLine = true,
+                                    colors = TextFieldDefaults.outlinedTextFieldColors(
+                                        focusedBorderColor = Color(0xFF0A84FF),
+                                        unfocusedBorderColor = Color(0xFF2C2C2E)
+                                    )
+                                )
+                                Button(
+                                    onClick = {
+                                        val path = pickFile("Select MP4 File", listOf("*.mp4", "*.mov"))
+                                        if (path != null) videoPath = path
+                                    },
+                                    modifier = Modifier.height(56.dp),
+                                    colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF2C2C2E)),
+                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
+                                ) { Text("...", color = Color.White, fontSize = 11.sp) }
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                OutlinedTextField(
+                                    value = outputDir,
+                                    onValueChange = { outputDir = it },
+                                    label = { Text("Output Directory", color = Color(0xFF8E8E93), fontSize = 10.sp) },
+                                    modifier = Modifier.weight(1f),
+                                    textStyle = TextStyle(color = Color.White, fontSize = 11.sp),
+                                    singleLine = true,
+                                    colors = TextFieldDefaults.outlinedTextFieldColors(
+                                        focusedBorderColor = Color(0xFF0A84FF),
+                                        unfocusedBorderColor = Color(0xFF2C2C2E)
+                                    )
+                                )
+                                Button(
+                                    onClick = {
+                                        val path = pickFolder("Select Output Directory")
+                                        if (path != null) outputDir = path
+                                    },
+                                    modifier = Modifier.height(56.dp),
+                                    colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF2C2C2E)),
+                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
+                                ) { Text("...", color = Color.White, fontSize = 11.sp) }
+                            }
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth().clickable { moveOutputToSource = !moveOutputToSource }
+                            ) {
+                                Checkbox(
+                                    checked = moveOutputToSource,
+                                    onCheckedChange = { moveOutputToSource = it },
+                                    colors = CheckboxDefaults.colors(
+                                        checkedColor = Color(0xFF0A84FF),
+                                        uncheckedColor = Color(0xFF2C2C2E)
+                                    )
+                                )
+                                Text("Move output to source video directory after encode", color = Color(0xFFE2E8F0), fontSize = 11.sp)
+                            }
+                        }
+                    }
+
+                    // 2. C: DRIVE STATUS Card
+                    Card(
+                        backgroundColor = Color(0xFF1C1C1E),
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                        elevation = 0.dp,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text("C: DRIVE STATUS", color = Color(0xFFF5F5F7), fontWeight = FontWeight.SemiBold, fontSize = 11.sp, letterSpacing = 0.5.sp)
+                            val spaceColor = if (!hasEnoughSpace) Color(0xFFFF453A) else if (cDriveFreeSpaceGB < 20.0) Color(0xFFFF9F0A) else Color(0xFF30D158)
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text("Free Space: %.1f GB / %.1f GB".format(cDriveFreeSpaceGB, cDriveTotalSpaceGB), color = spaceColor, fontSize = 11.sp)
+                                if (requiredSpaceGB > 2.0) {
+                                    Text("Required: ~%.1f GB".format(requiredSpaceGB), color = spaceColor, fontSize = 11.sp)
+                                }
+                            }
+                            if (!hasEnoughSpace) {
+                                Text("Not enough space to safely encode. Please run cleanup.", color = Color(0xFFFF453A), fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                            }
+                            val progressVal = if (cDriveTotalSpaceGB > 0) ((cDriveTotalSpaceGB - cDriveFreeSpaceGB) / cDriveTotalSpaceGB).toFloat() else 0f
+                            LinearProgressIndicator(
+                                progress = progressVal,
+                                modifier = Modifier.fillMaxWidth(),
+                                color = spaceColor,
+                                backgroundColor = Color(0xFF2C2C2E)
+                            )
+                            Button(
+                                onClick = {
+                                    val workDir = File(System.getProperty("user.dir"), "temp_work")
+                                    val hudDir = File(System.getProperty("user.dir"), "tmp_hud")
+                                    workDir.deleteRecursively()
+                                    hudDir.deleteRecursively()
+                                    // re-trigger space check instantly
+                                    val file = File("C:\\")
+                                    cDriveFreeSpaceGB = file.freeSpace / (1024.0 * 1024.0 * 1024.0)
+                                    cDriveTotalSpaceGB = file.totalSpace / (1024.0 * 1024.0 * 1024.0)
+                                    hasEnoughSpace = cDriveFreeSpaceGB >= requiredSpaceGB
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF2C2C2E)),
+                                shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
+                            ) {
+                                Text("CLEANUP LOCAL TEMP FILES", color = Color(0xFF0A84FF), fontWeight = FontWeight.SemiBold, fontSize = 11.sp)
+                            }
+                        }
+                    }
+
+                    // 2.5 HUD HOT RELOAD Card
+                    Card(
+                        backgroundColor = Color(0xFF1C1C1E),
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                        elevation = 0.dp,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text("HUD HOT RELOAD", color = Color(0xFFF5F5F7), fontWeight = FontWeight.SemiBold, fontSize = 11.sp, letterSpacing = 0.5.sp)
+                            
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Button(
+                                    onClick = {
+                                        scope.launch {
+                                            isCompiling = true
+                                            withContext(Dispatchers.IO) {
+                                                try {
+                                                    println("🛠 Starting background compile of shared-core...")
+                                                    val pb = ProcessBuilder("cmd.exe", "/c", ".\\gradlew.bat :shared-core:compileKotlinDesktop")
+                                                    pb.directory(File(System.getProperty("user.dir")))
+                                                    val proc = pb.start()
+                                                    proc.waitFor()
+                                                    println("🛠 Compile completed, reloading HUD...")
+                                                    val ok = rendererProxy.reload()
+                                                    if (ok) {
+                                                        javax.swing.SwingUtilities.invokeLater {
+                                                            reloadTrigger++
+                                                        }
+                                                    }
+                                                } catch (e: Exception) {
+                                                    e.printStackTrace()
+                                                } finally {
+                                                    isCompiling = false
+                                                }
+                                            }
+                                        }
+                                    },
+                                    enabled = !isCompiling,
+                                    modifier = Modifier.weight(1f),
+                                    colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF2C2C2E)),
+                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
+                                ) {
+                                    Text(if (isCompiling) "COMPILING..." else "BUILD & RELOAD", color = Color(0xFF30D158), fontWeight = FontWeight.SemiBold, fontSize = 11.sp)
+                                }
+                                
+                                Button(
+                                    onClick = {
+                                        val ok = rendererProxy.reload()
+                                        if (ok) {
+                                            reloadTrigger++
+                                        }
+                                    },
+                                    enabled = !isCompiling,
+                                    modifier = Modifier.weight(1f),
+                                    colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF2C2C2E)),
+                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
+                                ) {
+                                    Text("RELOAD ONLY", color = Color(0xFF0A84FF), fontWeight = FontWeight.SemiBold, fontSize = 11.sp)
+                                }
+                            }
+                            
+                            val classFile = File(System.getProperty("user.dir"), "shared-core/build/classes/kotlin/desktop/main/fit/HudRenderer.class")
+                            val lastModStr = if (classFile.exists()) {
+                                val instant = java.time.Instant.ofEpochMilli(classFile.lastModified())
+                                val formatter = java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss").withZone(java.time.ZoneId.systemDefault())
+                                formatter.format(instant)
+                            } else "None"
+                            Text("Auto-watch active • Last Build: $lastModStr", color = Color.Gray, fontSize = 9.sp)
+                        }
+                    }
+
+                    // 3. ENCODE Actions / Progress Monitor
+                    if (isEncoding) {
+                        Card(
+                            backgroundColor = Color(0xFF1C1C1E),
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                            elevation = 0.dp,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                LinearProgressIndicator(
+                                    progress = progress,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    color = if (isPaused) Color(0xFFFF9F0A) else Color(0xFF0A84FF),
+                                    backgroundColor = Color(0xFF2C2C2E)
+                                )
+                                Text(if (isPaused) "PAUSED (Not enough space or paused manually)\n$statusText" else statusText, color = Color.White, fontSize = 12.sp)
+                                
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Button(
+                                        onClick = { isPaused = !isPaused },
+                                        modifier = Modifier.weight(1f).height(36.dp),
+                                        enabled = !(!isPaused && !hasEnoughSpace),
+                                        colors = ButtonDefaults.buttonColors(backgroundColor = if (isPaused) Color(0xFF30D158) else Color(0xFFFF9F0A)),
+                                        shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
+                                    ) {
+                                        Text(if (isPaused) "RESUME" else "PAUSE", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                    }
+                                    Button(
+                                        onClick = { isCanceled = true },
+                                        modifier = Modifier.weight(1f).height(36.dp),
+                                        colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFFF453A)),
+                                        shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
+                                    ) {
+                                        Text("CANCEL", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        Button(
+                            onClick = onNativeEncodeClick,
+                            modifier = Modifier.fillMaxWidth().height(44.dp),
+                            enabled = hasEnoughSpace && fitPath.isNotEmpty() && videoPath.isNotEmpty(),
+                            colors = ButtonDefaults.buttonColors(
+                                backgroundColor = if (hasEnoughSpace) Color(0xFF0A84FF) else Color(0xFF2C2C2E)
+                            ),
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                        ) {
+                            Text(if (hasEnoughSpace) "RUN NATIVE ENCODE" else "INSUFFICIENT DISK SPACE", color = Color.White, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+                        }
+
+                        Button(
+                            onClick = onSampleEncodeClick,
+                            modifier = Modifier.fillMaxWidth().height(44.dp),
+                            enabled = hasEnoughSpace && fitPath.isNotEmpty() && videoPath.isNotEmpty(),
+                            colors = ButtonDefaults.buttonColors(
+                                backgroundColor = if (hasEnoughSpace) Color(0xFF30D158) else Color(0xFF2C2C2E)
+                            ),
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                        ) {
+                            Text("RUN 5s SAMPLE", color = Color.White, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+                        }
+                    }
+
+                    Divider(color = Color(0xFF2C2C2E))
+
+                    // 4. ADVANCED: HUD LAYOUT Card
+                    Card(
+                        backgroundColor = Color(0xFF1C1C1E),
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                        elevation = 0.dp,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().clickable { hudSettingsExpanded = !hudSettingsExpanded }.padding(vertical = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("ADVANCED: HUD LAYOUT", color = Color(0xFF8E8E93), fontWeight = FontWeight.SemiBold, fontSize = 11.sp, letterSpacing = 0.5.sp)
+                                Text(if (hudSettingsExpanded) "▼" else "▶", color = Color(0xFF8E8E93), fontSize = 10.sp)
+                            }
+
+                            if (hudSettingsExpanded) {
+                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    ControlSlider("VAL SIZE", settings.valSize, 10f, 150f) { settings = settings.copy(valSize = it) }
+                                    ControlSlider("TIGHTNESS", settings.tightness, -10f, 40f) { settings = settings.copy(tightness = it) }
+                                    ControlSlider("SPACING", settings.spacing, 0f, 100f) { settings = settings.copy(spacing = it) }
+                                    ControlSlider("X OFFSET", settings.xOffset, 0f, 500f) { settings = settings.copy(xOffset = it) }
+                                    ControlSlider("Y OFFSET", settings.yOffset, 0f, 500f) { settings = settings.copy(yOffset = it) }
+                                    ControlSlider("GRAPH H", settings.graphH, 20f, 300f) { settings = settings.copy(graphH = it) }
+                                    ControlSlider("GRAPH W", settings.graphW, 50f, 800f) { settings = settings.copy(graphW = it) }
+                                    
+                                    Spacer(Modifier.height(8.dp))
+                                    
+                                    var hotReloadStatus by remember { mutableStateOf("") }
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Button(
+                                            onClick = {
+                                                scope.launch(Dispatchers.IO) {
+                                                    try {
+                                                        hotReloadStatus = "Compiling..."
+                                                        val pb = ProcessBuilder("cmd.exe", "/c", ".\\gradlew.bat", ":shared-core:compileKotlinDesktop")
+                                                        pb.directory(File(System.getProperty("user.dir")))
+                                                        val p = pb.start()
+                                                        if (p.waitFor() == 0) {
+                                                            hotReloadStatus = "Reloading..."
+                                                            val currentMs = videoCurrentTimeMs
+                                                            videoCurrentTimeMs = currentMs + 1
+                                                            kotlinx.coroutines.delay(50)
+                                                            videoCurrentTimeMs = currentMs
+                                                            hotReloadStatus = "✅ UI Reloaded!"
+                                                        } else {
+                                                            hotReloadStatus = "❌ Compile Failed"
+                                                        }
+                                                    } catch(e:Exception) {
+                                                        hotReloadStatus = "❌ Error: ${e.message}"
+                                                    }
+                                                    kotlinx.coroutines.delay(3000)
+                                                    hotReloadStatus = ""
+                                                }
+                                            },
+                                            modifier = Modifier.weight(1f).height(36.dp),
+                                            colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF2C2C2E)),
+                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
+                                        ) {
+                                            Text("HOT RELOAD RENDERER", color = Color(0xFF0A84FF), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                        }
+                                    }
+                                    if (hotReloadStatus.isNotEmpty()) {
+                                        Text(hotReloadStatus, color = Color(0xFF30D158), fontSize = 11.sp)
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -699,189 +1042,25 @@ fun startGui() = application {
                             } else {
                                 Canvas(modifier = Modifier.fillMaxSize()) {
                                     val scale = size.width / 1920f
-                                    val textShadow = androidx.compose.ui.graphics.Shadow(
-                                        color = Color.Black,
-                                        offset = Offset(2f * scale, 2f * scale),
-                                        blurRadius = 3f * scale
+                                    val currentRatio = if (videoLengthMs > 0) videoCurrentTimeMs.toFloat() / videoLengthMs.toFloat() else 0f
+                                    val telemetryPoint = currentPoint ?: fit.FitParser.TelemetryPoint(
+                                        timestamp = 0.0,
+                                        speed = 26.2,
+                                        power = 175.0,
+                                        cadence = 79.0,
+                                        heartRate = 148.0,
+                                        elevation = 63.2,
+                                        grade = 4.0
                                     )
-                                    
-                                    val speedText = currentPoint?.let { "%.1f".format(it.speed) } ?: "26.2"
-                                    val cadenceText = currentPoint?.let { it.cadence.toInt().toString() } ?: "79"
-                                    val powerText = currentPoint?.let { it.power.toInt().toString() } ?: "175"
-                                    val hrText = currentPoint?.let { it.heartRate.toInt().toString() } ?: "148"
-                                    val gradeText = currentPoint?.let { "%.1f".format(it.grade) } ?: "4.0"
-                                    val wkgText = currentPoint?.let { "%.1f".format(it.power / 70.0) } ?: "2.5"
-
-                                    val metrics = listOf(
-                                        Triple("SPEED", speedText to "km/h", Color(0xFF60A5FA)),
-                                        Triple("CADENCE", cadenceText to "rpm", Color(0xFFC084FC)),
-                                        Triple("POWER", powerText to "W", Color(0xFF34D399)),
-                                        Triple("HEART RATE", hrText to "bpm", Color(0xFFF87171)),
-                                        Triple("GRADE", gradeText to "%", Color(0xFFFCD34D)),
-                                        Triple("W/KG", wkgText to "w/kg", Color(0xFF2DD4BF))
+                                    val pBuf = currentTrendPoints.map { it }
+                                    val composeCanvas = ComposeHudCanvas(this, textMeasurer, scale)
+                                    rendererProxy.renderFrame(
+                                        composeCanvas,
+                                        telemetryPoint,
+                                        telemetryPoints,
+                                        pBuf,
+                                        currentRatio
                                     )
-                                    val previewX = settings.xOffset * scale
-                                    var previewCy = settings.yOffset * scale
-
-                                    metrics.forEach { (label, valAndUnit, color) ->
-                                        val (value, unit) = valAndUnit
-                                        val valSize = settings.valSize * scale
-                                        val lblSize = (valSize * 0.45f).coerceAtLeast(10f)
-                                        val lblLayout = textMeasurer.measure(label, TextStyle(color = Color(0xFFE2E8F0), fontSize = lblSize.sp, fontWeight = FontWeight.Bold, shadow = textShadow))
-                                        val valLayout = textMeasurer.measure(value, TextStyle(color = Color.White, fontSize = valSize.sp, fontWeight = FontWeight.Black, shadow = textShadow))
-                                        
-                                        // Compensate Compose vertical font padding using firstBaseline
-                                        val lblDrawY = previewCy - (lblLayout.firstBaseline - lblSize)
-                                        drawText(lblLayout, topLeft = Offset(previewX, lblDrawY))
-                                        
-                                        val valY = previewCy + lblSize + (settings.tightness * scale)
-                                        val valDrawY = valY - (valLayout.firstBaseline - valSize)
-                                        drawText(valLayout, topLeft = Offset(previewX, valDrawY))
-                                        
-                                        val unitLayout = textMeasurer.measure(unit, TextStyle(color = color, fontSize = (valSize * 0.5f).sp, fontWeight = FontWeight.Bold, shadow = textShadow))
-                                        val unitDrawY = valY + (valSize * 0.15f) - (unitLayout.firstBaseline - (valSize * 0.5f))
-                                        drawText(unitLayout, topLeft = Offset(previewX + valLayout.size.width + (6 * scale), unitDrawY))
-                                        
-                                        previewCy = valY + valSize + (settings.spacing * scale)
-                                    }
-                                    
-                                    val valSize = settings.valSize * scale
-                                    val lblSize = (valSize * 0.45f).coerceAtLeast(10f)
-                                    val gW = settings.graphW * scale
-                                    val gH = settings.graphH * scale
-                                    
-                                    val trendLabel = textMeasurer.measure("POWER TREND", TextStyle(color = Color(0xFFE2E8F0), fontSize = lblSize.sp, fontWeight = FontWeight.Bold, shadow = textShadow))
-                                    val trendLblDrawY = previewCy - (trendLabel.firstBaseline - lblSize)
-                                    drawText(trendLabel, topLeft = Offset(previewX, trendLblDrawY))
-                                    val trendGy = previewCy + lblSize + (4 * scale)
-                                    
-                                    drawRect(color = Color(0xFF1E2023), topLeft = Offset(previewX, trendGy), size = Size(gW, gH), alpha = 0.6f)
-                                    drawRect(color = Color.White, topLeft = Offset(previewX, trendGy), size = Size(gW, gH), alpha = 0.1f, style = Stroke(width = 1f))
-                                    
-                                    // Power trend bar chart rendering
-                                    val trendData = currentTrendPoints
-                                    if (trendData.isNotEmpty()) {
-                                        val bw = gW / trendData.size
-                                        val maxP = maxOf(trendData.maxOrNull() ?: 250.0, 300.0).toFloat()
-                                        trendData.forEachIndexed { i, v ->
-                                            val bh = (v / maxP).toFloat() * gH
-                                            drawRect(
-                                                color = Color(0xFF10B981),
-                                                topLeft = Offset(previewX + i * bw, trendGy + gH - bh),
-                                                size = Size(maxOf(1f, bw - 1f * scale), bh)
-                                            )
-                                        }
-                                    }
-
-                                    previewCy = trendGy + gH + (settings.spacing * scale)
-                                    
-                                    val elevLabel = textMeasurer.measure("ELEVATION", TextStyle(color = Color(0xFFE2E8F0), fontSize = lblSize.sp, fontWeight = FontWeight.Bold, shadow = textShadow))
-                                    val elevLblDrawY = previewCy - (elevLabel.firstBaseline - lblSize)
-                                    drawText(elevLabel, topLeft = Offset(previewX, elevLblDrawY))
-                                    val elevGy = previewCy + lblSize + (4 * scale)
-                                    drawRect(color = Color(0xFF1E2023), topLeft = Offset(previewX, elevGy), size = Size(gW, gH), alpha = 0.6f)
-                                    drawRect(color = Color.White, topLeft = Offset(previewX, elevGy), size = Size(gW, gH), alpha = 0.1f, style = Stroke(width = 1f))
-
-                                    // Elevation line & polygon rendering
-                                    val elevData = telemetryPoints.map { it.elevation }
-                                    if (elevData.size > 1) {
-                                        val maxV = elevData.maxOrNull() ?: 0.0
-                                        val minV = elevData.minOrNull() ?: 0.0
-                                        val range = maxOf(maxV - minV, 10.0).toFloat()
-                                        
-                                        val pts = elevData.mapIndexed { i, v ->
-                                            val px = previewX + (i.toFloat() / (elevData.size - 1)) * gW
-                                            val py = elevGy + gH - ((v - minV).toFloat() / range) * gH
-                                            Offset(px, py)
-                                        }
-                                        
-                                        val currentRatio = if (videoLengthMs > 0) videoCurrentTimeMs.toFloat() / videoLengthMs.toFloat() else 0f
-                                        val split = ((elevData.size - 1) * currentRatio).toInt()
-                                        
-                                        if (split > 0) {
-                                            // Traveled path
-                                            for (k in 0 until split) {
-                                                val grade = telemetryPoints.getOrNull(k)?.grade ?: 0.0
-                                                val segColor = when {
-                                                    grade < -4.0 -> Color(0xFF3B82F6) // Blue
-                                                    grade < 1.0 -> Color(0xFF32D74B)  // Apple Green
-                                                    grade < 5.0 -> Color(0xFFFBBF24)  // Yellow
-                                                    grade < 8.0 -> Color(0xFFFF453A)  // Apple Red
-                                                    else -> Color(0xFF991B1B)         // Dark Red
-                                                }
-                                                drawLine(
-                                                    color = segColor,
-                                                    start = pts[k],
-                                                    end = pts[k + 1],
-                                                    strokeWidth = 3f * scale
-                                                )
-                                            }
-                                            
-                                            // Draw current position pin
-                                            if (pts.isNotEmpty() && split in pts.indices) {
-                                                drawCircle(
-                                                    color = Color.White,
-                                                    radius = 4f * scale,
-                                                    center = pts[split]
-                                                )
-                                                drawCircle(
-                                                    color = Color(0xFF0A84FF),
-                                                    radius = 2.5f * scale,
-                                                    center = pts[split]
-                                                )
-                                            }
-
-                                            // Traveled area shading
-                                            val polyPath = androidx.compose.ui.graphics.Path().apply {
-                                                moveTo(pts[0].x, pts[0].y)
-                                                for (k in 1..split) {
-                                                    lineTo(pts[k].x, pts[k].y)
-                                                }
-                                                lineTo(pts[split].x, elevGy + gH)
-                                                lineTo(pts[0].x, elevGy + gH)
-                                                close()
-                                            }
-                                            drawPath(
-                                                path = polyPath,
-                                                color = Color(0xFF3B82F6),
-                                                alpha = 0.2f
-                                            )
-                                        }
-                                        
-                                        if (split < elevData.size - 1) {
-                                            // Future path
-                                            for (k in split until elevData.size - 1) {
-                                                val grade = telemetryPoints.getOrNull(k)?.grade ?: 0.0
-                                                val segColor = when {
-                                                    grade < -4.0 -> Color(0xFF3B82F6) // Blue
-                                                    grade < 1.0 -> Color(0xFF32D74B)  // Apple Green
-                                                    grade < 5.0 -> Color(0xFFFBBF24)  // Yellow
-                                                    grade < 8.0 -> Color(0xFFFF453A)  // Apple Red
-                                                    else -> Color(0xFF991B1B)         // Dark Red
-                                                }
-                                                drawLine(
-                                                    color = segColor,
-                                                    start = pts[k],
-                                                    end = pts[k + 1],
-                                                    strokeWidth = 2f * scale,
-                                                    alpha = 0.5f
-                                                )
-                                            }
-                                        }
-                                        
-                                        // Current position pin
-                                        val cx = previewX + gW * currentRatio
-                                        val triPath = androidx.compose.ui.graphics.Path().apply {
-                                            moveTo(cx - 6 * scale, elevGy - 6 * scale)
-                                            lineTo(cx + 6 * scale, elevGy - 6 * scale)
-                                            lineTo(cx, elevGy)
-                                            close()
-                                        }
-                                        drawPath(
-                                            path = triPath,
-                                            color = Color(0xFFEF4444)
-                                        )
-                                    }
                                 }
                             }
                         }
@@ -953,9 +1132,9 @@ suspend fun fireEncode(
     maxDurationSeconds: Int = -1,
     pauseSupplier: () -> Boolean = { false },
     cancelSupplier: () -> Boolean = { false }
-) {
+): String {
     println("DEBUG: fireEncode called with HudSettings: $s")
-    withContext(Dispatchers.IO) {
+    return withContext(Dispatchers.IO) {
         try {
             val config = HudConfig(
                 valSize = s.valSize, tightness = s.tightness, spacing = s.spacing,
@@ -981,6 +1160,7 @@ suspend fun fireEncode(
             val suffix = if (maxDurationSeconds > 0) "_TEST_HUD.mp4" else "_KMP_HUD.mp4"
             val output = File(outDir, baseName + suffix).absolutePath
             encoder.encode(fit, video, output, startUtc, maxDurationSeconds = maxDurationSeconds)
+            output
         } catch (e: Exception) {
             e.printStackTrace()
             onProgress(0f, "❌ Error: ${e.message ?: "Unknown error"}")
@@ -1080,5 +1260,95 @@ fun formatTime(ms: Long): String {
     val min = totalSec / 60
     val sec = totalSec % 60
     return "%02d:%02d".format(min, sec)
+}
+
+class ComposeHudCanvas(
+    private val drawScope: androidx.compose.ui.graphics.drawscope.DrawScope,
+    private val textMeasurer: androidx.compose.ui.text.TextMeasurer,
+    private val scale: Float
+) : fit.HudCanvas {
+
+    private fun parseColor(colorStr: String): androidx.compose.ui.graphics.Color {
+        val clean = colorStr.replace("#", "")
+        return try {
+            if (clean.length == 8) {
+                androidx.compose.ui.graphics.Color(clean.toLong(16))
+            } else if (clean.length == 6) {
+                androidx.compose.ui.graphics.Color((0xFF000000 or clean.toLong(16)))
+            } else {
+                androidx.compose.ui.graphics.Color.White
+            }
+        } catch (e: Exception) {
+            androidx.compose.ui.graphics.Color.White
+        }
+    }
+
+    override fun drawText(text: String, x: Float, y: Float, size: Float, color: String, bold: Boolean, anchor: String) {
+        val c = parseColor(color)
+        val style = androidx.compose.ui.text.TextStyle(
+            color = c,
+            fontSize = (size * scale).sp,
+            fontWeight = if (bold) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal
+        )
+        val layout = textMeasurer.measure(text, style)
+        val drawX = x * scale - when (anchor) {
+            "center" -> layout.size.width.toFloat() / 2f
+            "top-right", "bottom-right" -> layout.size.width.toFloat()
+            else -> 0f
+        }
+        val drawY = y * scale - when (anchor) {
+            "center" -> layout.size.height.toFloat() / 2f
+            "bottom-left", "bottom-right" -> layout.size.height.toFloat()
+            else -> 0f
+        }
+        drawScope.drawText(layout, topLeft = androidx.compose.ui.geometry.Offset(drawX, drawY))
+    }
+
+    override fun drawRect(x: Float, y: Float, w: Float, h: Float, color: String, alpha: Float, outline: Boolean) {
+        val c = parseColor(color)
+        drawScope.drawRect(
+            color = c,
+            topLeft = androidx.compose.ui.geometry.Offset(x * scale, y * scale),
+            size = androidx.compose.ui.geometry.Size(w * scale, h * scale),
+            alpha = alpha,
+            style = if (outline) androidx.compose.ui.graphics.drawscope.Stroke(width = 1f * scale) else androidx.compose.ui.graphics.drawscope.Fill
+        )
+    }
+
+    override fun drawLine(points: List<Pair<Float, Float>>, color: String, width: Float, alpha: Float) {
+        if (points.size < 2) return
+        val c = parseColor(color)
+        for (i in 0 until points.size - 1) {
+            drawScope.drawLine(
+                color = c,
+                start = androidx.compose.ui.geometry.Offset(points[i].first * scale, points[i].second * scale),
+                end = androidx.compose.ui.geometry.Offset(points[i + 1].first * scale, points[i + 1].second * scale),
+                strokeWidth = width * scale,
+                alpha = alpha
+            )
+        }
+    }
+
+    override fun drawPolygon(points: List<Pair<Float, Float>>, color: String, alpha: Float) {
+        if (points.size < 3) return
+        val c = parseColor(color)
+        val path = androidx.compose.ui.graphics.Path().apply {
+            moveTo(points[0].first * scale, points[0].second * scale)
+            for (i in 1 until points.size) {
+                lineTo(points[i].first * scale, points[i].second * scale)
+            }
+            close()
+        }
+        drawScope.drawPath(path = path, color = c, alpha = alpha)
+    }
+
+    override fun getTextWidth(text: String, size: Float, bold: Boolean): Float {
+        val style = androidx.compose.ui.text.TextStyle(
+            fontSize = size.sp,
+            fontWeight = if (bold) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal
+        )
+        val layout = textMeasurer.measure(text, style)
+        return layout.size.width.toFloat()
+    }
 }
 

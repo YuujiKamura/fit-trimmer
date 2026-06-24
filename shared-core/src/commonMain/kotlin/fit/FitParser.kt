@@ -77,14 +77,18 @@ class FitParser(private val bytes: ByteArray) {
                     if (f.fieldNum == 253) {
                         valObj = getUInt(bytes, fieldStart, !def.isBigEndian)
                         lastTimestamp = valObj
-                    } else if (f.size == 4 && (f.baseType == 0x86 || f.baseType == 0x0C)) {
+                    } else if (f.size == 4 && (f.baseType == 0x86 || f.baseType == 0x8C || f.baseType == 0x0C)) {
                         valObj = getUInt(bytes, fieldStart, !def.isBigEndian)
                     } else if (f.size == 4 && f.baseType == 0x85) {
                         valObj = getInt(bytes, fieldStart, !def.isBigEndian).toLong()
-                    } else if (f.size == 2 && (f.baseType == 0x84 || f.baseType == 0x0B)) {
+                    } else if (f.size == 2 && (f.baseType == 0x84 || f.baseType == 0x8B || f.baseType == 0x0B)) {
                         valObj = getUShort(bytes, fieldStart, !def.isBigEndian).toLong()
+                    } else if (f.size == 2 && f.baseType == 0x83) {
+                        valObj = getShort(bytes, fieldStart, !def.isBigEndian).toLong()
                     } else if (f.size == 1 && (f.baseType == 0x02 || f.baseType == 0x0A || f.baseType == 0x00)) {
                         valObj = bytes[fieldStart].toLong() and 0xFF
+                    } else if (f.size == 1 && (f.baseType == 0x01 || f.baseType == 0x81)) {
+                        valObj = bytes[fieldStart].toLong()
                     }
                     parsedFields[f.fieldNum] = ParsedField(fieldStart - recordStart, f.size, f.baseType, valObj)
                 }
@@ -144,14 +148,18 @@ class FitParser(private val bytes: ByteArray) {
                         if (f.fieldNum == 253) {
                             valObj = getUInt(bytes, fieldStart, !def.isBigEndian)
                             lastTimestamp = valObj
-                        } else if (f.size == 4 && (f.baseType == 0x86 || f.baseType == 0x0C)) {
+                        } else if (f.size == 4 && (f.baseType == 0x86 || f.baseType == 0x8C || f.baseType == 0x0C)) {
                             valObj = getUInt(bytes, fieldStart, !def.isBigEndian)
                         } else if (f.size == 4 && f.baseType == 0x85) {
                             valObj = getInt(bytes, fieldStart, !def.isBigEndian).toLong()
-                        } else if (f.size == 2 && (f.baseType == 0x84 || f.baseType == 0x0B)) {
+                        } else if (f.size == 2 && (f.baseType == 0x84 || f.baseType == 0x8B || f.baseType == 0x0B)) {
                             valObj = getUShort(bytes, fieldStart, !def.isBigEndian).toLong()
+                        } else if (f.size == 2 && f.baseType == 0x83) {
+                            valObj = getShort(bytes, fieldStart, !def.isBigEndian).toLong()
                         } else if (f.size == 1 && (f.baseType == 0x02 || f.baseType == 0x0A || f.baseType == 0x00)) {
                             valObj = bytes[fieldStart].toLong() and 0xFF
+                        } else if (f.size == 1 && (f.baseType == 0x01 || f.baseType == 0x81)) {
+                            valObj = bytes[fieldStart].toLong()
                         }
                         parsedFields[f.fieldNum] = ParsedField(fieldStart - recordStart, f.size, f.baseType, valObj)
                     }
@@ -187,8 +195,7 @@ class FitParser(private val bytes: ByteArray) {
                 val hrVal = fields[3]?.value?.toDouble() ?: 0.0
                 val rawElev = fields[78]?.value ?: fields[2]?.value
                 val elevVal = if (rawElev != null) (rawElev.toDouble() / 5.0) - 500.0 else 0.0
-                val rawGrade = fields[9]?.value
-                val gradeVal = if (rawGrade != null) rawGrade.toDouble() / 100.0 else 0.0
+                val gradeVal = 0.0 // Field 9 is temperature, not grade. We will calculate grade dynamically below.
                 
                 list.add(TelemetryPoint(ts, speedVal, powerVal, cadenceVal, hrVal, elevVal, gradeVal))
             }
@@ -287,6 +294,7 @@ class FitParser(private val bytes: ByteArray) {
     }
 
     companion object {
+        fun getShort(b: ByteArray, o: Int, littleEndian: Boolean) = getUShort(b, o, littleEndian).toShort()
         fun getUShort(b: ByteArray, o: Int, littleEndian: Boolean) = if (littleEndian) (b[o+1].toInt() and 0xFF shl 8) or (b[o].toInt() and 0xFF) else (b[o].toInt() and 0xFF shl 8) or (b[o+1].toInt() and 0xFF)
         fun getUInt(b: ByteArray, o: Int, littleEndian: Boolean) = if (littleEndian) (b[o+3].toLong() and 0xFF shl 24) or (b[o+2].toLong() and 0xFF shl 16) or (b[o+1].toLong() and 0xFF shl 8) or (b[o].toLong() and 0xFF) else (b[o].toLong() and 0xFF shl 24) or (b[o+1].toLong() and 0xFF shl 16) or (b[o+2].toLong() and 0xFF shl 8) or (b[o+3].toLong() and 0xFF)
         fun getInt(b: ByteArray, o: Int, littleEndian: Boolean) = if (littleEndian) (b[o+3].toInt() and 0xFF shl 24) or (b[o+2].toInt() and 0xFF shl 16) or (b[o+1].toInt() and 0xFF shl 8) or (b[o].toInt() and 0xFF) else (b[o].toInt() and 0xFF shl 24) or (b[o+1].toInt() and 0xFF shl 16) or (b[o+2].toInt() and 0xFF shl 8) or (b[o+3].toInt() and 0xFF)

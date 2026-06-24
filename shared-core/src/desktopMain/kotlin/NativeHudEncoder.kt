@@ -351,6 +351,8 @@ class NativeHudEncoder(
             val finalPartFile = File(jobDir, "part_%04d.ts".format(resumePartIndex))
             if (tempPartFile.exists()) tempPartFile.delete()
             
+            pbArgs.add("-f")
+            pbArgs.add("mpegts")
             pbArgs.add(tempPartFile.absolutePath)
             
             val pb = ProcessBuilder(pbArgs)
