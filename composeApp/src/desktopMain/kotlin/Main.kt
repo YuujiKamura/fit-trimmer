@@ -1,6 +1,8 @@
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -174,6 +176,15 @@ fun startGui(args: Array<String>) = application {
             } catch (e: Throwable) {
                 e.printStackTrace()
                 vlcAvailable = false
+            }
+            // Auto-cleanup temporary workspaces on startup
+            try {
+                val workDir = File(System.getProperty("user.dir"), "temp_work")
+                val hudDir = File(System.getProperty("user.dir"), "tmp_hud")
+                if (workDir.exists()) workDir.deleteRecursively()
+                if (hudDir.exists()) hudDir.deleteRecursively()
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
         }
     }
@@ -575,7 +586,7 @@ fun startGui(args: Array<String>) = application {
         val textMeasurer = rememberTextMeasurer()
 
         MaterialTheme(colors = darkColors()) {
-            Row(modifier = Modifier.fillMaxSize().background(Color(0xFF000000))) {
+            Row(modifier = Modifier.fillMaxSize().background(Color(0xFF141416))) {
                 Column(
                     modifier = Modifier.width(320.dp).fillMaxHeight().background(Color(0xFF111111))
                         .verticalScroll(rememberScrollState()).padding(16.dp),
@@ -854,132 +865,7 @@ fun startGui(args: Array<String>) = application {
                         }
                     }
 
-                    // 2. C: DRIVE STATUS Card
-                    Card(
-                        backgroundColor = Color(0xFF1C1C1E),
-                        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
-                        elevation = 0.dp,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text("C: DRIVE STATUS", color = Color(0xFFF5F5F7), fontWeight = FontWeight.SemiBold, fontSize = 11.sp, letterSpacing = 0.5.sp)
-                            val spaceColor = if (!hasEnoughSpace) Color(0xFFFF453A) else if (cDriveFreeSpaceGB < 20.0) Color(0xFFFF9F0A) else Color(0xFF30D158)
-                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Text("Free Space: %.1f GB / %.1f GB".format(cDriveFreeSpaceGB, cDriveTotalSpaceGB), color = spaceColor, fontSize = 11.sp)
-                                if (requiredSpaceGB > 2.0) {
-                                    Text("Required: ~%.1f GB".format(requiredSpaceGB), color = spaceColor, fontSize = 11.sp)
-                                }
-                            }
-                            if (!hasEnoughSpace) {
-                                Text("Not enough space to safely encode. Please run cleanup.", color = Color(0xFFFF453A), fontSize = 11.sp, fontWeight = FontWeight.Medium)
-                            }
-                            val progressVal = if (cDriveTotalSpaceGB > 0) ((cDriveTotalSpaceGB - cDriveFreeSpaceGB) / cDriveTotalSpaceGB).toFloat() else 0f
-                            LinearProgressIndicator(
-                                progress = progressVal,
-                                modifier = Modifier.fillMaxWidth(),
-                                color = spaceColor,
-                                backgroundColor = Color(0xFF2C2C2E)
-                            )
-                            Button(
-                                onClick = {
-                                    val workDir = File(System.getProperty("user.dir"), "temp_work")
-                                    val hudDir = File(System.getProperty("user.dir"), "tmp_hud")
-                                    workDir.deleteRecursively()
-                                    hudDir.deleteRecursively()
-                                    // re-trigger space check instantly
-                                    val file = File("C:\\")
-                                    cDriveFreeSpaceGB = file.freeSpace / (1024.0 * 1024.0 * 1024.0)
-                                    cDriveTotalSpaceGB = file.totalSpace / (1024.0 * 1024.0 * 1024.0)
-                                    hasEnoughSpace = cDriveFreeSpaceGB >= requiredSpaceGB
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF2C2C2E)),
-                                shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
-                            ) {
-                                Text("CLEANUP LOCAL TEMP FILES", color = Color(0xFF0A84FF), fontWeight = FontWeight.SemiBold, fontSize = 11.sp)
-                            }
-                        }
-                    }
-
-                    // 2.5 HUD HOT RELOAD Card
-                    Card(
-                        backgroundColor = Color(0xFF1C1C1E),
-                        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
-                        elevation = 0.dp,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text("HUD HOT RELOAD", color = Color(0xFFF5F5F7), fontWeight = FontWeight.SemiBold, fontSize = 11.sp, letterSpacing = 0.5.sp)
-                            
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Button(
-                                    onClick = {
-                                        scope.launch {
-                                            isCompiling = true
-                                            withContext(Dispatchers.IO) {
-                                                try {
-                                                    println("🛠 Starting background compile of shared-core...")
-                                                    val pb = ProcessBuilder("cmd.exe", "/c", ".\\gradlew.bat :shared-core:compileKotlinDesktop")
-                                                    pb.directory(File(System.getProperty("user.dir")))
-                                                    val proc = pb.start()
-                                                    proc.waitFor()
-                                                    println("🛠 Compile completed, reloading HUD...")
-                                                    val ok = rendererProxy.reload()
-                                                    if (ok) {
-                                                        javax.swing.SwingUtilities.invokeLater {
-                                                            reloadTrigger++
-                                                        }
-                                                    }
-                                                } catch (e: Exception) {
-                                                    e.printStackTrace()
-                                                } finally {
-                                                    isCompiling = false
-                                                }
-                                            }
-                                        }
-                                    },
-                                    enabled = !isCompiling,
-                                    modifier = Modifier.weight(1f),
-                                    colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF2C2C2E)),
-                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
-                                ) {
-                                    Text(if (isCompiling) "COMPILING..." else "BUILD & RELOAD", color = Color(0xFF30D158), fontWeight = FontWeight.SemiBold, fontSize = 11.sp)
-                                }
-                                
-                                Button(
-                                    onClick = {
-                                        val ok = rendererProxy.reload()
-                                        if (ok) {
-                                            reloadTrigger++
-                                        }
-                                    },
-                                    enabled = !isCompiling,
-                                    modifier = Modifier.weight(1f),
-                                    colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF2C2C2E)),
-                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
-                                ) {
-                                    Text("RELOAD ONLY", color = Color(0xFF0A84FF), fontWeight = FontWeight.SemiBold, fontSize = 11.sp)
-                                }
-                            }
-                            
-                            val classFile = File(System.getProperty("user.dir"), "shared-core/build/classes/kotlin/desktop/main/fit/HudRenderer.class")
-                            val lastModStr = if (classFile.exists()) {
-                                val instant = java.time.Instant.ofEpochMilli(classFile.lastModified())
-                                val formatter = java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss").withZone(java.time.ZoneId.systemDefault())
-                                formatter.format(instant)
-                            } else "None"
-                            Text("Auto-watch active • Last Build: $lastModStr", color = Color.Gray, fontSize = 9.sp)
-                        }
-                    }
+                    // Developer tools (C drive, hot reload, etc.) have been moved under the ADVANCED TOOLKIT card below to simplify the panel.
 
                     // 3. ENCODE Actions / Progress Monitor
                     if (isEncoding) {
@@ -1056,86 +942,19 @@ fun startGui(args: Array<String>) = application {
                         }
                     }
 
-                    Divider(color = Color(0xFF2C2C2E))
 
-                    // 4. ADVANCED: HUD LAYOUT Card
-                    Card(
-                        backgroundColor = Color(0xFF1C1C1E),
-                        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
-                        elevation = 0.dp,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth().clickable { hudSettingsExpanded = !hudSettingsExpanded }.padding(vertical = 4.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text("ADVANCED: HUD LAYOUT", color = Color(0xFF8E8E93), fontWeight = FontWeight.SemiBold, fontSize = 11.sp, letterSpacing = 0.5.sp)
-                                Text(if (hudSettingsExpanded) "▼" else "▶", color = Color(0xFF8E8E93), fontSize = 10.sp)
-                            }
-
-                            if (hudSettingsExpanded) {
-                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    ControlSlider("VAL SIZE", settings.valSize, 10f, 150f) { settings = settings.copy(valSize = it) }
-                                    ControlSlider("TIGHTNESS", settings.tightness, -10f, 40f) { settings = settings.copy(tightness = it) }
-                                    ControlSlider("SPACING", settings.spacing, 0f, 100f) { settings = settings.copy(spacing = it) }
-                                    ControlSlider("X OFFSET", settings.xOffset, 0f, 500f) { settings = settings.copy(xOffset = it) }
-                                    ControlSlider("Y OFFSET", settings.yOffset, 0f, 500f) { settings = settings.copy(yOffset = it) }
-                                    ControlSlider("GRAPH H", settings.graphH, 20f, 300f) { settings = settings.copy(graphH = it) }
-                                    ControlSlider("GRAPH W", settings.graphW, 50f, 800f) { settings = settings.copy(graphW = it) }
-                                    
-                                    Spacer(Modifier.height(8.dp))
-                                    
-                                    var hotReloadStatus by remember { mutableStateOf("") }
-                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        Button(
-                                            onClick = {
-                                                scope.launch(Dispatchers.IO) {
-                                                    try {
-                                                        hotReloadStatus = "Compiling..."
-                                                        val pb = ProcessBuilder("cmd.exe", "/c", ".\\gradlew.bat", ":shared-core:compileKotlinDesktop")
-                                                        pb.directory(File(System.getProperty("user.dir")))
-                                                        val p = pb.start()
-                                                        if (p.waitFor() == 0) {
-                                                            hotReloadStatus = "Reloading..."
-                                                            val currentMs = videoCurrentTimeMs
-                                                            videoCurrentTimeMs = currentMs + 1
-                                                            kotlinx.coroutines.delay(50)
-                                                            videoCurrentTimeMs = currentMs
-                                                            hotReloadStatus = "✅ UI Reloaded!"
-                                                        } else {
-                                                            hotReloadStatus = "❌ Compile Failed"
-                                                        }
-                                                    } catch(e:Exception) {
-                                                        hotReloadStatus = "❌ Error: ${e.message}"
-                                                    }
-                                                    kotlinx.coroutines.delay(3000)
-                                                    hotReloadStatus = ""
-                                                }
-                                            },
-                                            modifier = Modifier.weight(1f).height(36.dp),
-                                            colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF2C2C2E)),
-                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
-                                        ) {
-                                            Text("HOT RELOAD RENDERER", color = Color(0xFF0A84FF), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                                        }
-                                    }
-                                    if (hotReloadStatus.isNotEmpty()) {
-                                        Text(hotReloadStatus, color = Color(0xFF30D158), fontSize = 11.sp)
-                                    }
-                                }
-                            }
-                        }
-                    }
                 }
 
                 Box(modifier = Modifier.fillMaxSize().padding(40.dp), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Box(modifier = Modifier.aspectRatio(16f/9f).fillMaxWidth()) {
+                        Box(
+                            modifier = Modifier
+                                .aspectRatio(16f / 9f)
+                                .fillMaxWidth()
+                                .background(Color.Black, shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                                .border(1.dp, Color(0xFF3A3A3C), shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                                .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                        ) {
                             if (vlcAvailable && mediaPlayerComponent != null) {
                                 SwingPanel(
                                     background = Color.Black,
