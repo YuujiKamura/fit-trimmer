@@ -37,6 +37,7 @@ import org.jetbrains.skia.Image
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlin.math.roundToInt
 // VLC dependency removed
 
 
@@ -45,6 +46,8 @@ data class GuiPathCache(
     val fitPath: String,
     val videoPath: String,
     val videoStartUtc: String,
+    val timeOffsetSeconds: Float? = null,
+    val timeOffsetMillis: Int? = null,
     val settings: HudSettings = HudSettings(),
     val moveOutputToSource: Boolean = false,
     val showLivePreview: Boolean = true,
@@ -146,6 +149,22 @@ fun startGui(args: Array<String>) = application {
     var videoPath by remember { mutableStateOf(initialCache?.videoPath ?: "") }
     var outputDir by remember { mutableStateOf(System.getProperty("user.home") + File.separator + "Downloads") }
     var videoStartUtc by remember { mutableStateOf(initialCache?.videoStartUtc ?: "2026-06-21T02:09:49Z") }
+    val timeOffsetState = rememberTimeAlignmentState(
+        if (initialCache != null) {
+            if (initialCache.timeOffsetMillis != null) {
+                initialCache.timeOffsetMillis.coerceIn(-120000, 120000)
+            } else if (initialCache.timeOffsetSeconds != null) {
+                (initialCache.timeOffsetSeconds.coerceIn(-120f, 120f) * 1000).roundToInt()
+            } else {
+                0
+            }
+        } else {
+            0
+        }
+    )
+    val adjustedStartUtc = remember(videoStartUtc, timeOffsetState.millis) {
+        timeOffsetState.adjust(videoStartUtc)
+    }
     var isEncoding by remember { mutableStateOf(false) }
     var isPaused by remember { mutableStateOf(false) }
     var isCanceled by remember { mutableStateOf(false) }
@@ -257,9 +276,9 @@ fun startGui(args: Array<String>) = application {
         } else null
     }
 
-    val videoStartInstant = remember(videoStartUtc) {
+    val videoStartInstant = remember(adjustedStartUtc) {
         try {
-            if (videoStartUtc.isNotEmpty()) java.time.Instant.parse(videoStartUtc) else null
+            if (adjustedStartUtc.isNotEmpty()) java.time.Instant.parse(adjustedStartUtc) else null
         } catch (e: Exception) {
             null
         }
@@ -462,11 +481,11 @@ fun startGui(args: Array<String>) = application {
         }
     }
 
-    val currentPoint = remember(videoCurrentTimeMs, telemetryPoints, videoStartUtc) {
-        if (telemetryPoints.isEmpty() || videoStartUtc.isEmpty()) null
+    val currentPoint = remember(videoCurrentTimeMs, telemetryPoints, adjustedStartUtc) {
+        if (telemetryPoints.isEmpty() || adjustedStartUtc.isEmpty()) null
         else {
             try {
-                val startTime = java.time.Instant.parse(videoStartUtc)
+                val startTime = java.time.Instant.parse(adjustedStartUtc)
                 val fitEpoch = java.time.Instant.parse("1989-12-31T00:00:00Z").epochSecond
                 val elapsedSeconds = videoCurrentTimeMs / 1000.0
                 val currentUtc = startTime.toEpochMilli() / 1000.0 + elapsedSeconds
@@ -493,7 +512,7 @@ fun startGui(args: Array<String>) = application {
     }
 
     // Save path cache when modified
-    LaunchedEffect(fitPath, videoPath, videoStartUtc, settings, moveOutputToSource, showLivePreview, windowState.position, windowState.size) {
+    LaunchedEffect(fitPath, videoPath, videoStartUtc, timeOffsetState.millis, settings, moveOutputToSource, showLivePreview, windowState.position, windowState.size) {
         if (isLoaded) {
             kotlinx.coroutines.delay(500)
             withContext(Dispatchers.IO) {
@@ -510,6 +529,8 @@ fun startGui(args: Array<String>) = application {
                         fitPath = fitPath,
                         videoPath = videoPath,
                         videoStartUtc = videoStartUtc,
+                        timeOffsetSeconds = null,
+                        timeOffsetMillis = timeOffsetState.millis,
                         settings = settings,
                         moveOutputToSource = moveOutputToSource,
                         showLivePreview = showLivePreview,
@@ -777,7 +798,7 @@ fun startGui(args: Array<String>) = application {
                 ) {
 
 
-                    val onNativeEncodeClick = remember(settings, fitPath, videoPath, videoStartUtc, isVideoInFitRange) {
+                    val onNativeEncodeClick = remember(settings, fitPath, videoPath, videoStartUtc, adjustedStartUtc, isVideoInFitRange, outputDir, moveOutputToSource, showLivePreview) {
                         {
                             val targetVideoPath = videoPath
                             var proceed = true
@@ -801,7 +822,7 @@ fun startGui(args: Array<String>) = application {
                                     isPaused = false
                                     isCanceled = false
                                     try {
-                                        val outPath = fireEncode(settings, fitPath, videoPath, outputDir, videoStartUtc,
+                                        val outPath = fireEncode(settings, fitPath, videoPath, outputDir, adjustedStartUtc,
                                             onProgress = { prog, status ->
                                                 progress = prog
                                                 statusText = status
@@ -866,7 +887,7 @@ fun startGui(args: Array<String>) = application {
                         }
                     }
 
-                    val onSampleEncodeClick = remember(settings, fitPath, videoPath, videoStartUtc, isVideoInFitRange) {
+                    val onSampleEncodeClick = remember(settings, fitPath, videoPath, videoStartUtc, adjustedStartUtc, isVideoInFitRange, outputDir, moveOutputToSource, showLivePreview) {
                         {
                             val targetVideoPath = videoPath
                             var proceed = true
@@ -890,7 +911,7 @@ fun startGui(args: Array<String>) = application {
                                     isPaused = false
                                     isCanceled = false
                                     try {
-                                        val outPath = fireEncode(settings, fitPath, videoPath, outputDir, videoStartUtc,
+                                        val outPath = fireEncode(settings, fitPath, videoPath, outputDir, adjustedStartUtc,
                                             onProgress = { prog, status ->
                                                 progress = prog
                                                 statusText = status
@@ -1196,6 +1217,11 @@ fun startGui(args: Array<String>) = application {
                               }
                         }
                     }
+
+                    // TIME ALIGNMENT Card
+                    TimeAlignmentCard(
+                        state = timeOffsetState
+                    )
 
                     // C-DRIVE SPACE MONITOR Card
                     Card(
@@ -1826,6 +1852,82 @@ class ComposeHudCanvas(
         )
         val layout = textMeasurer.measure(text, style)
         return layout.size.width.toFloat()
+    }
+}
+
+@Composable
+fun TimeAlignmentCard(
+    state: TimeAlignmentState
+) {
+    Card(
+        backgroundColor = Color.White,
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+        border = BorderStroke(1.dp, Color(0xFFE5E5EA)),
+        elevation = 1.dp,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text("TIME ALIGNMENT (Time Offset)", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 0.5.sp)
+            
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Offset:", color = Color(0xFF636366), fontSize = 10.sp)
+                Text(
+                    "${if (state.seconds >= 0) "+" else ""}${String.format("%.1f", state.seconds)} s",
+                    color = Color(0xFF007AFF),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            
+            Slider(
+                value = state.seconds,
+                onValueChange = { state.update((it * 1000).roundToInt()) },
+                valueRange = -120f..120f,
+                modifier = Modifier.height(20.dp),
+                colors = SliderDefaults.colors(
+                    thumbColor = Color(0xFF007AFF),
+                    activeTrackColor = Color(0xFF007AFF),
+                    inactiveTrackColor = Color(0xFFE5E5EA)
+                )
+            )
+            
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                val buttonModifier = Modifier.weight(1f).height(24.dp)
+                val buttonColors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF1C1C1E))
+                
+                val specs = listOf(
+                    "-1s" to -1000,
+                    "-0.1s" to -100,
+                    "Reset" to 0,
+                    "+0.1s" to 100,
+                    "+1s" to 1000
+                )
+                
+                for ((label, delta) in specs) {
+                    OutlinedButton(
+                        onClick = {
+                            val nextVal = if (delta == 0) 0 else state.millis + delta
+                            state.update(nextVal)
+                        },
+                        modifier = buttonModifier,
+                        colors = buttonColors,
+                        contentPadding = PaddingValues(0.dp)
+                    ) {
+                        Text(label, fontSize = 9.sp)
+                    }
+                }
+            }
+        }
     }
 }
 
