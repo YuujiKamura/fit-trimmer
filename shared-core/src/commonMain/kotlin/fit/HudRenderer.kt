@@ -155,7 +155,10 @@ class HudRenderer(val config: HudConfig) {
             canvas.drawLine(pts, "#ffffff", 1f, alpha = 0.5f)
 
             // Current position marker pin and vertical guide line
-            val currentIdx = (allPoints.size * currentRatio).toInt().coerceIn(0, allPoints.size - 1)
+            var currentIdx = allPoints.indexOfFirst { it.timestamp >= telemetry.timestamp }
+            if (currentIdx == -1) {
+                currentIdx = (allPoints.size * currentRatio).toInt().coerceIn(0, allPoints.size - 1)
+            }
             if (currentIdx in pts.indices) {
                 val currX = pts[currentIdx].first
                 val currY = pts[currentIdx].second

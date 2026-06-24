@@ -428,6 +428,24 @@ fun startGui() = application {
                 }
 
                 try {
+                    val videoFile = File(videoPath)
+                    val parser = mp4.Mp4Parser()
+                    val scanSize = minOf(videoFile.length(), 100L * 1024 * 1024).toInt()
+                    val headBytes = videoFile.inputStream().use { it.readNBytes(scanSize) }
+                    val meta = parser.parse(headBytes)
+                    if (meta != null) {
+                        val unixStart = meta.creationTimeSeconds - 2082844800L
+                        val startUtcStr = java.time.Instant.ofEpochSecond(unixStart).toString()
+                        javax.swing.SwingUtilities.invokeLater {
+                            videoStartUtc = startUtcStr
+                        }
+                        println("DEBUG: Automatically parsed video Start UTC: $startUtcStr")
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+
+                try {
                     val tempThumb = File("temp_preview.jpg")
                     val pb = ProcessBuilder("ffmpeg", "-y", "-i", videoPath, "-ss", "00:00:01", "-vframes", "1", tempThumb.absolutePath)
                     pb.start().waitFor()
