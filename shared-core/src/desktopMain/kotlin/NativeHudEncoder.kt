@@ -624,9 +624,24 @@ class NativeHudEncoder(
             
             val pb = ProcessBuilder(concatArgs)
             pb.redirectErrorStream(true)
-            pb.redirectOutput(ProcessBuilder.Redirect.appendTo(logFile))
             val p = pb.start()
+            
+            val logStream = FileOutputStream(logFile, true)
+            val readerThread = Thread {
+                try {
+                    p.inputStream.copyTo(logStream)
+                } catch (e: java.lang.Exception) {
+                    e.printStackTrace()
+                } finally {
+                    try { logStream.close() } catch (e: java.lang.Exception) {}
+                }
+            }
+            readerThread.start()
+            
             val concatExit = p.waitFor()
+            try {
+                readerThread.join(2000)
+            } catch (e: java.lang.Exception) {}
             
             if (concatExit != 0) {
                 throw Exception("Failed to merge video segments. ffmpeg exited with code $concatExit.")
