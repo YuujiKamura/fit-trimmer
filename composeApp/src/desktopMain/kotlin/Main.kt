@@ -549,7 +549,8 @@ fun startGui(args: Array<String>) = application {
         }
     }
 
-    LaunchedEffect(videoPath, previewTimeMs) {
+    LaunchedEffect(videoPath, previewTimeMs, isEncoding) {
+        if (isEncoding) return@LaunchedEffect
         if (videoPath.isNotEmpty() && File(videoPath).exists()) {
             kotlinx.coroutines.delay(50)
             withContext(Dispatchers.IO) {
