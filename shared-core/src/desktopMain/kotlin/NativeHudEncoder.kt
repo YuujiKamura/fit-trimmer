@@ -231,7 +231,7 @@ class NativeHudEncoder(
     fun encode(fitPath: String, videoPath: String, output: String, startUtc: String, maxDurationSeconds: Int = -1) {
         val ffmpegPath = findFfmpegPath()
         
-        val workDir = File(System.getProperty("user.dir"), "temp_work")
+        val workDir = PathResolver.getTempWorkDir()
         if (!workDir.exists()) workDir.mkdirs()
         val tempOutput = File(workDir, "encoding_temp.mp4")
         if (tempOutput.exists()) tempOutput.delete() // Clean up any stale temp files
@@ -527,12 +527,13 @@ class NativeHudEncoder(
                     g.fillRect(0, 0, videoWidth, videoHeight)
                     g.composite = AlphaComposite.SrcOver
                     
+                    val isValid = currentFitTs >= telemetry.first().timestamp && currentFitTs <= telemetry.last().timestamp
                     val scale = videoWidth.toFloat() / 1920f
                     val canvas = DesktopHudCanvas(g, scale)
                     if (customRenderer != null) {
                         customRenderer.invoke(canvas, point, telemetry, pBuf, i.toFloat() / videoDurationSeconds)
                     } else {
-                        renderer.renderFrame(canvas, point, telemetry, pBuf, i.toFloat() / videoDurationSeconds)
+                        renderer.renderFrame(canvas, point, telemetry, pBuf, i.toFloat() / videoDurationSeconds, isValid)
                     }
                     g.dispose()
                     

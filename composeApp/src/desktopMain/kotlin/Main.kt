@@ -303,11 +303,11 @@ fun startGui(args: Array<String>) = application {
         withContext(Dispatchers.IO) {
             // Auto-cleanup temporary workspaces on startup
             try {
-                val hudDir = File(System.getProperty("user.dir"), "tmp_hud")
+                val hudDir = fit.PathResolver.getTmpHudDir()
                 if (hudDir.exists()) hudDir.deleteRecursively()
                 
                 // Clean up only orphaned tmp files in temp_work, keeping job directories intact for crash recovery
-                val workDir = File(System.getProperty("user.dir"), "temp_work")
+                val workDir = fit.PathResolver.getTempWorkDir()
                 if (workDir.exists()) {
                     workDir.listFiles()?.forEach { file ->
                         if (file.isFile && file.name.endsWith(".tmp")) {
@@ -350,9 +350,7 @@ fun startGui(args: Array<String>) = application {
                     }
 
                     // Calculate temp_work size dynamically
-                    var projectDir = File(System.getProperty("user.dir"))
-                    val workDir1 = File(projectDir, "temp_work")
-                    val workDir2 = File(File(projectDir, "composeApp"), "temp_work")
+                    val workDir = fit.PathResolver.getTempWorkDir()
                     var totalBytes = 0L
                     
                     fun getDirSize(dir: File): Long {
@@ -363,8 +361,7 @@ fun startGui(args: Array<String>) = application {
                         return size
                     }
                     
-                    if (workDir1.exists()) totalBytes += getDirSize(workDir1)
-                    if (workDir2.exists()) totalBytes += getDirSize(workDir2)
+                    if (workDir.exists()) totalBytes += getDirSize(workDir)
                     appTempSpaceGB = totalBytes / (1024.0 * 1024.0 * 1024.0)
                 } catch (e: Exception) {
                     e.printStackTrace()
@@ -733,10 +730,10 @@ fun startGui(args: Array<String>) = application {
             }
         }
 
-        MaterialTheme(colors = darkColors()) {
-            Row(modifier = Modifier.fillMaxSize().background(Color(0xFF141416))) {
+        MaterialTheme(colors = lightColors(primary = Color(0xFF007AFF))) {
+            Row(modifier = Modifier.fillMaxSize().background(Color.White)) {
                 Column(
-                    modifier = Modifier.width(320.dp).fillMaxHeight().background(Color(0xFF0D0D0E))
+                    modifier = Modifier.width(320.dp).fillMaxHeight().background(Color(0xFFF5F5F7))
                         .verticalScroll(rememberScrollState()).padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
@@ -934,30 +931,32 @@ fun startGui(args: Array<String>) = application {
 
                     // 1. ENCODER SETUP Card
                     Card(
-                        backgroundColor = Color(0xFF1C1C20),
+                        backgroundColor = Color.White,
                         shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
-                        border = BorderStroke(1.dp, Color(0xFF2C2C30)),
-                        elevation = 0.dp,
+                        border = BorderStroke(1.dp, Color(0xFFE5E5EA)),
+                        elevation = 1.dp,
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(
                             modifier = Modifier.padding(12.dp),
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Text("ENCODER SETUP", color = Color(0xFFF5F5F7), fontWeight = FontWeight.SemiBold, fontSize = 12.sp, letterSpacing = 0.5.sp)
+                            Text("ENCODER SETUP", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 0.5.sp)
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 OutlinedTextField(
                                     value = fitPath,
                                     onValueChange = { fitPath = it },
-                                    label = { Text("FIT File Path", color = Color(0xFF8E8E93), fontSize = 10.sp) },
+                                    label = { Text("FIT File Path", color = Color(0xFF636366), fontSize = 10.sp) },
                                     modifier = Modifier.weight(1f),
-                                    textStyle = TextStyle(color = Color.White, fontSize = 11.sp),
+                                    textStyle = TextStyle(color = Color(0xFF1C1C1E), fontSize = 11.sp),
                                     singleLine = true,
                                     enabled = !isEncoding,
                                     colors = TextFieldDefaults.outlinedTextFieldColors(
-                                        backgroundColor = Color(0xFF141416),
-                                        focusedBorderColor = Color(0xFF0A84FF),
-                                        unfocusedBorderColor = Color(0xFF3A3A3C)
+                                        backgroundColor = Color(0xFFF2F2F7),
+                                        focusedBorderColor = Color(0xFF007AFF),
+                                        unfocusedBorderColor = Color(0xFFD1D1D6),
+                                        textColor = Color(0xFF1C1C1E),
+                                        disabledTextColor = Color(0xFF8E8E93)
                                     )
                                 )
                                 Button(
@@ -967,23 +966,28 @@ fun startGui(args: Array<String>) = application {
                                     },
                                     enabled = !isEncoding,
                                     modifier = Modifier.height(56.dp),
-                                    colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF2C2C2E)),
+                                    colors = ButtonDefaults.buttonColors(
+                                        backgroundColor = Color(0xFFE5E5EA),
+                                        disabledBackgroundColor = Color(0xFFF2F2F7)
+                                    ),
                                     shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
-                                ) { Text("...", color = Color.White, fontSize = 11.sp) }
+                                ) { Text("...", color = Color(0xFF1C1C1E), fontSize = 11.sp) }
                             }
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 OutlinedTextField(
                                     value = videoPath,
                                     onValueChange = { videoPath = it },
-                                    label = { Text("MP4 File Path", color = Color(0xFF8E8E93), fontSize = 10.sp) },
+                                    label = { Text("MP4 File Path", color = Color(0xFF636366), fontSize = 10.sp) },
                                     modifier = Modifier.weight(1f),
-                                    textStyle = TextStyle(color = Color.White, fontSize = 11.sp),
+                                    textStyle = TextStyle(color = Color(0xFF1C1C1E), fontSize = 11.sp),
                                     singleLine = true,
                                     enabled = !isEncoding,
                                     colors = TextFieldDefaults.outlinedTextFieldColors(
-                                        backgroundColor = Color(0xFF141416),
-                                        focusedBorderColor = Color(0xFF0A84FF),
-                                        unfocusedBorderColor = Color(0xFF3A3A3C)
+                                        backgroundColor = Color(0xFFF2F2F7),
+                                        focusedBorderColor = Color(0xFF007AFF),
+                                        unfocusedBorderColor = Color(0xFFD1D1D6),
+                                        textColor = Color(0xFF1C1C1E),
+                                        disabledTextColor = Color(0xFF8E8E93)
                                     )
                                 )
                                 Button(
@@ -993,23 +997,28 @@ fun startGui(args: Array<String>) = application {
                                     },
                                     enabled = !isEncoding,
                                     modifier = Modifier.height(56.dp),
-                                    colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF2C2C2E)),
+                                    colors = ButtonDefaults.buttonColors(
+                                        backgroundColor = Color(0xFFE5E5EA),
+                                        disabledBackgroundColor = Color(0xFFF2F2F7)
+                                    ),
                                     shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
-                                ) { Text("...", color = Color.White, fontSize = 11.sp) }
+                                ) { Text("...", color = Color(0xFF1C1C1E), fontSize = 11.sp) }
                             }
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 OutlinedTextField(
                                     value = outputDir,
                                     onValueChange = { outputDir = it },
-                                    label = { Text("Output Directory", color = Color(0xFF8E8E93), fontSize = 10.sp) },
+                                    label = { Text("Output Directory", color = Color(0xFF636366), fontSize = 10.sp) },
                                     modifier = Modifier.weight(1f),
-                                    textStyle = TextStyle(color = Color.White, fontSize = 11.sp),
+                                    textStyle = TextStyle(color = Color(0xFF1C1C1E), fontSize = 11.sp),
                                     singleLine = true,
                                     enabled = !isEncoding,
                                     colors = TextFieldDefaults.outlinedTextFieldColors(
-                                        backgroundColor = Color(0xFF141416),
-                                        focusedBorderColor = Color(0xFF0A84FF),
-                                        unfocusedBorderColor = Color(0xFF3A3A3C)
+                                        backgroundColor = Color(0xFFF2F2F7),
+                                        focusedBorderColor = Color(0xFF007AFF),
+                                        unfocusedBorderColor = Color(0xFFD1D1D6),
+                                        textColor = Color(0xFF1C1C1E),
+                                        disabledTextColor = Color(0xFF8E8E93)
                                     )
                                 )
                                 Button(
@@ -1019,32 +1028,35 @@ fun startGui(args: Array<String>) = application {
                                     },
                                     enabled = !isEncoding,
                                     modifier = Modifier.height(56.dp),
-                                    colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF2C2C2E)),
+                                    colors = ButtonDefaults.buttonColors(
+                                        backgroundColor = Color(0xFFE5E5EA),
+                                        disabledBackgroundColor = Color(0xFFF2F2F7)
+                                    ),
                                     shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
-                                ) { Text("...", color = Color.White, fontSize = 11.sp) }
+                                ) { Text("...", color = Color(0xFF1C1C1E), fontSize = 11.sp) }
                             }
                               Row(
                                   modifier = Modifier
                                       .fillMaxWidth()
-                                      .background(Color(0xFF141416), shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
-                                      .border(1.dp, Color(0xFF2C2C30), shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                                      .background(Color(0xFFF2F2F7), shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                                      .border(1.dp, Color(0xFFE5E5EA), shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
                                       .clickable { moveOutputToSource = !moveOutputToSource }
                                       .padding(horizontal = 10.dp, vertical = 8.dp),
                                   horizontalArrangement = Arrangement.SpaceBetween,
                                   verticalAlignment = Alignment.CenterVertically
                               ) {
                                   Column(modifier = Modifier.weight(1f)) {
-                                      Text("Move Output to Source", color = Color(0xFFF5F5F7), fontWeight = FontWeight.Medium, fontSize = 11.sp)
-                                      Text("Saves finished video in the original folder", color = Color(0xFF8E8E93), fontSize = 9.sp)
+                                      Text("Move Output to Source", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Medium, fontSize = 11.sp)
+                                      Text("Saves finished video in the original folder", color = Color(0xFF636366), fontSize = 9.sp)
                                   }
                                   Switch(
                                       checked = moveOutputToSource,
                                       onCheckedChange = { moveOutputToSource = it },
                                       colors = SwitchDefaults.colors(
                                           checkedThumbColor = Color.White,
-                                          checkedTrackColor = Color(0xFF30D158),
-                                          uncheckedThumbColor = Color(0xFF8E8E93),
-                                          uncheckedTrackColor = Color(0xFF1C1C1E)
+                                          checkedTrackColor = Color(0xFF34C759),
+                                          uncheckedThumbColor = Color(0xFFE5E5EA),
+                                          uncheckedTrackColor = Color(0xFFD1D1D6)
                                       )
                                   )
                               }
@@ -1054,8 +1066,8 @@ fun startGui(args: Array<String>) = application {
                               Row(
                                   modifier = Modifier
                                       .fillMaxWidth()
-                                      .background(Color(0xFF141416), shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
-                                      .border(1.dp, Color(0xFF2C2C30), shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                                      .background(Color(0xFFF2F2F7), shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                                      .border(1.dp, Color(0xFFE5E5EA), shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
                                       .clickable { 
                                           showLivePreview = !showLivePreview 
                                           if (!showLivePreview) {
@@ -1067,8 +1079,8 @@ fun startGui(args: Array<String>) = application {
                                   verticalAlignment = Alignment.CenterVertically
                               ) {
                                   Column(modifier = Modifier.weight(1f)) {
-                                      Text("Show Live Preview", color = Color(0xFFF5F5F7), fontWeight = FontWeight.Medium, fontSize = 11.sp)
-                                      Text("Disable for slightly faster encoding", color = Color(0xFF8E8E93), fontSize = 9.sp)
+                                      Text("Show Live Preview", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Medium, fontSize = 11.sp)
+                                      Text("Disable for slightly faster encoding", color = Color(0xFF636366), fontSize = 9.sp)
                                   }
                                   Switch(
                                       checked = showLivePreview,
@@ -1080,9 +1092,9 @@ fun startGui(args: Array<String>) = application {
                                       },
                                       colors = SwitchDefaults.colors(
                                           checkedThumbColor = Color.White,
-                                          checkedTrackColor = Color(0xFF30D158),
-                                          uncheckedThumbColor = Color(0xFF8E8E93),
-                                          uncheckedTrackColor = Color(0xFF1C1C1E)
+                                          checkedTrackColor = Color(0xFF34C759),
+                                          uncheckedThumbColor = Color(0xFFE5E5EA),
+                                          uncheckedTrackColor = Color(0xFFD1D1D6)
                                       )
                                   )
                               }
@@ -1094,11 +1106,11 @@ fun startGui(args: Array<String>) = application {
                                   val fitEndStr = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
                                       .withZone(java.time.ZoneId.systemDefault()).format(fitEndInstant)
 
-                                  Divider(color = Color(0xFF2C2C30), modifier = Modifier.padding(vertical = 4.dp))
+                                  Divider(color = Color(0xFFE5E5EA), modifier = Modifier.padding(vertical = 4.dp))
                                   
                                   Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                      Text("FIT TIMELINE", color = Color(0xFF8E8E93), fontWeight = FontWeight.Bold, fontSize = 9.sp)
-                                      Text("$fitStartStr  ~\n$fitEndStr", color = Color(0xFFE5E5EA), fontSize = 11.sp)
+                                      Text("FIT TIMELINE", color = Color(0xFF636366), fontWeight = FontWeight.Bold, fontSize = 9.sp)
+                                      Text("$fitStartStr  ~\n$fitEndStr", color = Color(0xFF1C1C1E), fontSize = 11.sp)
                                   }
 
                                   if (videoStartInstant != null && videoEndInstant != null) {
@@ -1108,8 +1120,8 @@ fun startGui(args: Array<String>) = application {
                                           .withZone(java.time.ZoneId.systemDefault()).format(videoEndInstant)
 
                                       Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                          Text("VIDEO TIMELINE", color = Color(0xFF8E8E93), fontWeight = FontWeight.Bold, fontSize = 9.sp)
-                                          Text("$videoStartStr  ~\n$videoEndStr", color = Color(0xFFE5E5EA), fontSize = 11.sp)
+                                          Text("VIDEO TIMELINE", color = Color(0xFF636366), fontWeight = FontWeight.Bold, fontSize = 9.sp)
+                                          Text("$videoStartStr  ~\n$videoEndStr", color = Color(0xFF1C1C1E), fontSize = 11.sp)
                                       }
 
                                       Spacer(modifier = Modifier.height(2.dp))
@@ -1120,10 +1132,10 @@ fun startGui(args: Array<String>) = application {
                                               horizontalArrangement = Arrangement.spacedBy(6.dp),
                                               modifier = Modifier
                                                   .fillMaxWidth()
-                                                  .background(Color(0xFF1C3A27), shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                                                  .background(Color(0xFFE2F6E9), shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
                                                   .padding(horizontal = 8.dp, vertical = 6.dp)
                                           ) {
-                                              Text("✓ VIDEO WITHIN FIT RANGE", color = Color(0xFF30D158), fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                                              Text("✓ VIDEO WITHIN FIT RANGE", color = Color(0xFF1E7E34), fontWeight = FontWeight.Bold, fontSize = 10.sp)
                                           }
                                       } else {
                                           Row(
@@ -1131,11 +1143,11 @@ fun startGui(args: Array<String>) = application {
                                               horizontalArrangement = Arrangement.spacedBy(6.dp),
                                               modifier = Modifier
                                                   .fillMaxWidth()
-                                                  .background(Color(0xFF4C1F1F), shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
-                                                  .border(BorderStroke(1.dp, Color(0xFFFF453A)), shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                                                  .background(Color(0xFFFDE8E8), shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                                                  .border(BorderStroke(1.dp, Color(0xFFE02424)), shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
                                                   .padding(horizontal = 8.dp, vertical = 6.dp)
                                           ) {
-                                              Text("⚠️ VIDEO OUTSIDE FIT RANGE", color = Color(0xFFFF453A), fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                                              Text("⚠️ VIDEO OUTSIDE FIT RANGE", color = Color(0xFFE02424), fontWeight = FontWeight.Bold, fontSize = 10.sp)
                                           }
                                       }
                                   }
@@ -1145,10 +1157,10 @@ fun startGui(args: Array<String>) = application {
 
                     // C-DRIVE SPACE MONITOR Card
                     Card(
-                        backgroundColor = Color(0xFF1C1C20),
+                        backgroundColor = Color.White,
                         shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
-                        border = BorderStroke(1.dp, if (hasEnoughSpace) Color(0xFF2C2C30) else Color(0xFFFF453A)),
-                        elevation = 0.dp,
+                        border = BorderStroke(1.dp, if (hasEnoughSpace) Color(0xFFE5E5EA) else Color(0xFFE02424)),
+                        elevation = 1.dp,
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(
@@ -1160,36 +1172,36 @@ fun startGui(args: Array<String>) = application {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("C-DRIVE SPACE MONITOR", color = Color(0xFFF5F5F7), fontWeight = FontWeight.SemiBold, fontSize = 11.sp, letterSpacing = 0.5.sp)
+                                Text("C-DRIVE SPACE MONITOR", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 0.5.sp)
                                 if (hasEnoughSpace) {
-                                    Text("SAFE", color = Color(0xFF30D158), fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                                    Text("SAFE", color = Color(0xFF1E7E34), fontWeight = FontWeight.Bold, fontSize = 10.sp)
                                 } else {
-                                    Text("LOW SPACE WARNING", color = Color(0xFFFF453A), fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                                    Text("LOW SPACE WARNING", color = Color(0xFFE02424), fontWeight = FontWeight.Bold, fontSize = 10.sp)
                                 }
                             }
                             
                             val freeRatio = if (cDriveTotalSpaceGB > 0) (cDriveFreeSpaceGB / cDriveTotalSpaceGB).toFloat() else 0f
                             val barColor = when {
-                                !hasEnoughSpace -> Color(0xFFFF453A) // Red (low space, insufficient for encode)
-                                freeRatio < 0.1f -> Color(0xFFFF9F0A) // Orange (under 10% free)
-                                else -> Color(0xFF30D158) // Green
+                                !hasEnoughSpace -> Color(0xFFE02424) // Red
+                                freeRatio < 0.1f -> Color(0xFFD84315) // Orange
+                                else -> Color(0xFF2E7D32) // Green
                             }
                             
                             LinearProgressIndicator(
                                 progress = freeRatio,
                                 modifier = Modifier.fillMaxWidth().height(6.dp),
                                 color = barColor,
-                                backgroundColor = Color(0xFF2C2C2E)
+                                backgroundColor = Color(0xFFE5E5EA)
                             )
                             
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Text("Free Space:", color = Color(0xFF8E8E93), fontSize = 10.sp)
+                                Text("Free Space:", color = Color(0xFF636366), fontSize = 10.sp)
                                 Text(
                                     "%.2f GB / %.1f GB (%.1f%%)".format(cDriveFreeSpaceGB, cDriveTotalSpaceGB, freeRatio * 100),
-                                    color = Color.White,
+                                    color = Color(0xFF1C1C1E),
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Medium
                                 )
@@ -1199,25 +1211,25 @@ fun startGui(args: Array<String>) = application {
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Text("Est. Required Space:", color = Color(0xFF8E8E93), fontSize = 10.sp)
+                                Text("Est. Required Space:", color = Color(0xFF636366), fontSize = 10.sp)
                                 Text(
                                     "%.2f GB".format(requiredSpaceGB),
-                                    color = if (hasEnoughSpace) Color.White else Color(0xFFFF453A),
+                                    color = if (hasEnoughSpace) Color(0xFF1C1C1E) else Color(0xFFE02424),
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Medium
                                 )
                             }
 
-                            Divider(color = Color(0xFF2C2C30), modifier = Modifier.padding(vertical = 2.dp))
+                            Divider(color = Color(0xFFE5E5EA), modifier = Modifier.padding(vertical = 2.dp))
 
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Text("App Temp Space:", color = Color(0xFF8E8E93), fontSize = 10.sp)
+                                Text("App Temp Space:", color = Color(0xFF636366), fontSize = 10.sp)
                                 Text(
                                     "%.2f GB".format(appTempSpaceGB),
-                                    color = Color(0xFFFF9F0A),
+                                    color = Color(0xFFD84315),
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Medium
                                 )
@@ -1227,29 +1239,24 @@ fun startGui(args: Array<String>) = application {
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Text("Released on Finish:", color = Color(0xFF8E8E93), fontSize = 10.sp)
+                                Text("Released on Finish:", color = Color(0xFF636366), fontSize = 10.sp)
                                 Text(
                                     "~ %.2f GB".format(appTempSpaceGB),
-                                    color = Color(0xFF30D158),
+                                    color = Color(0xFF2E7D32),
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
 
-                            Divider(color = Color(0xFF2C2C30), modifier = Modifier.padding(vertical = 4.dp))
+                            Divider(color = Color(0xFFE5E5EA), modifier = Modifier.padding(vertical = 4.dp))
 
                             OutlinedButton(
                                 onClick = {
                                     scope.launch(Dispatchers.IO) {
                                         try {
-                                            val projectDir = File(System.getProperty("user.dir"))
-                                            val workDir1 = File(projectDir, "temp_work")
-                                            val workDir2 = File(File(projectDir, "composeApp"), "temp_work")
-                                            if (workDir1.exists()) {
-                                                workDir1.listFiles()?.forEach { it.deleteRecursively() }
-                                            }
-                                            if (workDir2.exists()) {
-                                                workDir2.listFiles()?.forEach { it.deleteRecursively() }
+                                            val workDir = fit.PathResolver.getTempWorkDir()
+                                            if (workDir.exists()) {
+                                                workDir.listFiles()?.forEach { it.deleteRecursively() }
                                             }
                                             appTempSpaceGB = 0.0
                                             println("🧹 Manually cleared temp_work directory successfully.")
@@ -1261,10 +1268,10 @@ fun startGui(args: Array<String>) = application {
                                 enabled = !isEncoding,
                                 modifier = Modifier.fillMaxWidth().height(28.dp),
                                 colors = ButtonDefaults.outlinedButtonColors(
-                                    contentColor = Color(0xFFFF453A),
+                                    contentColor = Color(0xFFE02424),
                                     disabledContentColor = Color(0xFF8E8E93)
                                 ),
-                                border = BorderStroke(1.dp, if (!isEncoding) Color(0xFFFF453A).copy(alpha = 0.5f) else Color(0xFF2C2C30)),
+                                border = BorderStroke(1.dp, if (!isEncoding) Color(0xFFE02424).copy(alpha = 0.5f) else Color(0xFFE5E5EA)),
                                 shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp),
                                 contentPadding = PaddingValues(0.dp)
                             ) {
@@ -1276,10 +1283,10 @@ fun startGui(args: Array<String>) = application {
                     // 3. ENCODE Actions / Progress Monitor
                     if (isEncoding) {
                         Card(
-                            backgroundColor = Color(0xFF1C1C20),
+                            backgroundColor = Color.White,
                             shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
-                            border = BorderStroke(1.dp, Color(0xFF2C2C30)),
-                            elevation = 0.dp,
+                            border = BorderStroke(1.dp, Color(0xFFE5E5EA)),
+                            elevation = 1.dp,
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Column(
@@ -1289,25 +1296,28 @@ fun startGui(args: Array<String>) = application {
                                 if (statusText.contains("Merging", ignoreCase = true)) {
                                     LinearProgressIndicator(
                                         modifier = Modifier.fillMaxWidth(),
-                                        color = Color(0xFF30D158),
-                                        backgroundColor = Color(0xFF2C2C2E)
+                                        color = Color(0xFF34C759),
+                                        backgroundColor = Color(0xFFE5E5EA)
                                     )
                                 } else {
                                     LinearProgressIndicator(
                                         progress = progress,
                                         modifier = Modifier.fillMaxWidth(),
-                                        color = if (isPaused) Color(0xFFFF9F0A) else Color(0xFF0A84FF),
-                                        backgroundColor = Color(0xFF2C2C2E)
+                                        color = if (isPaused) Color(0xFFFF9F0A) else Color(0xFF007AFF),
+                                        backgroundColor = Color(0xFFE5E5EA)
                                     )
                                 }
-                                Text(if (isPaused) "PAUSED (Not enough space or paused manually)\n$statusText" else statusText, color = Color.White, fontSize = 12.sp)
+                                Text(if (isPaused) "PAUSED (Not enough space or paused manually)\n$statusText" else statusText, color = Color(0xFF1C1C1E), fontSize = 12.sp)
                                 
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Button(
                                         onClick = { isPaused = !isPaused },
                                         modifier = Modifier.weight(1f).height(36.dp),
                                         enabled = !(!isPaused && !hasEnoughSpace),
-                                        colors = ButtonDefaults.buttonColors(backgroundColor = if (isPaused) Color(0xFF30D158) else Color(0xFFFF9F0A)),
+                                        colors = ButtonDefaults.buttonColors(
+                                            backgroundColor = if (isPaused) Color(0xFF34C759) else Color(0xFFFF9F0A),
+                                            disabledBackgroundColor = Color(0xFFE5E5EA)
+                                        ),
                                         shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
                                     ) {
                                         Text(if (isPaused) "RESUME" else "PAUSE", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
@@ -1315,7 +1325,7 @@ fun startGui(args: Array<String>) = application {
                                     Button(
                                         onClick = { isCanceled = true },
                                         modifier = Modifier.weight(1f).height(36.dp),
-                                        colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFFF453A)),
+                                        colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFE02424)),
                                         shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
                                     ) {
                                         Text("CANCEL", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
@@ -1329,41 +1339,46 @@ fun startGui(args: Array<String>) = application {
                             modifier = Modifier.fillMaxWidth().height(44.dp),
                             enabled = hasEnoughSpace && fitPath.isNotEmpty() && videoPath.isNotEmpty(),
                             colors = ButtonDefaults.buttonColors(
-                                backgroundColor = if (hasEnoughSpace) Color(0xFF0A84FF) else Color(0xFF2C2C2E)
+                                backgroundColor = if (hasEnoughSpace) Color(0xFF007AFF) else Color(0xFFD1D1D6),
+                                disabledBackgroundColor = Color(0xFFE5E5EA)
                             ),
                             shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
                         ) {
-                            Text(if (hasEnoughSpace) "RUN NATIVE ENCODE" else "INSUFFICIENT DISK SPACE", color = Color.White, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+                            Text(if (hasEnoughSpace) "RUN NATIVE ENCODE" else "INSUFFICIENT DISK SPACE", color = if (hasEnoughSpace) Color.White else Color(0xFF8E8E93), fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
                         }
 
-                        Button(
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        OutlinedButton(
                             onClick = onSampleEncodeClick,
                             modifier = Modifier.fillMaxWidth().height(44.dp),
                             enabled = hasEnoughSpace && fitPath.isNotEmpty() && videoPath.isNotEmpty(),
-                            colors = ButtonDefaults.buttonColors(
-                                backgroundColor = if (hasEnoughSpace) Color(0xFF30D158) else Color(0xFF2C2C2E)
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = Color(0xFF007AFF),
+                                disabledContentColor = Color(0xFF8E8E93)
                             ),
+                            border = BorderStroke(1.5.dp, if (hasEnoughSpace && fitPath.isNotEmpty() && videoPath.isNotEmpty()) Color(0xFF007AFF) else Color(0xFFE5E5EA)),
                             shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
                         ) {
-                            Text("RUN 5s SAMPLE", color = Color.White, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+                            Text("RUN 5s SAMPLE", fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
                         }
                     }
 
-                    Divider(color = Color(0xFF2C2C2E))
+                    Divider(color = Color(0xFFE5E5EA))
 
                     // 4. HUD LAYOUT CONFIG Card
                     Card(
-                        backgroundColor = Color(0xFF1C1C20),
+                        backgroundColor = Color.White,
                         shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
-                        border = BorderStroke(1.dp, Color(0xFF2C2C30)),
-                        elevation = 0.dp,
+                        border = BorderStroke(1.dp, Color(0xFFE5E5EA)),
+                        elevation = 1.dp,
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(
                             modifier = Modifier.padding(12.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Text("HUD LAYOUT CONFIG", color = Color(0xFFF5F5F7), fontWeight = FontWeight.SemiBold, fontSize = 12.sp, letterSpacing = 0.5.sp)
+                            Text("HUD LAYOUT CONFIG", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 0.5.sp)
                             ControlSlider("VAL SIZE", settings.valSize, 10f, 150f) { settings = settings.copy(valSize = it) }
                             ControlSlider("TIGHTNESS", settings.tightness, -10f, 40f) { settings = settings.copy(tightness = it) }
                             ControlSlider("SPACING", settings.spacing, 0f, 100f) { settings = settings.copy(spacing = it) }
@@ -1375,14 +1390,14 @@ fun startGui(args: Array<String>) = application {
                     }
                 }
 
-                Box(modifier = Modifier.fillMaxSize().padding(40.dp), contentAlignment = Alignment.Center) {
+                Box(modifier = Modifier.fillMaxSize().background(Color.White).padding(40.dp), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Box(
                             modifier = Modifier
                                 .aspectRatio(16f / 9f)
                                 .fillMaxWidth()
                                 .background(Color.Black, shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
-                                .border(1.dp, Color(0xFF3A3A3C), shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                                .border(1.dp, Color(0xFFE5E5EA), shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
                                 .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
                         ) {
                             videoPreviewImage?.let {
@@ -1476,14 +1491,14 @@ fun startGui(args: Array<String>) = application {
                             ) {
                                 Button(
                                     onClick = togglePlay,
-                                    colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF3B82F6))
+                                    colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF007AFF))
                                 ) {
                                     Text(if (isPlaying) "⏸ PAUSE" else "▶ PLAY", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
                                 }
 
                                 Text(
                                     text = "${formatTime(videoCurrentTimeMs)} / ${formatTime(videoLengthMs)}",
-                                    color = Color.LightGray,
+                                    color = Color(0xFF1C1C1E),
                                     fontSize = 11.sp
                                 )
 
@@ -1495,16 +1510,16 @@ fun startGui(args: Array<String>) = application {
                                     },
                                     modifier = Modifier.weight(1f),
                                     colors = SliderDefaults.colors(
-                                        thumbColor = Color(0xFF3B82F6),
-                                        activeTrackColor = Color(0xFF3B82F6),
-                                        inactiveTrackColor = Color(0xFF3A3A3C)
+                                        thumbColor = Color(0xFF007AFF),
+                                        activeTrackColor = Color(0xFF007AFF),
+                                        inactiveTrackColor = Color(0xFFE5E5EA)
                                     )
                                 )
 
                                 // VLC Status Badge
                                 Text(
                                     text = if (vlcAvailable) "VLC ACTIVE" else "NO VLC (SIM)",
-                                    color = if (vlcAvailable) Color(0xFF10B981) else Color(0xFFF59E0B),
+                                    color = if (vlcAvailable) Color(0xFF2E7D32) else Color(0xFFD84315),
                                     fontSize = 9.sp,
                                     fontWeight = FontWeight.Bold,
                                     modifier = Modifier.padding(horizontal = 4.dp)
@@ -1512,7 +1527,7 @@ fun startGui(args: Array<String>) = application {
                             }
                         }
 
-                        Text("1920x1080 Overlay Preview", color = Color.White, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
+                        Text("1920x1080 Overlay Preview", color = Color(0xFF1C1C1E), fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
                     }
                 }
             }
@@ -1576,8 +1591,8 @@ suspend fun fireEncode(
 fun ControlSlider(label: String, value: Float, min: Float, max: Float, onValueChange: (Float) -> Unit) {
     Column(modifier = Modifier.padding(vertical = 1.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(label, color = Color(0xFFE2E8F0), fontSize = 10.sp, fontWeight = FontWeight.Bold)
-            Text("%.1f".format(value), color = Color(0xFF0A84FF), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            Text(label, color = Color(0xFF1C1C1E), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            Text("%.1f".format(value), color = Color(0xFF007AFF), fontSize = 10.sp, fontWeight = FontWeight.Bold)
         }
         Slider(
             value = value, 
@@ -1585,9 +1600,9 @@ fun ControlSlider(label: String, value: Float, min: Float, max: Float, onValueCh
             valueRange = min..max,
             modifier = Modifier.height(20.dp),
             colors = SliderDefaults.colors(
-                thumbColor = Color(0xFF0A84FF),
-                activeTrackColor = Color(0xFF0A84FF),
-                inactiveTrackColor = Color(0xFF3A3A3C)
+                thumbColor = Color(0xFF007AFF),
+                activeTrackColor = Color(0xFF007AFF),
+                inactiveTrackColor = Color(0xFFE5E5EA)
             )
         )
     }

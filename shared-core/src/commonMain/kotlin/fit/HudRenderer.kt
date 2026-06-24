@@ -2,6 +2,9 @@ package fit
 
 import kotlin.math.roundToInt
 import kotlin.math.max
+import kotlinx.datetime.Instant
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
 
 data class HudConfig(
     val valSize: Float,
@@ -34,13 +37,30 @@ class HudRenderer(val config: HudConfig) {
     private var cachedMaxAlt: Double = 100.0
     private var cachedAltDiff: Double = 10.0
 
+    @kotlin.jvm.JvmOverloads
     fun renderFrame(
         canvas: HudCanvas, 
         telemetry: FitParser.TelemetryPoint, 
         originalPoints: List<FitParser.TelemetryPoint>, 
         pBuf: List<Double>, 
-        currentRatio: Float
+        currentRatio: Float,
+        isValid: Boolean = true
     ) {
+        // Draw Date & Time overlay in the top-left corner
+        val timeX = 40f
+        val timeY = 40f
+        val dtText = if (isValid) formatDateTime(telemetry.timestamp) else "----- --:--:--"
+        val dtTextSize = 18f
+        val dtTextWidth = canvas.getTextWidth(dtText, dtTextSize, bold = true)
+        val dtTextHeight = dtTextSize
+        val dtPadX = 12f
+        val dtPadY = 8f
+        val dtBoxW = dtTextWidth + dtPadX * 2f
+        val dtBoxH = dtTextHeight + dtPadY * 2f
+        
+        canvas.drawRect(timeX, timeY, dtBoxW, dtBoxH, "#000000", alpha = 0.5f)
+        canvas.drawText(dtText, timeX + dtPadX, timeY + dtPadY, dtTextSize, "#ffffff", bold = true)
+
         val allPoints = if (originalPoints.isEmpty()) listOf(telemetry) else originalPoints
         
         var cx = config.xOffset
@@ -73,31 +93,31 @@ class HudRenderer(val config: HudConfig) {
         }
 
         // 1. SPEED
-        val spdStr = formatOneDecimal(telemetry.speed)
+        val spdStr = if (isValid) formatOneDecimal(telemetry.speed) else "-"
         drawCell("SPEED", spdStr, "km/h", "#3b82f6")
 
         // 2. CADENCE
-        val cadStr = telemetry.cadence.roundToInt().toString()
+        val cadStr = if (isValid) telemetry.cadence.roundToInt().toString() else "-"
         drawCell("CADENCE", cadStr, "rpm", "#a78bfa")
 
         // 3. HEART RATE
-        val hrStr = telemetry.heartRate.roundToInt().toString()
+        val hrStr = if (isValid) telemetry.heartRate.roundToInt().toString() else "-"
         drawCell("HEART RATE", hrStr, "bpm", "#ef4444")
 
         // 4. POWER
-        val pwrStr = telemetry.power.roundToInt().toString()
+        val pwrStr = if (isValid) telemetry.power.roundToInt().toString() else "-"
         drawCell("POWER", pwrStr, "W", "#10b981")
 
         // 5. W/KG
         val wkgVal = telemetry.power / 83.3
-        val wkgStr = formatOneDecimal(wkgVal)
+        val wkgStr = if (isValid) formatOneDecimal(wkgVal) else "-"
         drawCell("W/KG", wkgStr, "w/kg", "#2dd4bf")
 
         // 6. POWER TREND (Bar graph)
         canvas.drawText("POWER TREND (30s, 1s)", cx, cy, labelSize, "#a0a0a0", bold = true)
         val pGy = cy + labelSize + 4f
         
-        if (pBuf.isNotEmpty()) {
+        if (isValid && pBuf.isNotEmpty()) {
             val maxPoints = 30f
             val bw = graphW / maxPoints
             var maxPVal = 250.0
@@ -119,7 +139,7 @@ class HudRenderer(val config: HudConfig) {
         cy += labelSize + 4f + graphH + itemSpacing
 
         // 7. GRADE
-        val grdStr = formatGrade(telemetry.grade)
+        val grdStr = if (isValid) formatGrade(telemetry.grade) else "-"
         drawCell("GRADE", grdStr, "%", "#fbbf24")
 
         // 8. ELEVATION (Line graph with terrain and pin)
@@ -209,27 +229,29 @@ class HudRenderer(val config: HudConfig) {
             canvas.drawLine(pts, "#ffffff", 1f, alpha = 0.5f)
 
             // Current position marker pin and vertical guide line
-            var currentIdx = allPoints.binarySearch {
-                it.timestamp.compareTo(telemetry.timestamp)
-            }
-            if (currentIdx < 0) {
-                currentIdx = -currentIdx - 1
-            }
-            currentIdx = currentIdx.coerceIn(allPoints.indices)
+            if (isValid) {
+                var currentIdx = allPoints.binarySearch {
+                    it.timestamp.compareTo(telemetry.timestamp)
+                }
+                if (currentIdx < 0) {
+                    currentIdx = -currentIdx - 1
+                }
+                currentIdx = currentIdx.coerceIn(allPoints.indices)
 
-            val progress = currentIdx.toFloat() / (allPoints.size - 1)
-            val currX = cx + progress * graphW
-            val currY = (eGy + graphH - ((telemetry.elevation - minAlt) / altDiff) * graphH).toFloat()
+                val progress = currentIdx.toFloat() / (allPoints.size - 1)
+                val currX = cx + progress * graphW
+                val currY = (eGy + graphH - ((telemetry.elevation - minAlt) / altDiff) * graphH).toFloat()
 
-            // Vertical guide line
-            canvas.drawLine(listOf(currX to eGy, currX to eGy + graphH), "#ffffff", 1f, alpha = 0.3f)
-            // Red pin triangle pointing to the current position
-            val pinPoly = listOf(
-                currX - 8f to currY - 8f,
-                currX + 8f to currY - 8f,
-                currX to currY
-            )
-            canvas.drawPolygon(pinPoly, "#ef4444", alpha = 1.0f)
+                // Vertical guide line
+                canvas.drawLine(listOf(currX to eGy, currX to eGy + graphH), "#ffffff", 1f, alpha = 0.3f)
+                // Red pin triangle pointing to the current position
+                val pinPoly = listOf(
+                    currX - 8f to currY - 8f,
+                    currX + 8f to currY - 8f,
+                    currX to currY
+                )
+                canvas.drawPolygon(pinPoly, "#ef4444", alpha = 1.0f)
+            }
 
             // Start/End Elevation Markers and Labels
             val startPt = pts.first()
@@ -261,5 +283,22 @@ class HudRenderer(val config: HudConfig) {
     private fun formatGrade(value: Double): String {
         val sign = if (value > 0.0) "+" else ""
         return sign + formatOneDecimal(value)
+    }
+
+    private fun formatDateTime(timestamp: Double): String {
+        return try {
+            val epochSeconds = 631065600L + timestamp.toLong()
+            val instant = Instant.fromEpochSeconds(epochSeconds)
+            val localDateTime = instant.toLocalDateTime(TimeZone.currentSystemDefault())
+            val year = localDateTime.year
+            val month = localDateTime.monthNumber.toString().padStart(2, '0')
+            val day = localDateTime.dayOfMonth.toString().padStart(2, '0')
+            val hour = localDateTime.hour.toString().padStart(2, '0')
+            val minute = localDateTime.minute.toString().padStart(2, '0')
+            val second = localDateTime.second.toString().padStart(2, '0')
+            "$year-$month-$day $hour:$minute:$second"
+        } catch (e: Exception) {
+            "----- --:--:--"
+        }
     }
 }

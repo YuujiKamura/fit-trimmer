@@ -30,6 +30,8 @@ tmp_hud/
 /decompiled/
 /shared-core/temp_work/
 /composeApp/temp_work/
+/temp_work/
+/temp_out/
 
 # Custom layouts & parameters
 /composeApp/current_gui_config.json
