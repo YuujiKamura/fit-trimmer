@@ -40,6 +40,8 @@ import kotlinx.serialization.json.Json
 import kotlin.math.roundToInt
 // VLC dependency removed
 
+private const val PLAYBACK_PREVIEW_INTERVAL_MS = 250L
+
 
 @Serializable
 data class GuiPathCache(
@@ -152,9 +154,9 @@ fun startGui(args: Array<String>) = application {
     val timeOffsetState = rememberTimeAlignmentState(
         if (initialCache != null) {
             if (initialCache.timeOffsetMillis != null) {
-                initialCache.timeOffsetMillis.coerceIn(-120000, 120000)
+                initialCache.timeOffsetMillis.coerceIn(-TimeAlignmentState.MAX_OFFSET_MILLIS, TimeAlignmentState.MAX_OFFSET_MILLIS)
             } else if (initialCache.timeOffsetSeconds != null) {
-                (initialCache.timeOffsetSeconds.coerceIn(-120f, 120f) * 1000).roundToInt()
+                (initialCache.timeOffsetSeconds.coerceIn(-TimeAlignmentState.MAX_OFFSET_SECONDS, TimeAlignmentState.MAX_OFFSET_SECONDS) * 1000).roundToInt()
             } else {
                 0
             }
@@ -447,18 +449,34 @@ fun startGui(args: Array<String>) = application {
 
     LaunchedEffect(isPlaying) {
         if (isPlaying) {
-            val startTime = System.currentTimeMillis()
-            val startMs = videoCurrentTimeMs
-            while (isPlaying) {
-                val elapsed = System.currentTimeMillis() - startTime
-                val nextMs = startMs + elapsed
-                if (nextMs >= videoLengthMs) {
-                    videoCurrentTimeMs = videoLengthMs
-                    isPlaying = false
-                    break
+            try {
+                val startNano = System.nanoTime()
+                val startMs = videoCurrentTimeMs
+                var lastPreviewUpdateNano = startNano
+                while (isPlaying) {
+                    val nowNano = System.nanoTime()
+                    val elapsedMs = (nowNano - startNano) / 1_000_000L
+                    val nextMs = startMs + elapsedMs
+                    if (nextMs >= videoLengthMs) {
+                        videoCurrentTimeMs = videoLengthMs
+                        previewTimeMs = videoLengthMs
+                        isPlaying = false
+                        break
+                    }
+                    videoCurrentTimeMs = nextMs
+                    
+                    // Update video preview frame every PLAYBACK_PREVIEW_INTERVAL_MS during playback to balance UI smoothness and CPU load
+                    val elapsedSinceUpdateMs = (nowNano - lastPreviewUpdateNano) / 1_000_000L
+                    if (elapsedSinceUpdateMs >= PLAYBACK_PREVIEW_INTERVAL_MS) {
+                        previewTimeMs = nextMs
+                        lastPreviewUpdateNano = nowNano
+                    }
+                    
+                    kotlinx.coroutines.delay(30)
                 }
-                videoCurrentTimeMs = nextMs
-                kotlinx.coroutines.delay(30)
+            } finally {
+                // Ensure preview matches the final video playback position when stopped or cancelled
+                previewTimeMs = videoCurrentTimeMs
             }
         }
     }
@@ -1889,7 +1907,7 @@ fun TimeAlignmentCard(
             Slider(
                 value = state.seconds,
                 onValueChange = { state.update((it * 1000).roundToInt()) },
-                valueRange = -120f..120f,
+                valueRange = -TimeAlignmentState.MAX_OFFSET_SECONDS..TimeAlignmentState.MAX_OFFSET_SECONDS,
                 modifier = Modifier.height(20.dp),
                 colors = SliderDefaults.colors(
                     thumbColor = Color(0xFF007AFF),

@@ -6,13 +6,18 @@ import androidx.compose.runtime.setValue
 import kotlin.math.roundToInt
 
 class TimeAlignmentState(initialMillis: Int) {
-    var millis by mutableStateOf(initialMillis.coerceIn(-120000, 120000))
+    companion object {
+        const val MAX_OFFSET_MILLIS = 600000 // 10 minutes
+        const val MAX_OFFSET_SECONDS = MAX_OFFSET_MILLIS / 1000f
+    }
+
+    var millis by mutableStateOf(initialMillis.coerceIn(-MAX_OFFSET_MILLIS, MAX_OFFSET_MILLIS))
         private set
 
     val seconds: Float get() = millis / 1000f
 
     fun update(newMillis: Int) {
-        millis = newMillis.coerceIn(-120000, 120000)
+        millis = newMillis.coerceIn(-MAX_OFFSET_MILLIS, MAX_OFFSET_MILLIS)
     }
 
     fun adjust(videoStartUtc: String): String {
