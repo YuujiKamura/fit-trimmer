@@ -881,6 +881,7 @@ fun startGui(args: Array<String>) = application {
                             cmd.startUtc?.let { videoStartUtc = it }
                         }
                         is CpCommand.Fire -> {
+                            playerState.pause()
                             scope.launch {
                                 encodingPreviewImage = null
                                 isEncoding = true
@@ -1020,6 +1021,7 @@ fun startGui(args: Array<String>) = application {
                                 }
                             }
                             if (proceed) {
+                                playerState.pause()
                                 scope.launch {
                                     encodingPreviewImage = null
                                     isSampleEncoding = false
@@ -1109,6 +1111,7 @@ fun startGui(args: Array<String>) = application {
                                 }
                             }
                             if (proceed) {
+                                playerState.pause()
                                 scope.launch {
                                     encodingPreviewImage = null
                                     isSampleEncoding = true
@@ -1687,7 +1690,7 @@ fun startGui(args: Array<String>) = application {
                                 .border(1.dp, Color(0xFFE5E5EA), shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
                                 .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
                         ) {
-                            if (videoPath.isNotEmpty()) {
+                            if (videoPath.isNotEmpty() && !isEncoding) {
                                 VideoPlayerSurface(
                                     playerState = playerState,
                                     modifier = Modifier.fillMaxSize()
