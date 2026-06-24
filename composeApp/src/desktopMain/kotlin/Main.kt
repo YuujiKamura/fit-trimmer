@@ -710,9 +710,8 @@ fun startGui(args: Array<String>) = application {
                 ) {
 
 
-                    val onNativeEncodeClick = remember(settings, fitPath, videoPath, videoStartUtc, moveOutputToSource, isVideoInFitRange) {
+                    val onNativeEncodeClick = remember(settings, fitPath, videoPath, videoStartUtc, isVideoInFitRange) {
                         {
-                            val targetMoveOutput = moveOutputToSource
                             val targetVideoPath = videoPath
                             var proceed = true
                             if (!isVideoInFitRange && !args.contains("--auto-sample")) {
@@ -748,7 +747,7 @@ fun startGui(args: Array<String>) = application {
                                             pauseSupplier = { isPaused },
                                             cancelSupplier = { isCanceled }
                                         )
-                                        if (targetMoveOutput && !isCanceled) {
+                                        if (moveOutputToSource && !isCanceled) {
                                             statusText = "Moving file to source directory..."
                                             val sourceDir = File(targetVideoPath).parentFile
                                             val outFile = File(outPath)
@@ -790,9 +789,8 @@ fun startGui(args: Array<String>) = application {
                         }
                     }
 
-                    val onSampleEncodeClick = remember(settings, fitPath, videoPath, videoStartUtc, moveOutputToSource, isVideoInFitRange) {
+                    val onSampleEncodeClick = remember(settings, fitPath, videoPath, videoStartUtc, isVideoInFitRange) {
                         {
-                            val targetMoveOutput = moveOutputToSource
                             val targetVideoPath = videoPath
                             var proceed = true
                             if (!isVideoInFitRange && !args.contains("--auto-sample")) {
@@ -829,7 +827,7 @@ fun startGui(args: Array<String>) = application {
                                             pauseSupplier = { isPaused },
                                             cancelSupplier = { isCanceled }
                                         )
-                                        if (targetMoveOutput && !isCanceled) {
+                                        if (moveOutputToSource && !isCanceled) {
                                             statusText = "Moving file to source directory..."
                                             val sourceDir = File(targetVideoPath).parentFile
                                             val outFile = File(outPath)
@@ -977,32 +975,31 @@ fun startGui(args: Array<String>) = application {
                                     shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
                                 ) { Text("...", color = Color.White, fontSize = 11.sp) }
                             }
-                             Row(
-                                 modifier = Modifier
-                                     .fillMaxWidth()
-                                     .background(Color(0xFF141416), shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
-                                     .border(1.dp, Color(0xFF2C2C30), shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
-                                     .clickable(enabled = !isEncoding) { moveOutputToSource = !moveOutputToSource }
-                                     .padding(horizontal = 10.dp, vertical = 8.dp),
-                                 horizontalArrangement = Arrangement.SpaceBetween,
-                                 verticalAlignment = Alignment.CenterVertically
-                             ) {
-                                 Column(modifier = Modifier.weight(1f)) {
-                                     Text("Move Output to Source", color = Color(0xFFF5F5F7), fontWeight = FontWeight.Medium, fontSize = 11.sp)
-                                     Text("Saves finished video in the original folder", color = Color(0xFF8E8E93), fontSize = 9.sp)
-                                 }
-                                 Switch(
-                                     checked = moveOutputToSource,
-                                     onCheckedChange = { moveOutputToSource = it },
-                                     enabled = !isEncoding,
-                                     colors = SwitchDefaults.colors(
-                                         checkedThumbColor = Color.White,
-                                         checkedTrackColor = Color(0xFF30D158),
-                                         uncheckedThumbColor = Color(0xFF8E8E93),
-                                         uncheckedTrackColor = Color(0xFF1C1C1E)
-                                     )
-                                 )
-                             }
+                              Row(
+                                  modifier = Modifier
+                                      .fillMaxWidth()
+                                      .background(Color(0xFF141416), shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                                      .border(1.dp, Color(0xFF2C2C30), shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                                      .clickable { moveOutputToSource = !moveOutputToSource }
+                                      .padding(horizontal = 10.dp, vertical = 8.dp),
+                                  horizontalArrangement = Arrangement.SpaceBetween,
+                                  verticalAlignment = Alignment.CenterVertically
+                              ) {
+                                  Column(modifier = Modifier.weight(1f)) {
+                                      Text("Move Output to Source", color = Color(0xFFF5F5F7), fontWeight = FontWeight.Medium, fontSize = 11.sp)
+                                      Text("Saves finished video in the original folder", color = Color(0xFF8E8E93), fontSize = 9.sp)
+                                  }
+                                  Switch(
+                                      checked = moveOutputToSource,
+                                      onCheckedChange = { moveOutputToSource = it },
+                                      colors = SwitchDefaults.colors(
+                                          checkedThumbColor = Color.White,
+                                          checkedTrackColor = Color(0xFF30D158),
+                                          uncheckedThumbColor = Color(0xFF8E8E93),
+                                          uncheckedTrackColor = Color(0xFF1C1C1E)
+                                      )
+                                  )
+                              }
 
                               // Display FIT start/end timestamp and warning if video range is out of bounds
                               if (fitStartInstant != null && fitEndInstant != null) {
