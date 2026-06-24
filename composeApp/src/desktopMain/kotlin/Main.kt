@@ -714,6 +714,8 @@ fun startGui(args: Array<String>) = application {
 
                     val onNativeEncodeClick = remember(settings, fitPath, videoPath, videoStartUtc, moveOutputToSource, isVideoInFitRange) {
                         {
+                            val targetMoveOutput = moveOutputToSource
+                            val targetVideoPath = videoPath
                             var proceed = true
                             if (!isVideoInFitRange && !args.contains("--auto-sample")) {
                                 val result = javax.swing.JOptionPane.showConfirmDialog(
@@ -748,9 +750,9 @@ fun startGui(args: Array<String>) = application {
                                             pauseSupplier = { isPaused },
                                             cancelSupplier = { isCanceled }
                                         )
-                                        if (moveOutputToSource && !isCanceled) {
+                                        if (targetMoveOutput && !isCanceled) {
                                             statusText = "Moving file to source directory..."
-                                            val sourceDir = File(videoPath).parentFile
+                                            val sourceDir = File(targetVideoPath).parentFile
                                             val outFile = File(outPath)
                                             if (sourceDir != null && sourceDir.exists()) {
                                                 val destFile = File(sourceDir, outFile.name)
@@ -792,6 +794,8 @@ fun startGui(args: Array<String>) = application {
 
                     val onSampleEncodeClick = remember(settings, fitPath, videoPath, videoStartUtc, moveOutputToSource, isVideoInFitRange) {
                         {
+                            val targetMoveOutput = moveOutputToSource
+                            val targetVideoPath = videoPath
                             var proceed = true
                             if (!isVideoInFitRange && !args.contains("--auto-sample")) {
                                 val result = javax.swing.JOptionPane.showConfirmDialog(
@@ -827,9 +831,9 @@ fun startGui(args: Array<String>) = application {
                                             pauseSupplier = { isPaused },
                                             cancelSupplier = { isCanceled }
                                         )
-                                        if (moveOutputToSource && !isCanceled) {
+                                        if (targetMoveOutput && !isCanceled) {
                                             statusText = "Moving file to source directory..."
-                                            val sourceDir = File(videoPath).parentFile
+                                            val sourceDir = File(targetVideoPath).parentFile
                                             val outFile = File(outPath)
                                             if (sourceDir != null && sourceDir.exists()) {
                                                 val destFile = File(sourceDir, outFile.name)
@@ -905,6 +909,7 @@ fun startGui(args: Array<String>) = application {
                                 modifier = Modifier.fillMaxWidth(),
                                 textStyle = TextStyle(color = Color.White, fontSize = 11.sp),
                                 singleLine = true,
+                                enabled = !isEncoding,
                                 colors = TextFieldDefaults.outlinedTextFieldColors(
                                     backgroundColor = Color(0xFF141416),
                                     focusedBorderColor = Color(0xFF0A84FF),
@@ -919,6 +924,7 @@ fun startGui(args: Array<String>) = application {
                                     modifier = Modifier.weight(1f),
                                     textStyle = TextStyle(color = Color.White, fontSize = 11.sp),
                                     singleLine = true,
+                                    enabled = !isEncoding,
                                     colors = TextFieldDefaults.outlinedTextFieldColors(
                                         backgroundColor = Color(0xFF141416),
                                         focusedBorderColor = Color(0xFF0A84FF),
@@ -930,6 +936,7 @@ fun startGui(args: Array<String>) = application {
                                         val path = pickFile("Select FIT File", listOf("*.fit"))
                                         if (path != null) fitPath = path
                                     },
+                                    enabled = !isEncoding,
                                     modifier = Modifier.height(56.dp),
                                     colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF2C2C2E)),
                                     shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
@@ -943,6 +950,7 @@ fun startGui(args: Array<String>) = application {
                                     modifier = Modifier.weight(1f),
                                     textStyle = TextStyle(color = Color.White, fontSize = 11.sp),
                                     singleLine = true,
+                                    enabled = !isEncoding,
                                     colors = TextFieldDefaults.outlinedTextFieldColors(
                                         backgroundColor = Color(0xFF141416),
                                         focusedBorderColor = Color(0xFF0A84FF),
@@ -954,6 +962,7 @@ fun startGui(args: Array<String>) = application {
                                         val path = pickFile("Select MP4 File", listOf("*.mp4", "*.mov"))
                                         if (path != null) videoPath = path
                                     },
+                                    enabled = !isEncoding,
                                     modifier = Modifier.height(56.dp),
                                     colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF2C2C2E)),
                                     shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
@@ -967,6 +976,7 @@ fun startGui(args: Array<String>) = application {
                                     modifier = Modifier.weight(1f),
                                     textStyle = TextStyle(color = Color.White, fontSize = 11.sp),
                                     singleLine = true,
+                                    enabled = !isEncoding,
                                     colors = TextFieldDefaults.outlinedTextFieldColors(
                                         backgroundColor = Color(0xFF141416),
                                         focusedBorderColor = Color(0xFF0A84FF),
@@ -978,6 +988,7 @@ fun startGui(args: Array<String>) = application {
                                         val path = pickFolder("Select Output Directory")
                                         if (path != null) outputDir = path
                                     },
+                                    enabled = !isEncoding,
                                     modifier = Modifier.height(56.dp),
                                     colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF2C2C2E)),
                                     shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
@@ -988,7 +999,7 @@ fun startGui(args: Array<String>) = application {
                                      .fillMaxWidth()
                                      .background(Color(0xFF141416), shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
                                      .border(1.dp, Color(0xFF2C2C30), shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
-                                     .clickable { moveOutputToSource = !moveOutputToSource }
+                                     .clickable(enabled = !isEncoding) { moveOutputToSource = !moveOutputToSource }
                                      .padding(horizontal = 10.dp, vertical = 8.dp),
                                  horizontalArrangement = Arrangement.SpaceBetween,
                                  verticalAlignment = Alignment.CenterVertically
@@ -1000,6 +1011,7 @@ fun startGui(args: Array<String>) = application {
                                  Switch(
                                      checked = moveOutputToSource,
                                      onCheckedChange = { moveOutputToSource = it },
+                                     enabled = !isEncoding,
                                      colors = SwitchDefaults.colors(
                                          checkedThumbColor = Color.White,
                                          checkedTrackColor = Color(0xFF30D158),
