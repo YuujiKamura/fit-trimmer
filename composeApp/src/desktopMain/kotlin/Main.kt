@@ -429,19 +429,39 @@ fun startGui() = application {
 
                 try {
                     val videoFile = File(videoPath)
-                    val parser = mp4.Mp4Parser()
-                    val scanSize = minOf(videoFile.length(), 100L * 1024 * 1024).toInt()
-                    val headBytes = videoFile.inputStream().use { it.readNBytes(scanSize) }
-                    val meta = parser.parse(headBytes)
-                    if (meta != null) {
-                        val unixStart = meta.creationTimeSeconds - 2082844800L
-                        val startUtcStr = java.time.Instant.ofEpochSecond(unixStart).toString()
-                        javax.swing.SwingUtilities.invokeLater {
-                            videoStartUtc = startUtcStr
+                    println("DEBUG: LaunchedEffect(videoPath) - file exists: ${videoFile.exists()}, size: ${videoFile.length()}")
+                    if (videoFile.exists()) {
+                        val parser = mp4.Mp4Parser()
+                        val scanSize = minOf(videoFile.length(), 100L * 1024 * 1024).toInt()
+                        
+                        // 1. Scan head
+                        val headBytes = videoFile.inputStream().use { it.readNBytes(scanSize) }
+                        var meta = parser.parse(headBytes)
+                        
+                        // 2. If not found, scan tail
+                        if (meta == null && videoFile.length() > scanSize) {
+                            println("DEBUG: mvhd not found in head 100MB. Scanning tail 100MB...")
+                            val tailOffset = videoFile.length() - scanSize
+                            videoFile.inputStream().use { input ->
+                                input.skip(tailOffset)
+                                val tailBytes = input.readNBytes(scanSize)
+                                meta = parser.parse(tailBytes)
+                            }
                         }
-                        println("DEBUG: Automatically parsed video Start UTC: $startUtcStr")
+                        
+                        if (meta != null) {
+                            val unixStart = meta.creationTimeSeconds - 2082844800L
+                            val startUtcStr = java.time.Instant.ofEpochSecond(unixStart).toString()
+                            javax.swing.SwingUtilities.invokeLater {
+                                videoStartUtc = startUtcStr
+                            }
+                            println("DEBUG: Successfully parsed video Start UTC: $startUtcStr")
+                        } else {
+                            println("DEBUG: Failed to parse video metadata (mvhd not found in head or tail)")
+                        }
                     }
                 } catch (e: Exception) {
+                    println("DEBUG: Exception during video start UTC parse: ${e.message}")
                     e.printStackTrace()
                 }
 
