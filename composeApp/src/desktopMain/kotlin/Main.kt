@@ -584,6 +584,44 @@ fun startGui(args: Array<String>) = application {
         }
     }
 
+    LaunchedEffect(videoPath, videoCurrentTimeMs, vlcAvailable) {
+        if (!vlcAvailable && videoPath.isNotEmpty() && File(videoPath).exists()) {
+            kotlinx.coroutines.delay(100)
+            withContext(Dispatchers.IO) {
+                var proc: Process? = null
+                try {
+                    val timeSec = videoCurrentTimeMs / 1000.0
+                    val pb = ProcessBuilder(
+                        "ffmpeg", "-y",
+                        "-loglevel", "quiet",
+                        "-ss", String.format(java.util.Locale.US, "%.3f", timeSec),
+                        "-i", videoPath,
+                        "-vframes", "1",
+                        "-f", "image2pipe",
+                        "-vcodec", "mjpeg",
+                        "-"
+                    )
+                    proc = pb.start()
+                    val bytes = proc.inputStream.readBytes()
+                    proc.waitFor()
+                    if (proc.exitValue() == 0 && bytes.isNotEmpty()) {
+                        val bitmap = Image.makeFromEncoded(bytes).asImageBitmap()
+                        withContext(Dispatchers.Main) {
+                            videoPreviewImage = bitmap
+                        }
+                    }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    proc?.destroyForcibly()
+                    throw e
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                } finally {
+                    proc?.destroy()
+                }
+            }
+        }
+    }
+
     val cp = remember {
         ControlPlane(
             onCommand = { cmd ->
