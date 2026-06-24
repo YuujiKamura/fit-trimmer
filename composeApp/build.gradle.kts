@@ -16,6 +16,7 @@ kotlin {
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.8.1")
                 implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.0")
+                implementation("io.github.kdroidfilter:composemediaplayer:0.6.4")
             }
         }
     }

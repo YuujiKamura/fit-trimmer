@@ -1,3 +1,5 @@
+import io.github.kdroidfilter.composemediaplayer.rememberVideoPlayerState
+import io.github.kdroidfilter.composemediaplayer.VideoPlayerSurface
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -342,6 +344,8 @@ fun startGui(args: Array<String>) = application {
         )
     )
 
+    val playerState = rememberVideoPlayerState()
+
     var settings by remember { mutableStateOf(initialCache?.settings ?: HudSettings()) }
     var fitPath by remember { mutableStateOf(initialCache?.fitPath ?: "") }
     var videoPath by remember { mutableStateOf(initialCache?.videoPath ?: "") }
@@ -617,54 +621,24 @@ fun startGui(args: Array<String>) = application {
     }
 
     val togglePlay = {
-        if (isPlaying) {
-            isPlaying = false
+        if (playerState.isPlaying) {
+            playerState.pause()
         } else {
             if (videoCurrentTimeMs >= videoLengthMs) {
-                videoCurrentTimeMs = 0L
+                playerState.seekTo(0f)
             }
-            isPlaying = true
+            playerState.play()
         }
     }
 
     val seekTo = { timeMs: Long ->
         val target = timeMs.coerceIn(0L, videoLengthMs)
-        videoCurrentTimeMs = target
-        previewTimeMs = target
+        val ratio = if (videoLengthMs > 0) target.toFloat() / videoLengthMs.toFloat() else 0f
+        playerState.seekTo(ratio * 1000f)
     }
 
-    LaunchedEffect(isPlaying) {
-        if (isPlaying) {
-            try {
-                val startNano = System.nanoTime()
-                val startMs = videoCurrentTimeMs
-                var lastPreviewUpdateNano = startNano
-                while (isPlaying) {
-                    val nowNano = System.nanoTime()
-                    val elapsedMs = (nowNano - startNano) / 1_000_000L
-                    val nextMs = startMs + elapsedMs
-                    if (nextMs >= videoLengthMs) {
-                        videoCurrentTimeMs = videoLengthMs
-                        previewTimeMs = videoLengthMs
-                        isPlaying = false
-                        break
-                    }
-                    videoCurrentTimeMs = nextMs
-                    
-                    // Update video preview frame every PLAYBACK_PREVIEW_INTERVAL_MS during playback to balance UI smoothness and CPU load
-                    val elapsedSinceUpdateMs = (nowNano - lastPreviewUpdateNano) / 1_000_000L
-                    if (elapsedSinceUpdateMs >= PLAYBACK_PREVIEW_INTERVAL_MS) {
-                        previewTimeMs = nextMs
-                        lastPreviewUpdateNano = nowNano
-                    }
-                    
-                    kotlinx.coroutines.delay(30)
-                }
-            } finally {
-                // Ensure preview matches the final video playback position when stopped or cancelled
-                previewTimeMs = videoCurrentTimeMs
-            }
-        }
+    LaunchedEffect(playerState.isPlaying) {
+        isPlaying = playerState.isPlaying
     }
 
     LaunchedEffect(fitPath) {
@@ -751,42 +725,31 @@ fun startGui(args: Array<String>) = application {
         }
     }
 
+    LaunchedEffect(playerState.sliderPos, playerState.metadata.duration) {
+        val durationMs = playerState.metadata.duration ?: 0L
+        videoLengthMs = durationMs
+        videoCurrentTimeMs = ((playerState.sliderPos / 1000f) * durationMs).toLong()
+    }
+
     LaunchedEffect(videoPath) {
         // Initialize states immediately on video changes to prevent obsolete metadata leak (Requirement 2)
         videoLengthMs = 0L
-        videoPreviewImage = null
         videoStartUtc = ""
         previewTimeMs = 0L
         videoCurrentTimeMs = 0L
 
         if (videoPath.isNotEmpty() && File(videoPath).exists()) {
             val targetVideoPath = videoPath
+            val fileUri = File(targetVideoPath).toURI().toASCIIString()
+            playerState.openUri(fileUri)
+            
             withContext(Dispatchers.IO) {
-                val ffmpegPath = fit.findFfmpegPath()
                 try {
-                    val duration = getVideoDuration(ffmpegPath, targetVideoPath)
-                    duration?.let { dur ->
-                        withContext(Dispatchers.Main) {
-                            if (videoPath == targetVideoPath) {
-                                videoLengthMs = dur
-                            }
-                        }
-                    }
-
                     val startUtc = getVideoStartUtc(targetVideoPath)
                     startUtc?.let { utc ->
                         withContext(Dispatchers.Main) {
                             if (videoPath == targetVideoPath) {
                                 videoStartUtc = utc
-                            }
-                        }
-                    }
-
-                    val thumb = generateInitialThumbnail(ffmpegPath, targetVideoPath)
-                    thumb?.let { bitmap ->
-                        withContext(Dispatchers.Main) {
-                            if (videoPath == targetVideoPath) {
-                                videoPreviewImage = bitmap
                             }
                         }
                     }
@@ -796,31 +759,8 @@ fun startGui(args: Array<String>) = application {
                     e.printStackTrace()
                 }
             }
-        }
-    }
-
-    LaunchedEffect(videoPath, previewTimeMs, isEncoding) {
-        val reqId = ++lastPreviewRequestId
-        if (isEncoding) return@LaunchedEffect
-        if (videoPath.isNotEmpty() && File(videoPath).exists()) {
-            val targetTimeMs = previewTimeMs
-            val targetVideoPath = videoPath
-            kotlinx.coroutines.delay(50)
-            ensureActive()
-            val ffmpegPath = withContext(Dispatchers.IO) { fit.findFfmpegPath() }
-            val result = extractPreviewFrame(ffmpegPath, targetVideoPath, targetTimeMs, 480)
-            ensureActive()
-            result.onSuccess { bitmap ->
-                withContext(Dispatchers.Main) {
-                    // Ensure we only update the preview image if the slider hasn't moved and the video file hasn't changed
-                    if (lastPreviewRequestId == reqId && videoPath == targetVideoPath) {
-                        videoPreviewImage = bitmap
-                    }
-                }
-            }.onFailure { exception ->
-                println("DEBUG: extractPreviewFrame failed: ${exception.message}")
-                exception.printStackTrace()
-            }
+        } else {
+            playerState.stop()
         }
     }
 
@@ -1642,14 +1582,14 @@ fun startGui(args: Array<String>) = application {
                                 .border(1.dp, Color(0xFFE5E5EA), shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
                                 .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
                         ) {
-                            videoPreviewImage?.let {
-                                androidx.compose.foundation.Image(
-                                    bitmap = it,
-                                    contentDescription = null,
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentScale = androidx.compose.ui.layout.ContentScale.Fit
+                            if (videoPath.isNotEmpty()) {
+                                VideoPlayerSurface(
+                                    playerState = playerState,
+                                    modifier = Modifier.fillMaxSize()
                                 )
-                            } ?: Box(Modifier.fillMaxSize().background(Color.Black))
+                            } else {
+                                Box(Modifier.fillMaxSize().background(Color.Black))
+                            }
 
                             if (isEncoding) {
                                 if (showLivePreview) {
