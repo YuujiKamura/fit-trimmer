@@ -294,7 +294,18 @@ class NativeHudEncoder(
         if (!jobDir.exists()) jobDir.mkdirs()
 
         val chunkSizeSeconds = 60
-        var resumePartIndex = jobDir.listFiles { _, name -> name.matches(Regex("part_\\d{4}\\.ts")) }?.size ?: 0
+        val existingParts = jobDir.listFiles { _, name -> name.matches(Regex("part_\\d{4}\\.ts")) }?.sortedBy { it.name } ?: emptyList()
+        var resumePartIndex = existingParts.size
+        if (resumePartIndex > 0) {
+            try {
+                val lastFile = existingParts.last()
+                lastFile.delete()
+                resumePartIndex--
+                println("⚠️ Detected crash recovery: deleted potentially incomplete last chunk ${lastFile.name}. Resuming from chunk $resumePartIndex.")
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
         var resumeSeconds = resumePartIndex * chunkSizeSeconds
         
         if (resumeSeconds > 0 && resumeSeconds < videoDurationSeconds) {
@@ -304,7 +315,7 @@ class NativeHudEncoder(
 
         val isEncodingActive = java.util.concurrent.atomic.AtomicBoolean(true)
 
-        while (resumeSeconds < videoDurationSeconds && isEncodingActive.get()) {
+        if (resumeSeconds < videoDurationSeconds && isEncodingActive.get()) {
             if (cancelSupplier()) {
                 throw Exception("Encoding was canceled by user.")
             }
@@ -313,8 +324,7 @@ class NativeHudEncoder(
                 Thread.sleep(100)
             }
             
-            val currentChunkEnd = minOf(resumeSeconds + chunkSizeSeconds, videoDurationSeconds)
-            val chunkDuration = currentChunkEnd - resumeSeconds
+            val remainingDuration = videoDurationSeconds - resumeSeconds
             
             val pbArgs = mutableListOf<String>()
             pbArgs.add(ffmpegPath)
@@ -329,7 +339,7 @@ class NativeHudEncoder(
             pbArgs.add("-framerate")
             pbArgs.add("1")
             pbArgs.add("-i")
-            pbArgs.add("pipe:0") // raw frames for this chunk
+            pbArgs.add("pipe:0") // raw frames
             
             if (hwaccel != null) {
                 pbArgs.add("-hwaccel")
@@ -338,7 +348,7 @@ class NativeHudEncoder(
             pbArgs.add("-ss")
             pbArgs.add(resumeSeconds.toString())
             pbArgs.add("-t")
-            pbArgs.add(chunkDuration.toString())
+            pbArgs.add(remainingDuration.toString())
             pbArgs.add("-i")
             pbArgs.add(localVideoPath)
             
@@ -375,13 +385,18 @@ class NativeHudEncoder(
             pbArgs.add("-b:a")
             pbArgs.add("192k")
             
-            val tempPartFile = File(jobDir, "part_%04d.ts.tmp".format(resumePartIndex))
-            val finalPartFile = File(jobDir, "part_%04d.ts".format(resumePartIndex))
-            if (tempPartFile.exists()) tempPartFile.delete()
-            
+            // Use segment muxer to split outputs into part_%04d.ts files on the fly
             pbArgs.add("-f")
+            pbArgs.add("segment")
+            pbArgs.add("-segment_time")
+            pbArgs.add("60")
+            pbArgs.add("-segment_format")
             pbArgs.add("mpegts")
-            pbArgs.add(tempPartFile.absolutePath)
+            pbArgs.add("-segment_start_number")
+            pbArgs.add(resumePartIndex.toString())
+            pbArgs.add("-reset_timestamps")
+            pbArgs.add("1")
+            pbArgs.add(File(jobDir, "part_%04d.ts").absolutePath)
             
             val pb = ProcessBuilder(pbArgs)
             pb.redirectErrorStream(true)
@@ -437,7 +452,7 @@ class NativeHudEncoder(
             
             var telemetryIdx = 0
             try {
-                loop@ for (i in resumeSeconds until currentChunkEnd) {
+                loop@ for (i in resumeSeconds until videoDurationSeconds) {
                     if (cancelSupplier()) {
                         process.destroy()
                         break@loop
@@ -516,6 +531,7 @@ class NativeHudEncoder(
             } catch (e: Exception) {
                 println("\n❌ Pipe Write Error: ${e.message}")
             } finally {
+                isEncodingActive.set(false)
                 out.close()
                 val exitCode = process.waitFor()
                 readerThread.join(1000)
@@ -523,18 +539,14 @@ class NativeHudEncoder(
                 cancelMonitorThread.join(1000)
                 
                 if (cancelSupplier()) {
-                    if (tempPartFile.exists()) tempPartFile.delete()
                     throw Exception("Encoding was canceled by user.")
                 }
                 
                 if (exitCode != 0) {
-                    if (tempPartFile.exists()) tempPartFile.delete()
                     throw Exception("ffmpeg exited with error code $exitCode. See ffmpeg_log.txt for details.")
                 } else {
-                    // Success! Rename temp part to final part
-                    tempPartFile.renameTo(finalPartFile)
-                    resumePartIndex++
-                    resumeSeconds += chunkDuration
+                    // Success!
+                    resumeSeconds = videoDurationSeconds
                 }
             }
         }
