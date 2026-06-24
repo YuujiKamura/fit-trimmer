@@ -85,6 +85,31 @@ fun main(args: Array<String>) {
     startGui(emptyArray())
 }
 
+fun showSystemNotification(title: String, message: String) {
+    if (!java.awt.SystemTray.isSupported()) return
+    try {
+        val tray = java.awt.SystemTray.getSystemTray()
+        val image = java.awt.image.BufferedImage(16, 16, java.awt.image.BufferedImage.TYPE_INT_ARGB)
+        val trayIcon = java.awt.TrayIcon(image, "FitTrimmer")
+        trayIcon.isImageAutoSize = true
+        tray.add(trayIcon)
+        trayIcon.displayMessage(title, message, java.awt.TrayIcon.MessageType.INFO)
+        
+        val timer = java.util.Timer()
+        timer.schedule(object : java.util.TimerTask() {
+            override fun run() {
+                try {
+                    tray.remove(trayIcon)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        }, 10000)
+    } catch (e: Exception) {
+        e.printStackTrace()
+    }
+}
+
 @OptIn(ExperimentalTextApi::class)
 fun startGui(args: Array<String>) = application {
     var settings by remember { mutableStateOf(HudSettings()) }
@@ -532,28 +557,20 @@ fun startGui(args: Array<String>) = application {
                                     if (args.contains("--auto-sample")) {
                                         println("TEST_NOTIFICATION_SUCCESS: Encoding Finished Successfully!")
                                     } else {
-                                        javax.swing.SwingUtilities.invokeLater {
-                                            javax.swing.JOptionPane.showMessageDialog(
-                                                null,
-                                                "Encoding Finished Successfully!",
-                                                "Success",
-                                                javax.swing.JOptionPane.INFORMATION_MESSAGE
-                                            )
-                                        }
+                                        showSystemNotification(
+                                            "FitTrimmer",
+                                            "Encoding Finished Successfully!"
+                                        )
                                     }
                                 } catch (e: Exception) {
                                     // Error string is set inside fireEncode's onProgress callback
                                     if (args.contains("--auto-sample")) {
                                         println("TEST_NOTIFICATION_ERROR: Encoding Failed: ${e.message}")
                                     } else {
-                                        javax.swing.SwingUtilities.invokeLater {
-                                            javax.swing.JOptionPane.showMessageDialog(
-                                                null,
-                                                "Encoding Failed:\n${e.message}",
-                                                "Error",
-                                                javax.swing.JOptionPane.ERROR_MESSAGE
-                                            )
-                                        }
+                                        showSystemNotification(
+                                            "FitTrimmer - Error",
+                                            "Encoding Failed: ${e.message}"
+                                        )
                                     }
                                 } finally {
                                     isEncoding = false
@@ -671,14 +688,10 @@ fun startGui(args: Array<String>) = application {
                                         if (args.contains("--auto-sample")) {
                                             println("TEST_NOTIFICATION_SUCCESS: Encoding Finished Successfully!")
                                         } else {
-                                            javax.swing.SwingUtilities.invokeLater {
-                                                javax.swing.JOptionPane.showMessageDialog(
-                                                    null,
-                                                    "Encoding Finished Successfully!",
-                                                    "Success",
-                                                    javax.swing.JOptionPane.INFORMATION_MESSAGE
-                                                )
-                                            }
+                                            showSystemNotification(
+                                                "FitTrimmer",
+                                                "Encoding Finished Successfully!"
+                                            )
                                         }
                                     }
                                 } catch (e: Exception) {
@@ -686,14 +699,10 @@ fun startGui(args: Array<String>) = application {
                                     if (args.contains("--auto-sample")) {
                                         println("TEST_NOTIFICATION_ERROR: Encoding Failed: ${e.message}")
                                     } else {
-                                        javax.swing.SwingUtilities.invokeLater {
-                                            javax.swing.JOptionPane.showMessageDialog(
-                                                null,
-                                                "Encoding Failed:\n${e.message}",
-                                                "Error",
-                                                javax.swing.JOptionPane.ERROR_MESSAGE
-                                            )
-                                        }
+                                        showSystemNotification(
+                                            "FitTrimmer - Error",
+                                            "Encoding Failed: ${e.message}"
+                                        )
                                     }
                                 } finally {
                                     isEncoding = false
@@ -743,14 +752,10 @@ fun startGui(args: Array<String>) = application {
                                         if (args.contains("--auto-sample")) {
                                             println("TEST_NOTIFICATION_SUCCESS: Sample Encoding Finished Successfully!")
                                         } else {
-                                            javax.swing.SwingUtilities.invokeLater {
-                                                javax.swing.JOptionPane.showMessageDialog(
-                                                    null,
-                                                    "Sample Encoding Finished Successfully!",
-                                                    "Success",
-                                                    javax.swing.JOptionPane.INFORMATION_MESSAGE
-                                                )
-                                            }
+                                            showSystemNotification(
+                                                "FitTrimmer",
+                                                "Sample Encoding Finished Successfully!"
+                                            )
                                         }
                                     }
                                 } catch (e: Exception) {
@@ -758,14 +763,10 @@ fun startGui(args: Array<String>) = application {
                                     if (args.contains("--auto-sample")) {
                                         println("TEST_NOTIFICATION_ERROR: Sample Encoding Failed: ${e.message}")
                                     } else {
-                                        javax.swing.SwingUtilities.invokeLater {
-                                            javax.swing.JOptionPane.showMessageDialog(
-                                                null,
-                                                "Sample Encoding Failed:\n${e.message}",
-                                                "Error",
-                                                javax.swing.JOptionPane.ERROR_MESSAGE
-                                            )
-                                        }
+                                        showSystemNotification(
+                                            "FitTrimmer - Error",
+                                            "Sample Encoding Failed: ${e.message}"
+                                        )
                                     }
                                 } finally {
                                     isEncoding = false
@@ -884,20 +885,30 @@ fun startGui(args: Array<String>) = application {
                                     shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
                                 ) { Text("...", color = Color.White, fontSize = 11.sp) }
                             }
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.fillMaxWidth().clickable { moveOutputToSource = !moveOutputToSource }
-                            ) {
-                                Checkbox(
-                                    checked = moveOutputToSource,
-                                    onCheckedChange = { moveOutputToSource = it },
-                                    colors = CheckboxDefaults.colors(
-                                        checkedColor = Color(0xFF0A84FF),
-                                        uncheckedColor = Color(0xFF2C2C2E)
-                                    )
-                                )
-                                Text("Move output to source video directory after encode", color = Color(0xFFE2E8F0), fontSize = 11.sp)
-                            }
+                             Row(
+                                 modifier = Modifier
+                                     .fillMaxWidth()
+                                     .background(Color(0xFF2C2C2E), shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                                     .clickable { moveOutputToSource = !moveOutputToSource }
+                                     .padding(horizontal = 10.dp, vertical = 8.dp),
+                                 horizontalArrangement = Arrangement.SpaceBetween,
+                                 verticalAlignment = Alignment.CenterVertically
+                             ) {
+                                 Column(modifier = Modifier.weight(1f)) {
+                                     Text("Move Output to Source", color = Color(0xFFF5F5F7), fontWeight = FontWeight.Medium, fontSize = 11.sp)
+                                     Text("Saves finished video in the original folder", color = Color(0xFF8E8E93), fontSize = 9.sp)
+                                 }
+                                 Switch(
+                                     checked = moveOutputToSource,
+                                     onCheckedChange = { moveOutputToSource = it },
+                                     colors = SwitchDefaults.colors(
+                                         checkedThumbColor = Color.White,
+                                         checkedTrackColor = Color(0xFF30D158),
+                                         uncheckedThumbColor = Color(0xFF8E8E93),
+                                         uncheckedTrackColor = Color(0xFF1C1C1E)
+                                     )
+                                 )
+                             }
                         }
                     }
 
