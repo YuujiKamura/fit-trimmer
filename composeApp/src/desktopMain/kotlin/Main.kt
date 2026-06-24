@@ -769,9 +769,37 @@ fun startGui(args: Array<String>) = application {
         videoCurrentTimeMs = 0L
 
         if (videoPath.isNotEmpty() && File(videoPath).exists()) {
-            val targetVideoPath = videoPath
+            val originalFile = File(videoPath)
+            var targetVideoPath = videoPath
+            
+            // WMF fails to play directly from DriveFS (H:\) so we create a temporary directory junction on local C: drive
+            if (videoPath.startsWith("H:\\", ignoreCase = true)) {
+                try {
+                    val tempDir = System.getProperty("java.io.tmpdir")
+                    val junctionFolder = File(tempDir, "fit_trimmer_video_junction")
+                    
+                    if (junctionFolder.exists()) {
+                        ProcessBuilder("cmd.exe", "/c", "rmdir", junctionFolder.absolutePath).start().waitFor()
+                    }
+                    
+                    val parentDir = originalFile.parentFile.absolutePath
+                    val pb = ProcessBuilder("cmd.exe", "/c", "mklink", "/j", junctionFolder.absolutePath, parentDir)
+                    val p = pb.start()
+                    p.waitFor()
+                    
+                    if (junctionFolder.exists()) {
+                        targetVideoPath = File(junctionFolder, originalFile.name).absolutePath
+                        println("DEBUG: Successfully created junction for WMF: $targetVideoPath")
+                    } else {
+                        println("DEBUG: Failed to create junction for WMF, falling back to original path")
+                    }
+                } catch (e: Exception) {
+                    println("DEBUG: Error creating junction: ${e.message}")
+                    e.printStackTrace()
+                }
+            }
+            
             playerState.openUri(targetVideoPath)
-            playerState.volume = 0f
             
             withContext(Dispatchers.IO) {
                 try {
