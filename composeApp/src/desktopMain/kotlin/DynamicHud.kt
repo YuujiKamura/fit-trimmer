@@ -21,7 +21,7 @@ class HotReloadClassLoader(urls: Array<URL>, parent: ClassLoader) : URLClassLoad
     }
 }
 
-class DynamicRendererProxy(private val config: HudConfig) {
+class DynamicRendererProxy(private var config: HudConfig) {
     private var delegate: Any? = null
     private var renderMethod: java.lang.reflect.Method? = null
     private var previousTempDir: File? = null
@@ -30,6 +30,19 @@ class DynamicRendererProxy(private val config: HudConfig) {
 
     init {
         reload()
+    }
+
+    fun updateConfig(newConfig: HudConfig) {
+        this.config = newConfig
+        delegate?.let { del ->
+            try {
+                val constructor = del.javaClass.getDeclaredConstructor(HudConfig::class.java)
+                delegate = constructor.newInstance(newConfig)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+        fallbackRenderer = HudRenderer(newConfig)
     }
 
     fun reload(): Boolean {
