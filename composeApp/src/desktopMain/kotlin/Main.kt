@@ -83,62 +83,56 @@ suspend fun extractPreviewFrame(
     timeMs: Long,
     scaleWidth: Int
 ): Result<androidx.compose.ui.graphics.ImageBitmap> = withContext(Dispatchers.IO) {
-    suspendCancellableCoroutine { continuation ->
-        val timeSec = timeMs / 1000.0
-        val pb = ProcessBuilder(
-            ffmpegPath, "-y",
-            "-loglevel", "quiet",
-            "-ss", String.format(java.util.Locale.US, "%.3f", timeSec),
-            "-i", videoPath,
-            "-vframes", "1",
-            "-vf", "scale=$scaleWidth:-1",
-            "-f", "image2pipe",
-            "-vcodec", "mjpeg",
-            "-"
-        )
-        
-        var proc: Process? = null
+    val timeSec = timeMs / 1000.0
+    val pb = ProcessBuilder(
+        ffmpegPath, "-y",
+        "-loglevel", "quiet",
+        "-ss", String.format(java.util.Locale.US, "%.3f", timeSec),
+        "-i", videoPath,
+        "-vframes", "1",
+        "-vf", "scale=$scaleWidth:-1",
+        "-f", "image2pipe",
+        "-vcodec", "mjpeg",
+        "-"
+    )
+    
+    var proc: Process? = null
+    val job = coroutineContext[kotlinx.coroutines.Job]
+    val handle = job?.invokeOnCompletion {
+        proc?.destroyForcibly()
+    }
+    
+    try {
+        proc = pb.start()
+        val bytes = proc.inputStream.use { it.readBytes() }
+        val exitCode = proc.waitFor()
+        if (exitCode == 0 && bytes.isNotEmpty()) {
+            val skiaImage = org.jetbrains.skia.Image.makeFromEncoded(bytes)
+                ?: throw Exception("Failed to decode image bytes with Skia")
+            val bitmap = skiaImage.toComposeImageBitmap()
+            Result.success(bitmap)
+        } else {
+            Result.failure(Exception("FFmpeg exited with code $exitCode"))
+        }
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        proc?.destroyForcibly()
         try {
-            proc = pb.start()
-            val finalProc = proc
-            
-            continuation.invokeOnCancellation {
-                finalProc.destroyForcibly()
-            }
-            
-            this.launch {
-                try {
-                    val bytes = finalProc.inputStream.use { it.readBytes() }
-                    val exitCode = finalProc.waitFor()
-                    if (continuation.isActive) {
-                        if (exitCode == 0 && bytes.isNotEmpty()) {
-                            val bitmap = org.jetbrains.skia.Image.makeFromEncoded(bytes).toComposeImageBitmap()
-                            continuation.resume(Result.success(bitmap))
-                        } else {
-                            continuation.resume(Result.failure(Exception("FFmpeg exited with code $exitCode")))
-                        }
-                    }
-                } catch (e: Exception) {
-                    finalProc.destroyForcibly()
-                    try {
-                        finalProc.waitFor(1, java.util.concurrent.TimeUnit.SECONDS)
-                    } catch (ioe: Exception) {}
-                    if (continuation.isActive) {
-                        continuation.resume(Result.failure(e))
-                    }
-                } finally {
-                    if (finalProc.isAlive) {
-                        finalProc.destroyForcibly()
-                        try {
-                            finalProc.waitFor(1, java.util.concurrent.TimeUnit.SECONDS)
-                        } catch (ioe: Exception) {}
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            if (continuation.isActive) {
-                continuation.resume(Result.failure(e))
-            }
+            proc?.waitFor(1, java.util.concurrent.TimeUnit.SECONDS)
+        } catch (ioe: Exception) {}
+        throw e
+    } catch (e: Exception) {
+        proc?.destroyForcibly()
+        try {
+            proc?.waitFor(1, java.util.concurrent.TimeUnit.SECONDS)
+        } catch (ioe: Exception) {}
+        Result.failure(e)
+    } finally {
+        handle?.dispose()
+        if (proc?.isAlive == true) {
+            proc.destroyForcibly()
+            try {
+                proc.waitFor(1, java.util.concurrent.TimeUnit.SECONDS)
+            } catch (ioe: Exception) {}
         }
     }
 }
@@ -719,6 +713,9 @@ fun startGui(args: Array<String>) = application {
                         videoPreviewImage = bitmap
                     }
                 }
+            }.onFailure { exception ->
+                println("DEBUG: extractPreviewFrame failed: ${exception.message}")
+                exception.printStackTrace()
             }
         }
     }
