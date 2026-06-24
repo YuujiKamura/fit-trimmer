@@ -323,7 +323,6 @@ fun main(args: Array<String>) {
     System.setProperty("skiko.renderApi", "OPENGL")
     System.setProperty("compose.interop.blending", "false")
     System.setProperty("sun.java2d.noddraw", "true")
-    System.setProperty("jna.library.path", "C:\\Program Files\\VideoLAN\\VLC")
     if (args.contains("--test")) {
         runTest()
         return
@@ -486,7 +485,6 @@ fun startGui(args: Array<String>) = application {
     var showLivePreview by remember { mutableStateOf(initialCache?.showLivePreview ?: true) }
 
     // Telemetry state
-    val vlcAvailable = false
     var telemetryPoints by remember { mutableStateOf<List<FitParser.TelemetryPoint>>(emptyList()) }
     var videoLengthMs by remember { mutableStateOf(0L) }
     var lastPreviewRequestId by remember { mutableStateOf(0L) }
@@ -1590,7 +1588,6 @@ fun startGui(args: Array<String>) = application {
                                 trimmedTelemetryPoints = trimmedTelemetryPoints,
                                 settings = settings,
                                 rendererProxy = rendererProxy,
-                                vlcAvailable = vlcAvailable,
                                 textMeasurer = textMeasurer,
                                 modifier = Modifier.fillMaxWidth()
                             )
@@ -1939,7 +1936,6 @@ fun VideoPreviewArea(
     trimmedTelemetryPoints: List<FitParser.TelemetryPoint>,
     settings: HudSettings,
     rendererProxy: fit.DynamicRendererProxy,
-    vlcAvailable: Boolean,
     textMeasurer: androidx.compose.ui.text.TextMeasurer,
     modifier: Modifier = Modifier
 ) {
@@ -2111,8 +2107,8 @@ fun VideoPreviewArea(
                 )
 
                 Text(
-                    text = if (vlcAvailable) "VLC ACTIVE" else "NO VLC (SIM)",
-                    color = if (vlcAvailable) Color(0xFF2E7D32) else Color(0xFFD84315),
+                    text = "NATIVE PLAYER ACTIVE",
+                    color = Color(0xFF2E7D32),
                     fontSize = 9.sp,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(horizontal = 4.dp)
