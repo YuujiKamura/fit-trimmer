@@ -212,7 +212,7 @@ class NativeHudEncoder(
         val fitBytes = File(fitPath).readBytes()
         val parser = FitParser(fitBytes)
         parser.parse()
-        val telemetry = parser.getTelemetry()
+        var telemetry = parser.getTelemetry()
         if (telemetry.isEmpty()) return
 
         val startTime = Instant.parse(startUtc)
@@ -262,6 +262,13 @@ class NativeHudEncoder(
 
         if (maxDurationSeconds > 0) {
             videoDurationSeconds = minOf(videoDurationSeconds, maxDurationSeconds)
+        }
+
+        val videoStartFit = startTime.epochSecond - fitEpoch
+        val videoEndFit = (startTime.epochSecond + videoDurationSeconds) - fitEpoch
+        val trimmedTelemetry = telemetry.filter { it.timestamp in videoStartFit.toDouble()..videoEndFit.toDouble() }
+        if (trimmedTelemetry.isNotEmpty()) {
+            telemetry = trimmedTelemetry
         }
 
         val config = HudConfig(
