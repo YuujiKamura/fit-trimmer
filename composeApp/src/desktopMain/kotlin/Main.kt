@@ -1124,7 +1124,72 @@ fun startGui(args: Array<String>) = application {
                         }
                     }
 
-                    // Developer tools (C drive, hot reload, etc.) have been moved under the ADVANCED TOOLKIT card below to simplify the panel.
+                    // C-DRIVE SPACE MONITOR Card
+                    Card(
+                        backgroundColor = Color(0xFF1C1C20),
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, if (hasEnoughSpace) Color(0xFF2C2C30) else Color(0xFFFF453A)),
+                        elevation = 0.dp,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("C-DRIVE SPACE MONITOR", color = Color(0xFFF5F5F7), fontWeight = FontWeight.SemiBold, fontSize = 11.sp, letterSpacing = 0.5.sp)
+                                if (hasEnoughSpace) {
+                                    Text("SAFE", color = Color(0xFF30D158), fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                                } else {
+                                    Text("LOW SPACE WARNING", color = Color(0xFFFF453A), fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                                }
+                            }
+                            
+                            val freeRatio = if (cDriveTotalSpaceGB > 0) (cDriveFreeSpaceGB / cDriveTotalSpaceGB).toFloat() else 0f
+                            val barColor = when {
+                                !hasEnoughSpace -> Color(0xFFFF453A) // Red (low space, insufficient for encode)
+                                freeRatio < 0.1f -> Color(0xFFFF9F0A) // Orange (under 10% free)
+                                else -> Color(0xFF30D158) // Green
+                            }
+                            
+                            LinearProgressIndicator(
+                                progress = freeRatio,
+                                modifier = Modifier.fillMaxWidth().height(6.dp),
+                                color = barColor,
+                                backgroundColor = Color(0xFF2C2C2E)
+                            )
+                            
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("Free Space:", color = Color(0xFF8E8E93), fontSize = 10.sp)
+                                Text(
+                                    "%.2f GB / %.1f GB (%.1f%%)".format(cDriveFreeSpaceGB, cDriveTotalSpaceGB, freeRatio * 100),
+                                    color = Color.White,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                            
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("Est. Required Space:", color = Color(0xFF8E8E93), fontSize = 10.sp)
+                                Text(
+                                    "%.2f GB".format(requiredSpaceGB),
+                                    color = if (hasEnoughSpace) Color.White else Color(0xFFFF453A),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
 
                     // 3. ENCODE Actions / Progress Monitor
                     if (isEncoding) {
