@@ -518,6 +518,7 @@ class NativeHudEncoder(
             
             val pb = ProcessBuilder(concatArgs)
             pb.redirectErrorStream(true)
+            pb.redirectOutput(ProcessBuilder.Redirect.appendTo(logFile))
             val p = pb.start()
             val concatExit = p.waitFor()
             
