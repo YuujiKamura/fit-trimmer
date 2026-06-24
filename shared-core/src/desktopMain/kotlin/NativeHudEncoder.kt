@@ -114,15 +114,19 @@ class NativeHudEncoder(
         }
 
         override fun drawLine(points: List<Pair<Float, Float>>, color: String, width: Float, alpha: Float) {
+            if (points.isEmpty()) return
             val c = Color.decode(color)
             g.color = Color(c.red, c.green, c.blue, (alpha * 255).toInt())
             g.stroke = BasicStroke(width * scale)
-            for (i in 0 until points.size - 1) {
-                val p1x = (points[i].first * scale).toInt()
-                val p1y = (points[i].second * scale).toInt()
-                val p2x = (points[i+1].first * scale).toInt()
-                val p2y = (points[i+1].second * scale).toInt()
-                g.drawLine(p1x, p1y, p2x, p2y)
+            if (points.size == 2) {
+                g.drawLine(
+                    (points[0].first * scale).toInt(), (points[0].second * scale).toInt(),
+                    (points[1].first * scale).toInt(), (points[1].second * scale).toInt()
+                )
+            } else {
+                val xPoints = points.map { (it.first * scale).toInt() }.toIntArray()
+                val yPoints = points.map { (it.second * scale).toInt() }.toIntArray()
+                g.drawPolyline(xPoints, yPoints, points.size)
             }
         }
 

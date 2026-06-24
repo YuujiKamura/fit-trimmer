@@ -29,6 +29,10 @@ class HudRenderer(val config: HudConfig) {
     private var cachedGraphW: Float = 0f
     private var cachedGraphH: Float = 0f
     private var cachedPts: List<Pair<Float, Float>> = emptyList()
+    private var cachedDrawPoints: List<FitParser.TelemetryPoint> = emptyList()
+    private var cachedMinAlt: Double = 0.0
+    private var cachedMaxAlt: Double = 100.0
+    private var cachedAltDiff: Double = 10.0
 
     fun renderFrame(
         canvas: HudCanvas, 
@@ -124,6 +128,11 @@ class HudRenderer(val config: HudConfig) {
         
         if (allPoints.size > 1) {
             val pts: List<Pair<Float, Float>>
+            val drawPoints: List<FitParser.TelemetryPoint>
+            var minAlt = 0.0
+            var maxAlt = 100.0
+            var altDiff = 10.0
+
             if (allPoints === cachedOriginalPoints &&
                 cx == cachedCx &&
                 eGy == cachedEGy &&
@@ -131,18 +140,34 @@ class HudRenderer(val config: HudConfig) {
                 graphH == cachedGraphH
             ) {
                 pts = cachedPts
+                drawPoints = cachedDrawPoints
+                minAlt = cachedMinAlt
+                maxAlt = cachedMaxAlt
+                altDiff = cachedAltDiff
             } else {
                 val altitudes = allPoints.map { it.elevation }
-                var minAlt = altitudes.firstOrNull() ?: 0.0
-                var maxAlt = altitudes.firstOrNull() ?: 100.0
+                minAlt = altitudes.firstOrNull() ?: 0.0
+                maxAlt = altitudes.firstOrNull() ?: 100.0
                 for (alt in altitudes) {
                     if (alt < minAlt) minAlt = alt
                     if (alt > maxAlt) maxAlt = alt
                 }
-                val altDiff = max(maxAlt - minAlt, 10.0)
+                altDiff = max(maxAlt - minAlt, 10.0)
 
-                pts = allPoints.mapIndexed { idx, pt ->
-                    val px = cx + (idx.toFloat() / (allPoints.size - 1)) * graphW
+                // Downsample to max 150 points for rendering performance
+                val maxRenderPoints = 150
+                if (allPoints.size <= maxRenderPoints) {
+                    drawPoints = allPoints
+                } else {
+                    val step = (allPoints.size - 1).toFloat() / (maxRenderPoints - 1)
+                    drawPoints = (0 until maxRenderPoints).map { i ->
+                        val index = (i * step).roundToInt().coerceIn(allPoints.indices)
+                        allPoints[index]
+                    }
+                }
+
+                pts = drawPoints.mapIndexed { idx, pt ->
+                    val px = cx + (idx.toFloat() / (drawPoints.size - 1)) * graphW
                     val py = (eGy + graphH - ((pt.elevation - minAlt) / altDiff) * graphH).toFloat()
                     px to py
                 }
@@ -153,11 +178,15 @@ class HudRenderer(val config: HudConfig) {
                 cachedGraphW = graphW
                 cachedGraphH = graphH
                 cachedPts = pts
+                cachedDrawPoints = drawPoints
+                cachedMinAlt = minAlt
+                cachedMaxAlt = maxAlt
+                cachedAltDiff = altDiff
             }
 
             // Draw colored terrain polygon segments
             for (i in 0 until pts.size - 1) {
-                val grade = allPoints[i].grade
+                val grade = drawPoints[i].grade
                 val segColor = when {
                     grade < -4.0 -> "#3b82f6" // Blue
                     grade < 1.0 -> "#10b981"  // Green
@@ -187,19 +216,20 @@ class HudRenderer(val config: HudConfig) {
                 currentIdx = -currentIdx - 1
             }
             currentIdx = currentIdx.coerceIn(allPoints.indices)
-            if (currentIdx in pts.indices) {
-                val currX = pts[currentIdx].first
-                val currY = pts[currentIdx].second
-                // Vertical guide line
-                canvas.drawLine(listOf(currX to eGy, currX to eGy + graphH), "#ffffff", 1f, alpha = 0.3f)
-                // Red pin triangle pointing to the current position
-                val pinPoly = listOf(
-                    currX - 8f to currY - 8f,
-                    currX + 8f to currY - 8f,
-                    currX to currY
-                )
-                canvas.drawPolygon(pinPoly, "#ef4444", alpha = 1.0f)
-            }
+
+            val progress = currentIdx.toFloat() / (allPoints.size - 1)
+            val currX = cx + progress * graphW
+            val currY = (eGy + graphH - ((telemetry.elevation - minAlt) / altDiff) * graphH).toFloat()
+
+            // Vertical guide line
+            canvas.drawLine(listOf(currX to eGy, currX to eGy + graphH), "#ffffff", 1f, alpha = 0.3f)
+            // Red pin triangle pointing to the current position
+            val pinPoly = listOf(
+                currX - 8f to currY - 8f,
+                currX + 8f to currY - 8f,
+                currX to currY
+            )
+            canvas.drawPolygon(pinPoly, "#ef4444", alpha = 1.0f)
 
             // Start/End Elevation Markers and Labels
             val startPt = pts.first()
