@@ -50,6 +50,30 @@ fun findFfmpegPath(): String {
     return "ffmpeg"
 }
 
+private fun getSegmentDuration(ffmpegPath: String, file: File): Double {
+    try {
+        val pb = ProcessBuilder(ffmpegPath, "-i", file.absolutePath)
+        pb.redirectErrorStream(true)
+        val p = pb.start()
+        val output = p.inputStream.bufferedReader().readText()
+        p.waitFor()
+        
+        val durRegex = Regex("""Duration:\s*(\d+):(\d+):(\d+)\.(\d+)""")
+        val durMatch = durRegex.find(output)
+        if (durMatch != null) {
+            val h = durMatch.groupValues[1].toInt()
+            val m = durMatch.groupValues[2].toInt()
+            val s = durMatch.groupValues[3].toInt()
+            val msVal = durMatch.groupValues[4]
+            val msDouble = msVal.toDouble() / java.lang.Math.pow(10.0, msVal.length.toDouble())
+            return h * 3600.0 + m * 60.0 + s.toDouble() + msDouble
+        }
+    } catch (e: Exception) {
+        e.printStackTrace()
+    }
+    return 60.0
+}
+
 class NativeHudEncoder(
     val settings: HudSettings, 
     val onProgress: (Float, String) -> Unit = { _, _ -> },
@@ -293,7 +317,14 @@ class NativeHudEncoder(
         val jobDir = File(workDir, "job_$jobHash")
         if (!jobDir.exists()) jobDir.mkdirs()
 
-        val chunkSizeSeconds = 60
+        // Clean up any stray temp files in the job directory
+        jobDir.listFiles { _, name -> name.endsWith(".tmp") }?.forEach {
+            try {
+                it.delete()
+                println("🧹 Deleted stray temp file: ${it.name}")
+            } catch (e: Exception) {}
+        }
+
         val existingParts = jobDir.listFiles { _, name -> name.matches(Regex("part_\\d{4}\\.ts")) }?.sortedBy { it.name } ?: emptyList()
         var resumePartIndex = existingParts.size
         if (resumePartIndex > 0) {
@@ -306,7 +337,21 @@ class NativeHudEncoder(
                 e.printStackTrace()
             }
         }
-        var resumeSeconds = resumePartIndex * chunkSizeSeconds
+
+        var resumeSeconds = 0
+        var ffmpegStartSeconds = 0.0
+        if (resumePartIndex > 0) {
+            val completedParts = existingParts.take(resumePartIndex)
+            var totalDuration = 0.0
+            for (partFile in completedParts) {
+                val duration = getSegmentDuration(ffmpegPath, partFile)
+                totalDuration += duration
+                println("DEBUG: Segment ${partFile.name} duration: $duration s")
+            }
+            resumeSeconds = totalDuration.toInt()
+            ffmpegStartSeconds = totalDuration
+            println("🔄 Calculated accurate resume offset: ${formatDuration(resumeSeconds)} ($ffmpegStartSeconds s) from $resumePartIndex completed chunks")
+        }
         
         if (resumeSeconds > 0 && resumeSeconds < videoDurationSeconds) {
             println("🔄 RESUMING encode from chunk $resumePartIndex (${formatDuration(resumeSeconds)} / ${formatDuration(videoDurationSeconds)})")
@@ -324,7 +369,7 @@ class NativeHudEncoder(
                 Thread.sleep(100)
             }
             
-            val remainingDuration = videoDurationSeconds - resumeSeconds
+            val remainingDuration = videoDurationSeconds - ffmpegStartSeconds
             
             val pbArgs = mutableListOf<String>()
             pbArgs.add(ffmpegPath)
@@ -346,7 +391,7 @@ class NativeHudEncoder(
                 pbArgs.add(hwaccel)
             }
             pbArgs.add("-ss")
-            pbArgs.add(resumeSeconds.toString())
+            pbArgs.add(ffmpegStartSeconds.toString())
             pbArgs.add("-t")
             pbArgs.add(remainingDuration.toString())
             pbArgs.add("-i")
