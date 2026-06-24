@@ -3,6 +3,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -641,7 +642,7 @@ fun startGui(args: Array<String>) = application {
         MaterialTheme(colors = darkColors()) {
             Row(modifier = Modifier.fillMaxSize().background(Color(0xFF141416))) {
                 Column(
-                    modifier = Modifier.width(320.dp).fillMaxHeight().background(Color(0xFF111111))
+                    modifier = Modifier.width(320.dp).fillMaxHeight().background(Color(0xFF0D0D0E))
                         .verticalScroll(rememberScrollState()).padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
@@ -793,8 +794,9 @@ fun startGui(args: Array<String>) = application {
 
                     // 1. ENCODER SETUP Card
                     Card(
-                        backgroundColor = Color(0xFF1C1C1E),
+                        backgroundColor = Color(0xFF1C1C20),
                         shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, Color(0xFF2C2C30)),
                         elevation = 0.dp,
                         modifier = Modifier.fillMaxWidth()
                     ) {
@@ -812,8 +814,9 @@ fun startGui(args: Array<String>) = application {
                                 textStyle = TextStyle(color = Color.White, fontSize = 11.sp),
                                 singleLine = true,
                                 colors = TextFieldDefaults.outlinedTextFieldColors(
+                                    backgroundColor = Color(0xFF141416),
                                     focusedBorderColor = Color(0xFF0A84FF),
-                                    unfocusedBorderColor = Color(0xFF2C2C2E)
+                                    unfocusedBorderColor = Color(0xFF3A3A3C)
                                 )
                             )
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -825,8 +828,9 @@ fun startGui(args: Array<String>) = application {
                                     textStyle = TextStyle(color = Color.White, fontSize = 11.sp),
                                     singleLine = true,
                                     colors = TextFieldDefaults.outlinedTextFieldColors(
+                                        backgroundColor = Color(0xFF141416),
                                         focusedBorderColor = Color(0xFF0A84FF),
-                                        unfocusedBorderColor = Color(0xFF2C2C2E)
+                                        unfocusedBorderColor = Color(0xFF3A3A3C)
                                     )
                                 )
                                 Button(
@@ -848,8 +852,9 @@ fun startGui(args: Array<String>) = application {
                                     textStyle = TextStyle(color = Color.White, fontSize = 11.sp),
                                     singleLine = true,
                                     colors = TextFieldDefaults.outlinedTextFieldColors(
+                                        backgroundColor = Color(0xFF141416),
                                         focusedBorderColor = Color(0xFF0A84FF),
-                                        unfocusedBorderColor = Color(0xFF2C2C2E)
+                                        unfocusedBorderColor = Color(0xFF3A3A3C)
                                     )
                                 )
                                 Button(
@@ -871,8 +876,9 @@ fun startGui(args: Array<String>) = application {
                                     textStyle = TextStyle(color = Color.White, fontSize = 11.sp),
                                     singleLine = true,
                                     colors = TextFieldDefaults.outlinedTextFieldColors(
+                                        backgroundColor = Color(0xFF141416),
                                         focusedBorderColor = Color(0xFF0A84FF),
-                                        unfocusedBorderColor = Color(0xFF2C2C2E)
+                                        unfocusedBorderColor = Color(0xFF3A3A3C)
                                     )
                                 )
                                 Button(
@@ -888,7 +894,8 @@ fun startGui(args: Array<String>) = application {
                              Row(
                                  modifier = Modifier
                                      .fillMaxWidth()
-                                     .background(Color(0xFF2C2C2E), shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                                     .background(Color(0xFF141416), shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                                     .border(1.dp, Color(0xFF2C2C30), shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
                                      .clickable { moveOutputToSource = !moveOutputToSource }
                                      .padding(horizontal = 10.dp, vertical = 8.dp),
                                  horizontalArrangement = Arrangement.SpaceBetween,
@@ -917,8 +924,9 @@ fun startGui(args: Array<String>) = application {
                     // 3. ENCODE Actions / Progress Monitor
                     if (isEncoding) {
                         Card(
-                            backgroundColor = Color(0xFF1C1C1E),
+                            backgroundColor = Color(0xFF1C1C20),
                             shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, Color(0xFF2C2C30)),
                             elevation = 0.dp,
                             modifier = Modifier.fillMaxWidth()
                         ) {
@@ -993,8 +1001,9 @@ fun startGui(args: Array<String>) = application {
 
                     // 4. HUD LAYOUT CONFIG Card
                     Card(
-                        backgroundColor = Color(0xFF1C1C1E),
+                        backgroundColor = Color(0xFF1C1C20),
                         shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, Color(0xFF2C2C30)),
                         elevation = 0.dp,
                         modifier = Modifier.fillMaxWidth()
                     ) {
