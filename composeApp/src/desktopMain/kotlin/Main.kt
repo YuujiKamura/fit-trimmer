@@ -1,5 +1,6 @@
 import io.github.kdroidfilter.composemediaplayer.rememberVideoPlayerState
 import io.github.kdroidfilter.composemediaplayer.VideoPlayerSurface
+import io.github.vinceglb.filekit.PlatformFile
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -140,8 +141,9 @@ suspend fun extractPreviewFrame(
     }
 }
 
-suspend fun getVideoDuration(ffmpegPath: String, videoPath: String): Long? = withContext(Dispatchers.IO) {
+suspend fun getVideoDuration(videoPath: String): Long? = withContext(Dispatchers.IO) {
     try {
+        val ffmpegPath = fit.findFfmpegPath()
         val pbDur = ProcessBuilder(ffmpegPath, "-i", videoPath)
         pbDur.redirectErrorStream(true)
         val pDur = pbDur.start()
@@ -158,7 +160,9 @@ suspend fun getVideoDuration(ffmpegPath: String, videoPath: String): Long? = wit
                 val m = durMatch.groupValues[2].toInt()
                 val s = durMatch.groupValues[3].toInt()
                 val ms = durMatch.groupValues[4].padEnd(3, '0').take(3).toInt()
-                return@withContext (h * 3600 + m * 60 + s) * 1000L + ms
+                val dur = (h * 3600 + m * 60 + s) * 1000L + ms
+                println("DEBUG: getVideoDuration (FFmpeg) success duration=$dur")
+                return@withContext dur
             }
         } finally {
             handle?.dispose()
@@ -170,6 +174,7 @@ suspend fun getVideoDuration(ffmpegPath: String, videoPath: String): Long? = wit
     } catch (e: kotlinx.coroutines.CancellationException) {
         throw e
     } catch (e: Exception) {
+        println("DEBUG: Exception during video duration parse (FFmpeg): ${e.message}")
         e.printStackTrace()
     }
     null
@@ -178,6 +183,7 @@ suspend fun getVideoDuration(ffmpegPath: String, videoPath: String): Long? = wit
 suspend fun getVideoStartUtc(videoPath: String): String? = withContext(Dispatchers.IO) {
     try {
         val videoFile = File(videoPath)
+        println("DEBUG: getVideoStartUtc for path: $videoPath, length=${videoFile.length()}")
         if (videoFile.exists()) {
             ensureActive()
             val parser = mp4.Mp4Parser()
@@ -196,6 +202,7 @@ suspend fun getVideoStartUtc(videoPath: String): String? = withContext(Dispatche
                     if (read == -1) break
                     bytesRead += read
                 }
+                println("DEBUG: getVideoStartUtc head bytesRead: $bytesRead")
                 val headBytes = if (bytesRead == buf.size) buf else buf.copyOf(bytesRead)
                 meta = parser.parse(headBytes)
             }
@@ -204,6 +211,7 @@ suspend fun getVideoStartUtc(videoPath: String): String? = withContext(Dispatche
             // 2. Scan tail using native seek if mvhd was not found in head
             if (meta == null && videoFile.length() > scanSize) {
                 val tailOffset = videoFile.length() - scanSize
+                println("DEBUG: getVideoStartUtc tail scanning at tailOffset: $tailOffset")
                 java.io.RandomAccessFile(videoFile, "r").use { raf ->
                     raf.seek(tailOffset)
                     val buf = ByteArray(scanSize)
@@ -214,6 +222,7 @@ suspend fun getVideoStartUtc(videoPath: String): String? = withContext(Dispatche
                         if (read == -1) break
                         bytesRead += read
                     }
+                    println("DEBUG: getVideoStartUtc tail bytesRead: $bytesRead")
                     val tailBytes = if (bytesRead == buf.size) buf else buf.copyOf(bytesRead)
                     meta = parser.parse(tailBytes)
                 }
@@ -221,8 +230,14 @@ suspend fun getVideoStartUtc(videoPath: String): String? = withContext(Dispatche
             
             if (meta != null) {
                 val unixStart = meta!!.creationTimeSeconds - 2082844800L
-                return@withContext java.time.Instant.ofEpochSecond(unixStart).toString()
+                val startUtc = java.time.Instant.ofEpochSecond(unixStart).toString()
+                println("DEBUG: getVideoStartUtc success meta duration=${meta!!.duration}, startUtc=$startUtc")
+                return@withContext startUtc
+            } else {
+                println("DEBUG: getVideoStartUtc failed to parse metadata (meta is null)")
             }
+        } else {
+            println("DEBUG: getVideoStartUtc file does not exist")
         }
     } catch (e: kotlinx.coroutines.CancellationException) {
         throw e
@@ -345,6 +360,9 @@ fun startGui(args: Array<String>) = application {
     )
 
     val playerState = rememberVideoPlayerState()
+    LaunchedEffect(Unit) {
+        playerState.volume = 0f
+    }
 
     var settings by remember { mutableStateOf(initialCache?.settings ?: HudSettings()) }
     var fitPath by remember { mutableStateOf(initialCache?.fitPath ?: "") }
@@ -639,6 +657,7 @@ fun startGui(args: Array<String>) = application {
 
     LaunchedEffect(playerState.isPlaying) {
         isPlaying = playerState.isPlaying
+        println("DEBUG: PlayerState isPlaying state changed: isPlaying=${playerState.isPlaying}")
     }
 
     LaunchedEffect(fitPath) {
@@ -727,8 +746,25 @@ fun startGui(args: Array<String>) = application {
 
     LaunchedEffect(playerState.sliderPos, playerState.metadata.duration) {
         val durationMs = playerState.metadata.duration ?: 0L
-        videoLengthMs = durationMs
-        videoCurrentTimeMs = ((playerState.sliderPos / 1000f) * durationMs).toLong()
+        if (durationMs > 0L) {
+            videoLengthMs = durationMs
+        }
+        val currentDuration = if (videoLengthMs > 0L) videoLengthMs else durationMs
+        videoCurrentTimeMs = ((playerState.sliderPos / 1000f) * currentDuration).toLong()
+        println("DEBUG: PlayerState durationMs=$durationMs, videoLengthMs=$videoLengthMs, sliderPos=${playerState.sliderPos}, videoCurrentTimeMs=$videoCurrentTimeMs, isPlaying=${playerState.isPlaying}")
+    }
+
+    LaunchedEffect(playerState.error) {
+        playerState.error?.let { err ->
+            println("DEBUG: VideoPlayerState error: $err")
+        }
+    }
+
+    LaunchedEffect(playerState.volume, playerState.isPlaying) {
+        if (playerState.volume != 0f) {
+            playerState.volume = 0f
+            println("DEBUG: Enforced playerState.volume = 0f on state change")
+        }
     }
 
     LaunchedEffect(videoPath) {
@@ -740,12 +776,23 @@ fun startGui(args: Array<String>) = application {
 
         if (videoPath.isNotEmpty() && File(videoPath).exists()) {
             val targetVideoPath = videoPath
-            val fileUri = File(targetVideoPath).toURI().toASCIIString()
-            playerState.openUri(fileUri)
+            playerState.openUri(targetVideoPath)
+            playerState.volume = 0f
             
             withContext(Dispatchers.IO) {
                 try {
+                    val duration = getVideoDuration(targetVideoPath)
+                    println("DEBUG: LaunchedEffect(videoPath) duration result: $duration")
+                    duration?.let { dur ->
+                        withContext(Dispatchers.Main) {
+                            if (videoPath == targetVideoPath) {
+                                videoLengthMs = dur
+                            }
+                        }
+                    }
+
                     val startUtc = getVideoStartUtc(targetVideoPath)
+                    println("DEBUG: LaunchedEffect(videoPath) startUtc result: $startUtc")
                     startUtc?.let { utc ->
                         withContext(Dispatchers.Main) {
                             if (videoPath == targetVideoPath) {
