@@ -585,6 +585,42 @@ fun startGui(args: Array<String>) = application {
     ) {
         val textMeasurer = rememberTextMeasurer()
 
+        // Windows Taskbar Progress integration
+        val taskbar = remember {
+            try {
+                if (java.awt.Taskbar.isTaskbarSupported()) java.awt.Taskbar.getTaskbar() else null
+            } catch (e: Exception) {
+                null
+            }
+        }
+        val isProgressSupported = remember(taskbar) {
+            taskbar?.isSupported(java.awt.Taskbar.Feature.PROGRESS_VALUE_WINDOW) == true
+        }
+
+        LaunchedEffect(isEncoding, progress, isPaused, statusText) {
+            if (taskbar != null && isProgressSupported) {
+                try {
+                    if (isEncoding) {
+                        if (isPaused) {
+                            taskbar.setWindowProgressState(window, java.awt.Taskbar.State.PAUSED)
+                            val percent = (progress * 100).toInt().coerceIn(0, 100)
+                            taskbar.setWindowProgressValue(window, percent)
+                        } else if (statusText.contains("Merging", ignoreCase = true)) {
+                            taskbar.setWindowProgressState(window, java.awt.Taskbar.State.INDETERMINATE)
+                        } else {
+                            taskbar.setWindowProgressState(window, java.awt.Taskbar.State.NORMAL)
+                            val percent = (progress * 100).toInt().coerceIn(0, 100)
+                            taskbar.setWindowProgressValue(window, percent)
+                        }
+                    } else {
+                        taskbar.setWindowProgressState(window, java.awt.Taskbar.State.OFF)
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        }
+
         MaterialTheme(colors = darkColors()) {
             Row(modifier = Modifier.fillMaxSize().background(Color(0xFF141416))) {
                 Column(
