@@ -1036,7 +1036,12 @@ fun startGui(args: Array<String>) = application {
                                       .fillMaxWidth()
                                       .background(Color(0xFF141416), shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
                                       .border(1.dp, Color(0xFF2C2C30), shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
-                                      .clickable { showLivePreview = !showLivePreview }
+                                      .clickable { 
+                                          showLivePreview = !showLivePreview 
+                                          if (!showLivePreview) {
+                                              encodingPreviewImage = null
+                                          }
+                                      }
                                       .padding(horizontal = 10.dp, vertical = 8.dp),
                                   horizontalArrangement = Arrangement.SpaceBetween,
                                   verticalAlignment = Alignment.CenterVertically
@@ -1047,7 +1052,12 @@ fun startGui(args: Array<String>) = application {
                                   }
                                   Switch(
                                       checked = showLivePreview,
-                                      onCheckedChange = { showLivePreview = it },
+                                      onCheckedChange = { 
+                                          showLivePreview = it 
+                                          if (!it) {
+                                              encodingPreviewImage = null
+                                          }
+                                      },
                                       colors = SwitchDefaults.colors(
                                           checkedThumbColor = Color.White,
                                           checkedTrackColor = Color(0xFF30D158),
