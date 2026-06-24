@@ -46,7 +46,12 @@ data class GuiPathCache(
     val videoPath: String,
     val videoStartUtc: String,
     val settings: HudSettings = HudSettings(),
-    val moveOutputToSource: Boolean = false
+    val moveOutputToSource: Boolean = false,
+    val showLivePreview: Boolean = true,
+    val windowX: Float? = null,
+    val windowY: Float? = null,
+    val windowWidth: Float? = null,
+    val windowHeight: Float? = null
 )
 
 fun pickFile(title: String, extensions: List<String>): String? {
@@ -111,11 +116,36 @@ fun showSystemNotification(title: String, message: String) {
 
 @OptIn(ExperimentalTextApi::class)
 fun startGui(args: Array<String>) = application {
-    var settings by remember { mutableStateOf(HudSettings()) }
-    var fitPath by remember { mutableStateOf("") }
-    var videoPath by remember { mutableStateOf("") }
+    val initialCache = remember {
+        try {
+            val cacheFile = File(System.getProperty("user.home"), ".fittrimmer_gui_cache.json")
+            if (cacheFile.exists()) {
+                val content = cacheFile.readText()
+                kotlinx.serialization.json.Json { ignoreUnknownKeys = true }.decodeFromString<GuiPathCache>(content)
+            } else null
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    val windowState = rememberWindowState(
+        position = if (initialCache?.windowX != null && initialCache.windowY != null) {
+            androidx.compose.ui.window.WindowPosition(initialCache.windowX.dp, initialCache.windowY.dp)
+        } else {
+            androidx.compose.ui.window.WindowPosition.PlatformDefault
+        },
+        size = androidx.compose.ui.unit.DpSize(
+            width = (initialCache?.windowWidth ?: 1400f).dp,
+            height = (initialCache?.windowHeight ?: 900f).dp
+        )
+    )
+
+    var settings by remember { mutableStateOf(initialCache?.settings ?: HudSettings()) }
+    var fitPath by remember { mutableStateOf(initialCache?.fitPath ?: "") }
+    var videoPath by remember { mutableStateOf(initialCache?.videoPath ?: "") }
     var outputDir by remember { mutableStateOf(System.getProperty("user.home") + File.separator + "Downloads") }
-    var videoStartUtc by remember { mutableStateOf("2026-06-21T02:09:49Z") }
+    var videoStartUtc by remember { mutableStateOf(initialCache?.videoStartUtc ?: "2026-06-21T02:09:49Z") }
     var isEncoding by remember { mutableStateOf(false) }
     var isPaused by remember { mutableStateOf(false) }
     var isCanceled by remember { mutableStateOf(false) }
@@ -124,7 +154,7 @@ fun startGui(args: Array<String>) = application {
     var encodingPreviewImage by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
     var statusText by remember { mutableStateOf("") }
     var hudSettingsExpanded by remember { mutableStateOf(false) }
-    var isLoaded by remember { mutableStateOf(false) }
+    var isLoaded by remember { mutableStateOf(true) }
 
     // C Drive Monitor State
     var cDriveFreeSpaceGB by remember { mutableStateOf(0.0) }
@@ -182,7 +212,8 @@ fun startGui(args: Array<String>) = application {
     }
     
     // Output Move State
-    var moveOutputToSource by remember { mutableStateOf(false) }
+    var moveOutputToSource by remember { mutableStateOf(initialCache?.moveOutputToSource ?: false) }
+    var showLivePreview by remember { mutableStateOf(initialCache?.showLivePreview ?: true) }
 
     // Telemetry state
     val vlcAvailable = false
@@ -407,38 +438,32 @@ fun startGui(args: Array<String>) = application {
         }
     }
 
-    // Load path cache on startup
-    LaunchedEffect(Unit) {
-        val cache = withContext(Dispatchers.IO) {
-            try {
-                val cacheFile = File(System.getProperty("user.home"), ".fittrimmer_gui_cache.json")
-                if (cacheFile.exists()) {
-                    val content = cacheFile.readText()
-                    kotlinx.serialization.json.Json { ignoreUnknownKeys = true }.decodeFromString<GuiPathCache>(content)
-                } else null
-            } catch (e: Exception) {
-                e.printStackTrace()
-                null
-            }
-        }
-        if (cache != null) {
-            fitPath = cache.fitPath
-            videoPath = cache.videoPath
-            videoStartUtc = cache.videoStartUtc
-            settings = cache.settings
-            moveOutputToSource = cache.moveOutputToSource
-        }
-        isLoaded = true
-    }
-
     // Save path cache when modified
-    LaunchedEffect(fitPath, videoPath, videoStartUtc, settings, moveOutputToSource) {
+    LaunchedEffect(fitPath, videoPath, videoStartUtc, settings, moveOutputToSource, showLivePreview, windowState.position, windowState.size) {
         if (isLoaded) {
+            kotlinx.coroutines.delay(500)
             withContext(Dispatchers.IO) {
                 try {
                     // Save GUI Cache to home directory (always, even if paths are empty)
                     val cacheFile = File(System.getProperty("user.home"), ".fittrimmer_gui_cache.json")
-                    val cache = GuiPathCache(fitPath, videoPath, videoStartUtc, settings, moveOutputToSource)
+                    val pos = windowState.position
+                    val (x, y) = if (pos is androidx.compose.ui.window.WindowPosition.Absolute) {
+                        pos.x.value to pos.y.value
+                    } else {
+                        null to null
+                    }
+                    val cache = GuiPathCache(
+                        fitPath = fitPath,
+                        videoPath = videoPath,
+                        videoStartUtc = videoStartUtc,
+                        settings = settings,
+                        moveOutputToSource = moveOutputToSource,
+                        showLivePreview = showLivePreview,
+                        windowX = x,
+                        windowY = y,
+                        windowWidth = windowState.size.width.value,
+                        windowHeight = windowState.size.height.value
+                    )
                     cacheFile.writeText(Json.encodeToString(cache))
                 } catch (e: Exception) {
                     e.printStackTrace()
@@ -600,7 +625,8 @@ fun startGui(args: Array<String>) = application {
                                             }
                                         },
                                         pauseSupplier = { isPaused },
-                                        cancelSupplier = { isCanceled }
+                                        cancelSupplier = { isCanceled },
+                                        showLivePreviewSupplier = { showLivePreview }
                                     )
                                     statusText = "✨ Finished Successfully!"
                                     if (args.contains("--auto-sample")) {
@@ -647,7 +673,7 @@ fun startGui(args: Array<String>) = application {
     Window(
         onCloseRequest = ::exitApplication,
         title = "HUD エンコーダー",
-        state = rememberWindowState(width = 1400.dp, height = 900.dp)
+        state = windowState
     ) {
         val textMeasurer = rememberTextMeasurer()
 
@@ -738,7 +764,8 @@ fun startGui(args: Array<String>) = application {
                                                 }
                                             },
                                             pauseSupplier = { isPaused },
-                                            cancelSupplier = { isCanceled }
+                                            cancelSupplier = { isCanceled },
+                                            showLivePreviewSupplier = { showLivePreview }
                                         )
                                         if (moveOutputToSource && !isCanceled) {
                                             statusText = "Moving file to source directory..."
@@ -825,7 +852,8 @@ fun startGui(args: Array<String>) = application {
                                             },
                                             maxDurationSeconds = 5,
                                             pauseSupplier = { isPaused },
-                                            cancelSupplier = { isCanceled }
+                                            cancelSupplier = { isCanceled },
+                                            showLivePreviewSupplier = { showLivePreview }
                                         )
                                         if (moveOutputToSource && !isCanceled) {
                                             statusText = "Moving file to source directory..."
@@ -992,6 +1020,34 @@ fun startGui(args: Array<String>) = application {
                                   Switch(
                                       checked = moveOutputToSource,
                                       onCheckedChange = { moveOutputToSource = it },
+                                      colors = SwitchDefaults.colors(
+                                          checkedThumbColor = Color.White,
+                                          checkedTrackColor = Color(0xFF30D158),
+                                          uncheckedThumbColor = Color(0xFF8E8E93),
+                                          uncheckedTrackColor = Color(0xFF1C1C1E)
+                                      )
+                                  )
+                              }
+
+                              Spacer(modifier = Modifier.height(4.dp))
+
+                              Row(
+                                  modifier = Modifier
+                                      .fillMaxWidth()
+                                      .background(Color(0xFF141416), shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                                      .border(1.dp, Color(0xFF2C2C30), shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                                      .clickable { showLivePreview = !showLivePreview }
+                                      .padding(horizontal = 10.dp, vertical = 8.dp),
+                                  horizontalArrangement = Arrangement.SpaceBetween,
+                                  verticalAlignment = Alignment.CenterVertically
+                              ) {
+                                  Column(modifier = Modifier.weight(1f)) {
+                                      Text("Show Live Preview", color = Color(0xFFF5F5F7), fontWeight = FontWeight.Medium, fontSize = 11.sp)
+                                      Text("Disable for slightly faster encoding", color = Color(0xFF8E8E93), fontSize = 9.sp)
+                                  }
+                                  Switch(
+                                      checked = showLivePreview,
+                                      onCheckedChange = { showLivePreview = it },
                                       colors = SwitchDefaults.colors(
                                           checkedThumbColor = Color.White,
                                           checkedTrackColor = Color(0xFF30D158),
@@ -1181,13 +1237,27 @@ fun startGui(args: Array<String>) = application {
                             } ?: Box(Modifier.fillMaxSize().background(Color.Black))
 
                             if (isEncoding) {
-                                encodingPreviewImage?.let { hudImg ->
-                                     Canvas(modifier = Modifier.fillMaxSize()) {
-                                         drawImage(
-                                             image = hudImg,
-                                             dstSize = IntSize(size.width.toInt(), size.height.toInt())
-                                         )
-                                     }
+                                if (showLivePreview) {
+                                    encodingPreviewImage?.let { hudImg ->
+                                         Canvas(modifier = Modifier.fillMaxSize()) {
+                                             drawImage(
+                                                 image = hudImg,
+                                                 dstSize = IntSize(size.width.toInt(), size.height.toInt())
+                                             )
+                                         }
+                                    }
+                                } else {
+                                    Box(
+                                        modifier = Modifier.fillMaxSize().background(Color(0xE0101012)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            "Live Preview Disabled\n(Encoding is running)",
+                                            color = Color.Gray,
+                                            fontSize = 14.sp,
+                                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                        )
+                                    }
                                 }
                                 
                                 Row(
@@ -1304,7 +1374,8 @@ suspend fun fireEncode(
     onFrame: (java.awt.image.BufferedImage) -> Unit,
     maxDurationSeconds: Int = -1,
     pauseSupplier: () -> Boolean = { false },
-    cancelSupplier: () -> Boolean = { false }
+    cancelSupplier: () -> Boolean = { false },
+    showLivePreviewSupplier: () -> Boolean = { true }
 ): String {
     println("DEBUG: fireEncode called with HudSettings: $s")
     return withContext(Dispatchers.IO) {
@@ -1326,7 +1397,8 @@ suspend fun fireEncode(
                 cancelSupplier = cancelSupplier,
                 customRenderer = { canvas, point, allPoints, pBuf, progressRatio ->
                     proxy.renderFrame(canvas, point, allPoints, pBuf, progressRatio)
-                }
+                },
+                showLivePreviewSupplier = showLivePreviewSupplier
             )
             val videoFile = File(video)
             val baseName = videoFile.name.replace(".mp4", "", ignoreCase = true).replace(".mov", "", ignoreCase = true)
