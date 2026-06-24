@@ -942,7 +942,29 @@ fun startGui(args: Array<String>) = application {
                         }
                     }
 
+                    Divider(color = Color(0xFF2C2C2E))
 
+                    // 4. HUD LAYOUT CONFIG Card
+                    Card(
+                        backgroundColor = Color(0xFF1C1C1E),
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                        elevation = 0.dp,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text("HUD LAYOUT CONFIG", color = Color(0xFFF5F5F7), fontWeight = FontWeight.SemiBold, fontSize = 12.sp, letterSpacing = 0.5.sp)
+                            ControlSlider("VAL SIZE", settings.valSize, 10f, 150f) { settings = settings.copy(valSize = it) }
+                            ControlSlider("TIGHTNESS", settings.tightness, -10f, 40f) { settings = settings.copy(tightness = it) }
+                            ControlSlider("SPACING", settings.spacing, 0f, 100f) { settings = settings.copy(spacing = it) }
+                            ControlSlider("X OFFSET", settings.xOffset, 0f, 500f) { settings = settings.copy(xOffset = it) }
+                            ControlSlider("Y OFFSET", settings.yOffset, 0f, 500f) { settings = settings.copy(yOffset = it) }
+                            ControlSlider("GRAPH H", settings.graphH, 20f, 300f) { settings = settings.copy(graphH = it) }
+                            ControlSlider("GRAPH W", settings.graphW, 50f, 800f) { settings = settings.copy(graphW = it) }
+                        }
+                    }
                 }
 
                 Box(modifier = Modifier.fillMaxSize().padding(40.dp), contentAlignment = Alignment.Center) {
