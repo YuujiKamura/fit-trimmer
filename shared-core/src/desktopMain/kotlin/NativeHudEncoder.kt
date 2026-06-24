@@ -387,6 +387,18 @@ class NativeHudEncoder(
             pb.redirectErrorStream(true)
             val process = pb.start()
             
+            val pid = try { process.pid() } catch (e: Exception) { null }
+            if (pid != null) {
+                kotlin.concurrent.thread(start = true, isDaemon = true) {
+                    try {
+                        ProcessBuilder("powershell", "-Command", "\$p = Get-Process -Id $pid -ErrorAction SilentlyContinue; if (\$p) { \$p.PriorityClass = 'High' }").start()
+                        println("DEBUG: Boosted ffmpeg process (PID=$pid) priority to High")
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+            }
+            
             val logStream = FileOutputStream(logFile, true) // Append mode for chunks
             val readerThread = Thread {
                 try {
