@@ -234,6 +234,37 @@ suspend fun getVideoStartUtc(videoPath: String): String? = withContext(Dispatche
                 println("DEBUG: getVideoStartUtc success meta duration=${meta!!.duration}, startUtc=$startUtc")
                 return@withContext startUtc
             } else {
+                println("DEBUG: getVideoStartUtc failed to parse metadata via Mp4Parser. Trying FFmpeg fallback...")
+                try {
+                    val ffmpegPath = fit.findFfmpegPath()
+                    val pb = ProcessBuilder(ffmpegPath, "-i", videoPath)
+                    pb.redirectErrorStream(true)
+                    val p = pb.start()
+                    val reader = p.inputStream.bufferedReader()
+                    var creationTimeStr: String? = null
+                    val creationTimeRegex = Regex("""creation_time\s*:\s*(\d{4}-\d{2}-\d{2}[\sT]\d{2}:\d{2}:\d{2})""")
+                    
+                    var line = reader.readLine()
+                    while (line != null) {
+                        val match = creationTimeRegex.find(line)
+                        if (match != null) {
+                            creationTimeStr = match.groupValues[1].trim()
+                            break
+                        }
+                        line = reader.readLine()
+                    }
+                    p.destroyForcibly()
+                    p.waitFor(1, java.util.concurrent.TimeUnit.SECONDS)
+                    
+                    if (creationTimeStr != null) {
+                        val formatted = creationTimeStr.replace(" ", "T") + "Z"
+                        println("DEBUG: getVideoStartUtc success via FFmpeg: $formatted")
+                        return@withContext formatted
+                    }
+                } catch (e: Exception) {
+                    println("DEBUG: Exception during FFmpeg creation_time fallback: ${e.message}")
+                    e.printStackTrace()
+                }
                 println("DEBUG: getVideoStartUtc failed to parse metadata (meta is null)")
             }
         } else {
@@ -289,7 +320,8 @@ suspend fun generateInitialThumbnail(ffmpegPath: String, videoPath: String): and
 
 @OptIn(ExperimentalTextApi::class)
 fun main(args: Array<String>) {
-    System.setProperty("compose.interop.blending", "true")
+    System.setProperty("skiko.renderApi", "OPENGL")
+    System.setProperty("compose.interop.blending", "false")
     System.setProperty("sun.java2d.noddraw", "true")
     System.setProperty("jna.library.path", "C:\\Program Files\\VideoLAN\\VLC")
     if (args.contains("--test")) {
@@ -338,7 +370,7 @@ fun startGui(args: Array<String>) = application {
         try {
             val cacheFile = File(System.getProperty("user.home"), ".fittrimmer_gui_cache.json")
             if (cacheFile.exists()) {
-                val content = cacheFile.readText()
+                val content = cacheFile.readText(kotlin.text.Charsets.UTF_8)
                 kotlinx.serialization.json.Json { ignoreUnknownKeys = true }.decodeFromString<GuiPathCache>(content)
             } else null
         } catch (e: Exception) {
@@ -668,8 +700,11 @@ fun startGui(args: Array<String>) = application {
                     val bytes = File(fitPath).readBytes()
                     val parser = FitParser(bytes)
                     parser.parse()
-                    telemetryPoints = parser.getTelemetry()
+                    val telemetry = parser.getTelemetry()
+                    println("DEBUG: FIT file parsed successfully. Points=${telemetry.size}")
+                    telemetryPoints = telemetry
                 } catch (e: Exception) {
+                    println("ERROR: Failed to parse FIT file: ${e.message}")
                     e.printStackTrace()
                     telemetryPoints = emptyList()
                 }
@@ -737,7 +772,7 @@ fun startGui(args: Array<String>) = application {
                         windowWidth = windowState.size.width.value,
                         windowHeight = windowState.size.height.value
                     )
-                    cacheFile.writeText(Json.encodeToString(cache))
+                    cacheFile.writeText(Json.encodeToString(cache), kotlin.text.Charsets.UTF_8)
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
@@ -762,6 +797,7 @@ fun startGui(args: Array<String>) = application {
     }
 
     LaunchedEffect(videoPath) {
+        val originalPathAtStart = videoPath
         // Initialize states immediately on video changes to prevent obsolete metadata leak (Requirement 2)
         videoLengthMs = 0L
         videoStartUtc = ""
@@ -807,7 +843,7 @@ fun startGui(args: Array<String>) = application {
                     println("DEBUG: LaunchedEffect(videoPath) duration result: $duration")
                     duration?.let { dur ->
                         withContext(Dispatchers.Main) {
-                            if (videoPath == targetVideoPath) {
+                            if (videoPath == originalPathAtStart) {
                                 videoLengthMs = dur
                             }
                         }
@@ -817,7 +853,7 @@ fun startGui(args: Array<String>) = application {
                     println("DEBUG: LaunchedEffect(videoPath) startUtc result: $startUtc")
                     startUtc?.let { utc ->
                         withContext(Dispatchers.Main) {
-                            if (videoPath == targetVideoPath) {
+                            if (videoPath == originalPathAtStart) {
                                 videoStartUtc = utc
                             }
                         }
@@ -1642,7 +1678,7 @@ fun startGui(args: Array<String>) = application {
                 }
 
                 Box(modifier = Modifier.fillMaxSize().background(Color.White).padding(40.dp), contentAlignment = Alignment.Center) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                         Box(
                             modifier = Modifier
                                 .aspectRatio(16f / 9f)
@@ -1920,7 +1956,7 @@ fun runCli(args: Array<String>) {
     val settings = try {
         val cacheFile = File(System.getProperty("user.home"), ".fittrimmer_gui_cache.json")
         if (cacheFile.exists()) {
-            val content = cacheFile.readText()
+            val content = cacheFile.readText(kotlin.text.Charsets.UTF_8)
             // Custom simplified parser to avoid dependencies
             val cache = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }.decodeFromString<GuiPathCache>(content)
             cache.settings
