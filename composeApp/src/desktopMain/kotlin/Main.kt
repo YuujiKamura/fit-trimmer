@@ -360,9 +360,6 @@ fun startGui(args: Array<String>) = application {
     )
 
     val playerState = rememberVideoPlayerState()
-    LaunchedEffect(Unit) {
-        playerState.volume = 0f
-    }
 
     var settings by remember { mutableStateOf(initialCache?.settings ?: HudSettings()) }
     var fitPath by remember { mutableStateOf(initialCache?.fitPath ?: "") }
@@ -657,6 +654,10 @@ fun startGui(args: Array<String>) = application {
 
     LaunchedEffect(playerState.isPlaying) {
         isPlaying = playerState.isPlaying
+        if (isPlaying) {
+            playerState.volume = 0f
+            println("DEBUG: Enforced volume = 0f on play start")
+        }
         println("DEBUG: PlayerState isPlaying state changed: isPlaying=${playerState.isPlaying}")
     }
 
@@ -757,13 +758,6 @@ fun startGui(args: Array<String>) = application {
     LaunchedEffect(playerState.error) {
         playerState.error?.let { err ->
             println("DEBUG: VideoPlayerState error: $err")
-        }
-    }
-
-    LaunchedEffect(playerState.volume, playerState.isPlaying) {
-        if (playerState.volume != 0f) {
-            playerState.volume = 0f
-            println("DEBUG: Enforced playerState.volume = 0f on state change")
         }
     }
 
