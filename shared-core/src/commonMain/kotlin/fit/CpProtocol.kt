@@ -18,6 +18,9 @@ sealed class CpCommand {
 
     @Serializable @kotlinx.serialization.SerialName("update_progress")
     data class UpdateProgress(val progress: Float, val isEncoding: Boolean) : CpCommand()
+
+    @Serializable @kotlinx.serialization.SerialName("reload_hud")
+    object ReloadHud : CpCommand()
 }
 
 @Serializable

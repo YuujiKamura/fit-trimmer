@@ -22,3 +22,43 @@ tmp_hud/
 
 # Deploy folder
 /public/
+
+# Temp directory & protocol cache
+.dispatch/
+.vscode/
+/rails-hub/
+/decompiled/
+/shared-core/temp_work/
+/composeApp/temp_work/
+
+# Custom layouts & parameters
+/composeApp/current_gui_config.json
+/composeApp/hud_params.json
+
+# Local scripts, temporary source versions, & metadata logs
+*.fit
+*.sqlite
+*.log
+*.txt
+*.jar
+*.py
+*.bat
+/composeApp/src/desktopMain/kotlin/Test.kt
+/Main_patched.kt
+/reconstructed_beautiful_main.kt
+/reconstructed_main.kt
+/recovered_main.txt
+/recovered_main_simulated.kt
+/recovered_main_simulated_full.kt
+/test_json.kt
+
+# Generated charts, visuals, & frames
+*.png
+*.jpg
+*.jpeg
+
+# Temporary timeline and incident logs
+*TIMELINE.md
+*LOG.md
+YESTERDAY*.md
+
