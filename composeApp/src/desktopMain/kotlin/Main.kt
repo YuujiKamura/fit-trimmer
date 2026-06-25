@@ -136,6 +136,7 @@ fun startGui(args: Array<String>) = application {
     var appTempSpaceGB by viewModel::appTempSpaceGB
     val playerState = rememberVideoPlayerState()
     var composeWindow: java.awt.Window? by remember { mutableStateOf(null) }
+    var ignoreNextStartUtcClear by remember { mutableStateOf(false) }
 
     // Dynamic Hud Proxy & Hot Reload State
     val hudConfig = remember(settings) {
@@ -392,7 +393,10 @@ fun startGui(args: Array<String>) = application {
         val originalPathAtStart = videoPath
         // Initialize states immediately on video changes to prevent obsolete metadata leak (Requirement 2)
         videoLengthMs = 0L
-        videoStartUtc = ""
+        if (!ignoreNextStartUtcClear) {
+            videoStartUtc = ""
+        }
+        ignoreNextStartUtcClear = false
 
         if (videoPath.isNotEmpty() && File(videoPath).exists()) {
             val originalFile = File(videoPath)
@@ -455,6 +459,17 @@ fun startGui(args: Array<String>) = application {
         }
     }
 
+    LaunchedEffect(playerState) {
+        val winPlayer = playerState as? io.github.kdroidfilter.composemediaplayer.windows.WindowsVideoPlayerState
+        if (winPlayer != null) {
+            snapshotFlow { winPlayer.durationSeconds }.collect { durSec ->
+                if (durSec > 0.0 && videoLengthMs == 0L) {
+                    videoLengthMs = (durSec * 1000).toLong()
+                }
+            }
+        }
+    }
+
     val cp = remember {
         ControlPlane(
             onCommand = { cmd ->
@@ -468,7 +483,12 @@ fun startGui(args: Array<String>) = application {
                                 is CpCommand.SetLayout -> settings = cmd.settings
                                 is CpCommand.SetFiles -> {
                                     fitPath = cmd.fit
-                                    videoPath = cmd.video
+                                    if (videoPath != cmd.video) {
+                                        if (cmd.startUtc != null) {
+                                            ignoreNextStartUtcClear = true
+                                        }
+                                        videoPath = cmd.video
+                                    }
                                     cmd.startUtc?.let { videoStartUtc = it }
                                 }
                                 is CpCommand.Fire -> {
