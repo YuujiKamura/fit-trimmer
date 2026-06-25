@@ -56,6 +56,7 @@ fun TelemetryTimelineGraph(
     telemetryPoints: List<FitParser.TelemetryPoint>,
     trimStartSeconds: Double,
     trimEndSeconds: Double,
+    splitPoints: List<Double>,
     videoCurrentTimeMs: Long,
     onTrimStartChange: (Double) -> Unit,
     onTrimEndChange: (Double) -> Unit,
@@ -515,6 +516,20 @@ fun TelemetryTimelineGraph(
                         radius = 4.dp.toPx(),
                         center = Offset(xEnd, h / 2f)
                     )
+
+                    // 7.5. Draw Split Points (Purple dashed lines)
+                    splitPoints.forEach { splitSec ->
+                        if (splitSec in trimStartSeconds..trimEndSeconds) {
+                            val xSplit = ((splitSec / videoDurationSec) * w).toFloat()
+                            drawLine(
+                                color = Color(0xFFAF52DE), // System Purple
+                                start = Offset(xSplit, 0f),
+                                end = Offset(xSplit, h),
+                                strokeWidth = 2.dp.toPx(),
+                                pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
+                            )
+                        }
+                    }
 
                     // 8. Draw Playhead (Blue)
                     val xPlayhead = ((videoCurrentTimeMs / 1000.0 / videoDurationSec) * w).toFloat()

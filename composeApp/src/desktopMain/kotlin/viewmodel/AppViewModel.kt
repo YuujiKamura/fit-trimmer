@@ -21,6 +21,7 @@ class AppViewModel(
                 _videoPath = value
                 trimStartSeconds = 0.0
                 trimEndSeconds = 0.0
+                splitPoints = emptyList()
             }
         }
 
@@ -30,6 +31,37 @@ class AppViewModel(
     // Trim States
     var trimStartSeconds by mutableStateOf(initialCache?.trimStartSeconds ?: 0.0)
     var trimEndSeconds by mutableStateOf(initialCache?.trimEndSeconds ?: 0.0)
+
+    var splitPoints by mutableStateOf<List<Double>>(initialCache?.splitPoints ?: emptyList())
+
+    fun addSplitPoint(seconds: Double) {
+        if (seconds > trimStartSeconds && seconds < trimEndSeconds && seconds !in splitPoints) {
+            splitPoints = (splitPoints + seconds).sorted()
+        }
+    }
+
+    fun removeSplitPoint(seconds: Double) {
+        splitPoints = splitPoints.filter { it != seconds }
+    }
+
+    fun clearSplitPoints() {
+        splitPoints = emptyList()
+    }
+
+    fun getSplitRanges(): List<Pair<Double, Double>> {
+        val totalSec = videoLengthMs / 1000.0
+        val end = if (trimEndSeconds <= 0.0 || trimEndSeconds > totalSec) totalSec else trimEndSeconds
+        val start = trimStartSeconds.coerceIn(0.0, totalSec)
+        val activeSplits = splitPoints.filter { it > start && it < end }.sorted()
+        val ranges = mutableListOf<Pair<Double, Double>>()
+        var currentStart = start
+        for (split in activeSplits) {
+            ranges.add(Pair(currentStart, split))
+            currentStart = split
+        }
+        ranges.add(Pair(currentStart, end))
+        return ranges
+    }
     
     // Time Alignment State
     val timeOffsetState = TimeAlignmentState(
