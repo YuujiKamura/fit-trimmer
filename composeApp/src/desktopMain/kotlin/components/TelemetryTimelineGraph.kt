@@ -4,6 +4,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Card
@@ -230,6 +231,33 @@ fun TelemetryTimelineGraph(
                     .clip(RoundedCornerShape(6.dp))
                     .background(Color(0xFFF2F2F7))
                     .border(1.dp, Color(0xFFE5E5EA), RoundedCornerShape(6.dp))
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onTap = { offset ->
+                                val vLength = currentVideoLengthMs
+                                val vDuration = vLength / 1000.0
+                                if (vDuration > 0) {
+                                    val w = size.width.toFloat()
+                                    val xStart = (currentTrimStartSeconds / vDuration) * w
+                                    val xEnd = (currentTrimEndSeconds / vDuration) * w
+                                    val xPlayhead = (currentVideoCurrentTimeMs / 1000.0 / vDuration) * w
+                                    
+                                    val threshold = 20.dp.toPx()
+                                    val tappedHandle = when {
+                                        kotlin.math.abs(offset.x - xStart) < threshold -> DragHandle.TRIM_START
+                                        kotlin.math.abs(offset.x - xEnd) < threshold -> DragHandle.TRIM_END
+                                        kotlin.math.abs(offset.x - xPlayhead) < threshold -> DragHandle.PLAYHEAD
+                                        else -> null
+                                    }
+                                    
+                                    if (tappedHandle == null) {
+                                        val ratio = (offset.x / w).coerceIn(0f, 1f)
+                                        currentOnSeek((ratio * vLength).toLong())
+                                    }
+                                }
+                            }
+                        )
+                    }
                     .pointerInput(Unit) {
                         detectDragGestures(
                             onDragStart = { offset ->

@@ -1,0 +1,147 @@
+diff --git a/mediaplayer/src/jvmMain/native/windows/AudioManager.cpp b/mediaplayer/src/jvmMain/native/windows/AudioManager.cpp
+index 57179b0..9016e96 100644
+--- a/mediaplayer/src/jvmMain/native/windows/AudioManager.cpp
++++ b/mediaplayer/src/jvmMain/native/windows/AudioManager.cpp
+@@ -91,7 +91,7 @@ private:
+ // number of output frames written, or -1 on EOF/fatal error.
+ int FeedOneSample(VideoPlayerInstance* inst, IMFSourceReader* audioReader,
+                   UINT32 engineBufferFrames, UINT32 blockAlign, UINT32 channels,
+-                  WORD formatTag, WORD bitsPerSample, float speed)
++                  WORD formatTag, WORD bitsPerSample, float speed, bool bIgnoreSeek = false)
+ {
+     UINT32 framesPadding = 0;
+     if (FAILED(inst->pAudioClient->GetCurrentPadding(&framesPadding))) return -1;
+@@ -122,7 +122,7 @@ int FeedOneSample(VideoPlayerInstance* inst, IMFSourceReader* audioReader,
+ 
+     // If a seek started while ReadSample was executing, the returned sample
+     // may be from the old position — drop it.
+-    if (inst->bSeekInProgress.load(std::memory_order_acquire)) return 0;
++    if (!bIgnoreSeek && inst->bSeekInProgress.load(std::memory_order_acquire)) return 0;
+ 
+     if (ts100n > 0) {
+         inst->llCurrentPosition.store(ts100n, std::memory_order_relaxed);
+@@ -144,9 +144,11 @@ int FeedOneSample(VideoPlayerInstance* inst, IMFSourceReader* audioReader,
+ 
+     UINT32 outputDone = 0;
+     const double fracPos = inst->resampleFracPos;
++    double nextFracPos = 0.0;
++    bool bReachedEnd = false;
+ 
+     while (outputDone < totalOutputFrames && inst->bAudioThreadRunning.load()) {
+-        if (inst->bSeekInProgress.load(std::memory_order_acquire)) break;
++        if (!bIgnoreSeek && inst->bSeekInProgress.load(std::memory_order_acquire)) break;
+ 
+         UINT32 wantFrames = (std::min)(totalOutputFrames - outputDone, framesFree);
+         if (wantFrames == 0) {
+@@ -171,6 +173,8 @@ int FeedOneSample(VideoPlayerInstance* inst, IMFSourceReader* audioReader,
+             UINT32 actualWritten = 0;
+             for (UINT32 i = 0; i < wantFrames; ++i) {
+                 if (localFrac >= srcFrames) {
++                    nextFracPos = localFrac - srcFrames;
++                    bReachedEnd = true;
+                     memset(dstData + i * blockAlign, 0, (wantFrames - i) * blockAlign);
+                     actualWritten = wantFrames;
+                     break;
+@@ -206,6 +210,35 @@ int FeedOneSample(VideoPlayerInstance* inst, IMFSourceReader* audioReader,
+         const float vol = inst->instanceVolume.load(std::memory_order_relaxed);
+         ApplyVolume(dstData, wantFrames, blockAlign, vol, formatTag, bitsPerSample);
+ 
++        // Calculate audio levels for meter display
++        float maxLeft = 0.0f;
++        float maxRight = 0.0f;
++        if (formatTag == WAVE_FORMAT_IEEE_FLOAT && bitsPerSample == 32) {
++            const float* s = reinterpret_cast<const float*>(dstData);
++            for (UINT32 i = 0; i < wantFrames; ++i) {
++                if (channels >= 2) {
++                    maxLeft = (std::max)(maxLeft, std::abs(s[i * channels + 0]));
++                    maxRight = (std::max)(maxRight, std::abs(s[i * channels + 1]));
++                } else if (channels == 1) {
++                    maxLeft = (std::max)(maxLeft, std::abs(s[i * channels + 0]));
++                    maxRight = maxLeft;
++                }
++            }
++        } else if (formatTag == WAVE_FORMAT_PCM && bitsPerSample == 16) {
++            const int16_t* s = reinterpret_cast<const int16_t*>(dstData);
++            for (UINT32 i = 0; i < wantFrames; ++i) {
++                if (channels >= 2) {
++                    maxLeft = (std::max)(maxLeft, std::abs(s[i * channels + 0]) / 32768.0f);
++                    maxRight = (std::max)(maxRight, std::abs(s[i * channels + 1]) / 32768.0f);
++                } else if (channels == 1) {
++                    maxLeft = (std::max)(maxLeft, std::abs(s[i * channels + 0]) / 32768.0f);
++                    maxRight = maxLeft;
++                }
++            }
++        }
++        inst->leftLevel.store(maxLeft, std::memory_order_relaxed);
++        inst->rightLevel.store(maxRight, std::memory_order_relaxed);
++
+         inst->pRenderClient->ReleaseBuffer(wantFrames, 0);
+ 
+         outputDone += wantFrames;
+@@ -216,8 +249,12 @@ int FeedOneSample(VideoPlayerInstance* inst, IMFSourceReader* audioReader,
+     }
+ 
+     if (needsResample) {
+-        double endPos = fracPos + outputDone * static_cast<double>(speed);
+-        inst->resampleFracPos = endPos - srcFrames;
++        if (bReachedEnd) {
++            inst->resampleFracPos = nextFracPos;
++        } else {
++            double endPos = fracPos + outputDone * static_cast<double>(speed);
++            inst->resampleFracPos = endPos - srcFrames;
++        }
+         if (inst->resampleFracPos < 0.0) inst->resampleFracPos = 0.0;
+     } else {
+         inst->resampleFracPos = 0.0;
+@@ -366,7 +403,7 @@ HRESULT PreFillAudioBuffer(VideoPlayerInstance* inst) {
+     UINT32 totalFed = 0;
+     for (int attempts = 0; attempts < 20 && totalFed < targetFrames; ++attempts) {
+         int fed = FeedOneSample(inst, audioReader, engineBufferFrames,
+-                                blockAlign, channels, formatTag, bitsPerSample, speed);
++                                blockAlign, channels, formatTag, bitsPerSample, speed, true);
+         if (fed < 0) break;
+         if (fed == 0) continue;
+         totalFed += fed;
+diff --git a/mediaplayer/src/jvmMain/native/windows/NativeVideoPlayer.cpp b/mediaplayer/src/jvmMain/native/windows/NativeVideoPlayer.cpp
+index 1f17d13..7247376 100644
+--- a/mediaplayer/src/jvmMain/native/windows/NativeVideoPlayer.cpp
++++ b/mediaplayer/src/jvmMain/native/windows/NativeVideoPlayer.cpp
+@@ -1051,6 +1051,13 @@ NATIVEVIDEOPLAYER_API HRESULT GetAudioVolume(const VideoPlayerInstance* pInstanc
+     return GetVolume(pInstance, volume);
+ }
+ 
++NATIVEVIDEOPLAYER_API HRESULT GetAudioLevels(const VideoPlayerInstance* pInstance, float* pLeftLevel, float* pRightLevel) {
++    if (!pInstance || !pLeftLevel || !pRightLevel) return OP_E_NOT_INITIALIZED;
++    *pLeftLevel = pInstance->leftLevel.load(std::memory_order_relaxed);
++    *pRightLevel = pInstance->rightLevel.load(std::memory_order_relaxed);
++    return S_OK;
++}
++
+ NATIVEVIDEOPLAYER_API HRESULT SetPlaybackSpeed(VideoPlayerInstance* pInstance, float speed) {
+     if (!pInstance) return OP_E_NOT_INITIALIZED;
+     if (pInstance->pHLSPlayer) return pInstance->pHLSPlayer->SetPlaybackSpeed(speed);
+diff --git a/mediaplayer/src/jvmMain/native/windows/NativeVideoPlayer.h b/mediaplayer/src/jvmMain/native/windows/NativeVideoPlayer.h
+index 9b155b0..fa7aa35 100644
+--- a/mediaplayer/src/jvmMain/native/windows/NativeVideoPlayer.h
++++ b/mediaplayer/src/jvmMain/native/windows/NativeVideoPlayer.h
+@@ -77,6 +77,7 @@ NATIVEVIDEOPLAYER_API HRESULT SetPlaybackState(VideoPlayerInstance* pInstance, B
+ NATIVEVIDEOPLAYER_API HRESULT ShutdownMediaFoundation();
+ NATIVEVIDEOPLAYER_API HRESULT SetAudioVolume(VideoPlayerInstance* pInstance, float volume);
+ NATIVEVIDEOPLAYER_API HRESULT GetAudioVolume(const VideoPlayerInstance* pInstance, float* volume);
++NATIVEVIDEOPLAYER_API HRESULT GetAudioLevels(const VideoPlayerInstance* pInstance, float* pLeftLevel, float* pRightLevel);
+ NATIVEVIDEOPLAYER_API HRESULT SetPlaybackSpeed(VideoPlayerInstance* pInstance, float speed);
+ NATIVEVIDEOPLAYER_API HRESULT GetPlaybackSpeed(const VideoPlayerInstance* pInstance, float* pSpeed);
+ NATIVEVIDEOPLAYER_API HRESULT GetVideoMetadata(const VideoPlayerInstance* pInstance, VideoMetadata* pMetadata);
+diff --git a/mediaplayer/src/jvmMain/native/windows/VideoPlayerInstance.h b/mediaplayer/src/jvmMain/native/windows/VideoPlayerInstance.h
+index 996f5ac..1b68e26 100644
+--- a/mediaplayer/src/jvmMain/native/windows/VideoPlayerInstance.h
++++ b/mediaplayer/src/jvmMain/native/windows/VideoPlayerInstance.h
+@@ -77,6 +77,8 @@ struct VideoPlayerInstance {
+     // ---- Playback control ----
+     std::atomic<float> instanceVolume{1.0f};
+     std::atomic<float> playbackSpeed{1.0f};
++    std::atomic<float> leftLevel{0.0f};
++    std::atomic<float> rightLevel{0.0f};
+     double resampleFracPos = 0.0; // audio thread only
+ 
+     // ---- Network / HLS ----
