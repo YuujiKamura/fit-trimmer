@@ -204,6 +204,9 @@ fun startGui(args: Array<String>) = application {
     val videoEndInstant by viewModel::videoEndInstant
     val isVideoInFitRange by viewModel::isVideoInFitRange
     val trimmedTelemetryPoints by viewModel::trimmedTelemetryPoints
+    
+    var trimStartSeconds by viewModel::trimStartSeconds
+    var trimEndSeconds by viewModel::trimEndSeconds
 
     val scope = rememberCoroutineScope()
 
@@ -360,6 +363,8 @@ fun startGui(args: Array<String>) = application {
                         settings = settings,
                         moveOutputToSource = moveOutputToSource,
                         showLivePreview = showLivePreview,
+                        trimStartSeconds = trimStartSeconds,
+                        trimEndSeconds = trimEndSeconds,
                         windowX = x,
                         windowY = y,
                         windowWidth = windowState.size.width.value,
@@ -476,6 +481,8 @@ fun startGui(args: Array<String>) = application {
                                                         encodingPreviewImage = bitmap
                                                     }
                                                 },
+                                                trimStartSeconds = trimStartSeconds,
+                                                trimEndSeconds = trimEndSeconds,
                                                 pauseSupplier = { isPaused },
                                                 cancelSupplier = { isCanceled },
                                                 showLivePreviewSupplier = { showLivePreview }
@@ -665,6 +672,8 @@ fun startGui(args: Array<String>) = application {
                                                     encodingPreviewImage = bitmap
                                                 }
                                             },
+                                            trimStartSeconds = trimStartSeconds,
+                                            trimEndSeconds = trimEndSeconds,
                                             pauseSupplier = { isPaused },
                                             cancelSupplier = { isCanceled },
                                             showLivePreviewSupplier = { showLivePreview }
@@ -748,6 +757,8 @@ fun startGui(args: Array<String>) = application {
                                                 }
                                             },
                                             maxDurationSeconds = 5,
+                                            trimStartSeconds = trimStartSeconds,
+                                            trimEndSeconds = trimEndSeconds,
                                             pauseSupplier = { isPaused },
                                             cancelSupplier = { isCanceled },
                                             showLivePreviewSupplier = { showLivePreview }
@@ -993,16 +1004,30 @@ fun startGui(args: Array<String>) = application {
                                       Text("FIT TIMELINE", color = Color(0xFF636366), fontWeight = FontWeight.Bold, fontSize = 9.sp)
                                       Text("$fitStartStr  ~\n$fitEndStr", color = Color(0xFF1C1C1E), fontSize = 11.sp)
                                   }
+                                  
+                                   val vStart = videoStartInstant
+                                   val vEnd = videoEndInstant
+                                   if (vStart != null && vEnd != null) {
+                                       val videoStartStr = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+                                           .withZone(java.time.ZoneId.systemDefault()).format(vStart)
+                                       val videoEndStr = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+                                           .withZone(java.time.ZoneId.systemDefault()).format(vEnd)
 
-                                  if (videoStartInstant != null && videoEndInstant != null) {
-                                      val videoStartStr = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
-                                          .withZone(java.time.ZoneId.systemDefault()).format(videoStartInstant)
-                                      val videoEndStr = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
-                                          .withZone(java.time.ZoneId.systemDefault()).format(videoEndInstant)
+                                       Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                           Text("VIDEO TIMELINE", color = Color(0xFF636366), fontWeight = FontWeight.Bold, fontSize = 9.sp)
+                                           Text("$videoStartStr  ~\n$videoEndStr", color = Color(0xFF1C1C1E), fontSize = 11.sp)
+                                       }
+                                      
+                                      val trimStartInstant = vStart.plusMillis((trimStartSeconds * 1000).toLong())
+                                      val trimEndInstant = vStart.plusMillis((trimEndSeconds * 1000).toLong())
+                                      val trimStartStr = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+                                          .withZone(java.time.ZoneId.systemDefault()).format(trimStartInstant)
+                                      val trimEndStr = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+                                          .withZone(java.time.ZoneId.systemDefault()).format(trimEndInstant)
 
                                       Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                          Text("VIDEO TIMELINE", color = Color(0xFF636366), fontWeight = FontWeight.Bold, fontSize = 9.sp)
-                                          Text("$videoStartStr  ~\n$videoEndStr", color = Color(0xFF1C1C1E), fontSize = 11.sp)
+                                          Text("TRIMMED TIMELINE", color = Color(0xFF2E7D32), fontWeight = FontWeight.Bold, fontSize = 9.sp)
+                                          Text("$trimStartStr  ~\n$trimEndStr", color = Color(0xFF1C1C1E), fontSize = 11.sp)
                                       }
 
                                       Spacer(modifier = Modifier.height(2.dp))
@@ -1040,6 +1065,17 @@ fun startGui(args: Array<String>) = application {
                     TimeAlignmentCard(
                         state = timeOffsetState
                     )
+
+                    // VIDEO TRIM RANGE Card
+                    if (videoLengthMs > 0) {
+                        VideoTrimCard(
+                            videoLengthMs = videoLengthMs,
+                            trimStartSeconds = trimStartSeconds,
+                            trimEndSeconds = trimEndSeconds,
+                            onTrimStartChange = { trimStartSeconds = it },
+                            onTrimEndChange = { trimEndSeconds = it }
+                        )
+                    }
 
                     // C-DRIVE SPACE MONITOR Card
                     Card(
@@ -1338,6 +1374,8 @@ suspend fun fireEncode(
     onProgress: (Float, String) -> Unit,
     onFrame: (java.awt.image.BufferedImage) -> Unit,
     maxDurationSeconds: Int = -1,
+    trimStartSeconds: Double = 0.0,
+    trimEndSeconds: Double = -1.0,
     pauseSupplier: () -> Boolean = { false },
     cancelSupplier: () -> Boolean = { false },
     showLivePreviewSupplier: () -> Boolean = { true }
@@ -1369,7 +1407,11 @@ suspend fun fireEncode(
             val baseName = videoFile.name.replace(".mp4", "", ignoreCase = true).replace(".mov", "", ignoreCase = true)
             val suffix = if (maxDurationSeconds > 0) "_TEST_HUD.mp4" else "_KMP_HUD.mp4"
             val output = File(outDir, baseName + suffix).absolutePath
-            encoder.encode(fit, video, output, startUtc, maxDurationSeconds = maxDurationSeconds)
+            encoder.encode(fit, video, output, startUtc, 
+                maxDurationSeconds = maxDurationSeconds,
+                trimStartSeconds = trimStartSeconds,
+                trimEndSeconds = trimEndSeconds
+            )
             output
         } catch (e: Exception) {
             e.printStackTrace()
@@ -1406,6 +1448,8 @@ fun runCli(args: Array<String>) {
     var output: String? = null
     var startUtc: String? = null
     var duration = -1
+    var trimStart = 0.0
+    var trimEnd = -1.0
 
     var i = 0
     while (i < args.size) {
@@ -1415,13 +1459,15 @@ fun runCli(args: Array<String>) {
             "--output" -> output = args.getOrNull(++i)
             "--video-start-utc" -> startUtc = args.getOrNull(++i)
             "--duration" -> duration = args.getOrNull(++i)?.toIntOrNull() ?: -1
+            "--trim-start" -> trimStart = args.getOrNull(++i)?.toDoubleOrNull() ?: 0.0
+            "--trim-end" -> trimEnd = args.getOrNull(++i)?.toDoubleOrNull() ?: -1.0
         }
         i++
     }
 
     if (fit == null || video == null || output == null || startUtc == null) {
         println("❌ Missing required arguments. Usage:")
-        println("fit-trimmer --fit <fit> --video <video> --output <output> --video-start-utc <startUtc> [--duration <duration>]")
+        println("fit-trimmer --fit <fit> --video <video> --output <output> --video-start-utc <startUtc> [--duration <duration>] [--trim-start <seconds>] [--trim-end <seconds>]")
         kotlin.system.exitProcess(1)
     }
 
@@ -1431,6 +1477,8 @@ fun runCli(args: Array<String>) {
     println("Output: $output")
     println("Start UTC: $startUtc")
     if (duration > 0) println("Duration Limit: ${duration}s")
+    if (trimStart > 0.0) println("Trim Start: ${trimStart}s")
+    if (trimEnd > 0.0) println("Trim End: ${trimEnd}s")
 
     // Load settings from GUI cache if available to respect user custom layout
     val settings = try {
@@ -1454,7 +1502,11 @@ fun runCli(args: Array<String>) {
                     print("\r$status")
                 }
             )
-            encoder.encode(fit, video, output, startUtc, maxDurationSeconds = duration)
+            encoder.encode(fit, video, output, startUtc, 
+                maxDurationSeconds = duration,
+                trimStartSeconds = trimStart,
+                trimEndSeconds = trimEnd
+            )
             println("\n✨ CLI Encode Finished Successfully!")
             kotlin.system.exitProcess(0)
         } catch (e: Exception) {
@@ -1539,6 +1591,79 @@ fun TimeAlignmentCard(
                         Text(label, fontSize = 9.sp)
                     }
                 }
+            }
+        }
+    }
+}
+
+@OptIn(androidx.compose.material.ExperimentalMaterialApi::class)
+@Composable
+fun VideoTrimCard(
+    videoLengthMs: Long,
+    trimStartSeconds: Double,
+    trimEndSeconds: Double,
+    onTrimStartChange: (Double) -> Unit,
+    onTrimEndChange: (Double) -> Unit
+) {
+    val totalSec = videoLengthMs / 1000.0
+    val range = trimStartSeconds.toFloat()..trimEndSeconds.toFloat()
+    
+    Card(
+        backgroundColor = Color.White,
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+        border = BorderStroke(1.dp, Color(0xFFE5E5EA)),
+        elevation = 1.dp,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text("VIDEO TRIM RANGE", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 0.5.sp)
+            
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text("Start:", color = Color(0xFF636366), fontSize = 9.sp)
+                    Text(utils.formatTime((trimStartSeconds * 1000).toLong()), color = Color(0xFF1C1C1E), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text("End:", color = Color(0xFF636366), fontSize = 9.sp)
+                    Text(utils.formatTime((trimEndSeconds * 1000).toLong()), color = Color(0xFF1C1C1E), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+            
+            RangeSlider(
+                value = range,
+                onValueChange = { r ->
+                    onTrimStartChange(r.start.toDouble())
+                    onTrimEndChange(r.endInclusive.toDouble())
+                },
+                valueRange = 0f..totalSec.toFloat(),
+                modifier = Modifier.height(20.dp),
+                colors = SliderDefaults.colors(
+                    thumbColor = Color(0xFF007AFF),
+                    activeTrackColor = Color(0xFF007AFF),
+                    inactiveTrackColor = Color(0xFFE5E5EA)
+                )
+            )
+
+            val durationSec = trimEndSeconds - trimStartSeconds
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Trim Duration:", color = Color(0xFF636366), fontSize = 9.sp)
+                Text(
+                    utils.formatTime((durationSec * 1000).toLong()) + " (${String.format("%.1f", durationSec)}s)",
+                    color = Color(0xFF2E7D32),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold
+                )
             }
         }
     }

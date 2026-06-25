@@ -12,9 +12,24 @@ class AppViewModel(
     // Basic States
     var settings by mutableStateOf(initialCache?.settings ?: HudSettings())
     var fitPath by mutableStateOf(initialCache?.fitPath ?: "")
-    var videoPath by mutableStateOf(initialCache?.videoPath ?: "")
+
+    private var _videoPath by mutableStateOf(initialCache?.videoPath ?: "")
+    var videoPath: String
+        get() = _videoPath
+        set(value) {
+            if (_videoPath != value) {
+                _videoPath = value
+                trimStartSeconds = 0.0
+                trimEndSeconds = 0.0
+            }
+        }
+
     var outputDir by mutableStateOf(System.getProperty("user.home") + File.separator + "Downloads")
     var videoStartUtc by mutableStateOf(initialCache?.videoStartUtc ?: "2026-06-21T02:09:49Z")
+
+    // Trim States
+    var trimStartSeconds by mutableStateOf(initialCache?.trimStartSeconds ?: 0.0)
+    var trimEndSeconds by mutableStateOf(initialCache?.trimEndSeconds ?: 0.0)
     
     // Time Alignment State
     val timeOffsetState = TimeAlignmentState(
@@ -59,7 +74,24 @@ class AppViewModel(
 
     // Telemetry and video metadata
     var telemetryPoints by mutableStateOf<List<FitParser.TelemetryPoint>>(emptyList())
-    var videoLengthMs by mutableStateOf(0L)
+    
+    private var _videoLengthMs by mutableStateOf(0L)
+    var videoLengthMs: Long
+        get() = _videoLengthMs
+        set(value) {
+            val oldVal = _videoLengthMs
+            _videoLengthMs = value
+            if (oldVal == 0L && value > 0L) {
+                if (trimStartSeconds == 0.0 && trimEndSeconds == 0.0) {
+                    trimStartSeconds = 0.0
+                    trimEndSeconds = value / 1000.0
+                }
+            } else if (value > 0L) {
+                trimStartSeconds = 0.0
+                trimEndSeconds = value / 1000.0
+            }
+        }
+
     var lastPreviewRequestId by mutableStateOf(0L)
 
     val fitStartInstant by derivedStateOf {
@@ -115,13 +147,13 @@ class AppViewModel(
 
     val trimmedTelemetryPoints by derivedStateOf {
         val videoStart = videoStartInstant
-        val videoEnd = videoEndInstant
-        if (telemetryPoints.isNotEmpty() && videoStart != null && videoEnd != null) {
+        if (telemetryPoints.isNotEmpty() && videoStart != null) {
             try {
                 val fitEpoch = java.time.Instant.parse("1989-12-31T00:00:00Z").epochSecond
                 val videoStartFit = videoStart.epochSecond - fitEpoch
-                val videoEndFit = videoEnd.epochSecond - fitEpoch
-                val filtered = telemetryPoints.filter { it.timestamp in videoStartFit.toDouble()..videoEndFit.toDouble() }
+                val trimStartFit = videoStartFit + trimStartSeconds
+                val trimEndFit = videoStartFit + trimEndSeconds
+                val filtered = telemetryPoints.filter { it.timestamp in trimStartFit..trimEndFit }
                 if (filtered.isNotEmpty()) filtered else telemetryPoints
             } catch (e: Exception) {
                 telemetryPoints
