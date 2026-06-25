@@ -21,6 +21,18 @@ sealed class CpCommand {
 
     @Serializable @kotlinx.serialization.SerialName("reload_hud")
     object ReloadHud : CpCommand()
+
+    @Serializable @kotlinx.serialization.SerialName("play")
+    object Play : CpCommand()
+
+    @Serializable @kotlinx.serialization.SerialName("pause")
+    object Pause : CpCommand()
+
+    @Serializable @kotlinx.serialization.SerialName("seek")
+    data class Seek(val timeMs: Long) : CpCommand()
+
+    @Serializable @kotlinx.serialization.SerialName("capture")
+    object Capture : CpCommand()
 }
 
 @Serializable

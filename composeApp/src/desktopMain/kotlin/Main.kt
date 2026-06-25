@@ -46,281 +46,14 @@ import kotlinx.serialization.json.Json
 import kotlin.math.roundToInt
 // VLC dependency removed
 
+import utils.*
+import components.*
+import viewmodel.*
+
 private const val PLAYBACK_PREVIEW_INTERVAL_MS = 250L
-
-
-@Serializable
-data class GuiPathCache(
-    val fitPath: String,
-    val videoPath: String,
-    val videoStartUtc: String,
-    val timeOffsetSeconds: Float? = null,
-    val timeOffsetMillis: Int? = null,
-    val settings: HudSettings = HudSettings(),
-    val moveOutputToSource: Boolean = false,
-    val showLivePreview: Boolean = true,
-    val windowX: Float? = null,
-    val windowY: Float? = null,
-    val windowWidth: Float? = null,
-    val windowHeight: Float? = null
-)
-
-fun pickFile(title: String, extensions: List<String>): String? {
-    val dialog = FileDialog(null as Frame?, title, FileDialog.LOAD)
-    dialog.isVisible = true
-    return if (dialog.file != null) File(dialog.directory, dialog.file).absolutePath else null
-}
-
-fun pickFolder(title: String): String? {
-    val chooser = javax.swing.JFileChooser()
-    chooser.dialogTitle = title
-    chooser.fileSelectionMode = javax.swing.JFileChooser.DIRECTORIES_ONLY
-    return if (chooser.showOpenDialog(null) == javax.swing.JFileChooser.APPROVE_OPTION) {
-        chooser.selectedFile.absolutePath
-    } else null
-}
-
-suspend fun extractPreviewFrame(
-    ffmpegPath: String,
-    videoPath: String,
-    timeMs: Long,
-    scaleWidth: Int
-): Result<androidx.compose.ui.graphics.ImageBitmap> = withContext(Dispatchers.IO) {
-    val timeSec = timeMs / 1000.0
-    val pb = ProcessBuilder(
-        ffmpegPath, "-y",
-        "-loglevel", "quiet",
-        "-ss", String.format(java.util.Locale.US, "%.3f", timeSec),
-        "-i", videoPath,
-        "-vframes", "1",
-        "-vf", "scale=$scaleWidth:-1",
-        "-f", "image2pipe",
-        "-vcodec", "mjpeg",
-        "-"
-    )
-    pb.redirectError(ProcessBuilder.Redirect.DISCARD)
-    
-    var proc: Process? = null
-    val job = coroutineContext[kotlinx.coroutines.Job]
-    val handle = job?.invokeOnCompletion {
-        proc?.destroyForcibly()
-    }
-    
-    try {
-        proc = pb.start()
-        val bytes = proc.inputStream.use { it.readBytes() }
-        val exitCode = proc.waitFor()
-        if (exitCode == 0 && bytes.isNotEmpty()) {
-            val skiaImage = org.jetbrains.skia.Image.makeFromEncoded(bytes)
-                ?: throw Exception("Failed to decode image bytes with Skia")
-            val bitmap = skiaImage.toComposeImageBitmap()
-            Result.success(bitmap)
-        } else {
-            Result.failure(Exception("FFmpeg exited with code $exitCode"))
-        }
-    } catch (e: kotlinx.coroutines.CancellationException) {
-        proc?.destroyForcibly()
-        try {
-            proc?.waitFor(1, java.util.concurrent.TimeUnit.SECONDS)
-        } catch (ioe: Exception) {}
-        throw e
-    } catch (e: Exception) {
-        proc?.destroyForcibly()
-        try {
-            proc?.waitFor(1, java.util.concurrent.TimeUnit.SECONDS)
-        } catch (ioe: Exception) {}
-        Result.failure(e)
-    } finally {
-        handle?.dispose()
-        if (proc?.isAlive == true) {
-            proc.destroyForcibly()
-            try {
-                proc.waitFor(1, java.util.concurrent.TimeUnit.SECONDS)
-            } catch (ioe: Exception) {}
-        }
-    }
-}
-
-suspend fun getVideoDuration(videoPath: String): Long? = withContext(Dispatchers.IO) {
-    try {
-        val ffmpegPath = fit.findFfmpegPath()
-        val pbDur = ProcessBuilder(ffmpegPath, "-i", videoPath)
-        pbDur.redirectErrorStream(true)
-        val pDur = pbDur.start()
-        
-        val job = coroutineContext[kotlinx.coroutines.Job]
-        val handle = job?.invokeOnCompletion { pDur.destroyForcibly() }
-        try {
-            val output = pDur.inputStream.bufferedReader().readText()
-            pDur.waitFor()
-            val durRegex = Regex("""Duration:\s*(\d+):(\d+):(\d+)\.(\d+)""")
-            val durMatch = durRegex.find(output)
-            if (durMatch != null) {
-                val h = durMatch.groupValues[1].toInt()
-                val m = durMatch.groupValues[2].toInt()
-                val s = durMatch.groupValues[3].toInt()
-                val ms = durMatch.groupValues[4].padEnd(3, '0').take(3).toInt()
-                val dur = (h * 3600 + m * 60 + s) * 1000L + ms
-                println("DEBUG: getVideoDuration (FFmpeg) success duration=$dur")
-                return@withContext dur
-            }
-        } finally {
-            handle?.dispose()
-            if (pDur.isAlive) {
-                pDur.destroyForcibly()
-                pDur.waitFor(1, java.util.concurrent.TimeUnit.SECONDS)
-            }
-        }
-    } catch (e: kotlinx.coroutines.CancellationException) {
-        throw e
-    } catch (e: Exception) {
-        println("DEBUG: Exception during video duration parse (FFmpeg): ${e.message}")
-        e.printStackTrace()
-    }
-    null
-}
-
-suspend fun getVideoStartUtc(videoPath: String): String? = withContext(Dispatchers.IO) {
-    try {
-        val videoFile = File(videoPath)
-        println("DEBUG: getVideoStartUtc for path: $videoPath, length=${videoFile.length()}")
-        if (videoFile.exists()) {
-            ensureActive()
-            val parser = mp4.Mp4Parser()
-            // Using 16MB scan size instead of 100MB to limit latency on network virtual files (Google DriveFS)
-            val scanSize = minOf(videoFile.length(), 16L * 1024 * 1024).toInt()
-            
-            var meta: mp4.Mp4Parser.Metadata? = null
-            
-            // 1. Scan head using RandomAccessFile
-            java.io.RandomAccessFile(videoFile, "r").use { raf ->
-                val buf = ByteArray(scanSize)
-                var bytesRead = 0
-                while (bytesRead < scanSize) {
-                    ensureActive()
-                    val read = raf.read(buf, bytesRead, minOf(buf.size - bytesRead, 65536))
-                    if (read == -1) break
-                    bytesRead += read
-                }
-                println("DEBUG: getVideoStartUtc head bytesRead: $bytesRead")
-                val headBytes = if (bytesRead == buf.size) buf else buf.copyOf(bytesRead)
-                meta = parser.parse(headBytes)
-            }
-            ensureActive()
-            
-            // 2. Scan tail using native seek if mvhd was not found in head
-            if (meta == null && videoFile.length() > scanSize) {
-                val tailOffset = videoFile.length() - scanSize
-                println("DEBUG: getVideoStartUtc tail scanning at tailOffset: $tailOffset")
-                java.io.RandomAccessFile(videoFile, "r").use { raf ->
-                    raf.seek(tailOffset)
-                    val buf = ByteArray(scanSize)
-                    var bytesRead = 0
-                    while (bytesRead < scanSize) {
-                        ensureActive()
-                        val read = raf.read(buf, bytesRead, minOf(buf.size - bytesRead, 65536))
-                        if (read == -1) break
-                        bytesRead += read
-                    }
-                    println("DEBUG: getVideoStartUtc tail bytesRead: $bytesRead")
-                    val tailBytes = if (bytesRead == buf.size) buf else buf.copyOf(bytesRead)
-                    meta = parser.parse(tailBytes)
-                }
-            }
-            
-            if (meta != null) {
-                val unixStart = meta!!.creationTimeSeconds - 2082844800L
-                val startUtc = java.time.Instant.ofEpochSecond(unixStart).toString()
-                println("DEBUG: getVideoStartUtc success meta duration=${meta!!.duration}, startUtc=$startUtc")
-                return@withContext startUtc
-            } else {
-                println("DEBUG: getVideoStartUtc failed to parse metadata via Mp4Parser. Trying FFmpeg fallback...")
-                try {
-                    val ffmpegPath = fit.findFfmpegPath()
-                    val pb = ProcessBuilder(ffmpegPath, "-i", videoPath)
-                    pb.redirectErrorStream(true)
-                    val p = pb.start()
-                    val reader = p.inputStream.bufferedReader()
-                    var creationTimeStr: String? = null
-                    val creationTimeRegex = Regex("""creation_time\s*:\s*(\d{4}-\d{2}-\d{2}[\sT]\d{2}:\d{2}:\d{2})""")
-                    
-                    var line = reader.readLine()
-                    while (line != null) {
-                        val match = creationTimeRegex.find(line)
-                        if (match != null) {
-                            creationTimeStr = match.groupValues[1].trim()
-                            break
-                        }
-                        line = reader.readLine()
-                    }
-                    p.destroyForcibly()
-                    p.waitFor(1, java.util.concurrent.TimeUnit.SECONDS)
-                    
-                    if (creationTimeStr != null) {
-                        val formatted = creationTimeStr.replace(" ", "T") + "Z"
-                        println("DEBUG: getVideoStartUtc success via FFmpeg: $formatted")
-                        return@withContext formatted
-                    }
-                } catch (e: Exception) {
-                    println("DEBUG: Exception during FFmpeg creation_time fallback: ${e.message}")
-                    e.printStackTrace()
-                }
-                println("DEBUG: getVideoStartUtc failed to parse metadata (meta is null)")
-            }
-        } else {
-            println("DEBUG: getVideoStartUtc file does not exist")
-        }
-    } catch (e: kotlinx.coroutines.CancellationException) {
-        throw e
-    } catch (e: Exception) {
-        println("DEBUG: Exception during video start UTC parse: ${e.message}")
-        e.printStackTrace()
-    }
-    null
-}
-
-suspend fun generateInitialThumbnail(ffmpegPath: String, videoPath: String): androidx.compose.ui.graphics.ImageBitmap? = withContext(Dispatchers.IO) {
-    try {
-        val pb = ProcessBuilder(
-            ffmpegPath, "-y",
-            "-loglevel", "quiet",
-            "-ss", "00:00:01",
-            "-i", videoPath,
-            "-vframes", "1",
-            "-f", "image2pipe",
-            "-vcodec", "mjpeg",
-            "-"
-        )
-        pb.redirectError(ProcessBuilder.Redirect.DISCARD)
-        val p = pb.start()
-        
-        val job = coroutineContext[kotlinx.coroutines.Job]
-        val handle = job?.invokeOnCompletion { p.destroyForcibly() }
-        try {
-            val bytes = p.inputStream.use { it.readBytes() }
-            p.waitFor()
-            if (bytes.isNotEmpty()) {
-                val skiaImage = org.jetbrains.skia.Image.makeFromEncoded(bytes)
-                return@withContext skiaImage?.toComposeImageBitmap()
-            }
-        } finally {
-            handle?.dispose()
-            if (p.isAlive) {
-                p.destroyForcibly()
-                p.waitFor(1, java.util.concurrent.TimeUnit.SECONDS)
-            }
-        }
-    } catch (e: kotlinx.coroutines.CancellationException) {
-        throw e
-    } catch (e: Exception) {
-        e.printStackTrace()
-    }
-    null
-}
 
 @OptIn(ExperimentalTextApi::class)
 fun main(args: Array<String>) {
-    System.setProperty("skiko.renderApi", "OPENGL")
     System.setProperty("compose.interop.blending", "false")
     System.setProperty("sun.java2d.noddraw", "true")
     if (args.contains("--test")) {
@@ -365,18 +98,7 @@ fun showSystemNotification(title: String, message: String) {
 
 @OptIn(ExperimentalTextApi::class)
 fun startGui(args: Array<String>) = application {
-    val initialCache = remember {
-        try {
-            val cacheFile = File(System.getProperty("user.home"), ".fittrimmer_gui_cache.json")
-            if (cacheFile.exists()) {
-                val content = cacheFile.readText(kotlin.text.Charsets.UTF_8)
-                kotlinx.serialization.json.Json { ignoreUnknownKeys = true }.decodeFromString<GuiPathCache>(content)
-            } else null
-        } catch (e: Exception) {
-            e.printStackTrace()
-            null
-        }
-    }
+    val initialCache = remember { GuiCache.load() }
 
     val windowState = rememberWindowState(
         position = if (initialCache?.windowX != null && initialCache.windowY != null) {
@@ -391,45 +113,33 @@ fun startGui(args: Array<String>) = application {
     )
 
 
-    var settings by remember { mutableStateOf(initialCache?.settings ?: HudSettings()) }
-    var fitPath by remember { mutableStateOf(initialCache?.fitPath ?: "") }
-    var videoPath by remember { mutableStateOf(initialCache?.videoPath ?: "") }
-    var outputDir by remember { mutableStateOf(System.getProperty("user.home") + File.separator + "Downloads") }
-    var videoStartUtc by remember { mutableStateOf(initialCache?.videoStartUtc ?: "2026-06-21T02:09:49Z") }
-    val timeOffsetState = rememberTimeAlignmentState(
-        if (initialCache != null) {
-            if (initialCache.timeOffsetMillis != null) {
-                initialCache.timeOffsetMillis.coerceIn(-TimeAlignmentState.MAX_OFFSET_MILLIS, TimeAlignmentState.MAX_OFFSET_MILLIS)
-            } else if (initialCache.timeOffsetSeconds != null) {
-                (initialCache.timeOffsetSeconds.coerceIn(-TimeAlignmentState.MAX_OFFSET_SECONDS, TimeAlignmentState.MAX_OFFSET_SECONDS) * 1000).roundToInt()
-            } else {
-                0
-            }
-        } else {
-            0
-        }
-    )
-    val adjustedStartUtc = remember(videoStartUtc, timeOffsetState.millis) {
-        timeOffsetState.adjust(videoStartUtc)
-    }
-    var isEncoding by remember { mutableStateOf(false) }
-    var isPaused by remember { mutableStateOf(false) }
-    var isCanceled by remember { mutableStateOf(false) }
-    var progress by remember { mutableStateOf(0f) }
-    var videoPreviewImage by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
-    var encodingPreviewImage by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
-    var statusText by remember { mutableStateOf("") }
-    var hudSettingsExpanded by remember { mutableStateOf(false) }
-    var isLoaded by remember { mutableStateOf(true) }
+    val viewModel = remember { AppViewModel(initialCache) }
+    
+    var settings by viewModel::settings
+    var fitPath by viewModel::fitPath
+    var videoPath by viewModel::videoPath
+    var outputDir by viewModel::outputDir
+    var videoStartUtc by viewModel::videoStartUtc
+    val timeOffsetState = viewModel.timeOffsetState
+    val adjustedStartUtc by viewModel::adjustedStartUtc
+    var isEncoding by viewModel::isEncoding
+    var isPaused by viewModel::isPaused
+    var isCanceled by viewModel::isCanceled
+    var progress by viewModel::progress
+    var encodingPreviewImage by viewModel::encodingPreviewImage
+    var statusText by viewModel::statusText
+    var hudSettingsExpanded by viewModel::hudSettingsExpanded
+    var isLoaded by viewModel::isLoaded
 
-    // C Drive Monitor State
-    var cDriveFreeSpaceGB by remember { mutableStateOf(0.0) }
-    var cDriveTotalSpaceGB by remember { mutableStateOf(0.0) }
-    var requiredSpaceGB by remember { mutableStateOf(2.0) }
-    var hasEnoughSpace by remember { mutableStateOf(true) }
-    var hasEnoughSpaceForSample by remember { mutableStateOf(true) }
-    var isSampleEncoding by remember { mutableStateOf(false) }
-    var appTempSpaceGB by remember { mutableStateOf(0.0) }
+    var cDriveFreeSpaceGB by viewModel::cDriveFreeSpaceGB
+    var cDriveTotalSpaceGB by viewModel::cDriveTotalSpaceGB
+    var requiredSpaceGB by viewModel::requiredSpaceGB
+    var hasEnoughSpace by viewModel::hasEnoughSpace
+    var hasEnoughSpaceForSample by viewModel::hasEnoughSpaceForSample
+    var isSampleEncoding by viewModel::isSampleEncoding
+    var appTempSpaceGB by viewModel::appTempSpaceGB
+    val playerState = rememberVideoPlayerState()
+    var composeWindow: java.awt.Window? by remember { mutableStateOf(null) }
 
     // Dynamic Hud Proxy & Hot Reload State
     val hudConfig = remember(settings) {
@@ -481,75 +191,19 @@ fun startGui(args: Array<String>) = application {
     }
     
     // Output Move State
-    var moveOutputToSource by remember { mutableStateOf(initialCache?.moveOutputToSource ?: false) }
-    var showLivePreview by remember { mutableStateOf(initialCache?.showLivePreview ?: true) }
+    var moveOutputToSource by viewModel::moveOutputToSource
+    var showLivePreview by viewModel::showLivePreview
 
-    // Telemetry state
-    var telemetryPoints by remember { mutableStateOf<List<FitParser.TelemetryPoint>>(emptyList()) }
-    var videoLengthMs by remember { mutableStateOf(0L) }
-    var lastPreviewRequestId by remember { mutableStateOf(0L) }
+    var telemetryPoints by viewModel::telemetryPoints
+    var videoLengthMs by viewModel::videoLengthMs
+    var lastPreviewRequestId by viewModel::lastPreviewRequestId
 
-    val fitStartInstant = remember(telemetryPoints) {
-        if (telemetryPoints.isNotEmpty()) {
-            try {
-                java.time.Instant.ofEpochSecond(telemetryPoints.first().timestamp.toLong() + 631065600L)
-            } catch (e: Exception) {
-                null
-            }
-        } else null
-    }
-
-    val fitEndInstant = remember(telemetryPoints) {
-        if (telemetryPoints.isNotEmpty()) {
-            try {
-                java.time.Instant.ofEpochSecond(telemetryPoints.last().timestamp.toLong() + 631065600L)
-            } catch (e: Exception) {
-                null
-            }
-        } else null
-    }
-
-    val videoStartInstant = remember(adjustedStartUtc) {
-        try {
-            if (adjustedStartUtc.isNotEmpty()) java.time.Instant.parse(adjustedStartUtc) else null
-        } catch (e: Exception) {
-            null
-        }
-    }
-
-    val videoEndInstant = remember(videoStartInstant, videoLengthMs) {
-        if (videoStartInstant != null && videoLengthMs > 0) {
-            try {
-                videoStartInstant.plusMillis(videoLengthMs)
-            } catch (e: Exception) {
-                null
-            }
-        } else null
-    }
-
-    val isVideoInFitRange = remember(fitStartInstant, fitEndInstant, videoStartInstant, videoEndInstant) {
-        if (fitStartInstant != null && fitEndInstant != null && videoStartInstant != null && videoEndInstant != null) {
-            (!videoStartInstant.isBefore(fitStartInstant)) && (!videoEndInstant.isAfter(fitEndInstant))
-        } else {
-            true
-        }
-    }
-
-    val trimmedTelemetryPoints = remember(telemetryPoints, videoStartInstant, videoEndInstant) {
-        if (telemetryPoints.isNotEmpty() && videoStartInstant != null && videoEndInstant != null) {
-            try {
-                val fitEpoch = java.time.Instant.parse("1989-12-31T00:00:00Z").epochSecond
-                val videoStartFit = videoStartInstant.epochSecond - fitEpoch
-                val videoEndFit = videoEndInstant.epochSecond - fitEpoch
-                val filtered = telemetryPoints.filter { it.timestamp in videoStartFit.toDouble()..videoEndFit.toDouble() }
-                if (filtered.isNotEmpty()) filtered else telemetryPoints
-            } catch (e: Exception) {
-                telemetryPoints
-            }
-        } else {
-            telemetryPoints
-        }
-    }
+    val fitStartInstant by viewModel::fitStartInstant
+    val fitEndInstant by viewModel::fitEndInstant
+    val videoStartInstant by viewModel::videoStartInstant
+    val videoEndInstant by viewModel::videoEndInstant
+    val isVideoInFitRange by viewModel::isVideoInFitRange
+    val trimmedTelemetryPoints by viewModel::trimmedTelemetryPoints
 
     val scope = rememberCoroutineScope()
 
@@ -691,8 +345,6 @@ fun startGui(args: Array<String>) = application {
             kotlinx.coroutines.delay(500)
             withContext(Dispatchers.IO) {
                 try {
-                    // Save GUI Cache to home directory (always, even if paths are empty)
-                    val cacheFile = File(System.getProperty("user.home"), ".fittrimmer_gui_cache.json")
                     val pos = windowState.position
                     val (x, y) = if (pos is androidx.compose.ui.window.WindowPosition.Absolute) {
                         pos.x.value to pos.y.value
@@ -713,7 +365,7 @@ fun startGui(args: Array<String>) = application {
                         windowWidth = windowState.size.width.value,
                         windowHeight = windowState.size.height.value
                     )
-                    cacheFile.writeText(Json.encodeToString(cache), kotlin.text.Charsets.UTF_8)
+                    GuiCache.save(cache)
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
@@ -793,71 +445,129 @@ fun startGui(args: Array<String>) = application {
     val cp = remember {
         ControlPlane(
             onCommand = { cmd ->
-                javax.swing.SwingUtilities.invokeLater {
-                    when (cmd) {
-                        is CpCommand.SetLayout -> settings = cmd.settings
-                        is CpCommand.SetFiles -> {
-                            fitPath = cmd.fit
-                            videoPath = cmd.video
-                            cmd.startUtc?.let { videoStartUtc = it }
-                        }
-                        is CpCommand.Fire -> {
-                            scope.launch {
-                                encodingPreviewImage = null
-                                isEncoding = true
-                                isPaused = false
-                                isCanceled = false
-                                try {
-                                    fireEncode(settings, fitPath, videoPath, outputDir, videoStartUtc,
-                                        onProgress = { prog, status ->
-                                            progress = prog
-                                            statusText = status
-                                        },
-                                        onFrame = { bufferedImg ->
-                                            val bitmap = bufferedImg.toComposeImageBitmap()
-                                            javax.swing.SwingUtilities.invokeLater {
-                                                encodingPreviewImage = bitmap
+                var result: String? = null
+                var exception: java.lang.reflect.InvocationTargetException? = null
+                var interruptedException: InterruptedException? = null
+                try {
+                    javax.swing.SwingUtilities.invokeAndWait {
+                        try {
+                            when (cmd) {
+                                is CpCommand.SetLayout -> settings = cmd.settings
+                                is CpCommand.SetFiles -> {
+                                    fitPath = cmd.fit
+                                    videoPath = cmd.video
+                                    cmd.startUtc?.let { videoStartUtc = it }
+                                }
+                                is CpCommand.Fire -> {
+                                    scope.launch {
+                                        encodingPreviewImage = null
+                                        isEncoding = true
+                                        isPaused = false
+                                        isCanceled = false
+                                        try {
+                                            fireEncode(settings, fitPath, videoPath, outputDir, videoStartUtc,
+                                                onProgress = { prog, status ->
+                                                    progress = prog
+                                                    statusText = status
+                                                },
+                                                onFrame = { bufferedImg ->
+                                                    val bitmap = bufferedImg.toComposeImageBitmap()
+                                                    javax.swing.SwingUtilities.invokeLater {
+                                                        encodingPreviewImage = bitmap
+                                                    }
+                                                },
+                                                pauseSupplier = { isPaused },
+                                                cancelSupplier = { isCanceled },
+                                                showLivePreviewSupplier = { showLivePreview }
+                                            )
+                                            statusText = "✨ Finished Successfully!"
+                                            if (args.contains("--auto-sample")) {
+                                                println("TEST_NOTIFICATION_SUCCESS: Encoding Finished Successfully!")
+                                            } else {
+                                                showSystemNotification(
+                                                    "HUD エンコーダー",
+                                                    "Encoding Finished Successfully!"
+                                                )
                                             }
-                                        },
-                                        pauseSupplier = { isPaused },
-                                        cancelSupplier = { isCanceled },
-                                        showLivePreviewSupplier = { showLivePreview }
-                                    )
-                                    statusText = "✨ Finished Successfully!"
-                                    if (args.contains("--auto-sample")) {
-                                        println("TEST_NOTIFICATION_SUCCESS: Encoding Finished Successfully!")
-                                    } else {
-                                        showSystemNotification(
-                                            "HUD エンコーダー",
-                                            "Encoding Finished Successfully!"
-                                        )
+                                        } catch (e: Exception) {
+                                            // Error string is set inside fireEncode's onProgress callback
+                                            if (args.contains("--auto-sample")) {
+                                                println("TEST_NOTIFICATION_ERROR: Encoding Failed: ${e.message}")
+                                            } else {
+                                                showSystemNotification(
+                                                    "HUD エンコーダー - Error",
+                                                    "Encoding Failed: ${e.message}"
+                                                )
+                                            }
+                                        } finally {
+                                            isEncoding = false
+                                        }
                                     }
-                                } catch (e: Exception) {
-                                    // Error string is set inside fireEncode's onProgress callback
-                                    if (args.contains("--auto-sample")) {
-                                        println("TEST_NOTIFICATION_ERROR: Encoding Failed: ${e.message}")
+                                }
+                                is CpCommand.UpdateProgress -> {
+                                    progress = cmd.progress
+                                    isEncoding = cmd.isEncoding
+                                }
+                                CpCommand.GetState -> {} 
+                                CpCommand.ReloadHud -> {
+                                    rendererProxy.reload()
+                                    reloadTrigger++
+                                }
+                                CpCommand.Play -> {
+                                    playerState.play()
+                                }
+                                CpCommand.Pause -> {
+                                    playerState.pause()
+                                }
+                                is CpCommand.Seek -> {
+                                    val target = cmd.timeMs.coerceIn(0L, videoLengthMs)
+                                    val ratio = if (videoLengthMs > 0) target.toFloat() / videoLengthMs.toFloat() else 0f
+                                    playerState.seekTo(ratio * 1000f)
+                                }
+                                CpCommand.Capture -> {
+                                    val win = composeWindow
+                                    if (win != null) {
+                                        try {
+                                            win.isAlwaysOnTop = true
+                                            win.toFront()
+                                            win.requestFocus()
+                                            Thread.sleep(200)
+                                        } catch (e: Exception) {}
+                                        
+                                        val bounds = win.bounds
+                                        val robot = java.awt.Robot()
+                                        val screenCapture = robot.createScreenCapture(bounds)
+                                        
+                                        try {
+                                            win.isAlwaysOnTop = false
+                                        } catch (e: Exception) {}
+                                        
+                                        val tempFile = File(System.getProperty("java.io.tmpdir"), "fittrimmer_capture.png")
+                                        javax.imageio.ImageIO.write(screenCapture, "png", tempFile)
+                                        result = "{\"status\": \"ok\", \"path\": \"${tempFile.absolutePath.replace("\\", "\\\\")}\"}"
                                     } else {
-                                        showSystemNotification(
-                                            "HUD エンコーダー - Error",
-                                            "Encoding Failed: ${e.message}"
-                                        )
+                                        result = "{\"status\": \"error\", \"message\": \"Window not initialized\"}"
                                     }
-                                } finally {
-                                    isEncoding = false
                                 }
                             }
-                        }
-                        is CpCommand.UpdateProgress -> {
-                            progress = cmd.progress
-                            isEncoding = cmd.isEncoding
-                        }
-                        CpCommand.GetState -> {} 
-                        CpCommand.ReloadHud -> {
-                            rendererProxy.reload()
-                            reloadTrigger++
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                            result = "{\"status\": \"error\", \"message\": \"${e.message}\"}"
                         }
                     }
+                } catch (e: java.lang.reflect.InvocationTargetException) {
+                    exception = e
+                } catch (e: InterruptedException) {
+                    interruptedException = e
                 }
+                
+                if (exception != null) {
+                    throw exception!!
+                }
+                if (interruptedException != null) {
+                    Thread.currentThread().interrupt()
+                }
+                result
             },
             getState = { CpState(settings, fitPath, videoPath, isEncoding, progress) }
         )
@@ -870,6 +580,9 @@ fun startGui(args: Array<String>) = application {
         title = "HUD エンコーダー",
         state = windowState
     ) {
+        LaunchedEffect(window) {
+            composeWindow = window
+        }
         val textMeasurer = rememberTextMeasurer()
 
         // Windows Taskbar Progress integration
@@ -1589,6 +1302,7 @@ fun startGui(args: Array<String>) = application {
                                 settings = settings,
                                 rendererProxy = rendererProxy,
                                 textMeasurer = textMeasurer,
+                                playerState = playerState,
                                 modifier = Modifier.fillMaxWidth()
                             )
                         } else {
@@ -1751,105 +1465,8 @@ fun runCli(args: Array<String>) {
     }
 }
 
-fun formatTime(ms: Long): String {
-    val totalSec = ms / 1000
-    val min = totalSec / 60
-    val sec = totalSec % 60
-    return "%02d:%02d".format(min, sec)
-}
 
-class ComposeHudCanvas(
-    private val drawScope: androidx.compose.ui.graphics.drawscope.DrawScope,
-    private val textMeasurer: androidx.compose.ui.text.TextMeasurer,
-    private val scale: Float,
-    private val density: Float
-) : fit.HudCanvas {
 
-    private fun parseColor(colorStr: String): androidx.compose.ui.graphics.Color {
-        val clean = colorStr.replace("#", "")
-        return try {
-            if (clean.length == 8) {
-                androidx.compose.ui.graphics.Color(clean.toLong(16))
-            } else if (clean.length == 6) {
-                androidx.compose.ui.graphics.Color((0xFF000000 or clean.toLong(16)))
-            } else {
-                androidx.compose.ui.graphics.Color.White
-            }
-        } catch (e: Exception) {
-            androidx.compose.ui.graphics.Color.White
-        }
-    }
-
-    override fun drawText(text: String, x: Float, y: Float, size: Float, color: String, bold: Boolean, anchor: String) {
-        val c = parseColor(color)
-        val style = androidx.compose.ui.text.TextStyle(
-            fontFamily = androidx.compose.ui.text.font.FontFamily.SansSerif,
-            color = c,
-            fontSize = (size * scale / density).sp,
-            fontWeight = if (bold) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal
-        )
-        val layout = textMeasurer.measure(text, style)
-        val drawX = x * scale - when (anchor) {
-            "center" -> layout.size.width.toFloat() / 2f
-            "top-right", "bottom-right" -> layout.size.width.toFloat()
-            else -> 0f
-        }
-        val drawY = y * scale - when (anchor) {
-            "center" -> layout.size.height.toFloat() / 2f
-            "bottom-left", "bottom-right" -> layout.size.height.toFloat()
-            else -> 0f
-        }
-        drawScope.drawText(layout, topLeft = androidx.compose.ui.geometry.Offset(drawX, drawY))
-    }
-
-    override fun drawRect(x: Float, y: Float, w: Float, h: Float, color: String, alpha: Float, outline: Boolean) {
-        val c = parseColor(color)
-        drawScope.drawRect(
-            color = c,
-            topLeft = androidx.compose.ui.geometry.Offset(x * scale, y * scale),
-            size = androidx.compose.ui.geometry.Size(w * scale, h * scale),
-            alpha = alpha,
-            style = if (outline) androidx.compose.ui.graphics.drawscope.Stroke(width = 1f * scale) else androidx.compose.ui.graphics.drawscope.Fill
-        )
-    }
-
-    override fun drawLine(points: List<Pair<Float, Float>>, color: String, width: Float, alpha: Float) {
-        if (points.size < 2) return
-        val c = parseColor(color)
-        for (i in 0 until points.size - 1) {
-            drawScope.drawLine(
-                color = c,
-                start = androidx.compose.ui.geometry.Offset(points[i].first * scale, points[i].second * scale),
-                end = androidx.compose.ui.geometry.Offset(points[i + 1].first * scale, points[i + 1].second * scale),
-                strokeWidth = width * scale,
-                alpha = alpha
-            )
-        }
-    }
-
-    override fun drawPolygon(points: List<Pair<Float, Float>>, color: String, alpha: Float) {
-        if (points.size < 3) return
-        val c = parseColor(color)
-        val path = androidx.compose.ui.graphics.Path().apply {
-            moveTo(points[0].first * scale, points[0].second * scale)
-            for (i in 1 until points.size) {
-                lineTo(points[i].first * scale, points[i].second * scale)
-            }
-            close()
-        }
-        drawScope.drawPath(path = path, color = c, alpha = alpha)
-    }
-
-    override fun getTextWidth(text: String, size: Float, bold: Boolean): Float {
-        val style = androidx.compose.ui.text.TextStyle(
-            fontFamily = androidx.compose.ui.text.font.FontFamily.SansSerif,
-            fontSize = (size / density).sp,
-            fontWeight = if (bold) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal
-        )
-        val layout = textMeasurer.measure(text, style)
-        return layout.size.width.toFloat()
-    }
-}
 
 @Composable
 fun TimeAlignmentCard(
@@ -1927,308 +1544,4 @@ fun TimeAlignmentCard(
     }
 }
 
-@Composable
-fun VideoPreviewArea(
-    videoPath: String,
-    videoLengthMs: Long,
-    adjustedStartUtc: String,
-    telemetryPoints: List<FitParser.TelemetryPoint>,
-    trimmedTelemetryPoints: List<FitParser.TelemetryPoint>,
-    settings: HudSettings,
-    rendererProxy: fit.DynamicRendererProxy,
-    textMeasurer: androidx.compose.ui.text.TextMeasurer,
-    modifier: Modifier = Modifier
-) {
-    val playerState = rememberVideoPlayerState()
-    var isPlaying by remember { mutableStateOf(false) }
-    var videoCurrentTimeMs by remember { mutableStateOf(0L) }
-
-    val togglePlay = {
-        if (playerState.isPlaying) {
-            playerState.pause()
-        } else {
-            if (videoCurrentTimeMs >= videoLengthMs) {
-                playerState.seekTo(0f)
-            }
-            playerState.play()
-        }
-    }
-
-    val seekTo = { timeMs: Long ->
-        val target = timeMs.coerceIn(0L, videoLengthMs)
-        val ratio = if (videoLengthMs > 0) target.toFloat() / videoLengthMs.toFloat() else 0f
-        playerState.seekTo(ratio * 1000f)
-    }
-
-    LaunchedEffect(playerState.isPlaying) {
-        isPlaying = playerState.isPlaying
-        if (isPlaying) {
-            playerState.volume = 0f
-            println("DEBUG: Enforced volume = 0f on play start")
-        }
-        println("DEBUG: PlayerState isPlaying state changed: isPlaying=${playerState.isPlaying}")
-    }
-
-    LaunchedEffect(playerState.sliderPos, playerState.metadata.duration) {
-        val durationMs = playerState.metadata.duration ?: 0L
-        val currentDuration = if (videoLengthMs > 0L) videoLengthMs else durationMs
-        videoCurrentTimeMs = ((playerState.sliderPos / 1000f) * currentDuration).toLong()
-    }
-
-    // Video path change side effect inside the player area
-    LaunchedEffect(videoPath) {
-        if (videoPath.isNotEmpty() && File(videoPath).exists()) {
-            val originalFile = File(videoPath)
-            var targetVideoPath = videoPath
-            if (videoPath.startsWith("H:\\", ignoreCase = true)) {
-                try {
-                    val tempDir = System.getProperty("java.io.tmpdir")
-                    val junctionFolder = File(tempDir, "fit_trimmer_video_junction")
-                    if (junctionFolder.exists()) {
-                        ProcessBuilder("cmd.exe", "/c", "rmdir", junctionFolder.absolutePath).start().waitFor()
-                    }
-                    val parentDir = originalFile.parentFile.absolutePath
-                    val pb = ProcessBuilder("cmd.exe", "/c", "mklink", "/j", junctionFolder.absolutePath, parentDir)
-                    val p = pb.start()
-                    p.waitFor()
-                    if (junctionFolder.exists()) {
-                        targetVideoPath = File(junctionFolder, originalFile.name).absolutePath
-                    }
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
-            }
-            playerState.openUri(targetVideoPath)
-        } else {
-            playerState.stop()
-        }
-    }
-
-    val currentPoint = remember(videoCurrentTimeMs, telemetryPoints, adjustedStartUtc) {
-        if (telemetryPoints.isEmpty() || adjustedStartUtc.isEmpty()) null
-        else {
-            try {
-                val startTime = java.time.Instant.parse(adjustedStartUtc)
-                val fitEpoch = java.time.Instant.parse("1989-12-31T00:00:00Z").epochSecond
-                val elapsedSeconds = videoCurrentTimeMs / 1000.0
-                val currentUtc = startTime.toEpochMilli() / 1000.0 + elapsedSeconds
-                val currentFitTs = currentUtc - fitEpoch
-                telemetryPoints.find { it.timestamp >= currentFitTs } ?: telemetryPoints.lastOrNull()
-            } catch (e: Exception) {
-                e.printStackTrace()
-                null
-            }
-        }
-    }
-
-    val currentTrendPoints = remember(currentPoint, telemetryPoints) {
-        if (currentPoint == null || telemetryPoints.isEmpty()) emptyList<Double>()
-        else {
-            val idx = telemetryPoints.indexOfFirst { it.timestamp >= currentPoint.timestamp }
-            if (idx == -1) {
-                emptyList()
-            } else {
-                val startIdx = maxOf(0, idx - 30)
-                telemetryPoints.subList(startIdx, idx + 1).map { it.power }
-            }
-        }
-    }
-
-    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(
-            modifier = Modifier
-                .aspectRatio(16f / 9f)
-                .fillMaxWidth()
-                .background(Color.Black, shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
-                .border(1.dp, Color(0xFFE5E5EA), shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
-                .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
-        ) {
-            if (videoPath.isNotEmpty()) {
-                VideoPlayerSurface(
-                    playerState = playerState,
-                    modifier = Modifier.fillMaxSize()
-                )
-            } else {
-                Box(Modifier.fillMaxSize().background(Color.Black))
-            }
-
-            val density = androidx.compose.ui.platform.LocalDensity.current.density
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                val scale = size.width / 1920f
-                val currentRatio = if (videoLengthMs > 0) videoCurrentTimeMs.toFloat() / videoLengthMs.toFloat() else 0f
-                val telemetryPoint = currentPoint ?: fit.FitParser.TelemetryPoint(
-                    timestamp = 0.0, speed = 26.2, power = 175.0, cadence = 79.0, heartRate = 148.0, elevation = 63.2, grade = 4.0
-                )
-                val pBuf = currentTrendPoints.map { it }
-                val composeCanvas = ComposeHudCanvas(this, textMeasurer, scale, density)
-                rendererProxy.renderFrame(
-                    composeCanvas,
-                    telemetryPoint,
-                    trimmedTelemetryPoints,
-                    pBuf,
-                    currentRatio
-                )
-            }
-        }
-
-        // Video Player Control UI
-        if (videoPath.isNotEmpty()) {
-            Spacer(Modifier.height(8.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Button(
-                    onClick = togglePlay,
-                    colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF007AFF))
-                ) {
-                    Text(if (isPlaying) "⏸ PAUSE" else "▶ PLAY", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
-                }
-
-                Text(
-                    text = "${formatTime(videoCurrentTimeMs)} / ${formatTime(videoLengthMs)}",
-                    color = Color(0xFF1C1C1E),
-                    fontSize = 11.sp
-                )
-
-                Slider(
-                    value = if (videoLengthMs > 0) videoCurrentTimeMs.toFloat() / videoLengthMs.toFloat() else 0f,
-                    onValueChange = { ratio ->
-                        val targetTime = (ratio * videoLengthMs).toLong()
-                        seekTo(targetTime)
-                    },
-                    modifier = Modifier.weight(1f),
-                    colors = SliderDefaults.colors(
-                        thumbColor = Color(0xFF007AFF),
-                        activeTrackColor = Color(0xFF007AFF),
-                        inactiveTrackColor = Color(0xFFE5E5EA)
-                    )
-                )
-
-                Text(
-                    text = "NATIVE PLAYER ACTIVE",
-                    color = Color(0xFF2E7D32),
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(horizontal = 4.dp)
-                )
-            }
-
-            Spacer(Modifier.height(4.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                val seekBtnModifier = Modifier.weight(1f).height(24.dp)
-                val seekBtnColors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF1C1C1E))
-                val seekSpecs = listOf(
-                    "-10s" to -10000L,
-                    "-1s" to -1000L,
-                    "+1s" to 1000L,
-                    "+10s" to 10000L
-                )
-                for ((label, delta) in seekSpecs) {
-                    OutlinedButton(
-                        onClick = { seekTo((videoCurrentTimeMs + delta).coerceIn(0L, maxOf(0L, videoLengthMs))) },
-                        modifier = seekBtnModifier,
-                        colors = seekBtnColors,
-                        contentPadding = PaddingValues(0.dp)
-                    ) {
-                        Text(label, fontSize = 9.sp)
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun EncodingProgressArea(
-    progress: Float,
-    statusText: String,
-    encodingPreviewImage: androidx.compose.ui.graphics.ImageBitmap?,
-    showLivePreview: Boolean,
-    isPaused: Boolean,
-    videoLengthMs: Long,
-    onPauseToggle: () -> Unit,
-    onCancel: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val currentMs = (progress * videoLengthMs).toLong()
-
-    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(
-            modifier = Modifier
-                .aspectRatio(16f / 9f)
-                .fillMaxWidth()
-                .background(Color.Black, shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
-                .border(1.dp, Color(0xFFE5E5EA), shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
-                .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
-        ) {
-            if (showLivePreview) {
-                encodingPreviewImage?.let { hudImg ->
-                    Canvas(modifier = Modifier.fillMaxSize()) {
-                        drawImage(
-                            image = hudImg,
-                            dstSize = IntSize(size.width.toInt(), size.height.toInt())
-                        )
-                    }
-                }
-            } else {
-                Box(
-                    modifier = Modifier.fillMaxSize().background(Color(0xE0101012)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        "Live Preview Disabled\n(Encoding is running)",
-                        color = Color.Gray,
-                        fontSize = 14.sp,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                    )
-                }
-            }
-        }
-
-        Spacer(Modifier.height(8.dp))
-
-        // Progress bar and controls
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Button(
-                onClick = onPauseToggle,
-                colors = ButtonDefaults.buttonColors(
-                    backgroundColor = if (isPaused) Color(0xFF10B981) else Color(0xFFF59E0B)
-                )
-            ) {
-                Text(if (isPaused) "▶ RESUME" else "⏸ PAUSE", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
-            }
-
-            Text(
-                text = "${formatTime(currentMs)} / ${formatTime(videoLengthMs)} (${(progress * 100).toInt()}%)",
-                color = Color(0xFF1C1C1E),
-                fontSize = 11.sp
-            )
-
-            LinearProgressIndicator(
-                progress = progress,
-                modifier = Modifier.weight(1f).height(6.dp),
-                color = Color(0xFF007AFF),
-                backgroundColor = Color(0xFFE5E5EA)
-            )
-
-            Spacer(Modifier.width(8.dp))
-
-            Button(
-                onClick = onCancel,
-                colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFEF4444))
-            ) {
-                Text("⏹ CANCEL", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
-            }
-        }
-    }
-}
 
