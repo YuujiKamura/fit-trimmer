@@ -1217,7 +1217,10 @@ fun startGui(args: Array<String>) = application {
 
                     // TIME ALIGNMENT Card
                     TimeAlignmentCard(
-                        state = timeOffsetState
+                        state = timeOffsetState,
+                        videoCurrentTimeMs = videoCurrentTimeMs,
+                        videoStartUtc = videoStartUtc,
+                        onVideoStartUtcChange = { videoStartUtc = it }
                     )
 
                     // VIDEO TRIM RANGE Card
@@ -1707,7 +1710,10 @@ fun runCli(args: Array<String>) {
 
 @Composable
 fun TimeAlignmentCard(
-    state: TimeAlignmentState
+    state: TimeAlignmentState,
+    videoCurrentTimeMs: Long,
+    videoStartUtc: String,
+    onVideoStartUtcChange: (String) -> Unit
 ) {
     Card(
         backgroundColor = Color.White,
@@ -1776,6 +1782,103 @@ fun TimeAlignmentCard(
                         Text(label, fontSize = 9.sp)
                     }
                 }
+            }
+
+            Divider(color = Color(0xFFE5E5EA))
+
+            Text("SYNC WITH CYCLING COMPUTER TIME", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 0.5.sp)
+
+            var inputTimeText by remember { mutableStateOf("") }
+            var isError by remember { mutableStateOf(false) }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedTextField(
+                    value = inputTimeText,
+                    onValueChange = { 
+                        inputTimeText = it 
+                        isError = false
+                    },
+                    label = { Text("Display Time (HH:mm:ss)", color = Color(0xFF636366), fontSize = 10.sp) },
+                    placeholder = { Text("16:20:30", color = Color(0xFFC7C7CC), fontSize = 11.sp) },
+                    modifier = Modifier.weight(1f).height(50.dp),
+                    textStyle = TextStyle(color = Color(0xFF1C1C1E), fontSize = 11.sp),
+                    singleLine = true,
+                    isError = isError,
+                    colors = TextFieldDefaults.outlinedTextFieldColors(
+                        backgroundColor = Color(0xFFF2F2F7),
+                        focusedBorderColor = Color(0xFF007AFF),
+                        unfocusedBorderColor = Color(0xFFD1D1D6),
+                        textColor = Color(0xFF1C1C1E)
+                    )
+                )
+
+                Button(
+                    onClick = {
+                        val cleanInput = inputTimeText.trim()
+                        val parts = cleanInput.split(Regex("[:\\s\\-\\.]"))
+                        val parsedTime = if (parts.size == 3) {
+                            val h = parts[0].toIntOrNull()
+                            val m = parts[1].toIntOrNull()
+                            val s = parts[2].toIntOrNull()
+                            if (h != null && m != null && s != null && h in 0..23 && m in 0..59 && s in 0..59) {
+                                Triple(h, m, s)
+                            } else null
+                        } else if (cleanInput.length == 6) {
+                            val h = cleanInput.substring(0, 2).toIntOrNull()
+                            val m = cleanInput.substring(2, 4).toIntOrNull()
+                            val s = cleanInput.substring(4, 6).toIntOrNull()
+                            if (h != null && m != null && s != null && h in 0..23 && m in 0..59 && s in 0..59) {
+                                Triple(h, m, s)
+                            } else null
+                        } else null
+
+                        if (parsedTime != null) {
+                            val (h, m, s) = parsedTime
+                            try {
+                                val baseInstant = if (videoStartUtc.isNotEmpty()) {
+                                    java.time.Instant.parse(videoStartUtc)
+                                } else {
+                                    java.time.Instant.now()
+                                }
+                                val zoneId = java.time.ZoneId.systemDefault()
+                                val zonedDateTime = java.time.ZonedDateTime.ofInstant(baseInstant, zoneId)
+                                    .withHour(h)
+                                    .withMinute(m)
+                                    .withSecond(s)
+                                    .withNano(0)
+
+                                val frameInstant = zonedDateTime.toInstant()
+                                val newStartInstant = frameInstant.minusMillis(videoCurrentTimeMs)
+
+                                onVideoStartUtcChange(newStartInstant.toString())
+                                state.update(0) // Reset manual offset slider
+                                inputTimeText = ""
+                                isError = false
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                                isError = true
+                            }
+                        } else {
+                            isError = true
+                        }
+                    },
+                    modifier = Modifier.height(50.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        backgroundColor = Color(0xFF007AFF),
+                        contentColor = Color.White
+                    ),
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
+                ) {
+                    Text("Sync", fontSize = 11.sp)
+                }
+            }
+
+            if (isError) {
+                Text("Invalid format. Use HH:mm:ss (e.g. 16:20:30)", color = Color(0xFFFF3B30), fontSize = 9.sp)
             }
         }
     }
