@@ -281,7 +281,8 @@ fun startGui(args: Array<String>) = application {
         launch(Dispatchers.IO) {
             while (true) {
                 try {
-                    val file = File("C:\\")
+                    val isWindows = System.getProperty("os.name").lowercase().contains("win")
+                    val file = if (isWindows) File("C:\\") else File("/")
                     cDriveFreeSpaceGB = file.freeSpace / (1024.0 * 1024.0 * 1024.0)
                     cDriveTotalSpaceGB = file.totalSpace / (1024.0 * 1024.0 * 1024.0)
                     
@@ -1155,7 +1156,9 @@ fun startGui(args: Array<String>) = application {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("C-DRIVE SPACE MONITOR", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 0.5.sp)
+                                val isWindows = remember { System.getProperty("os.name").lowercase().contains("win") }
+                                val driveLabel = if (isWindows) "C-DRIVE SPACE MONITOR" else "SYSTEM DISK MONITOR"
+                                Text(driveLabel, color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 0.5.sp)
                                 if (hasEnoughSpace) {
                                     Text("SAFE", color = Color(0xFF1E7E34), fontWeight = FontWeight.Bold, fontSize = 10.sp)
                                 } else {
