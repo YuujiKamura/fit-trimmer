@@ -86,6 +86,8 @@ class AppViewModel(
     var isEncoding by mutableStateOf(false)
     var isPaused by mutableStateOf(false)
     var isCanceled by mutableStateOf(false)
+    var encodingSegmentStart by mutableStateOf<Double?>(null)
+    var encodingSegmentEnd by mutableStateOf<Double?>(null)
     var progress by mutableStateOf(0f)
     var encodingPreviewImage by mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null)
     var statusText by mutableStateOf("")
