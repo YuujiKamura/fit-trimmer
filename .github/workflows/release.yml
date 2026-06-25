@@ -1,0 +1,55 @@
+name: Build and Release Desktop App
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build & Release for ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            task: ':composeApp:packageMsi'
+            artifact_dir: 'composeApp/build/compose/binaries/main/msi'
+            pattern: '*.msi'
+          - os: macos-latest
+            task: ':composeApp:packageDmg'
+            artifact_dir: 'composeApp/build/compose/binaries/main/dmg'
+            pattern: '*.dmg'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Build Desktop Distribution
+        run: ./gradlew ${{ matrix.task }}
+
+      - name: List Artifacts
+        shell: bash
+        run: |
+          echo "Listing artifacts in target directory..."
+          ls -R ${{ matrix.artifact_dir }} || true
+
+      - name: Release and Upload Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ matrix.artifact_dir }}/${{ matrix.pattern }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
