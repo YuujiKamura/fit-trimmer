@@ -1415,13 +1415,21 @@ fun startGui(args: Array<String>) = application {
                                 modifier = Modifier.fillMaxWidth().height(140.dp)
                             )
                         } else {
+                            val actualTrimStart = trimStartSeconds.coerceIn(0.0, videoLengthMs / 1000.0)
+                            val actualTrimEnd = if (trimEndSeconds <= 0.0 || trimEndSeconds > videoLengthMs / 1000.0) {
+                                videoLengthMs / 1000.0
+                            } else {
+                                trimEndSeconds
+                            }
+                            val trimmedDurationMs = ((actualTrimEnd - actualTrimStart) * 1000).toLong().coerceAtLeast(1000L)
+
                             EncodingProgressArea(
                                 progress = progress,
                                 statusText = statusText,
                                 encodingPreviewImage = encodingPreviewImage,
                                 showLivePreview = showLivePreview,
                                 isPaused = isPaused,
-                                videoLengthMs = videoLengthMs,
+                                videoLengthMs = trimmedDurationMs,
                                 onPauseToggle = { isPaused = !isPaused },
                                 onCancel = { isCanceled = true },
                                 modifier = Modifier.fillMaxWidth()
