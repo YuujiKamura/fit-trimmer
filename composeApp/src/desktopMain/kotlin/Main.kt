@@ -350,7 +350,7 @@ fun startGui(args: Array<String>) = application {
 
 
     // Save path cache when modified
-    LaunchedEffect(fitPath, videoPath, videoStartUtc, timeOffsetState.millis, settings, moveOutputToSource, showLivePreview, windowState.position, windowState.size) {
+    LaunchedEffect(fitPath, videoPath, videoStartUtc, timeOffsetState.millis, settings, moveOutputToSource, showLivePreview, windowState.position, windowState.size, viewModel.splitPoints) {
         if (isLoaded) {
             kotlinx.coroutines.delay(500)
             withContext(Dispatchers.IO) {
@@ -372,6 +372,7 @@ fun startGui(args: Array<String>) = application {
                         showLivePreview = showLivePreview,
                         trimStartSeconds = trimStartSeconds,
                         trimEndSeconds = trimEndSeconds,
+                        splitPoints = viewModel.splitPoints,
                         windowX = x,
                         windowY = y,
                         windowWidth = windowState.size.width.value,
@@ -644,7 +645,7 @@ fun startGui(args: Array<String>) = application {
                 ) {
 
 
-                    val onNativeEncodeClick = remember(settings, fitPath, videoPath, videoStartUtc, adjustedStartUtc, isVideoInFitRange, outputDir, moveOutputToSource, showLivePreview) {
+                    val onNativeEncodeClick = remember(settings, fitPath, videoPath, videoStartUtc, adjustedStartUtc, isVideoInFitRange, outputDir, moveOutputToSource, showLivePreview, viewModel.splitPoints) {
                         {
                             val targetVideoPath = videoPath
                             var proceed = true
@@ -660,21 +661,31 @@ fun startGui(args: Array<String>) = application {
                                     proceed = false
                                 }
                             }
-                            var finalDestFile: File? = null
+                            val ranges = viewModel.getSplitRanges()
+                            val destFiles = mutableListOf<File>()
+                            
                             if (proceed && moveOutputToSource) {
                                 val sourceDir = File(targetVideoPath).parentFile
                                 if (sourceDir != null && sourceDir.exists()) {
                                     val videoFile = File(targetVideoPath)
                                     val baseName = videoFile.name.replace(".mp4", "", ignoreCase = true).replace(".mov", "", ignoreCase = true)
-                                    val suffix = "_KMP_HUD.mp4"
-                                    val targetDest = File(sourceDir, baseName + suffix)
                                     
-                                    if (targetDest.exists()) {
+                                    var anyConflict = false
+                                    for (idx in ranges.indices) {
+                                        val partSuffix = if (ranges.size > 1) "_part${idx + 1}" else ""
+                                        val targetDest = File(sourceDir, baseName + partSuffix + "_KMP_HUD.mp4")
+                                        destFiles.add(targetDest)
+                                        if (targetDest.exists()) {
+                                            anyConflict = true
+                                        }
+                                    }
+                                    
+                                    if (anyConflict) {
                                         val overwriteResult = javax.swing.JOptionPane.showConfirmDialog(
                                             null,
-                                            "ファイル '${targetDest.name}' は既に存在します。\n" +
+                                            "出力ファイルの一部は既に存在します。\n" +
                                             "上書きしますか？（「いいえ」を選択すると連番付きの別名で保存します。キャンセルで開始を中止します）\n" +
-                                            "(The file already exists. Overwrite? 'No' will save as a copy with a suffix, 'Cancel' will abort)",
+                                            "(Some destination files already exist. Overwrite? 'No' will save as copies with suffix, 'Cancel' will abort)",
                                             "ファイル重複の確認 (File Conflict)",
                                             javax.swing.JOptionPane.YES_NO_CANCEL_OPTION,
                                             javax.swing.JOptionPane.WARNING_MESSAGE
@@ -682,25 +693,27 @@ fun startGui(args: Array<String>) = application {
                                         
                                         when (overwriteResult) {
                                             javax.swing.JOptionPane.YES_OPTION -> {
-                                                finalDestFile = targetDest
+                                                // destFiles is already correctly populated
                                             }
                                             javax.swing.JOptionPane.NO_OPTION -> {
-                                                val rawName = baseName + "_KMP_HUD"
-                                                val ext = "mp4"
-                                                var counter = 1
-                                                var uniqueFile = File(sourceDir, "$rawName ($counter).$ext")
-                                                while (uniqueFile.exists()) {
-                                                    counter++
-                                                    uniqueFile = File(sourceDir, "$rawName ($counter).$ext")
+                                                // Re-generate unique file names for all conflict files
+                                                for (idx in ranges.indices) {
+                                                    val partSuffix = if (ranges.size > 1) "_part${idx + 1}" else ""
+                                                    val rawName = baseName + partSuffix + "_KMP_HUD"
+                                                    val ext = "mp4"
+                                                    var counter = 1
+                                                    var uniqueFile = File(sourceDir, "$rawName ($counter).$ext")
+                                                    while (uniqueFile.exists()) {
+                                                        counter++
+                                                        uniqueFile = File(sourceDir, "$rawName ($counter).$ext")
+                                                    }
+                                                    destFiles[idx] = uniqueFile
                                                 }
-                                                finalDestFile = uniqueFile
                                             }
                                             else -> {
                                                 proceed = false
                                             }
                                         }
-                                    } else {
-                                        finalDestFile = targetDest
                                     }
                                 }
                             }
@@ -713,46 +726,68 @@ fun startGui(args: Array<String>) = application {
                                     isPaused = false
                                     isCanceled = false
                                     try {
-                                        val outPath = fireEncode(settings, fitPath, videoPath, outputDir, adjustedStartUtc,
-                                            onProgress = { prog, status ->
-                                                progress = prog
-                                                statusText = status
-                                            },
-                                            onFrame = { bufferedImg ->
-                                                val bitmap = bufferedImg.toComposeImageBitmap()
-                                                javax.swing.SwingUtilities.invokeLater {
-                                                    encodingPreviewImage = bitmap
+                                        val totalDuration = ranges.sumOf { it.second - it.first }
+                                        var completedDuration = 0.0
+                                        var hasCloudSyncMsg = false
+                                        
+                                        for (idx in ranges.indices) {
+                                            if (isCanceled) break
+                                            val (pStart, pEnd) = ranges[idx]
+                                            val partDuration = pEnd - pStart
+                                            
+                                            val partOutPath = fireEncode(settings, fitPath, videoPath, outputDir, adjustedStartUtc,
+                                                onProgress = { prog, status ->
+                                                    val segmentProgress = prog.toDouble()
+                                                    val overallProg = if (totalDuration > 0.0) {
+                                                        (completedDuration + segmentProgress * partDuration) / totalDuration
+                                                    } else 0.0
+                                                    progress = overallProg.toFloat()
+                                                    statusText = "[Part ${idx + 1}/${ranges.size}] $status"
+                                                },
+                                                onFrame = { bufferedImg ->
+                                                    val bitmap = bufferedImg.toComposeImageBitmap()
+                                                    javax.swing.SwingUtilities.invokeLater {
+                                                        encodingPreviewImage = bitmap
+                                                    }
+                                                },
+                                                trimStartSeconds = pStart,
+                                                trimEndSeconds = pEnd,
+                                                pauseSupplier = { isPaused },
+                                                cancelSupplier = { isCanceled },
+                                                showLivePreviewSupplier = { showLivePreview },
+                                                partIndex = idx,
+                                                numParts = ranges.size
+                                            )
+                                            
+                                            if (moveOutputToSource && destFiles.isNotEmpty() && !isCanceled) {
+                                                val finalDestFile = destFiles.getOrNull(idx)
+                                                if (finalDestFile != null) {
+                                                    statusText = "[Part ${idx + 1}/${ranges.size}] Moving file to source directory..."
+                                                    val outFile = File(partOutPath)
+                                                    withContext(Dispatchers.IO) {
+                                                        java.nio.file.Files.copy(outFile.toPath(), finalDestFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                                                        outFile.delete()
+                                                    }
+                                                    
+                                                    val normalized = targetVideoPath.replace("\\", "/").lowercase()
+                                                    if (normalized.contains("google drive") || 
+                                                        normalized.contains("マイドライブ") || 
+                                                        normalized.contains("my drive") ||
+                                                        normalized.startsWith("g:/") || 
+                                                        normalized.startsWith("h:/")) {
+                                                        hasCloudSyncMsg = true
+                                                    }
                                                 }
-                                            },
-                                            trimStartSeconds = trimStartSeconds,
-                                            trimEndSeconds = trimEndSeconds,
-                                            pauseSupplier = { isPaused },
-                                            cancelSupplier = { isCanceled },
-                                            showLivePreviewSupplier = { showLivePreview }
-                                        )
-                                        if (moveOutputToSource && finalDestFile != null && !isCanceled) {
-                                            statusText = "Moving file to source directory..."
-                                            val outFile = File(outPath)
-                                            withContext(Dispatchers.IO) {
-                                                java.nio.file.Files.copy(outFile.toPath(), finalDestFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
-                                                outFile.delete()
                                             }
-                                            
-                                            val normalized = targetVideoPath.replace("\\", "/").lowercase()
-                                            val isCloud = normalized.contains("google drive") || 
-                                                          normalized.contains("マイドライブ") || 
-                                                          normalized.contains("my drive") ||
-                                                          normalized.startsWith("g:/") || 
-                                                          normalized.startsWith("h:/")
-                                            
-                                            if (isCloud) {
-                                                statusText = "✨ Copied to Cloud. Drive Desktop is syncing in background (Check system tray)."
-                                            } else {
-                                                statusText = "✨ Finished Successfully!"
-                                            }
+                                            completedDuration += partDuration
+                                        }
+                                        
+                                        if (hasCloudSyncMsg) {
+                                            statusText = "✨ Copied to Cloud. Drive Desktop is syncing in background (Check system tray)."
                                         } else {
                                             statusText = if (isCanceled) "Encoding Canceled" else "✨ Finished Successfully!"
                                         }
+                                        
                                         if (!isCanceled) {
                                             if (args.contains("--auto-sample")) {
                                                 println("TEST_NOTIFICATION_SUCCESS: Encoding Finished Successfully!")
@@ -764,7 +799,6 @@ fun startGui(args: Array<String>) = application {
                                             }
                                         }
                                     } catch (e: Exception) {
-                                        // Handled and displayed in statusText
                                         if (args.contains("--auto-sample")) {
                                             println("TEST_NOTIFICATION_ERROR: Encoding Failed: ${e.message}")
                                         } else {
@@ -1137,6 +1171,11 @@ fun startGui(args: Array<String>) = application {
                             onTrimStartChange = { trimStartSeconds = it },
                             onTrimEndChange = { trimEndSeconds = it }
                         )
+                        Spacer(Modifier.height(8.dp))
+                        VideoSplitCard(
+                            viewModel = viewModel,
+                            videoCurrentTimeMs = videoCurrentTimeMs
+                        )
                     }
 
                     // C-DRIVE SPACE MONITOR Card
@@ -1407,6 +1446,7 @@ fun startGui(args: Array<String>) = application {
                                 telemetryPoints = telemetryPoints,
                                 trimStartSeconds = trimStartSeconds,
                                 trimEndSeconds = trimEndSeconds,
+                                splitPoints = viewModel.splitPoints,
                                 videoCurrentTimeMs = videoCurrentTimeMs,
                                 onTrimStartChange = { trimStartSeconds = it },
                                 onTrimEndChange = { trimEndSeconds = it },
@@ -1462,7 +1502,9 @@ suspend fun fireEncode(
     trimEndSeconds: Double = -1.0,
     pauseSupplier: () -> Boolean = { false },
     cancelSupplier: () -> Boolean = { false },
-    showLivePreviewSupplier: () -> Boolean = { true }
+    showLivePreviewSupplier: () -> Boolean = { true },
+    partIndex: Int = -1,
+    numParts: Int = 1
 ): String {
     println("DEBUG: fireEncode called with HudSettings: $s")
     return withContext(Dispatchers.IO) {
@@ -1489,7 +1531,8 @@ suspend fun fireEncode(
             )
             val videoFile = File(video)
             val baseName = videoFile.name.replace(".mp4", "", ignoreCase = true).replace(".mov", "", ignoreCase = true)
-            val suffix = if (maxDurationSeconds > 0) "_TEST_HUD.mp4" else "_KMP_HUD.mp4"
+            val partSuffix = if (partIndex >= 0 && numParts > 1) "_part${partIndex + 1}" else ""
+            val suffix = if (maxDurationSeconds > 0) "${partSuffix}_TEST_HUD.mp4" else "${partSuffix}_KMP_HUD.mp4"
             val output = File(outDir, baseName + suffix).absolutePath
             encoder.encode(fit, video, output, startUtc, 
                 maxDurationSeconds = maxDurationSeconds,
@@ -1749,6 +1792,98 @@ fun VideoTrimCard(
                     fontWeight = FontWeight.Bold
                 )
             }
+        }
+    }
+}
+
+@Composable
+fun VideoSplitCard(
+    viewModel: AppViewModel,
+    videoCurrentTimeMs: Long
+) {
+    val splitPoints = viewModel.splitPoints
+    val ranges = viewModel.getSplitRanges()
+    
+    Card(
+        backgroundColor = Color.White,
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+        border = BorderStroke(1.dp, Color(0xFFE5E5EA)),
+        elevation = 1.dp,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text("VIDEO SPLIT POINTS", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 0.5.sp)
+            
+            val playheadSec = videoCurrentTimeMs / 1000.0
+            val canAdd = playheadSec > viewModel.trimStartSeconds && playheadSec < viewModel.trimEndSeconds && playheadSec !in splitPoints
+            
+            Button(
+                onClick = { viewModel.addSplitPoint(playheadSec) },
+                enabled = canAdd,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    backgroundColor = Color(0xFF007AFF),
+                    contentColor = Color.White
+                )
+            ) {
+                Text("Add Split at Playhead (${utils.formatTime(videoCurrentTimeMs)})", fontSize = 10.sp)
+            }
+            
+            if (splitPoints.isNotEmpty()) {
+                Text("Current Splits:", color = Color(0xFF636366), fontSize = 9.sp)
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    splitPoints.forEach { splitSec ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = utils.formatTime((splitSec * 1000).toLong()),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF1C1C1E)
+                            )
+                            Button(
+                                onClick = { viewModel.removeSplitPoint(splitSec) },
+                                colors = ButtonDefaults.buttonColors(
+                                    backgroundColor = Color(0xFFFF3B30),
+                                    contentColor = Color.White
+                                ),
+                                modifier = Modifier.height(24.dp).padding(0.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Text("Remove", fontSize = 9.sp)
+                            }
+                        }
+                    }
+                }
+                
+                Button(
+                    onClick = { viewModel.clearSplitPoints() },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(
+                        backgroundColor = Color(0xFFFF3B30),
+                        contentColor = Color.White
+                    )
+                ) {
+                    Text("Clear All Splits", fontSize = 10.sp)
+                }
+            } else {
+                Text("No split points set.", color = Color(0xFF8E8E93), fontSize = 10.sp)
+            }
+            
+            Divider(color = Color(0xFFE5E5EA))
+            
+            Text(
+                text = "${ranges.size} video parts will be encoded.",
+                color = Color(0xFF2E7D32),
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold
+            )
         }
     }
 }

@@ -18,6 +18,7 @@ data class GuiPathCache(
     val showLivePreview: Boolean = true,
     val trimStartSeconds: Double? = null,
     val trimEndSeconds: Double? = null,
+    val splitPoints: List<Double>? = null,
     val windowX: Float? = null,
     val windowY: Float? = null,
     val windowWidth: Float? = null,
