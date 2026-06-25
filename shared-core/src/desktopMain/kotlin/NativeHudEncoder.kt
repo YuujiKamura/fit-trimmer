@@ -14,8 +14,47 @@ var globalActiveJobDir: java.io.File? = null
 fun findFfmpegPath(): String {
     val os = System.getProperty("os.name").lowercase()
     val isWindows = os.contains("win")
+    val isMac = os.contains("mac")
     
-    // 1. Query Python's imageio_ffmpeg (Preferred as it typically installs a modern ffmpeg build)
+    // 1. Try bundled resource FFmpeg (Highest priority to guarantee stable behavior)
+    try {
+        val resourcePath = when {
+            isWindows -> "/bin/win/ffmpeg.exe"
+            isMac -> "/bin/mac/ffmpeg"
+            else -> "/bin/linux/ffmpeg"
+        }
+        
+        // Use class loader of NativeHudEncoder to load the resource
+        val stream = NativeHudEncoder::class.java.getResourceAsStream(resourcePath)
+        if (stream != null) {
+            val workDir = PathResolver.getTempWorkDir()
+            val binDir = File(workDir, "bin")
+            if (!binDir.exists()) binDir.mkdirs()
+            
+            val destFile = File(binDir, if (isWindows) "ffmpeg.exe" else "ffmpeg")
+            
+            // Extract if not exists or empty (to avoid copying large file every single time)
+            if (!destFile.exists() || destFile.length() == 0L) {
+                println("📥 Extracting bundled FFmpeg to: ${destFile.absolutePath}")
+                stream.use { input ->
+                    FileOutputStream(destFile).use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                destFile.setExecutable(true)
+                println("✅ Bundle FFmpeg extracted successfully.")
+            }
+            
+            if (destFile.exists() && destFile.length() > 0L) {
+                return destFile.absolutePath
+            }
+        }
+    } catch (e: Exception) {
+        println("⚠️ Failed to extract bundled FFmpeg: ${e.message}. Falling back to system detection.")
+        e.printStackTrace()
+    }
+
+    // 2. Query Python's imageio_ffmpeg (Fallback)
     try {
         val pythonCmd = if (isWindows) "python.exe" else "python"
         val pb = ProcessBuilder(pythonCmd, "-c", "import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())")
@@ -27,7 +66,7 @@ fun findFfmpegPath(): String {
         }
     } catch (e: Exception) {}
 
-    // 2. Check system PATH
+    // 3. Check system PATH (Fallback)
     val ffmpegCmd = if (isWindows) "ffmpeg.exe" else "ffmpeg"
     try {
         val pb = ProcessBuilder(ffmpegCmd, "-version")
@@ -38,7 +77,7 @@ fun findFfmpegPath(): String {
         }
     } catch (e: Exception) {}
 
-    // 3. Fallback to default paths
+    // 4. Default hardcoded fallback path
     val defaultPaths = listOf(
         "C:\\Users\\yuuji\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\imageio_ffmpeg\\binaries\\ffmpeg-win-x86_64-v7.1.exe",
         "ffmpeg"

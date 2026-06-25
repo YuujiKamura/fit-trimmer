@@ -42,7 +42,7 @@ tasks.register<JavaExec>("runFitCLI") {
     group = "application"
     mainClass.set("MainKt")
     val compilation = kotlin.jvm("desktop").compilations.getByName("main")
-    classpath = compilation.output.classesDirs + compilation.runtimeDependencyFiles
+    classpath = compilation.output.allOutputs + compilation.runtimeDependencyFiles
 }
 
 tasks.register<Copy>("copyWasmToSrc") {
