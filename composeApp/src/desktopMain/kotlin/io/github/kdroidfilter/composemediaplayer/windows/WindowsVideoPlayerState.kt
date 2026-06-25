@@ -169,6 +169,9 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
     internal val currentFrameBitmap: Bitmap?
         get() = _currentFrame
 
+    internal val durationSeconds: Double
+        get() = _duration
+
     // Aspect ratio property
     internal val aspectRatio: Float
         get() = if (videoWidth > 0 && videoHeight > 0)
