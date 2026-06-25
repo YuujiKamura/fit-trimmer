@@ -259,11 +259,20 @@ fun startGui(args: Array<String>) = application {
         }
     }
 
-    LaunchedEffect(videoPath) {
+    LaunchedEffect(videoPath, videoLengthMs, trimStartSeconds, trimEndSeconds) {
         if (videoPath.isNotEmpty()) {
             val f = File(videoPath)
             if (f.exists()) {
-                requiredSpaceGB = estimateRequiredSpaceGiB(f.length())
+                val totalLengthSec = videoLengthMs / 1000.0
+                val trimEnd = if (trimEndSeconds <= 0.0 || trimEndSeconds > totalLengthSec) totalLengthSec else trimEndSeconds
+                val trimDuration = (trimEnd - trimStartSeconds).coerceAtLeast(0.0)
+                
+                val ratio = if (totalLengthSec > 0.0) {
+                    (trimDuration / totalLengthSec).coerceIn(0.0, 1.0)
+                } else {
+                    1.0
+                }
+                requiredSpaceGB = estimateRequiredSpaceGiB((f.length() * ratio).toLong())
             } else {
                 requiredSpaceGB = 2.0
             }
@@ -654,6 +663,51 @@ fun startGui(args: Array<String>) = application {
                                     proceed = false
                                 }
                             }
+                            var finalDestFile: File? = null
+                            if (proceed && moveOutputToSource) {
+                                val sourceDir = File(targetVideoPath).parentFile
+                                if (sourceDir != null && sourceDir.exists()) {
+                                    val videoFile = File(targetVideoPath)
+                                    val baseName = videoFile.name.replace(".mp4", "", ignoreCase = true).replace(".mov", "", ignoreCase = true)
+                                    val suffix = "_KMP_HUD.mp4"
+                                    val targetDest = File(sourceDir, baseName + suffix)
+                                    
+                                    if (targetDest.exists()) {
+                                        val overwriteResult = javax.swing.JOptionPane.showConfirmDialog(
+                                            null,
+                                            "ファイル '${targetDest.name}' は既に存在します。\n" +
+                                            "上書きしますか？（「いいえ」を選択すると連番付きの別名で保存します。キャンセルで開始を中止します）\n" +
+                                            "(The file already exists. Overwrite? 'No' will save as a copy with a suffix, 'Cancel' will abort)",
+                                            "ファイル重複の確認 (File Conflict)",
+                                            javax.swing.JOptionPane.YES_NO_CANCEL_OPTION,
+                                            javax.swing.JOptionPane.WARNING_MESSAGE
+                                        )
+                                        
+                                        when (overwriteResult) {
+                                            javax.swing.JOptionPane.YES_OPTION -> {
+                                                finalDestFile = targetDest
+                                            }
+                                            javax.swing.JOptionPane.NO_OPTION -> {
+                                                val rawName = baseName + "_KMP_HUD"
+                                                val ext = "mp4"
+                                                var counter = 1
+                                                var uniqueFile = File(sourceDir, "$rawName ($counter).$ext")
+                                                while (uniqueFile.exists()) {
+                                                    counter++
+                                                    uniqueFile = File(sourceDir, "$rawName ($counter).$ext")
+                                                }
+                                                finalDestFile = uniqueFile
+                                            }
+                                            else -> {
+                                                proceed = false
+                                            }
+                                        }
+                                    } else {
+                                        finalDestFile = targetDest
+                                    }
+                                }
+                            }
+
                             if (proceed) {
                                 scope.launch {
                                     encodingPreviewImage = null
@@ -679,19 +733,29 @@ fun startGui(args: Array<String>) = application {
                                             cancelSupplier = { isCanceled },
                                             showLivePreviewSupplier = { showLivePreview }
                                         )
-                                        if (moveOutputToSource && !isCanceled) {
+                                        if (moveOutputToSource && finalDestFile != null && !isCanceled) {
                                             statusText = "Moving file to source directory..."
-                                            val sourceDir = File(targetVideoPath).parentFile
                                             val outFile = File(outPath)
-                                            if (sourceDir != null && sourceDir.exists()) {
-                                                val destFile = File(sourceDir, outFile.name)
-                                                withContext(Dispatchers.IO) {
-                                                    java.nio.file.Files.copy(outFile.toPath(), destFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
-                                                    outFile.delete()
-                                                }
+                                            withContext(Dispatchers.IO) {
+                                                java.nio.file.Files.copy(outFile.toPath(), finalDestFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                                                outFile.delete()
                                             }
+                                            
+                                            val normalized = targetVideoPath.replace("\\", "/").lowercase()
+                                            val isCloud = normalized.contains("google drive") || 
+                                                          normalized.contains("マイドライブ") || 
+                                                          normalized.contains("my drive") ||
+                                                          normalized.startsWith("g:/") || 
+                                                          normalized.startsWith("h:/")
+                                            
+                                            if (isCloud) {
+                                                statusText = "✨ Copied to Cloud. Drive Desktop is syncing in background (Check system tray)."
+                                            } else {
+                                                statusText = "✨ Finished Successfully!"
+                                            }
+                                        } else {
+                                            statusText = if (isCanceled) "Encoding Canceled" else "✨ Finished Successfully!"
                                         }
-                                        statusText = if (isCanceled) "Encoding Canceled" else "✨ Finished Successfully!"
                                         if (!isCanceled) {
                                             if (args.contains("--auto-sample")) {
                                                 println("TEST_NOTIFICATION_SUCCESS: Encoding Finished Successfully!")
@@ -1134,23 +1198,10 @@ fun startGui(args: Array<String>) = application {
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Text("Est. Required Space (Native):", color = Color(0xFF636366), fontSize = 10.sp)
+                                Text("Est. Required Space:", color = Color(0xFF636366), fontSize = 10.sp)
                                 Text(
                                     "%.2f GB".format(requiredSpaceGB),
-                                    color = if (hasEnoughSpace || !isEncoding || isSampleEncoding) Color(0xFF1C1C1E) else Color(0xFFE02424),
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
-                            }
-                            
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text("Est. Required Space (Sample):", color = Color(0xFF636366), fontSize = 10.sp)
-                                Text(
-                                    "%.2f GB".format(sampleRequiredSpaceGB),
-                                    color = if (hasEnoughSpaceForSample || !isEncoding || !isSampleEncoding) Color(0xFF1C1C1E) else Color(0xFFE02424),
+                                    color = if (hasEnoughSpace) Color(0xFF1C1C1E) else Color(0xFFE02424),
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Medium
                                 )

@@ -249,7 +249,8 @@ class NativeHudEncoder(
         val logFile = File(workDir, "ffmpeg_log.txt")
         if (logFile.exists()) logFile.delete()
 
-        val localVideoPath = videoPath
+        var localVideoPath = videoPath
+        var isLocalTrimmedVideo = false
 
         val fitBytes = File(fitPath).readBytes()
         val parser = FitParser(fitBytes)
@@ -340,6 +341,109 @@ class NativeHudEncoder(
         if (!jobDir.exists()) jobDir.mkdirs()
         globalActiveJobDir = jobDir
 
+        // Google Drive mitigation: pre-copy target segment locally to avoid network read bottleneck
+        if (isGoogleDrivePath(videoPath)) {
+            val tempTrimmedVideo = File(jobDir, "temp_trimmed_input.mp4")
+            if (!tempTrimmedVideo.exists() || tempTrimmedVideo.length() == 0L) {
+                println("⚠️ Cloud drive path detected: $videoPath")
+                println("📥 Pre-copying trimmed segment to local temp file to avoid network bottlenecks: ${tempTrimmedVideo.absolutePath}")
+                onProgress(0.0f, "Downloading/trimming segment from cloud drive...")
+                try {
+                    val cutArgs = mutableListOf<String>()
+                    cutArgs.add(ffmpegPath)
+                    cutArgs.add("-y")
+                    // Note: putting -ss before -i causes fast seek on remote files to load only the required chunk
+                    cutArgs.add("-ss")
+                    cutArgs.add(actualTrimStart.toString())
+                    cutArgs.add("-t")
+                    cutArgs.add(targetDurationSeconds.toString())
+                    cutArgs.add("-i")
+                    cutArgs.add(videoPath)
+                    cutArgs.add("-c")
+                    cutArgs.add("copy")
+                    cutArgs.add(tempTrimmedVideo.absolutePath)
+
+                    println("DEBUG: Running cloud segment copy: ${cutArgs.joinToString(" ")}")
+                    val pbCut = ProcessBuilder(cutArgs)
+                    pbCut.redirectErrorStream(true)
+                    val pCut = pbCut.start()
+                    
+                    val timeRegex = Regex("""time=\s*(\d+):(\d+):(\d+)\.(\d+)""")
+                    val sizeRegex = Regex("""(?:Lsize|size)=\s*(\d+)\s*KiB""")
+                    val spinner = listOf("|", "/", "-", "\\")
+                    var spinnerIdx = 0
+
+                    val cutLogThread = Thread {
+                        try {
+                            pCut.inputStream.bufferedReader().forEachLine { line ->
+                                println("FFMPEG-COPY: $line")
+                                val sp = spinner[spinnerIdx++ % spinner.size]
+                                val timeMatch = timeRegex.find(line)
+                                val sizeMatch = sizeRegex.find(line)
+                                
+                                var sizeMbStr = ""
+                                if (sizeMatch != null) {
+                                    val kib = sizeMatch.groupValues[1].toDoubleOrNull() ?: 0.0
+                                    sizeMbStr = " (%.1f MB)".format(kib / 1024.0)
+                                }
+                                
+                                if (timeMatch != null) {
+                                    val h = timeMatch.groupValues[1].toInt()
+                                    val m = timeMatch.groupValues[2].toInt()
+                                    val s = timeMatch.groupValues[3].toInt()
+                                    val msVal = timeMatch.groupValues[4]
+                                    val ms = msVal.toDouble() / java.lang.Math.pow(10.0, msVal.length.toDouble())
+                                    val currentSec = h * 3600.0 + m * 60.0 + s.toDouble() + ms
+                                    
+                                    val ratio = (currentSec / targetDurationSeconds).coerceIn(0.0, 1.0)
+                                    val percent = (ratio * 100).toInt()
+                                    onProgress(0.0f, "$sp 📥 Downloading segment from cloud: $percent%$sizeMbStr")
+                                } else if (sizeMbStr.isNotEmpty()) {
+                                    onProgress(0.0f, "$sp 📥 Downloading segment from cloud...$sizeMbStr")
+                                }
+                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
+                    cutLogThread.start()
+                    
+                    // Cancel monitor thread for download/trim process
+                    val cutCancelMonitorThread = kotlin.concurrent.thread {
+                        while (pCut.isAlive) {
+                            if (cancelSupplier()) {
+                                pCut.destroy()
+                                break
+                            }
+                            Thread.sleep(100)
+                        }
+                    }
+                    
+                    val exitCut = pCut.waitFor()
+                    cutLogThread.join(1000)
+                    cutCancelMonitorThread.join(1000)
+                    
+                    if (cancelSupplier()) {
+                        throw Exception("Encoding was canceled by user during cloud copy.")
+                    }
+                    
+                    if (exitCut == 0 && tempTrimmedVideo.exists() && tempTrimmedVideo.length() > 0L) {
+                        println("✅ Successfully copied segment to local: ${tempTrimmedVideo.length() / (1024 * 1024)} MB")
+                        localVideoPath = tempTrimmedVideo.absolutePath
+                        isLocalTrimmedVideo = true
+                    } else {
+                        println("❌ Failed to perform fast trim-copy (exit code $exitCut). Falling back to direct cloud stream.")
+                    }
+                } catch (e: Exception) {
+                    println("❌ Error during cloud copy: ${e.message}. Falling back to direct cloud stream.")
+                }
+            } else {
+                println("✨ Using existing local temp segment: ${tempTrimmedVideo.absolutePath}")
+                localVideoPath = tempTrimmedVideo.absolutePath
+                isLocalTrimmedVideo = true
+            }
+        }
+
         // Clean up any stray temp files in the job directory
         jobDir.listFiles { _, name -> name.endsWith(".tmp") }?.forEach {
             try {
@@ -414,8 +518,13 @@ class NativeHudEncoder(
                 pbArgs.add("-hwaccel")
                 pbArgs.add(hwaccel)
             }
+            val seekStart = if (isLocalTrimmedVideo) {
+                ffmpegStartSeconds
+            } else {
+                ffmpegInputStart
+            }
             pbArgs.add("-ss")
-            pbArgs.add(ffmpegInputStart.toString())
+            pbArgs.add(seekStart.toString())
             pbArgs.add("-t")
             pbArgs.add(remainingDuration.toString())
             pbArgs.add("-i")
