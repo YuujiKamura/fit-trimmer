@@ -363,6 +363,9 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
                         return@withLock
                     }
 
+                    // Explicitly pause the native player immediately to prevent any transient sound
+                    player.SetPlaybackState(instance, false, false)
+
                     // Get the video dimensions
                     val wRef = IntByReference()
                     val hRef = IntByReference()
@@ -428,7 +431,43 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
                     }
 
                     delay(100)
-                    // play() // Commented out to prevent video from auto-playing immediately on startup/load
+                    // Ensure the native player is explicitly paused
+                    player.SetPlaybackState(instance, false, false)
+                    _isPlaying = false
+
+                    // Retrieve and render the first frame as a poster frame
+                    scope.launch {
+                        try {
+                            val ptrRef = PointerByReference()
+                            val sizeRef = IntByReference()
+                            val readResult = player.ReadVideoFrame(instance, ptrRef, sizeRef)
+                            if (readResult >= 0 && ptrRef.value != null && sizeRef.value > 0) {
+                                val sharedBuffer = sharedFrameBuffer ?: ByteArray(frameBufferSize).also { sharedFrameBuffer = it }
+                                val buffer = ptrRef.value.getByteBuffer(0, sizeRef.value.toLong())
+                                val copySize = java.lang.Math.min(sizeRef.value, frameBufferSize)
+                                if (buffer != null && copySize > 0) {
+                                    buffer.get(sharedBuffer, 0, copySize)
+                                }
+                                player.UnlockVideoFrame(instance)
+
+                                val bitmap = Bitmap().apply {
+                                    allocPixels(createVideoImageInfo())
+                                }
+                                bitmap.installPixels(
+                                    createVideoImageInfo(),
+                                    sharedBuffer,
+                                    videoWidth * 4
+                                )
+                                bitmapLock.write {
+                                    _currentFrame?.let { old -> old.close() }
+                                    _currentFrame = bitmap
+                                    currentFrameState.value = bitmap.asComposeImageBitmap()
+                                }
+                            }
+                        } catch (e: Exception) {
+                            windowsLogger.e { "Failed to read initial poster frame: ${e.message}" }
+                        }
+                    }
 
                 } catch (e: Exception) {
                     setError("Error while opening media: ${e.message}")
