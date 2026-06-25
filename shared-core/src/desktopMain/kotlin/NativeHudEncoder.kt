@@ -230,7 +230,15 @@ class NativeHudEncoder(
         return Pair(null, "libx264")
     }
 
-    fun encode(fitPath: String, videoPath: String, output: String, startUtc: String, maxDurationSeconds: Int = -1) {
+    fun encode(
+        fitPath: String, 
+        videoPath: String, 
+        output: String, 
+        startUtc: String, 
+        maxDurationSeconds: Int = -1,
+        trimStartSeconds: Double = 0.0,
+        trimEndSeconds: Double = -1.0
+    ) {
         try {
             val ffmpegPath = findFfmpegPath()
         
@@ -294,12 +302,23 @@ class NativeHudEncoder(
             e.printStackTrace()
         }
 
-        if (maxDurationSeconds > 0) {
-            videoDurationSeconds = minOf(videoDurationSeconds, maxDurationSeconds)
+        val actualTrimStart = trimStartSeconds.coerceIn(0.0, videoDurationSeconds.toDouble())
+        val actualTrimEnd = if (trimEndSeconds <= 0.0 || trimEndSeconds > videoDurationSeconds.toDouble()) {
+            videoDurationSeconds.toDouble()
+        } else {
+            trimEndSeconds
+        }
+        val trimDurationSeconds = (actualTrimEnd - actualTrimStart).toInt().coerceAtLeast(1)
+
+        val targetDurationSeconds = if (maxDurationSeconds > 0) {
+            minOf(trimDurationSeconds, maxDurationSeconds)
+        } else {
+            trimDurationSeconds
         }
 
-        val videoStartFit = startTime.epochSecond - fitEpoch
-        val videoEndFit = (startTime.epochSecond + videoDurationSeconds) - fitEpoch
+        val startTimeAdjusted = startTime.plusSeconds(actualTrimStart.toLong())
+        val videoStartFit = startTimeAdjusted.epochSecond - fitEpoch
+        val videoEndFit = (startTimeAdjusted.epochSecond + targetDurationSeconds) - fitEpoch
         val trimmedTelemetry = telemetry.filter { it.timestamp in videoStartFit.toDouble()..videoEndFit.toDouble() }
         if (trimmedTelemetry.isNotEmpty()) {
             telemetry = trimmedTelemetry
@@ -316,7 +335,7 @@ class NativeHudEncoder(
         println("DEBUG: Auto-detected encoder: $encoderName, hwaccel: $hwaccel")
 
         // Create deterministic job hash for crash recovery
-        val jobHash = kotlin.math.abs((fitPath + videoPath + startUtc + maxDurationSeconds + config.hashCode()).hashCode()).toString()
+        val jobHash = kotlin.math.abs((fitPath + videoPath + startUtc + maxDurationSeconds + actualTrimStart + actualTrimEnd + config.hashCode()).hashCode()).toString()
         val jobDir = File(workDir, "job_$jobHash")
         if (!jobDir.exists()) jobDir.mkdirs()
         globalActiveJobDir = jobDir
@@ -357,14 +376,14 @@ class NativeHudEncoder(
             println("🔄 Calculated accurate resume offset: ${formatDuration(resumeSeconds)} ($ffmpegStartSeconds s) from $resumePartIndex completed chunks")
         }
         
-        if (resumeSeconds > 0 && resumeSeconds < videoDurationSeconds) {
-            println("🔄 RESUMING encode from chunk $resumePartIndex (${formatDuration(resumeSeconds)} / ${formatDuration(videoDurationSeconds)})")
-            onProgress(resumeSeconds.toFloat() / videoDurationSeconds, "Resuming encode from ${formatDuration(resumeSeconds)}...")
+        if (resumeSeconds > 0 && resumeSeconds < targetDurationSeconds) {
+            println("🔄 RESUMING encode from chunk $resumePartIndex (${formatDuration(resumeSeconds)} / ${formatDuration(targetDurationSeconds)})")
+            onProgress(resumeSeconds.toFloat() / targetDurationSeconds, "Resuming encode from ${formatDuration(resumeSeconds)}...")
         }
 
         val isEncodingActive = java.util.concurrent.atomic.AtomicBoolean(true)
 
-        if (resumeSeconds < videoDurationSeconds && isEncodingActive.get()) {
+        if (resumeSeconds < targetDurationSeconds && isEncodingActive.get()) {
             if (cancelSupplier()) {
                 throw Exception("Encoding was canceled by user.")
             }
@@ -373,7 +392,8 @@ class NativeHudEncoder(
                 Thread.sleep(100)
             }
             
-            val remainingDuration = videoDurationSeconds - ffmpegStartSeconds
+            val ffmpegInputStart = actualTrimStart + ffmpegStartSeconds
+            val remainingDuration = targetDurationSeconds - ffmpegStartSeconds
             
             val pbArgs = mutableListOf<String>()
             pbArgs.add(ffmpegPath)
@@ -395,7 +415,7 @@ class NativeHudEncoder(
                 pbArgs.add(hwaccel)
             }
             pbArgs.add("-ss")
-            pbArgs.add(ffmpegStartSeconds.toString())
+            pbArgs.add(ffmpegInputStart.toString())
             pbArgs.add("-t")
             pbArgs.add(remainingDuration.toString())
             pbArgs.add("-i")
@@ -492,7 +512,7 @@ class NativeHudEncoder(
             if (resumeSeconds > 0) {
                 val prefillStart = maxOf(0, resumeSeconds - 30)
                 for (preSec in prefillStart until resumeSeconds) {
-                    val preUtc = startTime.plusSeconds(preSec.toLong()).epochSecond
+                    val preUtc = startTimeAdjusted.plusSeconds(preSec.toLong()).epochSecond
                     val preFitTs = preUtc - fitEpoch
                     val pt = telemetry.find { it.timestamp >= preFitTs } ?: telemetry.last()
                     pBuf.add(pt.power)
@@ -501,7 +521,7 @@ class NativeHudEncoder(
             
             var telemetryIdx = 0
             try {
-                loop@ for (i in resumeSeconds until videoDurationSeconds) {
+                loop@ for (i in resumeSeconds until targetDurationSeconds) {
                     if (cancelSupplier()) {
                         process.destroy()
                         break@loop
@@ -515,7 +535,7 @@ class NativeHudEncoder(
                     }
                     
                     val loopStart = System.currentTimeMillis()
-                    val currentUtc = startTime.plusSeconds(i.toLong()).epochSecond
+                    val currentUtc = startTimeAdjusted.plusSeconds(i.toLong()).epochSecond
                     val currentFitTs = currentUtc - fitEpoch
                     
                     while (telemetryIdx < telemetry.size - 1 && telemetry[telemetryIdx].timestamp < currentFitTs) {
@@ -535,9 +555,9 @@ class NativeHudEncoder(
                     val scale = videoWidth.toFloat() / 1920f
                     val canvas = DesktopHudCanvas(g, scale)
                     if (customRenderer != null) {
-                        customRenderer.invoke(canvas, point, telemetry, pBuf, i.toFloat() / videoDurationSeconds)
+                        customRenderer.invoke(canvas, point, telemetry, pBuf, i.toFloat() / targetDurationSeconds)
                     } else {
-                        renderer.renderFrame(canvas, point, telemetry, pBuf, i.toFloat() / videoDurationSeconds, isValid)
+                        renderer.renderFrame(canvas, point, telemetry, pBuf, i.toFloat() / targetDurationSeconds, isValid)
                     }
                     g.dispose()
                     
@@ -553,13 +573,13 @@ class NativeHudEncoder(
                     val avgFrameTime = frameTimes.average()
                     val currentFps = if (avgFrameTime > 0) 1000.0 / avgFrameTime else 0.0
                     
-                    val remainingFrames = videoDurationSeconds - i
+                    val remainingFrames = targetDurationSeconds - i
                     val remainingSecondsETA = if (currentFps > 0) (remainingFrames / currentFps).toInt() else 0
                     
                     val processedStr = formatDuration(i)
-                    val totalStr = formatDuration(videoDurationSeconds)
+                    val totalStr = formatDuration(targetDurationSeconds)
                     val remainingStr = formatDuration(remainingSecondsETA)
-                    val progressRatio = i.toFloat() / videoDurationSeconds
+                    val progressRatio = i.toFloat() / targetDurationSeconds
                     val progressPercent = (progressRatio * 100).toInt()
                     
                     val fpsStr = "%.1f fps".format(currentFps)
@@ -596,12 +616,25 @@ class NativeHudEncoder(
                     throw Exception("ffmpeg exited with error code $exitCode. See ffmpeg_log.txt for details.")
                 } else {
                     // Success!
-                    resumeSeconds = videoDurationSeconds
+                    resumeSeconds = targetDurationSeconds
                 }
             }
         }
 
-        if (!cancelSupplier() && resumeSeconds >= videoDurationSeconds) {
+        if (!cancelSupplier() && resumeSeconds >= targetDurationSeconds) {
+            // Export trimmed FIT file
+            try {
+                val fitStartUtcSeconds = startTimeAdjusted.epochSecond
+                val fitEndUtcSeconds = startTimeAdjusted.epochSecond + targetDurationSeconds
+                val trimmedFitBytes = parser.trim(fitStartUtcSeconds, fitEndUtcSeconds)
+                val trimmedFitFile = File(output.replace(Regex("""\.(mp4|mov)$""", RegexOption.IGNORE_CASE), ".fit"))
+                trimmedFitFile.writeBytes(trimmedFitBytes)
+                println("⚡ Trimmed FIT file exported to: ${trimmedFitFile.absolutePath}")
+            } catch (e: Exception) {
+                println("⚠️ Failed to export trimmed FIT file: ${e.message}")
+                e.printStackTrace()
+            }
+
             onProgress(1.0f, "Merging video segments (Crash Recovery Checkpoint)...")
             
             val partsListFile = File(jobDir, "parts.txt")

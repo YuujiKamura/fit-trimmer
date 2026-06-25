@@ -16,6 +16,8 @@ data class GuiPathCache(
     val settings: HudSettings = HudSettings(),
     val moveOutputToSource: Boolean = false,
     val showLivePreview: Boolean = true,
+    val trimStartSeconds: Double? = null,
+    val trimEndSeconds: Double? = null,
     val windowX: Float? = null,
     val windowY: Float? = null,
     val windowWidth: Float? = null,
