@@ -50,7 +50,7 @@ class HudRenderer(val config: HudConfig) {
         val timeX = 40f
         val timeY = 40f
         val dtText = if (isValid) formatDateTime(telemetry.timestamp) else "----- --:--:--"
-        val dtTextSize = 18f
+        val dtTextSize = 24f
         val dtTextWidth = canvas.getTextWidth(dtText, dtTextSize, bold = true)
         val dtTextHeight = dtTextSize
         val dtPadX = 12f
@@ -66,17 +66,17 @@ class HudRenderer(val config: HudConfig) {
         var cx = config.xOffset
         var cy = config.yOffset
         
-        val labelSize = 11f
+        val labelSize = 13f
         val valSize = config.valSize // 40f
-        val unitSize = 14f
+        val unitSize = 18f
         val tightness = config.tightness // 1f
         val itemSpacing = config.spacing // 20f
         val graphW = config.graphW // 300f
         val graphH = config.graphH // 60f
 
         fun drawCell(label: String, value: String, unit: String, color: String) {
-            // 1. Label (Grey #a0a0a0)
-            canvas.drawText(label, cx, cy, labelSize, "#a0a0a0", bold = true)
+            // 1. Label (Light grey #e5e7eb)
+            canvas.drawText(label, cx, cy, labelSize, "#e5e7eb", bold = true)
             
             // 2. Value (White #ffffff)
             val valY = cy + labelSize + tightness
@@ -84,7 +84,7 @@ class HudRenderer(val config: HudConfig) {
             
             // 3. Unit (Color specified)
             val valW = canvas.getTextWidth(value, valSize, true)
-            val unitX = cx + valW + 6f
+            val unitX = cx + valW + 8f
             val unitY = valY + (valSize - unitSize)
             canvas.drawText(unit, unitX, unitY, unitSize, color, bold = true)
             
@@ -114,7 +114,7 @@ class HudRenderer(val config: HudConfig) {
         drawCell("W/KG", wkgStr, "w/kg", "#2dd4bf")
 
         // 6. POWER TREND (Bar graph)
-        canvas.drawText("POWER TREND (30s, 1s)", cx, cy, labelSize, "#a0a0a0", bold = true)
+        canvas.drawText("POWER TREND (30s, 1s)", cx, cy, labelSize, "#e5e7eb", bold = true)
         val pGy = cy + labelSize + 4f
         
         if (isValid && pBuf.isNotEmpty()) {
@@ -143,7 +143,7 @@ class HudRenderer(val config: HudConfig) {
         drawCell("GRADE", grdStr, "%", "#fbbf24")
 
         // 8. ELEVATION (Line graph with terrain and pin)
-        canvas.drawText("ELEVATION", cx, cy, labelSize, "#a0a0a0", bold = true)
+        canvas.drawText("ELEVATION", cx, cy, labelSize, "#e5e7eb", bold = true)
         val eGy = cy + labelSize + 4f
         
         if (allPoints.size > 1) {

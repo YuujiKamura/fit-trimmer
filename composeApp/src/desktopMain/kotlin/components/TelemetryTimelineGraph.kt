@@ -64,6 +64,15 @@ fun TelemetryTimelineGraph(
     val textMeasurer = rememberTextMeasurer()
     val videoDurationSec = videoLengthMs / 1000.0
 
+    val currentVideoLengthMs by rememberUpdatedState(videoLengthMs)
+    val currentTrimStartSeconds by rememberUpdatedState(trimStartSeconds)
+    val currentTrimEndSeconds by rememberUpdatedState(trimEndSeconds)
+    val currentVideoCurrentTimeMs by rememberUpdatedState(videoCurrentTimeMs)
+    
+    val currentOnTrimStartChange by rememberUpdatedState(onTrimStartChange)
+    val currentOnTrimEndChange by rememberUpdatedState(onTrimEndChange)
+    val currentOnSeek by rememberUpdatedState(onSeek)
+
     // Sample telemetry points to match video seconds
     val sampledPoints = remember(telemetryPoints, adjustedStartUtc, videoLengthMs) {
         if (telemetryPoints.isEmpty() || adjustedStartUtc.isEmpty() || videoLengthMs <= 0) {
@@ -221,14 +230,16 @@ fun TelemetryTimelineGraph(
                     .clip(RoundedCornerShape(6.dp))
                     .background(Color(0xFFF2F2F7))
                     .border(1.dp, Color(0xFFE5E5EA), RoundedCornerShape(6.dp))
-                    .pointerInput(videoLengthMs, trimStartSeconds, trimEndSeconds, videoCurrentTimeMs) {
+                    .pointerInput(Unit) {
                         detectDragGestures(
                             onDragStart = { offset ->
-                                if (videoDurationSec > 0) {
+                                val vLength = currentVideoLengthMs
+                                val vDuration = vLength / 1000.0
+                                if (vDuration > 0) {
                                     val w = size.width.toFloat()
-                                    val xStart = (trimStartSeconds / videoDurationSec) * w
-                                    val xEnd = (trimEndSeconds / videoDurationSec) * w
-                                    val xPlayhead = (videoCurrentTimeMs / 1000.0 / videoDurationSec) * w
+                                    val xStart = (currentTrimStartSeconds / vDuration) * w
+                                    val xEnd = (currentTrimEndSeconds / vDuration) * w
+                                    val xPlayhead = (currentVideoCurrentTimeMs / 1000.0 / vDuration) * w
                                     
                                     val threshold = 20.dp.toPx()
                                     activeDragHandle = when {
@@ -241,25 +252,28 @@ fun TelemetryTimelineGraph(
                                     // If no handle is grabbed, perform a seek click
                                     if (activeDragHandle == null) {
                                         val ratio = (offset.x / w).coerceIn(0f, 1f)
-                                        onSeek((ratio * videoLengthMs).toLong())
+                                        currentOnSeek((ratio * vLength).toLong())
                                     }
                                 }
                             },
                             onDrag = { change, _ ->
-                                if (videoDurationSec > 0 && activeDragHandle != null) {
+                                change.consume()
+                                val vLength = currentVideoLengthMs
+                                val vDuration = vLength / 1000.0
+                                if (vDuration > 0 && activeDragHandle != null) {
                                     val w = size.width.toFloat()
                                     val ratio = (change.position.x / w).coerceIn(0f, 1f)
-                                    val targetSec = ratio * videoDurationSec
+                                    val targetSec = ratio * vDuration
                                     
                                     when (activeDragHandle) {
                                         DragHandle.TRIM_START -> {
-                                            onTrimStartChange(targetSec.coerceIn(0.0, trimEndSeconds - 1.0))
+                                            currentOnTrimStartChange(targetSec.coerceIn(0.0, currentTrimEndSeconds - 1.0))
                                         }
                                         DragHandle.TRIM_END -> {
-                                            onTrimEndChange(targetSec.coerceIn(trimStartSeconds + 1.0, videoDurationSec))
+                                            currentOnTrimEndChange(targetSec.coerceIn(currentTrimStartSeconds + 1.0, vDuration))
                                         }
                                         DragHandle.PLAYHEAD -> {
-                                            onSeek((targetSec * 1000.0).toLong())
+                                            currentOnSeek((targetSec * 1000.0).toLong())
                                         }
                                         null -> {}
                                     }
