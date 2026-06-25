@@ -138,6 +138,7 @@ fun VideoPreviewArea(
     modifier: Modifier = Modifier
 ) {
     var isPlaying by remember { mutableStateOf(false) }
+    var lastVolume by remember { mutableStateOf(1f) }
 
     val togglePlay = {
         println("DEBUG: togglePlay called. current isPlaying=${playerState.isPlaying}")
@@ -307,8 +308,48 @@ fun VideoPreviewArea(
                     )
                 )
 
+                // Volume Controls (Mute & Slider)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    val vol = playerState.volume
+                    val isMute = vol == 0f
+                    OutlinedButton(
+                        onClick = {
+                            if (isMute) {
+                                playerState.volume = if (lastVolume > 0f) lastVolume else 0.5f
+                            } else {
+                                lastVolume = vol
+                                playerState.volume = 0f
+                            }
+                        },
+                        modifier = Modifier.size(28.dp),
+                        contentPadding = PaddingValues(0.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF1C1C1E))
+                    ) {
+                        Text(if (isMute) "🔇" else "🔊", fontSize = 11.sp)
+                    }
+
+                    Slider(
+                        value = vol,
+                        onValueChange = { newVol ->
+                            playerState.volume = newVol
+                            if (newVol > 0f) {
+                                lastVolume = newVol
+                            }
+                        },
+                        modifier = Modifier.width(60.dp),
+                        colors = SliderDefaults.colors(
+                            thumbColor = Color(0xFF007AFF),
+                            activeTrackColor = Color(0xFF007AFF),
+                            inactiveTrackColor = Color(0xFFE5E5EA)
+                        )
+                    )
+                }
+
                 Text(
-                    text = "NATIVE PLAYER ACTIVE",
+                    text = "NATIVE",
                     color = Color(0xFF2E7D32),
                     fontSize = 9.sp,
                     fontWeight = FontWeight.Bold,
@@ -324,10 +365,14 @@ fun VideoPreviewArea(
                 val seekBtnModifier = Modifier.weight(1f).height(24.dp)
                 val seekBtnColors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF1C1C1E))
                 val seekSpecs = listOf(
+                    "-30s" to -30000L,
                     "-10s" to -10000L,
+                    "-5s" to -5000L,
                     "-1s" to -1000L,
                     "+1s" to 1000L,
-                    "+10s" to 10000L
+                    "+5s" to 5000L,
+                    "+10s" to 10000L,
+                    "+30s" to 30000L
                 )
                 for ((label, delta) in seekSpecs) {
                     OutlinedButton(
