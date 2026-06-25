@@ -18,27 +18,75 @@ fun findFfmpegPath(): String {
     
     // 1. Try bundled resource FFmpeg (Highest priority to guarantee stable behavior)
     try {
+        val isZip = isWindows
         val resourcePath = when {
-            isWindows -> "/bin/win/ffmpeg.exe"
+            isWindows -> "/bin/win/ffmpeg.zip"
             isMac -> "/bin/mac/ffmpeg"
             else -> "/bin/linux/ffmpeg"
         }
         
         // Use class loader of NativeHudEncoder to load the resource
-        val stream = NativeHudEncoder::class.java.getResourceAsStream(resourcePath)
-        if (stream != null) {
+        val resourceUrl = NativeHudEncoder::class.java.getResource(resourcePath)
+        if (resourceUrl != null) {
             val workDir = PathResolver.getTempWorkDir()
             val binDir = File(workDir, "bin")
             if (!binDir.exists()) binDir.mkdirs()
             
             val destFile = File(binDir, if (isWindows) "ffmpeg.exe" else "ffmpeg")
             
-            // Extract if not exists or empty (to avoid copying large file every single time)
-            if (!destFile.exists() || destFile.length() == 0L) {
-                println("📥 Extracting bundled FFmpeg to: ${destFile.absolutePath}")
-                stream.use { input ->
-                    FileOutputStream(destFile).use { output ->
-                        input.copyTo(output)
+            // Find correct expected size (uncompressed size if ZIP, raw size otherwise)
+            val expectedLength = if (isZip) {
+                try {
+                    resourceUrl.openStream().use { s ->
+                        java.util.zip.ZipInputStream(s).use { zip ->
+                            var entry = zip.nextEntry
+                            var len = -1L
+                            while (entry != null) {
+                                if (entry.name == "ffmpeg.exe" || entry.name == "ffmpeg") {
+                                    len = entry.size
+                                    break
+                                }
+                                entry = zip.nextEntry
+                            }
+                            len
+                        }
+                    }
+                } catch (e: Exception) {
+                    -1L
+                }
+            } else {
+                try {
+                    val conn = resourceUrl.openConnection()
+                    val len = conn.contentLengthLong
+                    conn.getInputStream().close()
+                    len
+                } catch (e: Exception) {
+                    -1L
+                }
+            }
+            
+            // Extract if not exists, empty, or size mismatches (e.g. upgraded from GPL to LGPL)
+            if (!destFile.exists() || destFile.length() == 0L || (expectedLength > 0L && destFile.length() != expectedLength)) {
+                println("📥 Extracting bundled FFmpeg to: ${destFile.absolutePath} (expected size: $expectedLength, local size: ${destFile.length()})")
+                
+                resourceUrl.openStream().use { stream ->
+                    if (isZip) {
+                        java.util.zip.ZipInputStream(stream).use { zipStream ->
+                            var entry = zipStream.nextEntry
+                            while (entry != null) {
+                                if (entry.name == "ffmpeg.exe" || entry.name == "ffmpeg") {
+                                    FileOutputStream(destFile).use { output ->
+                                        zipStream.copyTo(output)
+                                    }
+                                    break
+                                }
+                                entry = zipStream.nextEntry
+                            }
+                        }
+                    } else {
+                        FileOutputStream(destFile).use { output ->
+                            stream.copyTo(output)
+                        }
                     }
                 }
                 destFile.setExecutable(true)
