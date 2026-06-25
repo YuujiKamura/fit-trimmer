@@ -107,8 +107,8 @@ fun startGui(args: Array<String>) = application {
             androidx.compose.ui.window.WindowPosition.PlatformDefault
         },
         size = androidx.compose.ui.unit.DpSize(
-            width = (initialCache?.windowWidth ?: 1400f).dp,
-            height = (initialCache?.windowHeight ?: 900f).dp
+            width = (initialCache?.windowWidth ?: 1300f).coerceIn(800f, 1400f).dp,
+            height = (initialCache?.windowHeight ?: 750f).coerceIn(500f, 780f).dp
         )
     )
 
@@ -207,6 +207,7 @@ fun startGui(args: Array<String>) = application {
     
     var trimStartSeconds by viewModel::trimStartSeconds
     var trimEndSeconds by viewModel::trimEndSeconds
+    var videoCurrentTimeMs by remember { mutableStateOf(0L) }
 
     val scope = rememberCoroutineScope()
 
@@ -1326,8 +1327,12 @@ fun startGui(args: Array<String>) = application {
                     }
                 }
 
-                Box(modifier = Modifier.fillMaxSize().background(Color.White).padding(40.dp), contentAlignment = Alignment.Center) {
-                    Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(modifier = Modifier.fillMaxSize().background(Color.White).padding(16.dp), contentAlignment = Alignment.Center) {
+                    Column(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         if (!isEncoding) {
                             VideoPreviewArea(
                                 videoPath = videoPath,
@@ -1339,7 +1344,28 @@ fun startGui(args: Array<String>) = application {
                                 rendererProxy = rendererProxy,
                                 textMeasurer = textMeasurer,
                                 playerState = playerState,
-                                modifier = Modifier.fillMaxWidth()
+                                videoCurrentTimeMs = videoCurrentTimeMs,
+                                onCurrentTimeChange = { videoCurrentTimeMs = it },
+                                modifier = Modifier.weight(1f).fillMaxWidth()
+                            )
+                            
+                            Spacer(Modifier.height(8.dp))
+                            
+                            TelemetryTimelineGraph(
+                                videoLengthMs = videoLengthMs,
+                                adjustedStartUtc = adjustedStartUtc,
+                                telemetryPoints = telemetryPoints,
+                                trimStartSeconds = trimStartSeconds,
+                                trimEndSeconds = trimEndSeconds,
+                                videoCurrentTimeMs = videoCurrentTimeMs,
+                                onTrimStartChange = { trimStartSeconds = it },
+                                onTrimEndChange = { trimEndSeconds = it },
+                                onSeek = { timeMs ->
+                                    val ratio = if (videoLengthMs > 0) timeMs.toFloat() / videoLengthMs.toFloat() else 0f
+                                    playerState.seekTo(ratio * 1000f)
+                                    videoCurrentTimeMs = timeMs
+                                },
+                                modifier = Modifier.fillMaxWidth().height(140.dp)
                             )
                         } else {
                             EncodingProgressArea(
