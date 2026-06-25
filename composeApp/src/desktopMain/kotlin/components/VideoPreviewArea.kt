@@ -133,10 +133,11 @@ fun VideoPreviewArea(
     rendererProxy: fit.DynamicRendererProxy,
     textMeasurer: TextMeasurer,
     playerState: VideoPlayerState,
+    videoCurrentTimeMs: Long,
+    onCurrentTimeChange: (Long) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var isPlaying by remember { mutableStateOf(false) }
-    var videoCurrentTimeMs by remember { mutableStateOf(0L) }
 
     val togglePlay = {
         println("DEBUG: togglePlay called. current isPlaying=${playerState.isPlaying}")
@@ -170,7 +171,7 @@ fun VideoPreviewArea(
     LaunchedEffect(playerState.sliderPos, playerState.metadata.duration) {
         val durationMs = playerState.metadata.duration ?: 0L
         val currentDuration = if (videoLengthMs > 0L) videoLengthMs else durationMs
-        videoCurrentTimeMs = ((playerState.sliderPos / 1000f) * currentDuration).toLong()
+        onCurrentTimeChange(((playerState.sliderPos / 1000f) * currentDuration).toLong())
     }
 
     // Video path change side effect inside the player area
@@ -237,8 +238,8 @@ fun VideoPreviewArea(
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             modifier = Modifier
+                .weight(1f, fill = false)
                 .aspectRatio(16f / 9f)
-                .fillMaxWidth()
                 .background(Color.Black, shape = RoundedCornerShape(8.dp))
                 .border(1.dp, Color(0xFFE5E5EA), shape = RoundedCornerShape(8.dp))
                 .clip(RoundedCornerShape(8.dp))
