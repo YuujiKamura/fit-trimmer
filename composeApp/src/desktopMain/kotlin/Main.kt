@@ -256,16 +256,25 @@ fun startGui(args: Array<String>) = application {
         }
     }
 
-    LaunchedEffect(videoPath, videoLengthMs, trimStartSeconds, trimEndSeconds) {
+    LaunchedEffect(videoPath, videoLengthMs, trimStartSeconds, trimEndSeconds, viewModel.splitPoints, viewModel.encodingSegmentStart, viewModel.encodingSegmentEnd) {
         if (videoPath.isNotEmpty()) {
             val f = File(videoPath)
             if (f.exists()) {
                 val totalLengthSec = videoLengthMs / 1000.0
-                val trimEnd = if (trimEndSeconds <= 0.0 || trimEndSeconds > totalLengthSec) totalLengthSec else trimEndSeconds
-                val trimDuration = (trimEnd - trimStartSeconds).coerceAtLeast(0.0)
+                val currentDuration = if (viewModel.isEncoding && viewModel.encodingSegmentStart != null && viewModel.encodingSegmentEnd != null) {
+                    (viewModel.encodingSegmentEnd!! - viewModel.encodingSegmentStart!!).coerceAtLeast(0.0)
+                } else {
+                    val ranges = viewModel.getSplitRanges()
+                    if (ranges.isNotEmpty()) {
+                        ranges.maxOf { it.second - it.first }
+                    } else {
+                        val trimEnd = if (trimEndSeconds <= 0.0 || trimEndSeconds > totalLengthSec) totalLengthSec else trimEndSeconds
+                        (trimEnd - trimStartSeconds).coerceAtLeast(0.0)
+                    }
+                }
                 
                 val ratio = if (totalLengthSec > 0.0) {
-                    (trimDuration / totalLengthSec).coerceIn(0.0, 1.0)
+                    (currentDuration / totalLengthSec).coerceIn(0.0, 1.0)
                 } else {
                     1.0
                 }
@@ -497,6 +506,8 @@ fun startGui(args: Array<String>) = application {
                                         isEncoding = true
                                         isPaused = false
                                         isCanceled = false
+                                        viewModel.encodingSegmentStart = trimStartSeconds
+                                        viewModel.encodingSegmentEnd = if (trimEndSeconds <= 0.0) videoLengthMs / 1000.0 else trimEndSeconds
                                         try {
                                             fireEncode(settings, fitPath, videoPath, outputDir, videoStartUtc,
                                                 onProgress = { prog, status ->
@@ -536,6 +547,8 @@ fun startGui(args: Array<String>) = application {
                                             }
                                         } finally {
                                             isEncoding = false
+                                            viewModel.encodingSegmentStart = null
+                                            viewModel.encodingSegmentEnd = null
                                         }
                                     }
                                 }
@@ -755,6 +768,9 @@ fun startGui(args: Array<String>) = application {
                                             val (pStart, pEnd) = ranges[idx]
                                             val partDuration = pEnd - pStart
                                             
+                                            viewModel.encodingSegmentStart = pStart
+                                            viewModel.encodingSegmentEnd = pEnd
+                                            
                                             val partOutPath = fireEncode(settings, fitPath, videoPath, outputDir, adjustedStartUtc,
                                                 onProgress = { prog, status ->
                                                     val segmentProgress = prog.toDouble()
@@ -789,7 +805,7 @@ fun startGui(args: Array<String>) = application {
                                                         outFile.delete()
                                                     }
                                                     
-                                                    val normalized = targetVideoPath.replace("\\", "/").lowercase()
+                                                     val normalized = targetVideoPath.replace("\\", "/").lowercase()
                                                     if (normalized.contains("google drive") || 
                                                         normalized.contains("マイドライブ") || 
                                                         normalized.contains("my drive") ||
@@ -830,6 +846,8 @@ fun startGui(args: Array<String>) = application {
                                     } finally {
                                         isEncoding = false
                                         isSampleEncoding = false
+                                        viewModel.encodingSegmentStart = null
+                                        viewModel.encodingSegmentEnd = null
                                     }
                                 }
                             }
@@ -860,6 +878,8 @@ fun startGui(args: Array<String>) = application {
                                     isEncoding = true
                                     isPaused = false
                                     isCanceled = false
+                                    viewModel.encodingSegmentStart = trimStartSeconds
+                                    viewModel.encodingSegmentEnd = trimStartSeconds + 5.0
                                     try {
                                         val outPath = fireEncode(settings, fitPath, videoPath, outputDir, adjustedStartUtc,
                                             onProgress = { prog, status ->
@@ -915,6 +935,8 @@ fun startGui(args: Array<String>) = application {
                                     } finally {
                                         isEncoding = false
                                         isSampleEncoding = false
+                                        viewModel.encodingSegmentStart = null
+                                        viewModel.encodingSegmentEnd = null
                                         if (args.contains("--auto-sample")) {
                                             println("🏁 Auto-sample test finished. Exiting application...")
                                             exitApplication()
