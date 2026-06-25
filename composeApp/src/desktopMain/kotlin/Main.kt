@@ -768,6 +768,22 @@ fun startGui(args: Array<String>) = application {
                                             val (pStart, pEnd) = ranges[idx]
                                             val partDuration = pEnd - pStart
                                             
+                                            // Determine final output file path for this segment to check if it's already finished
+                                            val partSuffix = if (ranges.size > 1) "_part${idx + 1}" else ""
+                                            val finalOutFile = if (moveOutputToSource && destFiles.isNotEmpty()) {
+                                                destFiles.getOrNull(idx)
+                                            } else {
+                                                val videoFile = File(videoPath)
+                                                val baseName = videoFile.name.replace(".mp4", "", ignoreCase = true).replace(".mov", "", ignoreCase = true)
+                                                File(outputDir, baseName + partSuffix + "_KMP_HUD.mp4")
+                                            }
+                                            
+                                            if (finalOutFile != null && finalOutFile.exists() && finalOutFile.length() > 0L) {
+                                                println("DEBUG: Segment ${idx + 1} already finished. Skipping. File: ${finalOutFile.absolutePath}")
+                                                completedDuration += partDuration
+                                                continue
+                                            }
+                                            
                                             viewModel.encodingSegmentStart = pStart
                                             viewModel.encodingSegmentEnd = pEnd
                                             
