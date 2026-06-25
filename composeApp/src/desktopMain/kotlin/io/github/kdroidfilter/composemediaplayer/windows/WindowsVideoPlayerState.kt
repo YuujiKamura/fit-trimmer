@@ -163,8 +163,11 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
 
     // Current frame management
     private var _currentFrame: Bitmap? by mutableStateOf(null)
-    private val bitmapLock = ReentrantReadWriteLock()
+    internal val bitmapLock = ReentrantReadWriteLock()
     internal val currentFrameState = mutableStateOf<ImageBitmap?>(null)
+    internal var frameTicks by mutableStateOf(0L)
+    internal val currentFrameBitmap: Bitmap?
+        get() = _currentFrame
 
     // Aspect ratio property
     internal val aspectRatio: Float
@@ -290,6 +293,7 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
         bitmapLock.write {
             _currentFrame?.close()  // Close the current frame bitmap if any
             _currentFrame = null
+            frameTicks++
             // Reset the currentFrameState
             currentFrameState.value = null
             frameBitmapRecycler?.close()  // Recycle the bitmap if any
@@ -462,6 +466,7 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
                                     _currentFrame?.let { old -> old.close() }
                                     _currentFrame = bitmap
                                     currentFrameState.value = bitmap.asComposeImageBitmap()
+                                    frameTicks++
                                 }
                             }
                         } catch (e: Exception) {
@@ -641,6 +646,7 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
                     _currentFrame = frameData.bitmap
                     // Update the currentFrameState with the new frame
                     currentFrameState.value = frameData.bitmap.asComposeImageBitmap()
+                    frameTicks++
                 }
 
                 _currentTime = frameData.timestamp

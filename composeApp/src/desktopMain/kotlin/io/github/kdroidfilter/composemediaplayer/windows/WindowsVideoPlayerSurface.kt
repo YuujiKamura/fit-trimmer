@@ -10,6 +10,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntSize
 
+import androidx.compose.ui.graphics.asComposeImageBitmap
+import kotlin.concurrent.read
+
 /**
  * A composable function that provides a surface for rendering video frames
  * within the Windows video player. It adjusts to size changes and ensures the video
@@ -30,18 +33,23 @@ fun WindowsVideoPlayerSurface(
         contentAlignment = Alignment.Center
     ) {
         if (playerState.hasMedia) {
-            val currentFrame by playerState.currentFrameState
-            currentFrame?.let { frame ->
-                // Draw the video frame to fill the entire canvas area
-                Canvas(
-                    modifier = Modifier
-                        .fillMaxHeight()
-                        .aspectRatio(playerState.aspectRatio),
-                ) {
-                    drawImage(
-                        image = frame,
-                        dstSize = IntSize(size.width.toInt(), size.height.toInt())
-                    )
+            val ticks = playerState.frameTicks
+            // Draw the video frame to fill the entire canvas area
+            Canvas(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .aspectRatio(playerState.aspectRatio),
+            ) {
+                // Reference ticks to register redraw dependency
+                val t = ticks
+                playerState.bitmapLock.read {
+                    playerState.currentFrameBitmap?.let { bitmap ->
+                        val frame = bitmap.asComposeImageBitmap()
+                        drawImage(
+                            image = frame,
+                            dstSize = IntSize(size.width.toInt(), size.height.toInt())
+                        )
+                    }
                 }
             }
         }
