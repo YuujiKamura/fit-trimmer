@@ -56,10 +56,6 @@ private const val PLAYBACK_PREVIEW_INTERVAL_MS = 250L
 fun main(args: Array<String>) {
     System.setProperty("compose.interop.blending", "false")
     System.setProperty("sun.java2d.noddraw", "true")
-    if (args.contains("--test")) {
-        runTest()
-        return
-    }
     if (args.contains("--auto-sample")) {
         startGui(args)
         return
