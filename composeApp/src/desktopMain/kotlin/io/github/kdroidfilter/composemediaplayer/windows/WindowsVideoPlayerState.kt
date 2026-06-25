@@ -428,7 +428,7 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
                     }
 
                     delay(100)
-                    play()
+                    // play() // Commented out to prevent video from auto-playing immediately on startup/load
 
                 } catch (e: Exception) {
                     setError("Error while opening media: ${e.message}")
