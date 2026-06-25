@@ -12,7 +12,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 class ControlPlane(
-    private val onCommand: (CpCommand) -> Unit,
+    private val onCommand: (CpCommand) -> String?,
     private val getState: () -> CpState
 ) {
     private var serverSocket: ServerSocket? = null
@@ -50,8 +50,12 @@ class ControlPlane(
                     if (cmd is CpCommand.GetState) {
                         writer.println(json.encodeToString(getState()))
                     } else {
-                        onCommand(cmd)
-                        writer.println("{\"status\": \"ok\"}")
+                        val response = onCommand(cmd)
+                        if (response != null) {
+                            writer.println(response)
+                        } else {
+                            writer.println("{\"status\": \"ok\"}")
+                        }
                     }
                 } catch (e: Exception) {
                     writer.println("{\"status\": \"error\", \"message\": \"${e.message}\"}")
