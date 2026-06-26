@@ -679,4 +679,30 @@ suspend fun isHevcOrHighRes(videoPath: String): Boolean = withContext(Dispatcher
     false
 }
 
+suspend fun checkIfHudBurned(videoPath: String): Boolean = withContext(Dispatchers.IO) {
+    if (videoPath.isEmpty() || !File(videoPath).exists()) return@withContext false
+    try {
+        val ffmpegPath = findFfmpegPath()
+        val pb = ProcessBuilder(ffmpegPath, "-i", videoPath)
+        pb.redirectErrorStream(true)
+        val p = pb.start()
+        
+        val reader = p.inputStream.bufferedReader()
+        var line = reader.readLine()
+        var hasTag = false
+        while (line != null) {
+            if (line.contains("fit-trimmer-hud-burned", ignoreCase = true)) {
+                hasTag = true
+                break
+            }
+            line = reader.readLine()
+        }
+        p.destroy()
+        return@withContext hasTag
+    } catch (e: Exception) {
+        e.printStackTrace()
+    }
+    false
+}
+
 
