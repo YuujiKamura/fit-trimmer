@@ -635,3 +635,48 @@ suspend fun generateProxyVideo(
     }
 }
 
+suspend fun isHevcOrHighRes(videoPath: String): Boolean = withContext(Dispatchers.IO) {
+    try {
+        val ffmpegPath = fit.findFfmpegPath()
+        val pb = ProcessBuilder(ffmpegPath, "-i", videoPath)
+        pb.redirectErrorStream(true)
+        val p = pb.start()
+        
+        var output = ""
+        val readThread = kotlin.concurrent.thread {
+            try {
+                output = p.inputStream.bufferedReader().readText()
+            } catch (e: Exception) {}
+        }
+        
+        val finished = p.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)
+        if (!finished) {
+            p.destroyForcibly()
+            readThread.interrupt()
+            return@withContext false
+        }
+        readThread.join(500)
+        
+        val lower = output.lowercase()
+        val isHevc = lower.contains("hevc") || lower.contains("hvc1") || lower.contains("h.265")
+        
+        val resRegex = Regex("""(\d{4})x(\d{3,4})""")
+        val resMatch = resRegex.find(output)
+        var isHighRes = false
+        if (resMatch != null) {
+            val w = resMatch.groupValues[1].toIntOrNull() ?: 0
+            val h = resMatch.groupValues[2].toIntOrNull() ?: 0
+            if (w > 1920 || h > 1080) {
+                isHighRes = true
+            }
+        }
+        
+        println("DEBUG: isHevcOrHighRes result for $videoPath: isHevc=$isHevc, isHighRes=$isHighRes")
+        return@withContext isHevc || isHighRes
+    } catch (e: Exception) {
+        println("DEBUG: isHevcOrHighRes exception: ${e.message}")
+    }
+    false
+}
+
+

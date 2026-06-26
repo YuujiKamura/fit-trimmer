@@ -412,8 +412,11 @@ fun startGui(args: Array<String>) = application {
             var targetVideoPath = videoPath
             
             val isDrive = utils.isGoogleDrivePath(videoPath)
-            println("DEBUG: LaunchedEffect(videoPath) check - videoPath='$videoPath', isDrive=$isDrive")
-            if (isDrive) {
+            val isHevcOrHigh = utils.isHevcOrHighRes(videoPath)
+            val shouldGenerateProxy = isDrive || isHevcOrHigh
+            
+            println("DEBUG: LaunchedEffect(videoPath) check - videoPath='$videoPath', isDrive=$isDrive, isHevcOrHigh=$isHevcOrHigh")
+            if (shouldGenerateProxy) {
                 println("DEBUG: LaunchedEffect(videoPath) - Triggering proxy generation block")
                 launch {
                     try {
