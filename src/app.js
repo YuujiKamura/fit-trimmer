@@ -143,7 +143,7 @@ async function handleVideoFiles(files) {
 
 async function parseVideoMetadata(file) {
     try {
-        const scanSize = Math.min(file.size, 100 * 1024 * 1024); // 100MB
+        const scanSize = Math.min(file.size, 16 * 1024 * 1024); // 16MB
         let metadata = null;
 
         const findMvhdDirectly = (bytes) => {
