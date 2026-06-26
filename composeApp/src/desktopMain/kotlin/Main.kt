@@ -639,10 +639,21 @@ fun startGui(args: Array<String>) = application {
                                     scope.launch {
                                         viewModel.isAligningTelemetry = true
                                         try {
+                                            val originalInstant = try { java.time.Instant.parse(videoStartUtc) } catch(e: Exception) { null }
                                             val alignedUtc = TelemetryAligner.alignVideoWithTelemetry(videoPath, telemetryPoints, videoStartUtc)
                                             if (alignedUtc != null) {
+                                                val alignedInstant = try { java.time.Instant.parse(alignedUtc) } catch(e: Exception) { null }
+                                                if (originalInstant != null && alignedInstant != null) {
+                                                    val diffMs = alignedInstant.toEpochMilli() - originalInstant.toEpochMilli()
+                                                    val diffSec = diffMs / 1000.0
+                                                    statusText = "IMU Sync: Adjusted video start by %.3f seconds".format(java.util.Locale.US, diffSec)
+                                                } else {
+                                                    statusText = "IMU Sync Successful"
+                                                }
                                                 videoStartUtc = alignedUtc
                                                 timeOffsetState.update(0) // Reset manual offset slider
+                                            } else {
+                                                statusText = "IMU Sync failed (no correlation found)"
                                             }
                                         } finally {
                                             viewModel.isAligningTelemetry = false
@@ -1290,10 +1301,21 @@ fun startGui(args: Array<String>) = application {
                             scope.launch {
                                 viewModel.isAligningTelemetry = true
                                 try {
+                                    val originalInstant = try { java.time.Instant.parse(videoStartUtc) } catch(e: Exception) { null }
                                     val alignedUtc = TelemetryAligner.alignVideoWithTelemetry(videoPath, telemetryPoints, videoStartUtc)
                                     if (alignedUtc != null) {
+                                        val alignedInstant = try { java.time.Instant.parse(alignedUtc) } catch(e: Exception) { null }
+                                        if (originalInstant != null && alignedInstant != null) {
+                                            val diffMs = alignedInstant.toEpochMilli() - originalInstant.toEpochMilli()
+                                            val diffSec = diffMs / 1000.0
+                                            statusText = "IMU Sync: Adjusted video start by %.3f seconds".format(java.util.Locale.US, diffSec)
+                                        } else {
+                                            statusText = "IMU Sync Successful"
+                                        }
                                         videoStartUtc = alignedUtc
                                         timeOffsetState.update(0) // Reset manual offset slider
+                                    } else {
+                                        statusText = "IMU Sync failed (no correlation found)"
                                     }
                                 } finally {
                                     viewModel.isAligningTelemetry = false
