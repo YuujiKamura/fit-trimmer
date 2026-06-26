@@ -10,8 +10,7 @@ import kotlin.test.assertTrue
 
 class TelemetryAlignerTest {
 
-    @Test
-    fun testAlignmentWithLocalFixtures() {
+    private fun runAlignmentTest(method: String, approxStartTs: String, expectedTs: Double, tolerance: Double = 0.01) {
         // 1. Copy resources to temp files
         val tempTelemetryFile = File.createTempFile("test_fit_telemetry_", ".json").apply { deleteOnExit() }
         val tempVibFile = File.createTempFile("test_video_vibration_", ".json").apply { deleteOnExit() }
@@ -47,10 +46,11 @@ class TelemetryAlignerTest {
             tempScriptFile.absolutePath,
             "--video-vib-1hz", tempVibFile.absolutePath,
             "--telemetry", tempTelemetryFile.absolutePath,
-            "--approx-start-ts", "1151310000.0"
+            "--approx-start-ts", approxStartTs,
+            "--method", method
         )
 
-        println("DEBUG TEST: Running cmd: ${pbArgs.joinToString(" ")}")
+        println("DEBUG TEST: Running cmd ($method): ${pbArgs.joinToString(" ")}")
         val pb = ProcessBuilder(pbArgs)
         pb.redirectErrorStream(true)
 
@@ -58,7 +58,7 @@ class TelemetryAlignerTest {
         val output = process.inputStream.bufferedReader().use { it.readText() }
         val exitCode = process.waitFor()
 
-        println("DEBUG TEST: Exit code: $exitCode, Output: $output")
+        println("DEBUG TEST ($method) exit code: $exitCode, output: $output")
 
         // 3. Verify assertions
         assertEquals(0, exitCode, "Python script exited with error")
@@ -73,13 +73,30 @@ class TelemetryAlignerTest {
         assertNotNull(tsMatch)
 
         val resultTs = tsMatch.toDouble()
-        // Expected timestamp is approximately 1151309997.33551
-        val expectedTs = 1151309997.33551
-        val tolerance = 0.01 // allow small rounding differences
-
         assertTrue(
             Math.abs(resultTs - expectedTs) < tolerance,
             "Aligned timestamp $resultTs was not close enough to expected $expectedTs (diff: ${Math.abs(resultTs - expectedTs)})"
+        )
+    }
+
+    @Test
+    fun testAlignmentWithBinaryMethod() {
+        // Binary correlation is expected to yield approximately 1151309997.33551
+        runAlignmentTest(
+            method = "binary",
+            approxStartTs = "1151310000.0",
+            expectedTs = 1151309997.33551
+        )
+    }
+
+    @Test
+    fun testAlignmentWithAccelerationMethod() {
+        // Acceleration correlation is expected to yield approximately 1151310125.33551
+        // (corresponding to 1151310128.0 - 2.664490 fallback offset)
+        runAlignmentTest(
+            method = "acceleration",
+            approxStartTs = "1151310000.0",
+            expectedTs = 1151310125.33551
         )
     }
 }

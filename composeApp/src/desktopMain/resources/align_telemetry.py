@@ -80,6 +80,7 @@ def main():
     parser.add_argument("--video-vib-1hz", help="Path to pre-extracted 1Hz video vibration JSON file")
     parser.add_argument("--telemetry", required=True, help="Path to the FIT telemetry JSON file")
     parser.add_argument("--approx-start-ts", type=float, default=None, help="Approximate video start timestamp (Garmin epoch seconds)")
+    parser.add_argument("--method", choices=["binary", "acceleration"], default="binary", help="Correlation method (binary or acceleration)")
     args = parser.parse_args()
 
     if not args.video and not args.video_vib_1hz:
@@ -147,27 +148,39 @@ def main():
         fit_grid = np.arange(fit_ts[0], fit_ts[-1], 1.0)
         fit_speed_grid = np.interp(fit_grid, fit_ts, fit_speed)
 
-        # 4. Correlation matching using binary movement profiles (starting & stopping states)
-        # Smooth raw vibration to get a stable intensity profile
-        v_sig = gaussian_filter1d(v_vib, 3.0)
-        
-        # Binarize video vibration to detect moving vs stopped.
-        # Uses a dynamic threshold based on the 10th percentile, with a minimum floor of 20.0.
-        v_thresh = max(20.0, np.percentile(v_sig, 10) * 1.5)
-        v_mov = (v_sig > v_thresh).astype(float)
-        
-        # Binarize FIT speed to moving vs stopped
-        fit_mov = (fit_speed_grid > 2.0).astype(float)
-        
-        # Smooth binary profiles to allow soft alignment margins
-        fit_sig_smooth = gaussian_filter1d(fit_mov, 3.0)
-        v_sig_smooth = gaussian_filter1d(v_mov, 3.0)
+        # 4. Correlation matching (binary movement states vs acceleration profiles)
+        if args.method == "binary":
+            # Binarize video vibration signal to detect moving vs stopped.
+            # Uses a dynamic threshold based on the 10th percentile, with a minimum floor of 20.0.
+            v_sig = gaussian_filter1d(v_vib, 3.0)
+            v_thresh = max(20.0, np.percentile(v_sig, 10) * 1.5)
+            v_mov = (v_sig > v_thresh).astype(float)
+            
+            # Binarize FIT speed to moving vs stopped
+            fit_mov = (fit_speed_grid > 2.0).astype(float)
+            
+            # Smooth binary profiles to allow soft alignment margins
+            fit_sig_smooth = gaussian_filter1d(fit_mov, 3.0)
+            v_sig_smooth = gaussian_filter1d(v_mov, 3.0)
+        else:
+            # Acceleration correlation: absolute diff of speed
+            fit_acc = np.abs(np.diff(fit_speed_grid))
+            fit_acc = np.append(fit_acc, 0.0)
+            
+            # Video acceleration proxy: absolute diff of smoothed vibration
+            v_sig = gaussian_filter1d(v_vib, 3.0)
+            v_acc = np.abs(np.diff(v_sig))
+            v_acc = np.append(v_acc, 0.0)
+            
+            # Smooth to allow matching windows
+            fit_sig_smooth = gaussian_filter1d(fit_acc, 3.0)
+            v_sig_smooth = gaussian_filter1d(v_acc, 3.0)
 
-        # Normalize smoothed binary signals
+        # Normalize smoothed signals
         v_sig_norm = (v_sig_smooth - np.mean(v_sig_smooth)) / (np.std(v_sig_smooth) + 1e-6)
         fit_sig_norm = (fit_sig_smooth - np.mean(fit_sig_smooth)) / (np.std(fit_sig_smooth) + 1e-6)
 
-        # Cross-correlate binary profiles
+        # Cross-correlate profiles
         corr = np.correlate(fit_sig_norm, v_sig_norm, mode='valid')
 
         if len(corr) == 0:
