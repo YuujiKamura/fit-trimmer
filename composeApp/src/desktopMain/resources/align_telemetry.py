@@ -76,10 +76,15 @@ def extract_imu_offsets_fast(filepath):
 
 def main():
     parser = argparse.ArgumentParser(description="Auto-align telemetry with video using IMU correlation.")
-    parser.add_argument("--video", required=True, help="Path to the video file (.lrv or .mp4)")
+    parser.add_argument("--video", help="Path to the video file (.lrv or .mp4)")
+    parser.add_argument("--video-vib-1hz", help="Path to pre-extracted 1Hz video vibration JSON file")
     parser.add_argument("--telemetry", required=True, help="Path to the FIT telemetry JSON file")
     parser.add_argument("--approx-start-ts", type=float, default=None, help="Approximate video start timestamp (Garmin epoch seconds)")
     args = parser.parse_args()
+
+    if not args.video and not args.video_vib_1hz:
+        print(json.dumps({"status": "error", "message": "Either --video or --video-vib-1hz must be provided"}))
+        return
 
     try:
         # 1. Load telemetry JSON
@@ -97,43 +102,72 @@ def main():
         fit_ts = np.array([r['ts'] for r in fit_data])
         fit_speed = np.array([r['speedKmh'] for r in fit_data])
 
-        # 2. Extract IMU from video
-        if not os.path.exists(args.video):
-            print(json.dumps({"status": "error", "message": f"Video file not found: {args.video}"}))
-            return
+        # 2. Extract / Load vibration signal and determine first file IMU offset
+        if args.video_vib_1hz:
+            if not os.path.exists(args.video_vib_1hz):
+                print(json.dumps({"status": "error", "message": f"1Hz vibration file not found: {args.video_vib_1hz}"}))
+                return
+            with open(args.video_vib_1hz, 'r') as f:
+                v_vib = np.array(json.load(f))
+            first_file_imu_offset = 2.664490  # Default fallback for testing
+        else:
+            if not os.path.exists(args.video):
+                print(json.dumps({"status": "error", "message": f"Video file not found: {args.video}"}))
+                return
 
-        v_times, v_accs, _ = extract_imu_offsets_fast(args.video)
+            v_times, v_accs, _ = extract_imu_offsets_fast(args.video)
+            acc_norms = np.linalg.norm(v_accs, axis=1)
+            acc_diffs = np.abs(np.diff(acc_norms))
+            acc_diffs = np.append(acc_diffs, 0.0)
+            v_rel_times = v_times - v_times[0]
+            max_v_time = int(np.ceil(v_rel_times[-1]))
+            v_grid = np.arange(0, max_v_time + 1, 1.0)
+            v_vib = np.interp(v_grid, v_rel_times, acc_diffs)
 
-        # 3. Process signals
-        acc_norms = np.linalg.norm(v_accs, axis=1)
-        
-        # Calculate deviation of accelerometer norm (road vibration intensity)
-        # Using difference of adjacent norms
-        acc_diffs = np.abs(np.diff(acc_norms))
-        acc_diffs = np.append(acc_diffs, 0.0)
-        
-        # Resample to 1Hz grid starting from relative 0 to video length
-        v_rel_times = v_times - v_times[0]
-        max_v_time = int(np.ceil(v_rel_times[-1]))
-        v_grid = np.arange(0, max_v_time + 1, 1.0)
-        
-        v_vib = np.interp(v_grid, v_rel_times, acc_diffs)
+            # Find first file's IMU offset to adjust the baseline correctly
+            first_file_imu_offset = 2.664490
+            try:
+                video_dir = os.path.dirname(args.video)
+                video_name = os.path.basename(args.video)
+                import re
+                m = re.match(r"(.*_)(\d+)(\.mp4|\.lrv)", video_name, re.IGNORECASE)
+                if m:
+                    prefix = m.group(1)
+                    ext = m.group(3)
+                    first_file_name = f"{prefix}001{ext}"
+                    first_file_path = os.path.join(video_dir, first_file_name)
+                    if os.path.exists(first_file_path):
+                        first_file_times, _, _ = extract_imu_offsets_fast(first_file_path)
+                        if len(first_file_times) > 0:
+                            first_file_imu_offset = first_file_times[0]
+            except Exception:
+                pass
 
-        # Resample FIT speed to 1Hz grid
+        # 3. Resample FIT speed to 1Hz grid
         fit_grid = np.arange(fit_ts[0], fit_ts[-1], 1.0)
         fit_speed_grid = np.interp(fit_grid, fit_ts, fit_speed)
 
-        # 4. Correlation matching
-        # Smooth both signals to make alignment robust
+        # 4. Correlation matching using binary movement profiles (starting & stopping states)
+        # Smooth raw vibration to get a stable intensity profile
         v_sig = gaussian_filter1d(v_vib, 3.0)
+        
+        # Binarize video vibration to detect moving vs stopped.
+        # Uses a dynamic threshold based on the 10th percentile, with a minimum floor of 20.0.
+        v_thresh = max(20.0, np.percentile(v_sig, 10) * 1.5)
+        v_mov = (v_sig > v_thresh).astype(float)
+        
+        # Binarize FIT speed to moving vs stopped
         fit_mov = (fit_speed_grid > 2.0).astype(float)
-        fit_sig = gaussian_filter1d(fit_mov, 3.0)
+        
+        # Smooth binary profiles to allow soft alignment margins
+        fit_sig_smooth = gaussian_filter1d(fit_mov, 3.0)
+        v_sig_smooth = gaussian_filter1d(v_mov, 3.0)
 
-        # Normalize
-        v_sig_norm = (v_sig - np.mean(v_sig)) / (np.std(v_sig) + 1e-6)
-        fit_sig_norm = (fit_sig - np.mean(fit_sig)) / (np.std(fit_sig) + 1e-6)
+        # Normalize smoothed binary signals
+        v_sig_norm = (v_sig_smooth - np.mean(v_sig_smooth)) / (np.std(v_sig_smooth) + 1e-6)
+        fit_sig_norm = (fit_sig_smooth - np.mean(fit_sig_smooth)) / (np.std(fit_sig_smooth) + 1e-6)
 
-        # Cross-correlate
+        # Cross-correlate binary profiles
         corr = np.correlate(fit_sig_norm, v_sig_norm, mode='valid')
 
         if len(corr) == 0:
@@ -161,25 +195,6 @@ def main():
 
         video_start_ts = fit_grid[best_idx]
         
-        # Find first file's IMU offset to adjust the baseline correctly
-        first_file_imu_offset = 2.664490
-        try:
-            video_dir = os.path.dirname(args.video)
-            video_name = os.path.basename(args.video)
-            import re
-            m = re.match(r"(.*_)(\d+)(\.mp4|\.lrv)", video_name, re.IGNORECASE)
-            if m:
-                prefix = m.group(1)
-                ext = m.group(3)
-                first_file_name = f"{prefix}001{ext}"
-                first_file_path = os.path.join(video_dir, first_file_name)
-                if os.path.exists(first_file_path):
-                    first_file_times, _, _ = extract_imu_offsets_fast(first_file_path)
-                    if len(first_file_times) > 0:
-                        first_file_imu_offset = first_file_times[0]
-        except Exception:
-            pass
-
         # The true video file start is video_start_ts - first_file_imu_offset.
         # This keeps the video start timestamp representing the 0s point of the current video file.
         true_file_start_ts = video_start_ts - first_file_imu_offset
