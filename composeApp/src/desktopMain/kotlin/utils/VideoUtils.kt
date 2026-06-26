@@ -147,7 +147,7 @@ suspend fun getVideoDuration(videoPath: String): Long? = withContext(Dispatchers
     null
 }
 
-private fun isGoogleDrivePath(path: String): Boolean {
+fun isGoogleDrivePath(path: String): Boolean {
     val normalized = path.replace("\\", "/").lowercase()
     return normalized.contains("google drive") || 
            normalized.contains("マイドライブ") || 

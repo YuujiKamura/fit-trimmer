@@ -411,6 +411,29 @@ fun startGui(args: Array<String>) = application {
             val originalFile = File(videoPath)
             var targetVideoPath = videoPath
             
+            val isDrive = utils.isGoogleDrivePath(videoPath)
+            if (isDrive) {
+                launch {
+                    viewModel.isGeneratingProxy = true
+                    viewModel.proxyProgress = 0f
+                    viewModel.proxyVideoPath = null
+                    utils.cleanOldProxies()
+                    val durationMs = utils.getVideoDuration(videoPath) ?: 0L
+                    val pPath = utils.generateProxyVideo(
+                        videoPath = videoPath,
+                        ffmpegPath = fit.findFfmpegPath(),
+                        videoDurationSec = durationMs / 1000.0,
+                        onProgress = { prog ->
+                            viewModel.proxyProgress = prog
+                        }
+                    )
+                    if (videoPath == originalPathAtStart) {
+                        viewModel.proxyVideoPath = pPath
+                    }
+                    viewModel.isGeneratingProxy = false
+                }
+            }
+            
             // WMF fails to play directly from DriveFS (H:\) so we create a temporary directory junction on local C: drive
             if (videoPath.startsWith("H:\\", ignoreCase = true)) {
                 try {
