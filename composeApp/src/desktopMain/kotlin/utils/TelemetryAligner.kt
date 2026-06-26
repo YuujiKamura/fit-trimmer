@@ -13,7 +13,12 @@ object TelemetryAligner {
     
     data class ImuData(
         val times: DoubleArray,
-        val accNorms: DoubleArray
+        val accX: DoubleArray,
+        val accY: DoubleArray,
+        val accZ: DoubleArray,
+        val gyroX: DoubleArray,
+        val gyroY: DoubleArray,
+        val gyroZ: DoubleArray
     )
 
     private fun extractImuOffsetsFast(filepath: String): ImuData {
@@ -91,25 +96,41 @@ object TelemetryAligner {
             val sampleSize = 20
             val sampleCount = gyroSize / sampleSize
             val times = DoubleArray(sampleCount)
-            val accNorms = DoubleArray(sampleCount)
+            val accX = DoubleArray(sampleCount)
+            val accY = DoubleArray(sampleCount)
+            val accZ = DoubleArray(sampleCount)
+            val gyroX = DoubleArray(sampleCount)
+            val gyroY = DoubleArray(sampleCount)
+            val gyroZ = DoubleArray(sampleCount)
             
             val blockWrapper = ByteBuffer.wrap(block).order(ByteOrder.LITTLE_ENDIAN)
             for (i in 0 until sampleCount) {
                 val offset = i * sampleSize
                 val timecode = blockWrapper.getLong(offset)
-                val accX = blockWrapper.getShort(offset + 8).toDouble()
-                val accY = blockWrapper.getShort(offset + 10).toDouble()
-                val accZ = blockWrapper.getShort(offset + 12).toDouble()
                 
                 times[i] = timecode.toDouble() / 1_000_000.0
-                accNorms[i] = Math.sqrt(accX * accX + accY * accY + accZ * accZ)
+                accX[i] = blockWrapper.getShort(offset + 8).toDouble()
+                accY[i] = blockWrapper.getShort(offset + 10).toDouble()
+                accZ[i] = blockWrapper.getShort(offset + 12).toDouble()
+                gyroX[i] = blockWrapper.getShort(offset + 14).toDouble()
+                gyroY[i] = blockWrapper.getShort(offset + 16).toDouble()
+                gyroZ[i] = blockWrapper.getShort(offset + 18).toDouble()
             }
             
             val indices = times.indices.sortedBy { times[it] }
             val sortedTimes = DoubleArray(sampleCount) { times[indices[it]] }
-            val sortedAccNorms = DoubleArray(sampleCount) { accNorms[indices[it]] }
+            val sortedAccX = DoubleArray(sampleCount) { accX[indices[it]] }
+            val sortedAccY = DoubleArray(sampleCount) { accY[indices[it]] }
+            val sortedAccZ = DoubleArray(sampleCount) { accZ[indices[it]] }
+            val sortedGyroX = DoubleArray(sampleCount) { gyroX[indices[it]] }
+            val sortedGyroY = DoubleArray(sampleCount) { gyroY[indices[it]] }
+            val sortedGyroZ = DoubleArray(sampleCount) { gyroZ[indices[it]] }
             
-            return ImuData(sortedTimes, sortedAccNorms)
+            return ImuData(
+                sortedTimes,
+                sortedAccX, sortedAccY, sortedAccZ,
+                sortedGyroX, sortedGyroY, sortedGyroZ
+            )
         }
     }
 
@@ -245,10 +266,16 @@ object TelemetryAligner {
             // 1. Extract video IMU data and calculate vibration
             val imuData = extractImuOffsetsFast(videoPath)
             val times = imuData.times
-            val accNorms = imuData.accNorms
             if (times.isEmpty()) {
                 println("ERROR: No IMU samples extracted from video")
                 return@withContext null
+            }
+            
+            val accNorms = DoubleArray(times.size) { i ->
+                val x = imuData.accX[i]
+                val y = imuData.accY[i]
+                val z = imuData.accZ[i]
+                Math.sqrt(x * x + y * y + z * z)
             }
             
             val accDiffs = DoubleArray(accNorms.size)
