@@ -21,7 +21,7 @@ object TelemetryAligner {
         val gyroZ: DoubleArray
     )
 
-    private fun extractImuOffsetsFast(filepath: String): ImuData {
+    internal fun extractImuOffsetsFast(filepath: String): ImuData {
         val file = File(filepath)
         val size = file.length()
         
@@ -256,7 +256,8 @@ object TelemetryAligner {
         videoPath: String,
         telemetryPoints: List<FitParser.TelemetryPoint>,
         approxStartUtc: String = "",
-        method: String = "acceleration"
+        method: String = "binary",
+        windowSeconds: Double = 90.0
     ): String? = withContext(Dispatchers.IO) {
         if (telemetryPoints.isEmpty() || videoPath.isEmpty()) {
             println("DEBUG: Auto alignment skipped (empty inputs)")
@@ -303,8 +304,22 @@ object TelemetryAligner {
             val fitGrid = DoubleArray(fitGridSize) { startTs + it }
             val fitSpeedGrid = interpolate(fitGrid, fitTs, fitSpeed)
 
-            val fitSigNorm: DoubleArray
-            val vSigNorm: DoubleArray
+            // Auto-pause gap correction: set interpolated speed to 0.0 during gaps > 2.0 seconds
+            for (i in 0 until fitTs.size - 1) {
+                val ts1 = fitTs[i]
+                val ts2 = fitTs[i + 1]
+                if (ts2 - ts1 > 2.0) {
+                    val idxStart = Math.ceil(ts1 - startTs).toInt()
+                    val idxEnd = Math.floor(ts2 - startTs).toInt()
+                    for (idx in idxStart..idxEnd) {
+                        if (idx in fitSpeedGrid.indices) {
+                            fitSpeedGrid[idx] = 0.0
+                        }
+                    }
+                }
+            }
+
+            val corr: DoubleArray
 
             if (method == "binary") {
                 val vSig = gaussianFilter1D(vVib, 3.0)
@@ -321,8 +336,42 @@ object TelemetryAligner {
                 val fitSigSmooth = gaussianFilter1D(fitMov, 3.0)
                 val vSigSmooth = gaussianFilter1D(vMov, 3.0)
 
-                fitSigNorm = normalize(fitSigSmooth)
-                vSigNorm = normalize(vSigSmooth)
+                // Calculate Pearson's Local Normalized Cross-Correlation (NCC)
+                val outSize = fitSigSmooth.size - vSigSmooth.size + 1
+                if (outSize <= 0) {
+                    corr = DoubleArray(0)
+                } else {
+                    corr = DoubleArray(outSize)
+                    val m = vSigSmooth.size
+                    val meanV = vSigSmooth.average()
+                    val varV = vSigSmooth.map { (it - meanV) * (it - meanV) }.average()
+                    val stdV = Math.sqrt(varV)
+
+                    if (stdV > 1e-6) {
+                        for (i in corr.indices) {
+                            var sumA = 0.0
+                            var sumA2 = 0.0
+                            for (j in 0 until m) {
+                                val valA = fitSigSmooth[i + j]
+                                sumA += valA
+                                sumA2 += valA * valA
+                            }
+                            val meanA = sumA / m
+                            val varA = (sumA2 / m) - (meanA * meanA)
+                            val stdA = Math.sqrt(Math.max(0.0, varA))
+
+                            if (stdA > 1e-6) {
+                                var sumCov = 0.0
+                                for (j in 0 until m) {
+                                    sumCov += (fitSigSmooth[i + j] - meanA) * (vSigSmooth[j] - meanV)
+                                }
+                                corr[i] = sumCov / (m * stdA * stdV)
+                            } else {
+                                corr[i] = 0.0
+                            }
+                        }
+                    }
+                }
             } else {
                 // Acceleration Method
                 val fitAcc = DoubleArray(fitSpeedGrid.size)
@@ -341,11 +390,11 @@ object TelemetryAligner {
                 val fitSigSmooth = gaussianFilter1D(fitAcc, 3.0)
                 val vSigSmooth = gaussianFilter1D(vAcc, 3.0)
 
-                fitSigNorm = normalize(fitSigSmooth)
-                vSigNorm = normalize(vSigSmooth)
+                val fitSigNorm = normalize(fitSigSmooth)
+                val vSigNorm = normalize(vSigSmooth)
+                corr = correlateValid(fitSigNorm, vSigNorm)
             }
 
-            val corr = correlateValid(fitSigNorm, vSigNorm)
             if (corr.isEmpty()) {
                 println("ERROR: Video is longer than ride telemetry. Cannot align.")
                 return@withContext null
@@ -366,7 +415,7 @@ object TelemetryAligner {
             var maxCorr = Double.NEGATIVE_INFINITY
 
             if (!approxStartTs.isNaN()) {
-                val window = 900.0
+                val window = windowSeconds
                 val minTs = approxStartTs - window
                 val maxTs = approxStartTs + window
                 for (i in corr.indices) {
