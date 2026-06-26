@@ -713,6 +713,30 @@
             min-width: 65px;
             text-align: center;
         }
+
+        /* Loading Spinner */
+        .spinner {
+            width: 32px;
+            height: 32px;
+            border: 3.5px solid rgba(255, 255, 255, 0.08);
+            border-radius: 50%;
+            border-top-color: var(--primary);
+            animation: spin 0.8s linear infinite;
+            margin-bottom: 15px;
+            display: none;
+        }
+
+        .drop-zone.loading .spinner {
+            display: block;
+        }
+
+        .drop-zone.loading .icon {
+            display: none;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
@@ -743,16 +767,18 @@
         <div class="drop-zone-container">
             <input type="file" id="video-input" accept=".mp4,.lrv,.mov" style="position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0;" multiple>
             <label class="drop-zone" id="video-dropzone" for="video-input">
+                <div class="spinner"></div>
                 <div class="icon">🎥</div>
                 <p id="video-name">Select Video File(s)</p>
-                <span>Drag & drop MP4 / LRV / MOV (Multiple OK)</span>
+                <span id="video-sub">Drag & drop MP4 / LRV / MOV (Multiple OK)</span>
             </label>
             
             <input type="file" id="fit-input" accept=".fit" style="position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0;">
             <label class="drop-zone" id="fit-dropzone" for="fit-input">
+                <div class="spinner"></div>
                 <div class="icon">🚴</div>
                 <p id="fit-name">Select FIT File</p>
-                <span>Drag & drop Garmin / Strava FIT</span>
+                <span id="fit-sub">Drag & drop Garmin / Strava FIT</span>
             </label>
         </div>
 
