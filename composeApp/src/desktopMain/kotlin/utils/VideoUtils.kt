@@ -339,3 +339,172 @@ fun formatTime(ms: Long): String {
     val sec = totalSec % 60
     return "%02d:%02d".format(min, sec)
 }
+
+private fun getMd5Hash(str: String): String {
+    val md = java.security.MessageDigest.getInstance("MD5")
+    val bytes = md.digest(str.toByteArray(Charsets.UTF_8))
+    return bytes.joinToString("") { "%02x".format(it) }
+}
+
+fun getProxyFileForVideo(videoPath: String): File {
+    val tmpDir = System.getProperty("java.io.tmpdir")
+    val proxyDir = File(tmpDir, "fit_trimmer_proxies")
+    if (!proxyDir.exists()) {
+        proxyDir.mkdirs()
+    }
+    val hash = getMd5Hash(videoPath)
+    return File(proxyDir, "$hash.mp4")
+}
+
+fun cleanOldProxies() {
+    val tmpDir = System.getProperty("java.io.tmpdir")
+    val proxyDir = File(tmpDir, "fit_trimmer_proxies")
+    if (!proxyDir.exists() || !proxyDir.isDirectory) return
+
+    val now = System.currentTimeMillis()
+    val cutoff = now - (7L * 24 * 3600 * 1000)
+
+    val files = proxyDir.listFiles() ?: return
+
+    for (file in files) {
+        if (file.isFile && file.lastModified() < cutoff) {
+            try {
+                file.delete()
+            } catch (e: Exception) {
+                // ignore
+            }
+        }
+    }
+
+    val remainingFiles = (proxyDir.listFiles() ?: return).filter { it.isFile }
+    var totalSize = remainingFiles.sumOf { it.length() }
+    val limit = 2L * 1024 * 1024 * 1024 // 2 GB
+
+    if (totalSize > limit) {
+        val sortedFiles = remainingFiles.sortedBy { it.lastModified() }
+        for (file in sortedFiles) {
+            val length = file.length()
+            try {
+                if (file.delete()) {
+                    totalSize -= length
+                }
+            } catch (e: Exception) {
+                // ignore
+            }
+            if (totalSize <= limit) {
+                break
+            }
+        }
+    }
+}
+
+suspend fun generateProxyVideo(
+    videoPath: String,
+    ffmpegPath: String,
+    videoDurationSec: Double,
+    onProgress: (Float) -> Unit
+): String? = withContext(Dispatchers.IO) {
+    val proxyFile = getProxyFileForVideo(videoPath)
+    if (proxyFile.exists()) {
+        onProgress(1.0f)
+        return@withContext proxyFile.absolutePath
+    }
+
+    val tempFile = File(proxyFile.absolutePath + ".tmp")
+    if (tempFile.exists()) {
+        tempFile.delete()
+    }
+
+    val pb = ProcessBuilder(
+        ffmpegPath,
+        "-y",
+        "-i", videoPath,
+        "-vf", "scale=-2:360",
+        "-c:v", "libx264",
+        "-preset", "ultrafast",
+        "-crf", "32",
+        "-c:a", "aac",
+        "-b:a", "64k",
+        "-threads", "4",
+        tempFile.absolutePath
+    )
+    pb.redirectErrorStream(true)
+
+    var proc: Process? = null
+    val job = coroutineContext[kotlinx.coroutines.Job]
+    val handle = job?.invokeOnCompletion {
+        proc?.destroyForcibly()
+        if (tempFile.exists()) {
+            tempFile.delete()
+        }
+    }
+
+    try {
+        proc = pb.start()
+        val progressRegex = Regex("""time=(\d{2}):(\d{2}):(\d{2})\.(\d{2})""")
+        
+        proc.inputStream.bufferedReader().use { reader ->
+            var line = reader.readLine()
+            while (line != null) {
+                ensureActive()
+                val match = progressRegex.find(line)
+                if (match != null) {
+                    val hours = match.groupValues[1].toIntOrNull() ?: 0
+                    val minutes = match.groupValues[2].toIntOrNull() ?: 0
+                    val seconds = match.groupValues[3].toIntOrNull() ?: 0
+                    val centiseconds = match.groupValues[4].toIntOrNull() ?: 0
+                    val totalSec = hours * 3600.0 + minutes * 60.0 + seconds + centiseconds / 100.0
+                    if (videoDurationSec > 0.0) {
+                        val progressRatio = (totalSec / videoDurationSec).coerceIn(0.0, 1.0)
+                        val scaledProgress = (progressRatio * 0.95).toFloat()
+                        onProgress(scaledProgress)
+                    }
+                }
+                line = reader.readLine()
+            }
+        }
+
+        val exitCode = proc.waitFor()
+        if (exitCode == 0) {
+            if (tempFile.renameTo(proxyFile)) {
+                onProgress(1.0f)
+                return@withContext proxyFile.absolutePath
+            }
+        }
+        
+        if (tempFile.exists()) {
+            tempFile.delete()
+        }
+        null
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        proc?.destroyForcibly()
+        try {
+            proc?.waitFor(1, java.util.concurrent.TimeUnit.SECONDS)
+        } catch (ioe: Exception) {}
+        if (tempFile.exists()) {
+            tempFile.delete()
+        }
+        throw e
+    } catch (e: Exception) {
+        proc?.destroyForcibly()
+        try {
+            proc?.waitFor(1, java.util.concurrent.TimeUnit.SECONDS)
+        } catch (ioe: Exception) {}
+        if (tempFile.exists()) {
+            tempFile.delete()
+        }
+        null
+    } finally {
+        handle?.dispose()
+        if (proc?.isAlive == true) {
+            proc.destroyForcibly()
+            try {
+                proc.waitFor(1, java.util.concurrent.TimeUnit.SECONDS)
+            } catch (ioe: Exception) {}
+        }
+        if (tempFile.exists()) {
+            tempFile.delete()
+        }
+    }
+}
+
