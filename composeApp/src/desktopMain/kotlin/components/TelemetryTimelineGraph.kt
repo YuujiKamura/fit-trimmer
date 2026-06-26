@@ -78,12 +78,14 @@ fun TelemetryTimelineGraph(
     // Sample telemetry points to match video seconds
     val sampledPoints = remember(telemetryPoints, adjustedStartUtc, videoLengthMs) {
         if (telemetryPoints.isEmpty() || adjustedStartUtc.isEmpty() || videoLengthMs <= 0) {
+            println("DEBUG: TelemetryTimelineGraph sampledPoints empty check failed. telemetryPoints.size=${telemetryPoints.size}, adjustedStartUtc='$adjustedStartUtc', videoLengthMs=$videoLengthMs")
             emptyList()
         } else {
             try {
                 val startTime = java.time.Instant.parse(adjustedStartUtc)
                 val fitEpoch = java.time.Instant.parse("1989-12-31T00:00:00Z").epochSecond
                 val startFitTs = startTime.toEpochMilli() / 1000.0 - fitEpoch
+                println("DEBUG: TelemetryTimelineGraph sampledPoints remember triggered. adjustedStartUtc=$adjustedStartUtc, startFitTs=$startFitTs, telemetryPoints.size=${telemetryPoints.size}")
                 val numSamples = 400
                 List(numSamples) { i ->
                     val sec = (i.toFloat() / (numSamples - 1).toFloat()) * videoDurationSec.toFloat()
