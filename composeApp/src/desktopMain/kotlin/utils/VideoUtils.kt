@@ -12,6 +12,9 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import fit.findFfmpegPath
 import mp4.Mp4Parser
+import java.io.RandomAccessFile
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 
 fun pickFile(title: String, extensions: List<String>): String? {
     val dialog = FileDialog(null as Frame?, title, FileDialog.LOAD)
@@ -156,25 +159,142 @@ fun isGoogleDrivePath(path: String): Boolean {
            normalized.startsWith("h:/")
 }
 
+fun getFirstImuTimecode(videoPath: String): Double? {
+    val file = File(videoPath)
+    if (!file.exists() || file.length() < 200) return null
+    try {
+        RandomAccessFile(file, "r").use { raf ->
+            val size = file.length()
+            raf.seek(size - 200)
+            val endBuf = ByteArray(200)
+            raf.readFully(endBuf)
+            
+            val extraSizeBuffer = ByteBuffer.wrap(endBuf, 160, 4).order(ByteOrder.LITTLE_ENDIAN)
+            val extraSize = extraSizeBuffer.int.toLong() and 0xFFFFFFFFL
+            val extraStart = size - extraSize
+            
+            var pos = 150
+            var foundOffsets = false
+            var offsetsSize = 0
+            var offsetsPos = 0
+            
+            while (pos >= 0) {
+                if (pos + 6 <= endBuf.size) {
+                    if (endBuf[pos] == 0.toByte() && endBuf[pos + 1] == 0.toByte()) {
+                        val sizeValBuf = ByteBuffer.wrap(endBuf, pos + 2, 4).order(ByteOrder.LITTLE_ENDIAN)
+                        val sizeVal = sizeValBuf.int
+                        if (sizeVal in 20..500 && sizeVal % 10 == 0) {
+                            offsetsSize = sizeVal
+                            offsetsPos = pos
+                            foundOffsets = true
+                            break
+                        }
+                    }
+                }
+                pos--
+            }
+            
+            if (!foundOffsets) return null
+            
+            val offsetFromEnd = 200 - offsetsPos
+            val offsetsStartPos = size - offsetFromEnd - offsetsSize
+            raf.seek(offsetsStartPos)
+            val offsetsBuf = ByteArray(offsetsSize)
+            raf.readFully(offsetsBuf)
+            
+            var gyroOffset: Long = -1
+            var gyroSize: Int = -1
+            
+            for (i in 0 until offsetsSize step 10) {
+                if (i + 10 > offsetsSize) break
+                val recId = offsetsBuf[i].toInt() and 0xFF
+                val sizeBuf = ByteBuffer.wrap(offsetsBuf, i + 2, 4).order(ByteOrder.LITTLE_ENDIAN)
+                val recSize = sizeBuf.int
+                val offsetBuf = ByteBuffer.wrap(offsetsBuf, i + 6, 4).order(ByteOrder.LITTLE_ENDIAN)
+                val recOffset = offsetBuf.int.toLong() and 0xFFFFFFFFL
+                
+                if (recId == 3) { // Gyro
+                    gyroOffset = recOffset
+                    gyroSize = recSize
+                    break
+                }
+            }
+            
+            if (gyroOffset == -1L || gyroSize < 8) return null
+            
+            val targetPos = extraStart + gyroOffset
+            raf.seek(targetPos)
+            val timecodeBuf = ByteArray(8)
+            raf.readFully(timecodeBuf)
+            
+            val timecode = ByteBuffer.wrap(timecodeBuf).order(ByteOrder.LITTLE_ENDIAN).long
+            return timecode / 1000000.0
+        }
+    } catch (e: Exception) {
+        println("DEBUG: Failed to extract IMU timecode: ${e.message}")
+    }
+    return null
+}
+
 suspend fun getVideoStartUtc(videoPath: String): String? = withContext(Dispatchers.IO) {
     val isCloud = isGoogleDrivePath(videoPath)
     
+    var baseStartUtc: String? = null
     if (isCloud) {
-        val result = getVideoStartUtcViaFFmpeg(videoPath)
-        if (result != null) return@withContext result
-        println("DEBUG: Cloud path FFmpeg metadata extract failed, falling back to parser...")
+        baseStartUtc = getVideoStartUtcViaFFmpeg(videoPath)
+        if (baseStartUtc == null) {
+            println("DEBUG: Cloud path FFmpeg metadata extract failed, falling back to parser...")
+            baseStartUtc = getVideoStartUtcViaParser(videoPath)
+        }
+    } else {
+        baseStartUtc = getVideoStartUtcViaParser(videoPath)
+        if (baseStartUtc == null) {
+            baseStartUtc = getVideoStartUtcViaFFmpeg(videoPath)
+        }
     }
-
-    val resultParser = getVideoStartUtcViaParser(videoPath)
-    if (resultParser != null) return@withContext resultParser
-
-    if (!isCloud) {
-        val resultFFmpeg = getVideoStartUtcViaFFmpeg(videoPath)
-        if (resultFFmpeg != null) return@withContext resultFFmpeg
+    
+    if (baseStartUtc == null) return@withContext null
+    
+    val firstImu = getFirstImuTimecode(videoPath)
+    if (firstImu != null && firstImu > 5.0) {
+        try {
+            val videoFile = File(videoPath)
+            val name = videoFile.name
+            var firstFileImuOffset = 2.664490 // default fallback
+            
+            val parent = videoFile.parentFile
+            if (parent != null && parent.exists()) {
+                val regex = Regex("""(.*_)(\d+)(\.mp4|\.lrv)""", RegexOption.IGNORE_CASE)
+                val match = regex.matchEntire(name)
+                if (match != null) {
+                    val prefix = match.groupValues[1]
+                    val ext = match.groupValues[3]
+                    val firstFileName = "${prefix}001$ext"
+                    val firstFile = File(parent, firstFileName)
+                    if (firstFile.exists()) {
+                        val firstFileImu = getFirstImuTimecode(firstFile.absolutePath)
+                        if (firstFileImu != null) {
+                            firstFileImuOffset = firstFileImu
+                            println("DEBUG: Found first file IMU offset: $firstFileImuOffset from $firstFileName")
+                        }
+                    }
+                }
+            }
+            
+            val baseInstant = java.time.Instant.parse(baseStartUtc)
+            val offsetSec = firstImu - firstFileImuOffset
+            val adjustedInstant = baseInstant.plusMillis((offsetSec * 1000).toLong())
+            val adjustedUtc = adjustedInstant.toString()
+            println("DEBUG: Adjusted videoStartUtc for split file from $baseStartUtc to $adjustedUtc (offset: $offsetSec s, firstImu: $firstImu, baseImu: $firstFileImuOffset)")
+            return@withContext adjustedUtc
+        } catch (e: Exception) {
+            println("DEBUG: Failed to adjust start time for split file: ${e.message}")
+        }
     }
-
-    null
+    
+    baseStartUtc
 }
+
 
 private suspend fun getVideoStartUtcViaFFmpeg(videoPath: String): String? = withContext(Dispatchers.IO) {
     var attempt = 1
