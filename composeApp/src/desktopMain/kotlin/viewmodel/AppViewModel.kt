@@ -110,6 +110,7 @@ class AppViewModel(
     var hasEnoughSpace by mutableStateOf(true)
     var hasEnoughSpaceForSample by mutableStateOf(true)
     var isSampleEncoding by mutableStateOf(false)
+    var isHudBurned by mutableStateOf(false)
     var appTempSpaceGB by mutableStateOf(0.0)
 
     var moveOutputToSource by mutableStateOf(initialCache?.moveOutputToSource ?: false)

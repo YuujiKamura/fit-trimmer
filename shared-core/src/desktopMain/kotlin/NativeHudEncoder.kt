@@ -913,6 +913,7 @@ class NativeHudEncoder(
                 "-safe", "0",
                 "-i", partsListFile.absolutePath,
                 "-c", "copy",
+                "-metadata", "comment=fit-trimmer-hud-burned",
                 finalDest.absolutePath
             )
             

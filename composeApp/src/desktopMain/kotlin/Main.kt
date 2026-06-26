@@ -128,6 +128,7 @@ fun startGui(args: Array<String>) = application {
     var isLoaded by viewModel::isLoaded
 
     var monitoredDriveName by viewModel::monitoredDriveName
+    var isHudBurned by viewModel::isHudBurned
     var cDriveFreeSpaceGB by viewModel::cDriveFreeSpaceGB
     var cDriveTotalSpaceGB by viewModel::cDriveTotalSpaceGB
     var requiredSpaceGB by viewModel::requiredSpaceGB
@@ -421,6 +422,7 @@ fun startGui(args: Array<String>) = application {
         val originalPathAtStart = videoPath
         // Initialize states immediately on video changes to prevent obsolete metadata leak (Requirement 2)
         videoLengthMs = 0L
+        isHudBurned = false
         if (!ignoreNextStartUtcClear) {
             videoStartUtc = ""
         }
@@ -505,12 +507,12 @@ fun startGui(args: Array<String>) = application {
             withContext(Dispatchers.IO) {
                 try {
                     val duration = getVideoDuration(targetVideoPath)
-                    println("DEBUG: LaunchedEffect(videoPath) duration result: $duration")
-                    duration?.let { dur ->
-                        withContext(Dispatchers.Main) {
-                            if (videoPath == originalPathAtStart) {
-                                videoLengthMs = dur
-                            }
+                    val burned = checkIfHudBurned(targetVideoPath)
+                    println("DEBUG: LaunchedEffect(videoPath) duration result: $duration, burned: $burned")
+                    withContext(Dispatchers.Main) {
+                        if (videoPath == originalPathAtStart) {
+                            duration?.let { videoLengthMs = it }
+                            isHudBurned = burned
                         }
                     }
 
@@ -1310,6 +1312,20 @@ fun startGui(args: Array<String>) = application {
                                                   .padding(horizontal = 8.dp, vertical = 6.dp)
                                           ) {
                                               Text("⚠️ VIDEO OUTSIDE FIT RANGE", color = Color(0xFFE02424), fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                                          }
+                                      }
+
+                                      if (isHudBurned) {
+                                          Row(
+                                              verticalAlignment = Alignment.CenterVertically,
+                                              horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                              modifier = Modifier
+                                                  .fillMaxWidth()
+                                                  .background(Color(0xFFFEF3C7), shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                                                  .border(BorderStroke(1.dp, Color(0xFFD97706)), shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                                                  .padding(horizontal = 8.dp, vertical = 6.dp)
+                                          ) {
+                                              Text("⚠️ HUD ALREADY BURNED (焼き込み済み)", color = Color(0xFFB45309), fontWeight = FontWeight.Bold, fontSize = 10.sp)
                                           }
                                       }
                                   }
