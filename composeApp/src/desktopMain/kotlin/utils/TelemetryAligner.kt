@@ -17,7 +17,8 @@ object TelemetryAligner {
      */
     suspend fun alignVideoWithTelemetry(
         videoPath: String,
-        telemetryPoints: List<FitParser.TelemetryPoint>
+        telemetryPoints: List<FitParser.TelemetryPoint>,
+        approxStartUtc: String = ""
     ): String? = withContext(Dispatchers.IO) {
         if (telemetryPoints.isEmpty() || videoPath.isEmpty()) {
             println("DEBUG: Auto alignment skipped (empty inputs)")
@@ -69,13 +70,26 @@ object TelemetryAligner {
             val isWindows = System.getProperty("os.name").contains("win", ignoreCase = true)
             val pythonCmd = if (isWindows) "python" else "python3"
             
-            println("DEBUG: Launching auto alignment with: $pythonCmd ${tempScriptFile.name} --video $videoPath")
-            val pb = ProcessBuilder(
+            val pbArgs = mutableListOf(
                 pythonCmd,
                 tempScriptFile.absolutePath,
                 "--video", videoPath,
                 "--telemetry", tempTelemetryFile.absolutePath
             )
+            
+            if (approxStartUtc.isNotEmpty()) {
+                try {
+                    val instant = Instant.parse(approxStartUtc)
+                    val garminTs = (instant.toEpochMilli() / 1000.0) - 631065600.0
+                    pbArgs.add("--approx-start-ts")
+                    pbArgs.add(garminTs.toString())
+                } catch (e: Exception) {
+                    println("DEBUG: Failed to parse approxStartUtc for alignment command: ${e.message}")
+                }
+            }
+            
+            println("DEBUG: Launching auto alignment with: ${pbArgs.joinToString(" ")}")
+            val pb = ProcessBuilder(pbArgs)
             pb.redirectErrorStream(true)
             
             val process = pb.start()
