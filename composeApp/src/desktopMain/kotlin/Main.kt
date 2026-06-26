@@ -639,7 +639,7 @@ fun startGui(args: Array<String>) = application {
                                     scope.launch {
                                         viewModel.isAligningTelemetry = true
                                         try {
-                                            val alignedUtc = TelemetryAligner.alignVideoWithTelemetry(videoPath, telemetryPoints)
+                                            val alignedUtc = TelemetryAligner.alignVideoWithTelemetry(videoPath, telemetryPoints, videoStartUtc)
                                             if (alignedUtc != null) {
                                                 videoStartUtc = alignedUtc
                                                 timeOffsetState.update(0) // Reset manual offset slider
@@ -1290,7 +1290,7 @@ fun startGui(args: Array<String>) = application {
                             scope.launch {
                                 viewModel.isAligningTelemetry = true
                                 try {
-                                    val alignedUtc = TelemetryAligner.alignVideoWithTelemetry(videoPath, telemetryPoints)
+                                    val alignedUtc = TelemetryAligner.alignVideoWithTelemetry(videoPath, telemetryPoints, videoStartUtc)
                                     if (alignedUtc != null) {
                                         videoStartUtc = alignedUtc
                                         timeOffsetState.update(0) // Reset manual offset slider

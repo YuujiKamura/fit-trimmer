@@ -78,6 +78,7 @@ def main():
     parser = argparse.ArgumentParser(description="Auto-align telemetry with video using IMU correlation.")
     parser.add_argument("--video", required=True, help="Path to the video file (.lrv or .mp4)")
     parser.add_argument("--telemetry", required=True, help="Path to the FIT telemetry JSON file")
+    parser.add_argument("--approx-start-ts", type=float, default=None, help="Approximate video start timestamp (Garmin epoch seconds)")
     args = parser.parse_args()
 
     try:
@@ -139,8 +140,25 @@ def main():
             print(json.dumps({"status": "error", "message": "Video is longer than ride telemetry. Cannot align."}))
             return
 
-        # Find best match offset
-        best_idx = np.argmax(corr)
+        # Find best match offset (constraining to approx-start-ts window if provided)
+        if args.approx_start_ts is not None:
+            # Constrain the search to approx_start_ts +/- 900 seconds (15 minutes)
+            window = 900
+            min_ts = args.approx_start_ts - window
+            max_ts = args.approx_start_ts + window
+            
+            # Find indices in fit_grid that correspond to starting times within [min_ts, max_ts]
+            valid_indices = np.where((fit_grid >= min_ts) & (fit_grid <= max_ts))[0]
+            valid_indices = valid_indices[valid_indices < len(corr)]
+            
+            if len(valid_indices) == 0:
+                best_idx = np.argmax(corr)
+            else:
+                sub_best = np.argmax(corr[valid_indices])
+                best_idx = valid_indices[sub_best]
+        else:
+            best_idx = np.argmax(corr)
+
         video_start_ts = fit_grid[best_idx]
         
         # Find first file's IMU offset to adjust the baseline correctly
