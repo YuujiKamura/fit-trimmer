@@ -4,15 +4,231 @@ import fit.FitParser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption
+import java.io.RandomAccessFile
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.time.Instant
 
 object TelemetryAligner {
     
+    data class ImuData(
+        val times: DoubleArray,
+        val accNorms: DoubleArray
+    )
+
+    private fun extractImuOffsetsFast(filepath: String): ImuData {
+        val file = File(filepath)
+        val size = file.length()
+        
+        RandomAccessFile(file, "r").use { raf ->
+            raf.seek(size - 200)
+            val endBuf = ByteArray(200)
+            raf.readFully(endBuf)
+            
+            val buffer = ByteBuffer.wrap(endBuf).order(ByteOrder.LITTLE_ENDIAN)
+            val extraSize = buffer.getInt(160).toLong() and 0xFFFFFFFFL
+            val extraStart = size - extraSize
+            
+            var pos = 150
+            var foundOffsets = false
+            var offsetsSize = 0
+            var offsetsPos = 0
+            
+            while (true) {
+                var foundPos = -1
+                for (i in pos downTo 0) {
+                    if (i + 1 < endBuf.size && endBuf[i] == 0.toByte() && endBuf[i+1] == 0.toByte()) {
+                        foundPos = i
+                        break
+                    }
+                }
+                if (foundPos == -1) break
+                
+                if (foundPos + 6 <= endBuf.size) {
+                    val sizeVal = ByteBuffer.wrap(endBuf, foundPos + 2, 4).order(ByteOrder.LITTLE_ENDIAN).getInt().toLong() and 0xFFFFFFFFL
+                    if (sizeVal in 20..500 && sizeVal % 10 == 0L) {
+                        offsetsSize = sizeVal.toInt()
+                        offsetsPos = foundPos
+                        foundOffsets = true
+                        break
+                    }
+                }
+                pos = foundPos - 1
+            }
+            
+            if (!foundOffsets) {
+                throw IllegalArgumentException("Failed to locate Offsets header in end buffer")
+            }
+            
+            val offsetFromEnd = 200 - offsetsPos
+            raf.seek(size - offsetFromEnd - offsetsSize)
+            val offsetsBuf = ByteArray(offsetsSize)
+            raf.readFully(offsetsBuf)
+            
+            var gyroOffset = -1L
+            var gyroSize = -1
+            val offsetsWrapper = ByteBuffer.wrap(offsetsBuf).order(ByteOrder.LITTLE_ENDIAN)
+            for (i in 0 until offsetsSize step 10) {
+                if (i + 10 > offsetsSize) break
+                val recId = offsetsBuf[i].toInt() and 0xFF
+                val recSize = offsetsWrapper.getInt(i + 2).toLong() and 0xFFFFFFFFL
+                val recOffset = offsetsWrapper.getInt(i + 6).toLong() and 0xFFFFFFFFL
+                if (recId == 3) {
+                    gyroOffset = recOffset
+                    gyroSize = recSize.toInt()
+                }
+            }
+            
+            if (gyroOffset == -1L || gyroSize == -1) {
+                throw IllegalArgumentException("Gyro record (ID=3) not found in offsets")
+            }
+            
+            val targetPos = extraStart + gyroOffset
+            raf.seek(targetPos)
+            val block = ByteArray(gyroSize)
+            raf.readFully(block)
+            
+            val sampleSize = 20
+            val sampleCount = gyroSize / sampleSize
+            val times = DoubleArray(sampleCount)
+            val accNorms = DoubleArray(sampleCount)
+            
+            val blockWrapper = ByteBuffer.wrap(block).order(ByteOrder.LITTLE_ENDIAN)
+            for (i in 0 until sampleCount) {
+                val offset = i * sampleSize
+                val timecode = blockWrapper.getLong(offset)
+                val accX = blockWrapper.getShort(offset + 8).toDouble()
+                val accY = blockWrapper.getShort(offset + 10).toDouble()
+                val accZ = blockWrapper.getShort(offset + 12).toDouble()
+                
+                times[i] = timecode.toDouble() / 1_000_000.0
+                accNorms[i] = Math.sqrt(accX * accX + accY * accY + accZ * accZ)
+            }
+            
+            val indices = times.indices.sortedBy { times[it] }
+            val sortedTimes = DoubleArray(sampleCount) { times[indices[it]] }
+            val sortedAccNorms = DoubleArray(sampleCount) { accNorms[indices[it]] }
+            
+            return ImuData(sortedTimes, sortedAccNorms)
+        }
+    }
+
+    private fun getFirstFileImuOffset(videoPath: String): Double {
+        var firstFileImuOffset = 2.664490
+        try {
+            val file = File(videoPath)
+            val videoDir = file.parentFile
+            val videoName = file.name
+            val regex = Regex("(.*_)(\\d+)(\\.mp4|\\.lrv)", RegexOption.IGNORE_CASE)
+            val match = regex.matchEntire(videoName)
+            if (match != null) {
+                val prefix = match.groupValues[1]
+                val ext = match.groupValues[3]
+                val firstFileName = "${prefix}001${ext}"
+                val firstFilePath = File(videoDir, firstFileName)
+                if (firstFilePath.exists()) {
+                    val imuData = extractImuOffsetsFast(firstFilePath.absolutePath)
+                    if (imuData.times.isNotEmpty()) {
+                        firstFileImuOffset = imuData.times[0]
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            println("DEBUG: Failed to extract first file IMU offset: ${e.message}")
+        }
+        return firstFileImuOffset
+    }
+
+    private fun gaussianFilter1D(input: DoubleArray, sigma: Double): DoubleArray {
+        val radius = Math.ceil(4.0 * sigma).toInt()
+        val size = 2 * radius + 1
+        val kernel = DoubleArray(size)
+        var sum = 0.0
+        for (i in -radius..radius) {
+            val x = i.toDouble()
+            val v = Math.exp(-(x * x) / (2.0 * sigma * sigma))
+            kernel[i + radius] = v
+            sum += v
+        }
+        for (i in 0 until size) {
+            kernel[i] /= sum
+        }
+
+        val n = input.size
+        val output = DoubleArray(n)
+        for (i in 0 until n) {
+            var value = 0.0
+            for (k in -radius..radius) {
+                val j = i + k
+                val refIdx = when {
+                    j < 0 -> -j
+                    j >= n -> 2 * n - 2 - j
+                    else -> j
+                }
+                val safeIdx = Math.max(0, Math.min(n - 1, refIdx))
+                value += input[safeIdx] * kernel[k + radius]
+            }
+            output[i] = value
+        }
+        return output
+    }
+
+    private fun correlateValid(a: DoubleArray, v: DoubleArray): DoubleArray {
+        val n = a.size
+        val m = v.size
+        if (n < m) return DoubleArray(0)
+        val outSize = n - m + 1
+        val output = DoubleArray(outSize)
+        for (i in 0 until outSize) {
+            var sum = 0.0
+            for (j in 0 until m) {
+                sum += a[i + j] * v[j]
+            }
+            output[i] = sum
+        }
+        return output
+    }
+
+    private fun normalize(arr: DoubleArray): DoubleArray {
+        val mean = arr.average()
+        val variance = arr.map { (it - mean) * (it - mean) }.average()
+        val std = Math.sqrt(variance)
+        val output = DoubleArray(arr.size)
+        for (i in arr.indices) {
+            output[i] = (arr[i] - mean) / (std + 1e-6)
+        }
+        return output
+    }
+
+    private fun interpolate(x: DoubleArray, xp: DoubleArray, fp: DoubleArray): DoubleArray {
+        val output = DoubleArray(x.size)
+        for (i in x.indices) {
+            val target = x[i]
+            if (target <= xp.first()) {
+                output[i] = fp.first()
+                continue
+            }
+            if (target >= xp.last()) {
+                output[i] = fp.last()
+                continue
+            }
+            val idx = xp.binarySearch(target)
+            if (idx >= 0) {
+                output[i] = fp[idx]
+            } else {
+                val insertIdx = -idx - 1
+                val idx0 = insertIdx - 1
+                val idx1 = insertIdx
+                val t = (target - xp[idx0]) / (xp[idx1] - xp[idx0])
+                output[i] = fp[idx0] + t * (fp[idx1] - fp[idx0])
+            }
+        }
+        return output
+    }
+
     /**
      * Aligns video start time with fit telemetry using IMU correlation.
-     * Launches the bundled Python script in background.
+     * Calculated natively in Kotlin.
      * Returns the videoStartUtc String (ISO-8601) if successful, null otherwise.
      */
     suspend fun alignVideoWithTelemetry(
@@ -25,125 +241,118 @@ object TelemetryAligner {
             return@withContext null
         }
         
-        var tempTelemetryFile: File? = null
-        var tempScriptFile: File? = null
-        
         try {
-            // 1. Dump telemetry points to a temporary JSON file
-            tempTelemetryFile = File.createTempFile("fit_telemetry_", ".json")
-            
-            val jsonBuilder = StringBuilder()
-            jsonBuilder.append("[\n")
-            for (i in telemetryPoints.indices) {
-                val pt = telemetryPoints[i]
-                jsonBuilder.append("  {\n")
-                jsonBuilder.append("    \"ts\": ").append(pt.timestamp).append(",\n")
-                jsonBuilder.append("    \"speedKmh\": ").append(pt.speed).append("\n")
-                jsonBuilder.append("  }")
-                if (i < telemetryPoints.size - 1) {
-                    jsonBuilder.append(",")
-                }
-                jsonBuilder.append("\n")
-            }
-            jsonBuilder.append("]")
-            tempTelemetryFile.writeText(jsonBuilder.toString())
-            
-            // 2. Extract align_telemetry.py from resources to a temp file
-            tempScriptFile = File.createTempFile("align_telemetry_", ".py")
-            var copied = false
-            val resourceStream = TelemetryAligner::class.java.getResourceAsStream("/align_telemetry.py")
-            if (resourceStream != null) {
-                try {
-                    resourceStream.use { input ->
-                        Files.copy(input, tempScriptFile.toPath(), StandardCopyOption.REPLACE_EXISTING)
-                    }
-                    copied = true
-                } catch (e: Exception) {
-                    println("DEBUG: Failed to copy /align_telemetry.py from resources (${e.message}). Trying dev file fallback.")
-                }
-            }
-            if (!copied) {
-                val devFile = File("composeApp/src/desktopMain/resources/align_telemetry.py")
-                if (devFile.exists()) {
-                    Files.copy(devFile.toPath(), tempScriptFile.toPath(), StandardCopyOption.REPLACE_EXISTING)
-                } else {
-                    println("ERROR: Python script not found in resources or dev fallback!")
-                    return@withContext null
-                }
+            // 1. Extract video IMU data and calculate vibration
+            val imuData = extractImuOffsetsFast(videoPath)
+            val times = imuData.times
+            val accNorms = imuData.accNorms
+            if (times.isEmpty()) {
+                println("ERROR: No IMU samples extracted from video")
+                return@withContext null
             }
             
-            // 3. Launch Python process
-            val isWindows = System.getProperty("os.name").contains("win", ignoreCase = true)
-            val pythonCmd = if (isWindows) "python" else "python3"
+            val accDiffs = DoubleArray(accNorms.size)
+            for (i in 0 until accNorms.size - 1) {
+                accDiffs[i] = Math.abs(accNorms[i + 1] - accNorms[i])
+            }
+            accDiffs[accNorms.size - 1] = 0.0
             
-            val pbArgs = mutableListOf(
-                pythonCmd,
-                tempScriptFile.absolutePath,
-                "--video", videoPath,
-                "--telemetry", tempTelemetryFile.absolutePath
-            )
+            val relTimes = DoubleArray(times.size) { times[it] - times[0] }
+            val maxVTime = Math.ceil(relTimes.last()).toInt()
             
+            val vGrid = DoubleArray(maxVTime + 1) { it.toDouble() }
+            val vVib = interpolate(vGrid, relTimes, accDiffs)
+            
+            val firstFileImuOffset = getFirstFileImuOffset(videoPath)
+
+            // 2. Prepare telemetry points
+            val fitTs = DoubleArray(telemetryPoints.size) { telemetryPoints[it].timestamp.toDouble() }
+            val fitSpeed = DoubleArray(telemetryPoints.size) { telemetryPoints[it].speed.toDouble() }
+            
+            val startTs = fitTs.first()
+            val endTs = fitTs.last()
+            val fitGridSize = (endTs - startTs).toInt() + 1
+            val fitGrid = DoubleArray(fitGridSize) { startTs + it }
+            val fitSpeedGrid = interpolate(fitGrid, fitTs, fitSpeed)
+
+            // 3. Perform Binary Correlation alignment (default robust algorithm for stops)
+            val vSig = gaussianFilter1D(vVib, 3.0)
+            
+            // 10th percentile
+            val sortedVSig = vSig.sorted()
+            val pct10Idx = (sortedVSig.size * 0.10).toInt()
+            val pct10 = sortedVSig[Math.max(0, Math.min(sortedVSig.size - 1, pct10Idx))]
+            val vThresh = Math.max(20.0, pct10 * 1.5)
+            
+            val vMov = DoubleArray(vSig.size) { if (vSig[it] > vThresh) 1.0 else 0.0 }
+            val fitMov = DoubleArray(fitSpeedGrid.size) { if (fitSpeedGrid[it] > 2.0) 1.0 else 0.0 }
+
+            val fitSigSmooth = gaussianFilter1D(fitMov, 3.0)
+            val vSigSmooth = gaussianFilter1D(vMov, 3.0)
+
+            val fitSigNorm = normalize(fitSigSmooth)
+            val vSigNorm = normalize(vSigSmooth)
+
+            val corr = correlateValid(fitSigNorm, vSigNorm)
+            if (corr.isEmpty()) {
+                println("ERROR: Video is longer than ride telemetry. Cannot align.")
+                return@withContext null
+            }
+
+            // Find best offset
+            var approxStartTs = Double.NaN
             if (approxStartUtc.isNotEmpty()) {
                 try {
                     val instant = Instant.parse(approxStartUtc)
-                    val garminTs = (instant.toEpochMilli() / 1000.0) - 631065600.0
-                    pbArgs.add("--approx-start-ts")
-                    pbArgs.add(garminTs.toString())
+                    approxStartTs = (instant.toEpochMilli() / 1000.0) - 631065600.0
                 } catch (e: Exception) {
-                    println("DEBUG: Failed to parse approxStartUtc for alignment command: ${e.message}")
+                    println("DEBUG: Failed to parse approxStartUtc: ${e.message}")
                 }
             }
-            
-            println("DEBUG: Launching auto alignment with: ${pbArgs.joinToString(" ")}")
-            val pb = ProcessBuilder(pbArgs)
-            pb.redirectErrorStream(true)
-            
-            val process = pb.start()
-            val output = process.inputStream.bufferedReader().use { it.readText() }
-            val exitCode = process.waitFor()
-            
-            if (exitCode == 0) {
-                println("DEBUG: Auto alignment output: $output")
-                
-                // Parse stdout JSON manually using regex to avoid dependency issues
-                val statusRegex = "\"status\"\\s*:\\s*\"([^\"]+)\"".toRegex()
-                val tsRegex = "\"video_start_ts\"\\s*:\\s*([\\d.]+)".toRegex()
-                
-                val statusMatch = statusRegex.find(output)?.groupValues?.get(1)
-                val tsMatch = tsRegex.find(output)?.groupValues?.get(1)
-                
-                if (statusMatch == "success" && tsMatch != null) {
-                    val epochSec = tsMatch.toDouble()
-                    // Garmin epoch is Dec 31 1989. Unix epoch is Jan 1 1970.
-                    // Difference is exactly 631065600 seconds.
-                    val unixSec = (epochSec + 631065600.0).toLong()
-                    val unixNano = ((epochSec + 631065600.0 - unixSec) * 1_000_000_000).toLong()
-                    val instant = Instant.ofEpochSecond(unixSec, unixNano)
-                    
-                    val utcStr = instant.toString()
-                    return@withContext utcStr
-                } else {
-                    val msgRegex = "\"message\"\\s*:\\s*\"([^\"]+)\"".toRegex()
-                    val msgMatch = msgRegex.find(output)?.groupValues?.get(1)
-                    println("ERROR: Auto alignment script reported failure: $msgMatch")
+
+            var bestIdx = -1
+            var maxCorr = Double.NEGATIVE_INFINITY
+
+            if (!approxStartTs.isNaN()) {
+                val window = 900.0
+                val minTs = approxStartTs - window
+                val maxTs = approxStartTs + window
+                for (i in corr.indices) {
+                    val ts = fitGrid[i]
+                    if (ts in minTs..maxTs) {
+                        if (corr[i] > maxCorr) {
+                            maxCorr = corr[i]
+                            bestIdx = i
+                        }
+                    }
                 }
-            } else {
-                println("ERROR: Auto alignment script exited with non-zero code $exitCode. Output: $output")
             }
+
+            if (bestIdx == -1) {
+                // global fallback
+                for (i in corr.indices) {
+                    if (corr[i] > maxCorr) {
+                        maxCorr = corr[i]
+                        bestIdx = i
+                    }
+                }
+            }
+
+            val videoStartTs = fitGrid[bestIdx]
+            val trueFileStartTs = videoStartTs - firstFileImuOffset
+
+            // Convert Garmin epoch back to Unix and generate UTC ISO-8601
+            val unixSec = (trueFileStartTs + 631065600.0).toLong()
+            val unixNano = ((trueFileStartTs + 631065600.0 - unixSec) * 1_000_000_000).toLong()
+            val instant = Instant.ofEpochSecond(unixSec, unixNano)
             
+            val utcStr = instant.toString()
+            println("DEBUG: Native auto alignment success. Video start: $utcStr, correlation score: $maxCorr")
+            return@withContext utcStr
+
         } catch (e: Exception) {
-            println("ERROR: Exception during auto alignment execution: ${e.message}")
+            println("ERROR: Exception during native auto alignment: ${e.message}")
             e.printStackTrace()
-        } finally {
-            // Safely delete temp files
-            try {
-                println("DEBUG: Preserving temp telemetry file: ${tempTelemetryFile?.absolutePath}")
-                println("DEBUG: Preserving temp script file: ${tempScriptFile?.absolutePath}")
-                // tempTelemetryFile?.delete()
-                // tempScriptFile?.delete()
-            } catch (e: Exception) {
-                // Ignore
-            }
         }
         
         return@withContext null
