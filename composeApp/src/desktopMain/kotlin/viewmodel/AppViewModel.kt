@@ -102,7 +102,8 @@ class AppViewModel(
     var hudSettingsExpanded by mutableStateOf(false)
     var isLoaded by mutableStateOf(true)
 
-    // C Drive space monitor states
+    // Drive space monitor states
+    var monitoredDriveName by mutableStateOf("C:")
     var cDriveFreeSpaceGB by mutableStateOf(0.0)
     var cDriveTotalSpaceGB by mutableStateOf(0.0)
     var requiredSpaceGB by mutableStateOf(2.0)

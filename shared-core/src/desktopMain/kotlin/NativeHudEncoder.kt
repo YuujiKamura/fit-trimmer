@@ -329,7 +329,7 @@ class NativeHudEncoder(
         try {
             val ffmpegPath = findFfmpegPath()
         
-        val workDir = PathResolver.getTempWorkDir()
+        val workDir = PathResolver.getTempWorkDir(videoPath)
         if (!workDir.exists()) workDir.mkdirs()
         val tempOutput = File(workDir, "encoding_temp.mp4")
         if (tempOutput.exists()) tempOutput.delete() // Clean up any stale temp files
