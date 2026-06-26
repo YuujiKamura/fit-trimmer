@@ -20,7 +20,7 @@ fun reportProgress(progress: Float, status: String, isEncoding: Boolean) {
 
     // GUIへの通知
     try {
-        Socket("localhost", 49152).use { socket ->
+        Socket("localhost", 48099).use { socket ->
             socket.soTimeout = 500
             val writer = PrintWriter(socket.outputStream, true)
             val json = Json.encodeToString<CpCommand>(CpCommand.UpdateProgress(progress, isEncoding))

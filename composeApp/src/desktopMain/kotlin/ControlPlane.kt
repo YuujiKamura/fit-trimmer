@@ -18,7 +18,7 @@ class ControlPlane(
     private var serverSocket: ServerSocket? = null
     private val json = Json { ignoreUnknownKeys = true }
 
-    fun start(port: Int = 49152) {
+    fun start(port: Int = 48099) {
         thread(isDaemon = true) {
             try {
                 serverSocket = ServerSocket(port)

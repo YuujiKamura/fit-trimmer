@@ -84,7 +84,6 @@ fun TelemetryTimelineGraph(
                 val startTime = java.time.Instant.parse(adjustedStartUtc)
                 val fitEpoch = java.time.Instant.parse("1989-12-31T00:00:00Z").epochSecond
                 val startFitTs = startTime.toEpochMilli() / 1000.0 - fitEpoch
-                
                 val numSamples = 400
                 List(numSamples) { i ->
                     val sec = (i.toFloat() / (numSamples - 1).toFloat()) * videoDurationSec.toFloat()
@@ -381,6 +380,7 @@ fun TelemetryTimelineGraph(
                     // 3. Draw Elevation Area Chart (background, bottom 40% height)
                     val elevPath = Path()
                     var startedElev = false
+                    var pathCreatedElev = false
                     val maxE = limits.maxElev
                     val minE = limits.minElev
                     val diffE = maxOf(0.1, maxE - minE)
@@ -395,6 +395,7 @@ fun TelemetryTimelineGraph(
                                 elevPath.moveTo(x, h)
                                 elevPath.lineTo(x, y)
                                 startedElev = true
+                                pathCreatedElev = true
                             } else {
                                 elevPath.lineTo(x, y)
                             }
@@ -407,6 +408,8 @@ fun TelemetryTimelineGraph(
                     }
                     if (startedElev) {
                         elevPath.lineTo(w, h)
+                    }
+                    if (pathCreatedElev) {
                         elevPath.close()
                         drawPath(elevPath, Color(0x3334C759)) // light green fill
                     }
@@ -414,6 +417,7 @@ fun TelemetryTimelineGraph(
                     // 4. Draw Power Line
                     val powerPath = Path()
                     var startedPower = false
+                    var pathCreatedPower = false
                     val maxP = limits.maxPower
                     for (i in sampledPoints.indices) {
                         val pt = sampledPoints[i]
@@ -423,6 +427,7 @@ fun TelemetryTimelineGraph(
                             if (!startedPower) {
                                 powerPath.moveTo(x, y)
                                 startedPower = true
+                                pathCreatedPower = true
                             } else {
                                 powerPath.lineTo(x, y)
                             }
@@ -430,7 +435,7 @@ fun TelemetryTimelineGraph(
                             startedPower = false
                         }
                     }
-                    if (startedPower) {
+                    if (pathCreatedPower) {
                         drawPath(
                             path = powerPath,
                             color = Color(0xFFFF9500), // Orange
@@ -441,6 +446,7 @@ fun TelemetryTimelineGraph(
                     // 5. Draw Speed Line
                     val speedPath = Path()
                     var startedSpeed = false
+                    var pathCreatedSpeed = false
                     val maxS = limits.maxSpeed
                     for (i in sampledPoints.indices) {
                         val pt = sampledPoints[i]
@@ -450,6 +456,7 @@ fun TelemetryTimelineGraph(
                             if (!startedSpeed) {
                                 speedPath.moveTo(x, y)
                                 startedSpeed = true
+                                pathCreatedSpeed = true
                             } else {
                                 speedPath.lineTo(x, y)
                             }
@@ -457,7 +464,7 @@ fun TelemetryTimelineGraph(
                             startedSpeed = false
                         }
                     }
-                    if (startedSpeed) {
+                    if (pathCreatedSpeed) {
                         drawPath(
                             path = speedPath,
                             color = Color(0xFF007AFF), // Blue
