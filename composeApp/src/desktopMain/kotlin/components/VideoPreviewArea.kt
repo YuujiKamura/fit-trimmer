@@ -25,6 +25,8 @@ import io.github.kdroidfilter.composemediaplayer.VideoPlayerSurface
 import io.github.kdroidfilter.composemediaplayer.VideoPlayerState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import java.io.File
 import fit.*
 import utils.*
@@ -135,10 +137,15 @@ fun VideoPreviewArea(
     playerState: VideoPlayerState,
     videoCurrentTimeMs: Long,
     onCurrentTimeChange: (Long) -> Unit,
+    isGeneratingProxy: Boolean,
+    proxyProgress: Float,
+    proxyVideoPath: String?,
     modifier: Modifier = Modifier
 ) {
     var isPlaying by remember { mutableStateOf(false) }
     var lastVolume by remember { mutableStateOf(1f) }
+
+    val activePath = proxyVideoPath ?: videoPath
 
     val togglePlay = {
         println("DEBUG: togglePlay called. current isPlaying=${playerState.isPlaying}")
@@ -176,12 +183,13 @@ fun VideoPreviewArea(
     }
 
     // Video path change side effect inside the player area
-    LaunchedEffect(videoPath) {
-        println("DEBUG: VideoPreviewArea LaunchedEffect(videoPath) triggered with path: $videoPath")
-        if (videoPath.isNotEmpty() && File(videoPath).exists()) {
-            val originalFile = File(videoPath)
-            var targetVideoPath = videoPath
-            if (videoPath.startsWith("H:\\", ignoreCase = true)) {
+    LaunchedEffect(activePath) {
+        println("DEBUG: VideoPreviewArea LaunchedEffect(activePath) triggered with path: $activePath")
+        if (activePath.isNotEmpty() && File(activePath).exists()) {
+            val savedTimeMs = videoCurrentTimeMs
+            val originalFile = File(activePath)
+            var targetVideoPath = activePath
+            if (activePath.startsWith("H:\\", ignoreCase = true)) {
                 try {
                     val tempDir = System.getProperty("java.io.tmpdir")
                     val junctionFolder = File(tempDir, "fit_trimmer_video_junction")
@@ -201,6 +209,26 @@ fun VideoPreviewArea(
             }
             println("DEBUG: VideoPreviewArea calling openUri: $targetVideoPath")
             playerState.openUri(targetVideoPath)
+
+            // Restore position after media is loaded
+            if (savedTimeMs > 0L) {
+                launch {
+                    val startTime = System.currentTimeMillis()
+                    // Wait for loading to start
+                    while (!playerState.isLoading && System.currentTimeMillis() - startTime < 500) {
+                        delay(10)
+                    }
+                    // Wait for loading to complete and hasMedia to be true
+                    val loadStartTime = System.currentTimeMillis()
+                    while ((playerState.isLoading || !playerState.hasMedia) && System.currentTimeMillis() - loadStartTime < 5000) {
+                        delay(50)
+                    }
+                    if (playerState.hasMedia) {
+                        println("DEBUG: Restoring playhead position to $savedTimeMs ms")
+                        seekTo(savedTimeMs)
+                    }
+                }
+            }
         } else {
             playerState.stop()
         }
@@ -245,7 +273,7 @@ fun VideoPreviewArea(
                 .border(1.dp, Color(0xFFE5E5EA), shape = RoundedCornerShape(8.dp))
                 .clip(RoundedCornerShape(8.dp))
         ) {
-            if (videoPath.isNotEmpty()) {
+            if (activePath.isNotEmpty()) {
                 VideoPlayerSurface(
                     playerState = playerState,
                     modifier = Modifier.fillMaxSize()
@@ -271,10 +299,39 @@ fun VideoPreviewArea(
                     currentRatio
                 )
             }
+
+            if (isGeneratingProxy) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .background(Color.Black.copy(alpha = 0.6f))
+                        .padding(8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        CircularProgressIndicator(
+                            progress = proxyProgress,
+                            modifier = Modifier.size(16.dp),
+                            color = Color(0xFF007AFF),
+                            strokeWidth = 2.dp
+                        )
+                        Text(
+                            text = "Generating low-res preview proxy... (${(proxyProgress * 100).toInt()}%)",
+                            color = Color.White,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
         }
 
         // Video Player Control UI
-        if (videoPath.isNotEmpty()) {
+        if (activePath.isNotEmpty()) {
             Spacer(Modifier.height(8.dp))
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
@@ -349,8 +406,8 @@ fun VideoPreviewArea(
                 }
 
                 Text(
-                    text = "NATIVE",
-                    color = Color(0xFF2E7D32),
+                    text = if (proxyVideoPath != null) "PROXY" else "NATIVE",
+                    color = if (proxyVideoPath != null) Color(0xFF007AFF) else Color(0xFF2E7D32),
                     fontSize = 9.sp,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(horizontal = 4.dp)

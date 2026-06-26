@@ -412,25 +412,40 @@ fun startGui(args: Array<String>) = application {
             var targetVideoPath = videoPath
             
             val isDrive = utils.isGoogleDrivePath(videoPath)
+            println("DEBUG: LaunchedEffect(videoPath) check - videoPath='$videoPath', isDrive=$isDrive")
             if (isDrive) {
+                println("DEBUG: LaunchedEffect(videoPath) - Triggering proxy generation block")
                 launch {
-                    viewModel.isGeneratingProxy = true
-                    viewModel.proxyProgress = 0f
-                    viewModel.proxyVideoPath = null
-                    utils.cleanOldProxies()
-                    val durationMs = utils.getVideoDuration(videoPath) ?: 0L
-                    val pPath = utils.generateProxyVideo(
-                        videoPath = videoPath,
-                        ffmpegPath = fit.findFfmpegPath(),
-                        videoDurationSec = durationMs / 1000.0,
-                        onProgress = { prog ->
-                            viewModel.proxyProgress = prog
+                    try {
+                        viewModel.isGeneratingProxy = true
+                        viewModel.proxyProgress = 0f
+                        viewModel.proxyVideoPath = null
+                        println("DEBUG: LaunchedEffect(videoPath) - Cleaning old proxies...")
+                        utils.cleanOldProxies()
+                        println("DEBUG: LaunchedEffect(videoPath) - Getting duration...")
+                        val durationMs = utils.getVideoDuration(videoPath) ?: 0L
+                        println("DEBUG: LaunchedEffect(videoPath) - Duration obtained: $durationMs ms. Generating proxy...")
+                        val pPath = utils.generateProxyVideo(
+                            videoPath = videoPath,
+                            ffmpegPath = fit.findFfmpegPath(),
+                            videoDurationSec = durationMs / 1000.0,
+                            onProgress = { prog ->
+                                viewModel.proxyProgress = prog
+                            }
+                        )
+                        println("DEBUG: LaunchedEffect(videoPath) - Proxy generated successfully: $pPath")
+                        if (videoPath == originalPathAtStart) {
+                            viewModel.proxyVideoPath = pPath
+                            println("DEBUG: LaunchedEffect(videoPath) - Updated viewModel.proxyVideoPath = $pPath")
+                        } else {
+                            println("DEBUG: LaunchedEffect(videoPath) - Path mismatch, originalPathAtStart='$originalPathAtStart', current='$videoPath'")
                         }
-                    )
-                    if (videoPath == originalPathAtStart) {
-                        viewModel.proxyVideoPath = pPath
+                    } catch (e: Exception) {
+                        println("DEBUG: LaunchedEffect(videoPath) - Error during proxy generation: ${e.message}")
+                        e.printStackTrace()
+                    } finally {
+                        viewModel.isGeneratingProxy = false
                     }
-                    viewModel.isGeneratingProxy = false
                 }
             }
             
@@ -1519,6 +1534,9 @@ fun startGui(args: Array<String>) = application {
                                 playerState = playerState,
                                 videoCurrentTimeMs = videoCurrentTimeMs,
                                 onCurrentTimeChange = { videoCurrentTimeMs = it },
+                                isGeneratingProxy = viewModel.isGeneratingProxy,
+                                proxyProgress = viewModel.proxyProgress,
+                                proxyVideoPath = viewModel.proxyVideoPath,
                                 modifier = Modifier.weight(1f).fillMaxWidth()
                             )
                             
