@@ -121,16 +121,24 @@ setupDropzone(videoDrop, videoInput, handleVideoFiles, true);
 setupDropzone(fitDrop, fitInput, handleFitFile, false);
 
 async function handleVideoFiles(files) {
-    videoDrop.classList.add('file-selected', 'video');
-    for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        if (videoFilesList.some(v => v.name === file.name && v.file.size === file.size)) continue;
-        log(`Processing video: ${file.name}...`);
-        await parseVideoMetadata(file);
+    videoDrop.classList.add('file-selected', 'video', 'loading');
+    const subText = document.getElementById('video-sub');
+    try {
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            if (videoFilesList.some(v => v.name === file.name && v.file.size === file.size)) continue;
+            log(`Processing video: ${file.name}...`);
+            videoName.textContent = "Processing " + file.name + "...";
+            if (subText) subText.textContent = `Extracting mvhd atom metadata (${i+1}/${files.length})...`;
+            await parseVideoMetadata(file);
+        }
+    } finally {
+        videoDrop.classList.remove('loading');
+        videoName.textContent = videoFilesList.length > 0 ? `${videoFilesList.length} video(s) selected` : "Select Video File(s)";
+        if (subText) subText.textContent = "Drag & drop MP4 / LRV / MOV (Multiple OK)";
+        renderVideoList();
+        checkSyncCapability();
     }
-    videoName.textContent = videoFilesList.length > 0 ? `${videoFilesList.length} video(s) selected` : "Select Video File(s)";
-    renderVideoList();
-    checkSyncCapability();
 }
 
 async function parseVideoMetadata(file) {
@@ -196,8 +204,10 @@ async function parseVideoMetadata(file) {
 }
 
 async function handleFitFile(file) {
-    fitDrop.classList.add('file-selected', 'fit');
-    fitName.textContent = file.name;
+    fitDrop.classList.add('file-selected', 'fit', 'loading');
+    fitName.textContent = "Processing " + file.name + "...";
+    const subText = document.getElementById('fit-sub');
+    if (subText) subText.textContent = "Loading file buffer & calling Wasm...";
     fitFilename = file.name;
     log(`Loading FIT: ${file.name} (${file.size} bytes)...`);
     try {
@@ -210,6 +220,7 @@ async function handleFitFile(file) {
         // Wait for wasm to finish initializing if it hasn't yet
         if (!wasmModule && wasmInitPromise) {
             log("Waiting for Wasm module to initialize...");
+            if (subText) subText.textContent = "Waiting for Wasm module to initialize...";
             try {
                 await Promise.race([
                     wasmInitPromise,
@@ -225,6 +236,7 @@ async function handleFitFile(file) {
         if (wasmModule?.getFitTelemetry) {
             const bytes = new Int8Array(arrayBuffer);
             log(`Parsing FIT in Wasm...`);
+            if (subText) subText.textContent = "Parsing record messages in WebAssembly...";
             fitTelemetryData = wasmModule.getFitTelemetry(bytes);
 
             if (fitTelemetryData) {
@@ -256,6 +268,10 @@ async function handleFitFile(file) {
     } catch (err) {
         log(`FIT Error: ${err.message}`, 'error');
         console.error("FIT Detail:", err);
+    } finally {
+        fitDrop.classList.remove('loading');
+        fitName.textContent = fitFilename || "Select FIT File";
+        if (subText) subText.textContent = "Drag & drop Garmin / Strava FIT";
     }
 }
 
@@ -592,3 +608,13 @@ function formatJST(d) { return new Date(d.getTime()+9*3600000).toISOString().rep
 fetchBuildInfo();
 console.error = (m) => showVisualError("[Error] " + m);
 window.onerror = (m, u, l) => { showVisualError(`[Ex] ${m} (${u}:${l})`); return false; };
+
+// FAQ Toggle accordion logic (Fix for folded items)
+document.querySelectorAll('.faq-item').forEach(item => {
+    const question = item.querySelector('.faq-question');
+    if (question) {
+        question.addEventListener('click', () => {
+            item.classList.toggle('active');
+        });
+    }
+});
