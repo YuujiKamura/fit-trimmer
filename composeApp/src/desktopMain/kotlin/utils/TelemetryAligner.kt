@@ -131,8 +131,10 @@ object TelemetryAligner {
         } finally {
             // Safely delete temp files
             try {
-                tempTelemetryFile?.delete()
-                tempScriptFile?.delete()
+                println("DEBUG: Preserving temp telemetry file: ${tempTelemetryFile?.absolutePath}")
+                println("DEBUG: Preserving temp script file: ${tempScriptFile?.absolutePath}")
+                // tempTelemetryFile?.delete()
+                // tempScriptFile?.delete()
             } catch (e: Exception) {
                 // Ignore
             }
