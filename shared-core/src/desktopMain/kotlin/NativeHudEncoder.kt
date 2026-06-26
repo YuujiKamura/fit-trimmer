@@ -339,15 +339,23 @@ class NativeHudEncoder(
         var localVideoPath = videoPath
         var isLocalTrimmedVideo = false
 
-        val fitBytes = File(fitPath).readBytes()
-        val parser = FitParser(fitBytes)
-        parser.parse()
-        var telemetry = parser.getTelemetry()
-        if (telemetry.isEmpty()) return
+        val hasTelemetry = fitPath.isNotEmpty() && File(fitPath).exists()
+        var parser: FitParser? = null
+        var telemetry = if (hasTelemetry) {
+            try {
+                val fitBytes = File(fitPath).readBytes()
+                val p = FitParser(fitBytes)
+                p.parse()
+                parser = p
+                p.getTelemetry()
+            } catch (e: Exception) {
+                e.printStackTrace()
+                emptyList()
+            }
+        } else {
+            emptyList()
+        }
 
-        val startTime = Instant.parse(startUtc)
-        val fitEpoch = Instant.parse("1989-12-31T00:00:00Z").epochSecond
-        
         var videoWidth = 1920
         var videoHeight = 1080
         var videoDurationSeconds = 300
@@ -357,12 +365,12 @@ class NativeHudEncoder(
             val pb = ProcessBuilder(ffmpegPath, "-i", localVideoPath)
             pb.redirectErrorStream(true)
             val p = pb.start()
-            val output = p.inputStream.bufferedReader().readText()
+            val outputInfo = p.inputStream.bufferedReader().readText()
             p.waitFor()
             
             // Duration parsing: "Duration: 00:01:23.45"
             val durRegex = Regex("""Duration:\s*(\d+):(\d+):(\d+)\.(\d+)""")
-            val durMatch = durRegex.find(output)
+            val durMatch = durRegex.find(outputInfo)
             if (durMatch != null) {
                 val h = durMatch.groupValues[1].toInt()
                 val m = durMatch.groupValues[2].toInt()
@@ -371,7 +379,7 @@ class NativeHudEncoder(
             }
             
             // Resolution parsing: "Video: ..., 1920x1080 ..."
-            val lines = output.lines()
+            val lines = outputInfo.lines()
             val videoLine = lines.find { it.contains("Video:") }
             if (videoLine != null) {
                 val resRegex = Regex("""\b(\d{3,4})x(\d{3,4})\b""")
@@ -403,6 +411,56 @@ class NativeHudEncoder(
         } else {
             trimDurationSeconds
         }
+
+        if (!hasTelemetry || telemetry.isEmpty()) {
+            // HUD-less fast stream copy trimming mode (extremely fast, zero re-encoding)
+            println("ℹ️ No FIT file / telemetry provided or empty. Running fast trim (stream copy) mode...")
+            onProgress(0.0f, "Running fast trim (stream copy)...")
+            
+            val pbArgs = mutableListOf<String>()
+            pbArgs.add(ffmpegPath)
+            pbArgs.add("-y")
+            // Fast seek before input
+            pbArgs.add("-ss")
+            pbArgs.add(actualTrimStart.toString())
+            pbArgs.add("-t")
+            pbArgs.add(targetDurationSeconds.toString())
+            pbArgs.add("-i")
+            pbArgs.add(localVideoPath)
+            pbArgs.add("-c")
+            pbArgs.add("copy")
+            pbArgs.add(tempOutput.absolutePath)
+            
+            val pb = ProcessBuilder(pbArgs)
+            pb.redirectErrorStream(true)
+            val process = pb.start()
+            val logStream = FileOutputStream(logFile, true)
+            val readerThread = Thread {
+                try {
+                    process.inputStream.copyTo(logStream)
+                } finally {
+                    logStream.close()
+                }
+            }
+            readerThread.start()
+            
+            val exitCode = process.waitFor()
+            readerThread.join(1000)
+            
+            if (exitCode == 0 && tempOutput.exists() && tempOutput.length() > 0L) {
+                val outFile = File(output)
+                if (outFile.exists()) outFile.delete()
+                outFile.parentFile?.mkdirs()
+                Files.move(tempOutput.toPath(), outFile.toPath(), StandardCopyOption.REPLACE_EXISTING)
+                onProgress(1.0f, "✨ Finished Successfully!")
+                return
+            } else {
+                throw Exception("Fast trim-copy failed with exit code $exitCode")
+            }
+        }
+
+        val startTime = try { Instant.parse(startUtc) } catch(e: Exception) { Instant.EPOCH }
+        val fitEpoch = Instant.parse("1989-12-31T00:00:00Z").epochSecond
 
         val startTimeAdjusted = startTime.plusSeconds(actualTrimStart.toLong())
         val videoStartFit = startTimeAdjusted.epochSecond - fitEpoch
@@ -819,16 +877,18 @@ class NativeHudEncoder(
 
         if (!cancelSupplier() && resumeSeconds >= targetDurationSeconds) {
             // Export trimmed FIT file
-            try {
-                val fitStartUtcSeconds = startTimeAdjusted.epochSecond
-                val fitEndUtcSeconds = startTimeAdjusted.epochSecond + targetDurationSeconds
-                val trimmedFitBytes = parser.trim(fitStartUtcSeconds, fitEndUtcSeconds)
-                val trimmedFitFile = File(output.replace(Regex("""\.(mp4|mov)$""", RegexOption.IGNORE_CASE), ".fit"))
-                trimmedFitFile.writeBytes(trimmedFitBytes)
-                println("⚡ Trimmed FIT file exported to: ${trimmedFitFile.absolutePath}")
-            } catch (e: Exception) {
-                println("⚠️ Failed to export trimmed FIT file: ${e.message}")
-                e.printStackTrace()
+            if (hasTelemetry && parser != null) {
+                try {
+                    val fitStartUtcSeconds = startTimeAdjusted.epochSecond
+                    val fitEndUtcSeconds = startTimeAdjusted.epochSecond + targetDurationSeconds
+                    val trimmedFitBytes = parser.trim(fitStartUtcSeconds, fitEndUtcSeconds)
+                    val trimmedFitFile = File(output.replace(Regex("""\.(mp4|mov)$""", RegexOption.IGNORE_CASE), ".fit"))
+                    trimmedFitFile.writeBytes(trimmedFitBytes)
+                    println("⚡ Trimmed FIT file exported to: ${trimmedFitFile.absolutePath}")
+                } catch (e: Exception) {
+                    println("⚠️ Failed to export trimmed FIT file: ${e.message}")
+                    e.printStackTrace()
+                }
             }
 
             onProgress(1.0f, "Merging video segments (Crash Recovery Checkpoint)...")
