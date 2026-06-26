@@ -398,6 +398,37 @@ fun cleanOldProxies() {
     }
 }
 
+private fun detectBestEncoder(ffmpegPath: String): String {
+    fun testEncoder(name: String): Boolean {
+        return try {
+            val pb = ProcessBuilder(
+                ffmpegPath,
+                "-y",
+                "-f", "lavfi",
+                "-i", "testsrc=duration=0.1",
+                "-c:v", name,
+                "-f", "null",
+                "-"
+            )
+            pb.redirectErrorStream(true)
+            val p = pb.start()
+            p.inputStream.bufferedReader().use { it.readText() } // Drain output
+            val finished = p.waitFor(3, java.util.concurrent.TimeUnit.SECONDS)
+            finished && p.exitValue() == 0
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    if (testEncoder("h264_nvenc")) return "h264_nvenc"
+    if (testEncoder("h264_qsv")) return "h264_qsv"
+    if (testEncoder("h264_amf")) return "h264_amf"
+    if (testEncoder("h264_mf")) return "h264_mf"
+    if (testEncoder("libx264")) return "libx264"
+    if (testEncoder("libopenh264")) return "libopenh264"
+    return "h264_mf" // default fallback
+}
+
 suspend fun generateProxyVideo(
     videoPath: String,
     ffmpegPath: String,
@@ -412,21 +443,40 @@ suspend fun generateProxyVideo(
 
     val tempFile = File(proxyFile.absolutePath + "." + java.util.UUID.randomUUID().toString() + ".tmp")
 
-    val pb = ProcessBuilder(
+    val encoder = detectBestEncoder(ffmpegPath)
+    println("DEBUG: generateProxyVideo - Selected encoder: $encoder")
+
+    val args = mutableListOf(
         ffmpegPath,
         "-y",
         "-i", videoPath,
-        "-vf", "scale=-2:360",
-        "-c:v", "libx264",
-        "-preset", "ultrafast",
-        "-crf", "32",
+        "-vf", "scale=-2:360"
+    )
+
+    when (encoder) {
+        "libx264" -> {
+            args.addAll(listOf("-c:v", "libx264", "-preset", "ultrafast", "-crf", "32"))
+        }
+        "h264_nvenc" -> {
+            args.addAll(listOf("-c:v", "h264_nvenc", "-preset", "p1", "-b:v", "800k"))
+        }
+        else -> {
+            args.addAll(listOf("-c:v", encoder, "-b:v", "800k"))
+        }
+    }
+
+    args.addAll(listOf(
         "-c:a", "aac",
         "-b:a", "64k",
         "-threads", "4",
+        "-f", "mp4",
         tempFile.absolutePath
-    )
+    ))
+
+    val pb = ProcessBuilder(args)
     pb.redirectErrorStream(true)
 
+    println("DEBUG: generateProxyVideo command: ${pb.command()}")
     var proc: Process? = null
     val job = coroutineContext[kotlinx.coroutines.Job]
     val handle = job?.invokeOnCompletion {
@@ -436,6 +486,8 @@ suspend fun generateProxyVideo(
         }
     }
 
+    val ffmpegLog = StringBuilder()
+    var lastPrintedPct = -1
     try {
         proc = pb.start()
         val progressRegex = Regex("""time=(\d+):(\d{2}):(\d{2})\.(\d+)""")
@@ -444,6 +496,7 @@ suspend fun generateProxyVideo(
             var line = reader.readLine()
             while (line != null) {
                 ensureActive()
+                ffmpegLog.append(line).append("\n")
                 val match = progressRegex.find(line)
                 if (match != null) {
                     val hours = match.groupValues[1].toIntOrNull() ?: 0
@@ -455,6 +508,12 @@ suspend fun generateProxyVideo(
                         val progressRatio = (totalSec / videoDurationSec).coerceIn(0.0, 1.0)
                         val scaledProgress = (progressRatio * 0.95).toFloat()
                         onProgress(scaledProgress)
+                        
+                        val pct = (progressRatio * 100).toInt()
+                        if (pct != lastPrintedPct) {
+                            lastPrintedPct = pct
+                            println("DEBUG: generateProxyVideo - Progress: $pct%")
+                        }
                     }
                 }
                 line = reader.readLine()
@@ -465,13 +524,21 @@ suspend fun generateProxyVideo(
         if (exitCode == 0) {
             if (tempFile.renameTo(proxyFile)) {
                 onProgress(1.0f)
+                println("DEBUG: generateProxyVideo successfully generated and renamed to: ${proxyFile.absolutePath}")
                 return@withContext proxyFile.absolutePath
+            } else {
+                println("ERROR: generateProxyVideo failed to rename temp file to: ${proxyFile.absolutePath}")
             }
+        } else {
+            println("ERROR: FFmpeg process exited with non-zero code: $exitCode")
+            println("FFmpeg Output Log:\n$ffmpegLog")
         }
         null
     } catch (e: kotlinx.coroutines.CancellationException) {
         throw e
     } catch (e: Exception) {
+        println("ERROR: generateProxyVideo exception: ${e.message}")
+        e.printStackTrace()
         null
     } finally {
         handle?.dispose()
