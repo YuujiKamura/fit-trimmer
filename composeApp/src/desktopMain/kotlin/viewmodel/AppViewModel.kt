@@ -90,6 +90,7 @@ class AppViewModel(
         timeOffsetState.adjust(videoStartUtc)
     }
 
+    var isAligningTelemetry by mutableStateOf(false)
     var isEncoding by mutableStateOf(false)
     var isPaused by mutableStateOf(false)
     var isCanceled by mutableStateOf(false)
