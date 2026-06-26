@@ -410,10 +410,7 @@ suspend fun generateProxyVideo(
         return@withContext proxyFile.absolutePath
     }
 
-    val tempFile = File(proxyFile.absolutePath + ".tmp")
-    if (tempFile.exists()) {
-        tempFile.delete()
-    }
+    val tempFile = File(proxyFile.absolutePath + "." + java.util.UUID.randomUUID().toString() + ".tmp")
 
     val pb = ProcessBuilder(
         ffmpegPath,
@@ -441,7 +438,7 @@ suspend fun generateProxyVideo(
 
     try {
         proc = pb.start()
-        val progressRegex = Regex("""time=(\d{2}):(\d{2}):(\d{2})\.(\d{2})""")
+        val progressRegex = Regex("""time=(\d+):(\d{2}):(\d{2})\.(\d+)""")
         
         proc.inputStream.bufferedReader().use { reader ->
             var line = reader.readLine()
@@ -452,8 +449,8 @@ suspend fun generateProxyVideo(
                     val hours = match.groupValues[1].toIntOrNull() ?: 0
                     val minutes = match.groupValues[2].toIntOrNull() ?: 0
                     val seconds = match.groupValues[3].toIntOrNull() ?: 0
-                    val centiseconds = match.groupValues[4].toIntOrNull() ?: 0
-                    val totalSec = hours * 3600.0 + minutes * 60.0 + seconds + centiseconds / 100.0
+                    val fraction = ("0." + match.groupValues[4]).toDoubleOrNull() ?: 0.0
+                    val totalSec = hours * 3600.0 + minutes * 60.0 + seconds + fraction
                     if (videoDurationSec > 0.0) {
                         val progressRatio = (totalSec / videoDurationSec).coerceIn(0.0, 1.0)
                         val scaledProgress = (progressRatio * 0.95).toFloat()
@@ -471,28 +468,10 @@ suspend fun generateProxyVideo(
                 return@withContext proxyFile.absolutePath
             }
         }
-        
-        if (tempFile.exists()) {
-            tempFile.delete()
-        }
         null
     } catch (e: kotlinx.coroutines.CancellationException) {
-        proc?.destroyForcibly()
-        try {
-            proc?.waitFor(1, java.util.concurrent.TimeUnit.SECONDS)
-        } catch (ioe: Exception) {}
-        if (tempFile.exists()) {
-            tempFile.delete()
-        }
         throw e
     } catch (e: Exception) {
-        proc?.destroyForcibly()
-        try {
-            proc?.waitFor(1, java.util.concurrent.TimeUnit.SECONDS)
-        } catch (ioe: Exception) {}
-        if (tempFile.exists()) {
-            tempFile.delete()
-        }
         null
     } finally {
         handle?.dispose()
