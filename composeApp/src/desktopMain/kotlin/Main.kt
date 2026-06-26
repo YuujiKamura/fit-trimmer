@@ -428,6 +428,10 @@ fun startGui(args: Array<String>) = application {
 
         if (videoPath.isNotEmpty() && File(videoPath).exists()) {
             val originalFile = File(videoPath)
+            val parentDir = originalFile.parentFile
+            if (parentDir != null && parentDir.exists() && parentDir.canWrite()) {
+                outputDir = parentDir.absolutePath
+            }
             var targetVideoPath = videoPath
             
             val isDrive = utils.isGoogleDrivePath(videoPath)
@@ -908,11 +912,13 @@ fun startGui(args: Array<String>) = application {
                                             if (moveOutputToSource && destFiles.isNotEmpty() && !isCanceled) {
                                                 val finalDestFile = destFiles.getOrNull(idx)
                                                 if (finalDestFile != null) {
-                                                    statusText = "[Part ${idx + 1}/${ranges.size}] Moving file to source directory..."
                                                     val outFile = File(partOutPath)
-                                                    withContext(Dispatchers.IO) {
-                                                        java.nio.file.Files.copy(outFile.toPath(), finalDestFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
-                                                        outFile.delete()
+                                                    if (outFile.absolutePath != finalDestFile.absolutePath) {
+                                                        statusText = "[Part ${idx + 1}/${ranges.size}] Moving file to source directory..."
+                                                        withContext(Dispatchers.IO) {
+                                                            java.nio.file.Files.copy(outFile.toPath(), finalDestFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                                                            outFile.delete()
+                                                        }
                                                     }
                                                     
                                                      val normalized = targetVideoPath.replace("\\", "/").lowercase()
@@ -1010,14 +1016,16 @@ fun startGui(args: Array<String>) = application {
                                             showLivePreviewSupplier = { showLivePreview }
                                         )
                                         if (moveOutputToSource && !isCanceled) {
-                                            statusText = "Moving file to source directory..."
                                             val sourceDir = File(targetVideoPath).parentFile
                                             val outFile = File(outPath)
                                             if (sourceDir != null && sourceDir.exists()) {
                                                 val destFile = File(sourceDir, outFile.name)
-                                                withContext(Dispatchers.IO) {
-                                                    java.nio.file.Files.copy(outFile.toPath(), destFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
-                                                    outFile.delete()
+                                                if (outFile.absolutePath != destFile.absolutePath) {
+                                                    statusText = "Moving file to source directory..."
+                                                    withContext(Dispatchers.IO) {
+                                                        java.nio.file.Files.copy(outFile.toPath(), destFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                                                        outFile.delete()
+                                                    }
                                                 }
                                             }
                                         }
