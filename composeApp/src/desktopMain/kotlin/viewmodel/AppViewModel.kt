@@ -13,6 +13,10 @@ class AppViewModel(
     var settings by mutableStateOf(initialCache?.settings ?: HudSettings())
     var fitPath by mutableStateOf(initialCache?.fitPath ?: "")
 
+    var isGeneratingProxy by mutableStateOf(false)
+    var proxyProgress by mutableStateOf(0f)
+    var proxyVideoPath by mutableStateOf<String?>(null)
+
     private var _videoPath by mutableStateOf(initialCache?.videoPath ?: "")
     var videoPath: String
         get() = _videoPath
@@ -22,6 +26,9 @@ class AppViewModel(
                 trimStartSeconds = 0.0
                 trimEndSeconds = 0.0
                 splitPoints = emptyList()
+                isGeneratingProxy = false
+                proxyProgress = 0f
+                proxyVideoPath = null
             }
         }
 
