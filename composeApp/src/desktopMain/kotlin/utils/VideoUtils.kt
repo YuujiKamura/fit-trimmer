@@ -253,45 +253,6 @@ suspend fun getVideoStartUtc(videoPath: String): String? = withContext(Dispatche
         }
     }
     
-    if (baseStartUtc == null) return@withContext null
-    
-    val firstImu = getFirstImuTimecode(videoPath)
-    if (firstImu != null && firstImu > 5.0) {
-        try {
-            val videoFile = File(videoPath)
-            val name = videoFile.name
-            var firstFileImuOffset = 2.664490 // default fallback
-            
-            val parent = videoFile.parentFile
-            if (parent != null && parent.exists()) {
-                val regex = Regex("""(.*_)(\d+)(\.mp4|\.lrv)""", RegexOption.IGNORE_CASE)
-                val match = regex.matchEntire(name)
-                if (match != null) {
-                    val prefix = match.groupValues[1]
-                    val ext = match.groupValues[3]
-                    val firstFileName = "${prefix}001$ext"
-                    val firstFile = File(parent, firstFileName)
-                    if (firstFile.exists()) {
-                        val firstFileImu = getFirstImuTimecode(firstFile.absolutePath)
-                        if (firstFileImu != null) {
-                            firstFileImuOffset = firstFileImu
-                            println("DEBUG: Found first file IMU offset: $firstFileImuOffset from $firstFileName")
-                        }
-                    }
-                }
-            }
-            
-            val baseInstant = java.time.Instant.parse(baseStartUtc)
-            val offsetSec = firstImu - firstFileImuOffset
-            val adjustedInstant = baseInstant.plusMillis((offsetSec * 1000).toLong())
-            val adjustedUtc = adjustedInstant.toString()
-            println("DEBUG: Adjusted videoStartUtc for split file from $baseStartUtc to $adjustedUtc (offset: $offsetSec s, firstImu: $firstImu, baseImu: $firstFileImuOffset)")
-            return@withContext adjustedUtc
-        } catch (e: Exception) {
-            println("DEBUG: Failed to adjust start time for split file: ${e.message}")
-        }
-    }
-    
     baseStartUtc
 }
 
