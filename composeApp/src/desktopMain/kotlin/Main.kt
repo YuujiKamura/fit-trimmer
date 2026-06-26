@@ -646,12 +646,11 @@ fun startGui(args: Array<String>) = application {
                                                 if (originalInstant != null && alignedInstant != null) {
                                                     val diffMs = alignedInstant.toEpochMilli() - originalInstant.toEpochMilli()
                                                     val diffSec = diffMs / 1000.0
-                                                    statusText = "IMU Sync: Adjusted video start by %.3f seconds".format(java.util.Locale.US, diffSec)
+                                                    statusText = "IMU Sync: Adjusted offset by %.3f seconds".format(java.util.Locale.US, diffSec)
+                                                    timeOffsetState.update(diffMs.toInt())
                                                 } else {
                                                     statusText = "IMU Sync Successful"
                                                 }
-                                                videoStartUtc = alignedUtc
-                                                timeOffsetState.update(0) // Reset manual offset slider
                                             } else {
                                                 statusText = "IMU Sync failed (no correlation found)"
                                             }
@@ -1308,12 +1307,11 @@ fun startGui(args: Array<String>) = application {
                                         if (originalInstant != null && alignedInstant != null) {
                                             val diffMs = alignedInstant.toEpochMilli() - originalInstant.toEpochMilli()
                                             val diffSec = diffMs / 1000.0
-                                            statusText = "IMU Sync: Adjusted video start by %.3f seconds".format(java.util.Locale.US, diffSec)
+                                            statusText = "IMU Sync: Adjusted offset by %.3f seconds".format(java.util.Locale.US, diffSec)
+                                            timeOffsetState.update(diffMs.toInt())
                                         } else {
                                             statusText = "IMU Sync Successful"
                                         }
-                                        videoStartUtc = alignedUtc
-                                        timeOffsetState.update(0) // Reset manual offset slider
                                     } else {
                                         statusText = "IMU Sync failed (no correlation found)"
                                     }
