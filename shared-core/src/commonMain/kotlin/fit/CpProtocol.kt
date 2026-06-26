@@ -33,6 +33,9 @@ sealed class CpCommand {
 
     @Serializable @kotlinx.serialization.SerialName("capture")
     object Capture : CpCommand()
+
+    @Serializable @kotlinx.serialization.SerialName("align_telemetry")
+    object AlignTelemetry : CpCommand()
 }
 
 @Serializable
@@ -41,5 +44,7 @@ data class CpState(
     val fitPath: String,
     val videoPath: String,
     val isEncoding: Boolean,
-    val progress: Float
+    val progress: Float,
+    val videoStartUtc: String = "",
+    val isAligningTelemetry: Boolean = false
 )

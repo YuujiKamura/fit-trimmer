@@ -635,6 +635,20 @@ fun startGui(args: Array<String>) = application {
                                         result = "{\"status\": \"error\", \"message\": \"Window not initialized\"}"
                                     }
                                 }
+                                CpCommand.AlignTelemetry -> {
+                                    scope.launch {
+                                        viewModel.isAligningTelemetry = true
+                                        try {
+                                            val alignedUtc = TelemetryAligner.alignVideoWithTelemetry(videoPath, telemetryPoints)
+                                            if (alignedUtc != null) {
+                                                videoStartUtc = alignedUtc
+                                                timeOffsetState.update(0) // Reset manual offset slider
+                                            }
+                                        } finally {
+                                            viewModel.isAligningTelemetry = false
+                                        }
+                                    }
+                                }
                             }
                         } catch (e: Exception) {
                             e.printStackTrace()
@@ -655,7 +669,17 @@ fun startGui(args: Array<String>) = application {
                 }
                 result
             },
-            getState = { CpState(settings, fitPath, videoPath, isEncoding, progress) }
+            getState = {
+                CpState(
+                    settings = settings,
+                    fitPath = fitPath,
+                    videoPath = videoPath,
+                    isEncoding = isEncoding,
+                    progress = progress,
+                    videoStartUtc = videoStartUtc,
+                    isAligningTelemetry = viewModel.isAligningTelemetry
+                )
+            }
         )
     }
     
@@ -1258,7 +1282,24 @@ fun startGui(args: Array<String>) = application {
                         state = timeOffsetState,
                         videoCurrentTimeMs = videoCurrentTimeMs,
                         videoStartUtc = videoStartUtc,
-                        onVideoStartUtcChange = { videoStartUtc = it }
+                        onVideoStartUtcChange = { videoStartUtc = it },
+                        videoPath = videoPath,
+                        telemetryPoints = telemetryPoints,
+                        isAligning = viewModel.isAligningTelemetry,
+                        onAlignTelemetryClick = {
+                            scope.launch {
+                                viewModel.isAligningTelemetry = true
+                                try {
+                                    val alignedUtc = TelemetryAligner.alignVideoWithTelemetry(videoPath, telemetryPoints)
+                                    if (alignedUtc != null) {
+                                        videoStartUtc = alignedUtc
+                                        timeOffsetState.update(0) // Reset manual offset slider
+                                    }
+                                } finally {
+                                    viewModel.isAligningTelemetry = false
+                                }
+                            }
+                        }
                     )
 
                     // VIDEO TRIM RANGE Card
@@ -1754,7 +1795,11 @@ fun TimeAlignmentCard(
     state: TimeAlignmentState,
     videoCurrentTimeMs: Long,
     videoStartUtc: String,
-    onVideoStartUtcChange: (String) -> Unit
+    onVideoStartUtcChange: (String) -> Unit,
+    videoPath: String,
+    telemetryPoints: List<FitParser.TelemetryPoint>,
+    isAligning: Boolean,
+    onAlignTelemetryClick: () -> Unit
 ) {
     Card(
         backgroundColor = Color.White,
@@ -1821,6 +1866,41 @@ fun TimeAlignmentCard(
                         contentPadding = PaddingValues(0.dp)
                     ) {
                         Text(label, fontSize = 9.sp)
+                    }
+                }
+            }
+
+            Divider(color = Color(0xFFE5E5EA))
+
+            Text("AUTO IMU ALIGNMENT", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 0.5.sp)
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Button(
+                    onClick = onAlignTelemetryClick,
+                    enabled = !isAligning && videoPath.isNotEmpty() && telemetryPoints.isNotEmpty(),
+                    modifier = Modifier.fillMaxWidth().height(36.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        backgroundColor = Color(0xFF34C759),
+                        contentColor = Color.White,
+                        disabledBackgroundColor = Color(0xFFE5E5EA),
+                        disabledContentColor = Color(0xFF8E8E93)
+                    ),
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
+                ) {
+                    if (isAligning) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            color = Color.White,
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text("Aligning with IMU...", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    } else {
+                        Text("IMU Sync (Auto)", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
