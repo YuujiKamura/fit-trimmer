@@ -50,19 +50,25 @@ object TelemetryAligner {
             
             // 2. Extract align_telemetry.py from resources to a temp file
             tempScriptFile = File.createTempFile("align_telemetry_", ".py")
+            var copied = false
             val resourceStream = TelemetryAligner::class.java.getResourceAsStream("/align_telemetry.py")
-            if (resourceStream == null) {
-                println("DEBUG: Could not find /align_telemetry.py in resources. Trying dev file fallback.")
+            if (resourceStream != null) {
+                try {
+                    resourceStream.use { input ->
+                        Files.copy(input, tempScriptFile.toPath(), StandardCopyOption.REPLACE_EXISTING)
+                    }
+                    copied = true
+                } catch (e: Exception) {
+                    println("DEBUG: Failed to copy /align_telemetry.py from resources (${e.message}). Trying dev file fallback.")
+                }
+            }
+            if (!copied) {
                 val devFile = File("composeApp/src/desktopMain/resources/align_telemetry.py")
                 if (devFile.exists()) {
                     Files.copy(devFile.toPath(), tempScriptFile.toPath(), StandardCopyOption.REPLACE_EXISTING)
                 } else {
                     println("ERROR: Python script not found in resources or dev fallback!")
                     return@withContext null
-                }
-            } else {
-                resourceStream.use { input ->
-                    Files.copy(input, tempScriptFile.toPath(), StandardCopyOption.REPLACE_EXISTING)
                 }
             }
             
