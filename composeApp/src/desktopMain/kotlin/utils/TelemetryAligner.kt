@@ -255,7 +255,8 @@ object TelemetryAligner {
     suspend fun alignVideoWithTelemetry(
         videoPath: String,
         telemetryPoints: List<FitParser.TelemetryPoint>,
-        approxStartUtc: String = ""
+        approxStartUtc: String = "",
+        method: String = "acceleration"
     ): String? = withContext(Dispatchers.IO) {
         if (telemetryPoints.isEmpty() || videoPath.isEmpty()) {
             println("DEBUG: Auto alignment skipped (empty inputs)")
@@ -302,23 +303,47 @@ object TelemetryAligner {
             val fitGrid = DoubleArray(fitGridSize) { startTs + it }
             val fitSpeedGrid = interpolate(fitGrid, fitTs, fitSpeed)
 
-            // 3. Perform Binary Correlation alignment (default robust algorithm for stops)
-            val vSig = gaussianFilter1D(vVib, 3.0)
-            
-            // 10th percentile
-            val sortedVSig = vSig.sorted()
-            val pct10Idx = (sortedVSig.size * 0.10).toInt()
-            val pct10 = sortedVSig[Math.max(0, Math.min(sortedVSig.size - 1, pct10Idx))]
-            val vThresh = Math.max(20.0, pct10 * 1.5)
-            
-            val vMov = DoubleArray(vSig.size) { if (vSig[it] > vThresh) 1.0 else 0.0 }
-            val fitMov = DoubleArray(fitSpeedGrid.size) { if (fitSpeedGrid[it] > 2.0) 1.0 else 0.0 }
+            val fitSigNorm: DoubleArray
+            val vSigNorm: DoubleArray
 
-            val fitSigSmooth = gaussianFilter1D(fitMov, 3.0)
-            val vSigSmooth = gaussianFilter1D(vMov, 3.0)
+            if (method == "binary") {
+                val vSig = gaussianFilter1D(vVib, 3.0)
+                
+                // 10th percentile
+                val sortedVSig = vSig.sorted()
+                val pct10Idx = (sortedVSig.size * 0.10).toInt()
+                val pct10 = sortedVSig[Math.max(0, Math.min(sortedVSig.size - 1, pct10Idx))]
+                val vThresh = Math.max(20.0, pct10 * 1.5)
+                
+                val vMov = DoubleArray(vSig.size) { if (vSig[it] > vThresh) 1.0 else 0.0 }
+                val fitMov = DoubleArray(fitSpeedGrid.size) { if (fitSpeedGrid[it] > 2.0) 1.0 else 0.0 }
 
-            val fitSigNorm = normalize(fitSigSmooth)
-            val vSigNorm = normalize(vSigSmooth)
+                val fitSigSmooth = gaussianFilter1D(fitMov, 3.0)
+                val vSigSmooth = gaussianFilter1D(vMov, 3.0)
+
+                fitSigNorm = normalize(fitSigSmooth)
+                vSigNorm = normalize(vSigSmooth)
+            } else {
+                // Acceleration Method
+                val fitAcc = DoubleArray(fitSpeedGrid.size)
+                for (i in 0 until fitSpeedGrid.size - 1) {
+                    fitAcc[i] = Math.abs(fitSpeedGrid[i + 1] - fitSpeedGrid[i])
+                }
+                fitAcc[fitSpeedGrid.size - 1] = 0.0
+
+                val vSig = gaussianFilter1D(vVib, 3.0)
+                val vAcc = DoubleArray(vSig.size)
+                for (i in 0 until vSig.size - 1) {
+                    vAcc[i] = Math.abs(vSig[i + 1] - vSig[i])
+                }
+                vAcc[vSig.size - 1] = 0.0
+
+                val fitSigSmooth = gaussianFilter1D(fitAcc, 3.0)
+                val vSigSmooth = gaussianFilter1D(vAcc, 3.0)
+
+                fitSigNorm = normalize(fitSigSmooth)
+                vSigNorm = normalize(vSigSmooth)
+            }
 
             val corr = correlateValid(fitSigNorm, vSigNorm)
             if (corr.isEmpty()) {
