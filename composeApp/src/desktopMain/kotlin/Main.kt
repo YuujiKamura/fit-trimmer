@@ -1647,6 +1647,36 @@ fun startGui(args: Array<String>) = application {
                                 modifier = Modifier.weight(1f).fillMaxWidth()
                             )
                             
+                            if (viewModel.isGeneratingProxy) {
+                                Spacer(Modifier.height(4.dp))
+                                val proxyFile = getProxyFileForVideo(videoPath)
+                                Card(
+                                    backgroundColor = Color(0xFFF2F2F7),
+                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                                    border = BorderStroke(1.dp, Color(0xFFE5E5EA)),
+                                    elevation = 0.dp,
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp)
+                                ) {
+                                    Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Text(
+                                            text = "PROXY ENCODING STATUS",
+                                            color = Color(0xFF007AFF),
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 9.sp,
+                                            letterSpacing = 0.5.sp
+                                        )
+                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Text("Source:", color = Color.Gray, fontWeight = FontWeight.Bold, fontSize = 10.sp, modifier = Modifier.width(60.dp))
+                                            Text(videoPath, color = Color(0xFF1C1C1E), fontSize = 10.sp)
+                                        }
+                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Text("Output:", color = Color.Gray, fontWeight = FontWeight.Bold, fontSize = 10.sp, modifier = Modifier.width(60.dp))
+                                            Text(proxyFile.absolutePath, color = Color(0xFF1C1C1E), fontSize = 10.sp)
+                                        }
+                                    }
+                                }
+                            }
+                            
                             Spacer(Modifier.height(8.dp))
                             
                             TelemetryTimelineGraph(
@@ -1686,6 +1716,45 @@ fun startGui(args: Array<String>) = application {
                                 onCancel = { isCanceled = true },
                                 modifier = Modifier.fillMaxWidth()
                             )
+
+                            Spacer(Modifier.height(8.dp))
+                            val baseName = File(videoPath).name.replace(".mp4", "", ignoreCase = true).replace(".mov", "", ignoreCase = true)
+                            val totalParts = viewModel.getSplitRanges().size
+                            val partSuffix = if (totalParts > 1) "_part*" else ""
+                            val suffix = if (isSampleEncoding) "${partSuffix}_TEST_HUD.mp4" else "${partSuffix}_KMP_HUD.mp4"
+                            val output = File(outputDir, baseName + suffix).absolutePath
+                            val destInfo = if (moveOutputToSource) {
+                                val sourceDir = File(videoPath).parentFile
+                                val finalDest = if (sourceDir != null) File(sourceDir, baseName + suffix).absolutePath else output
+                                "$output\n(Will be moved to: $finalDest)"
+                            } else {
+                                output
+                            }
+                            Card(
+                                backgroundColor = Color(0xFFF2F2F7),
+                                shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                                border = BorderStroke(1.dp, Color(0xFFE5E5EA)),
+                                elevation = 0.dp,
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp)
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(
+                                        text = if (isSampleEncoding) "SAMPLE ENCODING STATUS" else "HUD ENCODING STATUS",
+                                        color = Color(0xFF007AFF),
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 9.sp,
+                                        letterSpacing = 0.5.sp
+                                    )
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Text("Source:", color = Color.Gray, fontWeight = FontWeight.Bold, fontSize = 10.sp, modifier = Modifier.width(60.dp))
+                                        Text(videoPath, color = Color(0xFF1C1C1E), fontSize = 10.sp)
+                                    }
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Text("Output:", color = Color.Gray, fontWeight = FontWeight.Bold, fontSize = 10.sp, modifier = Modifier.width(60.dp))
+                                        Text(destInfo, color = Color(0xFF1C1C1E), fontSize = 10.sp)
+                                    }
+                                }
+                            }
                         }
 
                         Text("1920x1080 Overlay Preview", color = Color(0xFF1C1C1E), fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
