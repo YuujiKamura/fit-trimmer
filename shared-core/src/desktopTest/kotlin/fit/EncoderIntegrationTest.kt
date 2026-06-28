@@ -89,7 +89,7 @@ class EncoderIntegrationTest {
 
             val pbVideo = ProcessBuilder(
                 ffmpegPath, "-y",
-                "-f", "lavfi", "-i", "color=c=blue:s=640x360:d=10",
+                "-f", "lavfi", "-i", "color=c=blue:s=1920x1080:d=10",
                 "-c:v", "libopenh264", "-pix_fmt", "yuv420p", "-r", "25", "-t", "10",
                 inputMp4.absolutePath
             )
