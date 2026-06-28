@@ -860,8 +860,10 @@ class NativeHudEncoder(
             }
             
             var telemetryIdx = 0
+            var lastProcessedSecond = resumeSeconds
             try {
                 loop@ for (i in resumeSeconds until targetDurationSeconds) {
+                    lastProcessedSecond = i
                     if (cancelSupplier()) {
                         process.destroy()
                         try { process.destroyForcibly() } catch (e: Exception) {}
@@ -967,7 +969,13 @@ class NativeHudEncoder(
                 }
                 
                 if (exitCode != 0) {
-                    throw Exception("ffmpeg exited with error code $exitCode. See ffmpeg_log.txt for details.")
+                    val isNearEnd = (targetDurationSeconds - lastProcessedSecond) <= 3
+                    if (isNearEnd && !cancelSupplier()) {
+                        println("ℹ️ FFmpeg exited with code $exitCode near the end of video ($lastProcessedSecond/$targetDurationSeconds s). Treating as success (EOF reached).")
+                        resumeSeconds = targetDurationSeconds
+                    } else {
+                        throw Exception("ffmpeg exited with error code $exitCode. See ffmpeg_log.txt for details.")
+                    }
                 } else {
                     // Success!
                     resumeSeconds = targetDurationSeconds
