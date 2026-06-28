@@ -21,5 +21,6 @@ data class HudSettings(
     val graphH: Float = 60f,
     val graphW: Float = 139f,
     val exportResolution: String = "2.7k",
-    val roadCaptions: List<RoadCaptionSegment> = emptyList()
+    val roadCaptions: List<RoadCaptionSegment> = emptyList(),
+    val useProxyPreview: Boolean = false
 )

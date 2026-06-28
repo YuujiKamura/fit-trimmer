@@ -421,7 +421,7 @@ fun startGui(args: Array<String>) = application {
 
 
 
-    LaunchedEffect(videoPath) {
+    LaunchedEffect(videoPath, settings.useProxyPreview) {
         val originalPathAtStart = videoPath
         // Initialize states immediately on video changes to prevent obsolete metadata leak (Requirement 2)
         videoLengthMs = 0L
@@ -441,7 +441,7 @@ fun startGui(args: Array<String>) = application {
             
             val isDrive = utils.isGoogleDrivePath(videoPath)
             val isHevcOrHigh = utils.isHevcOrHighRes(videoPath)
-            val shouldGenerateProxy = isDrive || isHevcOrHigh
+            val shouldGenerateProxy = settings.useProxyPreview && (isDrive || isHevcOrHigh)
             
             println("DEBUG: LaunchedEffect(videoPath) check - videoPath='$videoPath', isDrive=$isDrive, isHevcOrHigh=$isHevcOrHigh")
             if (shouldGenerateProxy) {
@@ -1321,7 +1321,26 @@ fun startGui(args: Array<String>) = application {
                                   }
                               }
 
-                              // Display FIT start/end timestamp and warning if video range is out of bounds
+                               Spacer(Modifier.height(10.dp))
+                               Row(
+                                   modifier = Modifier.fillMaxWidth(),
+                                   verticalAlignment = Alignment.CenterVertically
+                               ) {
+                                   Checkbox(
+                                       checked = settings.useProxyPreview,
+                                       onCheckedChange = { checked ->
+                                           settings = settings.copy(useProxyPreview = checked)
+                                       },
+                                       enabled = !isEncoding
+                                   )
+                                   Spacer(Modifier.width(4.dp))
+                                   Column {
+                                       Text("プロキシプレビューを使用する", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1C1C1E))
+                                       Text("HEVCや4K動画を軽量プロキシに変換してプレビューを滑らかにします", fontSize = 9.sp, color = Color.Gray)
+                                   }
+                               }
+
+                               // Display FIT start/end timestamp and warning if video range is out of bounds
                               if (fitStartInstant != null && fitEndInstant != null) {
                                   val fitStartStr = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
                                       .withZone(java.time.ZoneId.systemDefault()).format(fitStartInstant)
