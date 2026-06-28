@@ -1914,7 +1914,7 @@ suspend fun queryRoadName(lat: Double, lon: Double): String? {
                 .connectTimeout(java.time.Duration.ofSeconds(5))
                 .build()
             
-            val url = "https://nominatim.openstreetmap.org/reverse?lat=$lat&lon=$lon&format=json&accept-language=ja"
+            val url = "https://nominatim.openstreetmap.org/reverse?lat=$lat&lon=$lon&format=json&accept-language=ja&addressdetails=1&extratags=1"
             val request = java.net.http.HttpRequest.newBuilder()
                 .uri(java.net.URI.create(url))
                 .header("User-Agent", "FitTrimmerApp/1.0 (yuuji@kamura.jp)")
@@ -1924,18 +1924,68 @@ suspend fun queryRoadName(lat: Double, lon: Double): String? {
             val response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString())
             if (response.statusCode() == 200) {
                 val body = response.body()
-                val roadRegex = Regex("""\"road\"\s*:\s*\"([^\"]+)\"""")
-                val roadMatch = roadRegex.find(body)
-                if (roadMatch != null) {
-                    val road = roadMatch.groupValues[1]
-                    return@withContext unescapeUnicode(road)
-                }
+                val road = extractJsonValue(body, "road")
+                val ref = extractJsonValue(body, "ref")
+                val city = extractJsonValue(body, "city")
+                val town = extractJsonValue(body, "town")
+                val village = extractJsonValue(body, "village")
+                val suburb = extractJsonValue(body, "suburb")
+                
+                return@withContext buildCaptionText(ref, road, city, town, village, suburb)
             }
         } catch (e: Exception) {
             e.printStackTrace()
         }
         null
     }
+}
+
+fun extractJsonValue(json: String, key: String): String? {
+    val regex = Regex("""\"$key\"\s*:\s*\"([^\"]+)\"""")
+    val match = regex.find(json)
+    if (match != null) {
+        return unescapeUnicode(match.groupValues[1])
+    }
+    return null
+}
+
+fun buildCaptionText(
+    ref: String?,
+    road: String?,
+    city: String?,
+    town: String?,
+    village: String?,
+    suburb: String?
+): String? {
+    val roadName = road ?: ""
+    val roadRef = ref ?: ""
+    
+    var mainRoadText = ""
+    if (roadRef.isNotEmpty() && roadName.isNotEmpty()) {
+        if (roadName.contains(roadRef) || roadRef.contains(roadName)) {
+            mainRoadText = roadName
+        } else {
+            val formattedRef = if (roadRef.all { it.isDigit() }) {
+                if (roadName.contains("県道")) "県道${roadRef}号"
+                else if (roadName.contains("国道")) "国道${roadRef}号"
+                else "r$roadRef"
+            } else {
+                roadRef
+            }
+            mainRoadText = "$formattedRef $roadName"
+        }
+    } else if (roadName.isNotEmpty()) {
+        mainRoadText = roadName
+    } else if (roadRef.isNotEmpty()) {
+        mainRoadText = roadRef
+    }
+    
+    if (mainRoadText.isEmpty()) return null
+    
+    val area = town ?: city ?: village ?: suburb ?: ""
+    val areaSuffix = if (area.isNotEmpty()) "（$area 付近）" else ""
+    
+    return "$mainRoadText$areaSuffix"
 }
 
 fun unescapeUnicode(str: String): String {

@@ -302,5 +302,94 @@ class TelemetryAlignerTest {
             "Kotlin native acceleration alignment $result was not close to expected $expected"
         )
     }
+
+    @Test
+    fun runEveningRideSimulation() {
+        val fitFile = File("F:\\Insta360\\Evening_Ride.fit")
+        if (!fitFile.exists()) {
+            println("Evening_Ride.fit does not exist, skipping simulation.")
+            return
+        }
+        val bytes = fitFile.readBytes()
+        val parser = fit.FitParser(bytes)
+        parser.parse()
+        val telemetry = parser.getTelemetry()
+        println("FIT Telemetry points: ${telemetry.size}")
+        
+        val validPoints = telemetry.filter { it.lat != 0.0 && it.lon != 0.0 }
+        println("Valid GPS points: ${validPoints.size}")
+        
+        if (validPoints.isNotEmpty()) {
+            val samples = listOf(0, validPoints.size / 4, validPoints.size / 2, validPoints.size * 3 / 4, validPoints.size - 1)
+            for (idx in samples) {
+                val point = validPoints[idx]
+                val lat = point.lat
+                val lon = point.lon
+                println("Sample Point #$idx: Time=${point.timestamp}, Lat=$lat, Lon=$lon")
+                
+                try {
+                    val client = java.net.http.HttpClient.newBuilder()
+                        .connectTimeout(java.time.Duration.ofSeconds(5))
+                        .build()
+                    val url = "https://nominatim.openstreetmap.org/reverse?lat=$lat&lon=$lon&format=json&accept-language=ja&addressdetails=1&extratags=1"
+                    val request = java.net.http.HttpRequest.newBuilder()
+                        .uri(java.net.URI.create(url))
+                        .header("User-Agent", "FitTrimmerApp/1.0 (yuuji@kamura.jp)")
+                        .build()
+                    val response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString())
+                    val body = response.body()
+                    
+                    fun extractVal(json: String, key: String): String? {
+                        val r = Regex("""\"$key\"\s*:\s*\"([^\"]+)\"""")
+                        val m = r.find(json)
+                        return m?.groupValues?.get(1)?.let {
+                            val unicodeRegex = Regex("""\\u([0-9a-fA-F]{4})""")
+                            unicodeRegex.replace(it) { match ->
+                                match.groupValues[1].toInt(16).toChar().toString()
+                            }
+                        }
+                    }
+                    
+                    val road = extractVal(body, "road")
+                    val ref = extractVal(body, "ref")
+                    val city = extractVal(body, "city")
+                    val town = extractVal(body, "town")
+                    val village = extractVal(body, "village")
+                    val suburb = extractVal(body, "suburb")
+                    
+                    val roadName = road ?: ""
+                    val roadRef = ref ?: ""
+                    var mainRoadText = ""
+                    if (roadRef.isNotEmpty() && roadName.isNotEmpty()) {
+                        if (roadName.contains(roadRef) || roadRef.contains(roadName)) {
+                            mainRoadText = roadName
+                        } else {
+                            val formattedRef = if (roadRef.all { it.isDigit() }) {
+                                if (roadName.contains("県道")) "県道${roadRef}号"
+                                else if (roadName.contains("国道")) "国道${roadRef}号"
+                                else "r$roadRef"
+                            } else {
+                                roadRef
+                            }
+                            mainRoadText = "$formattedRef $roadName"
+                        }
+                    } else if (roadName.isNotEmpty()) {
+                        mainRoadText = roadName
+                    } else if (roadRef.isNotEmpty()) {
+                        mainRoadText = roadRef
+                    }
+                    
+                    val area = town ?: city ?: village ?: suburb ?: ""
+                    val areaSuffix = if (area.isNotEmpty()) "（$area 付近）" else ""
+                    val caption = if (mainRoadText.isNotEmpty()) "$mainRoadText$areaSuffix" else "Unknown Road"
+                    
+                    println("  -> Reverse Geocoded Road: $caption")
+                } catch (e: Exception) {
+                    println("  -> Error: ${e.message}")
+                }
+                Thread.sleep(1000)
+            }
+        }
+    }
 }
 
