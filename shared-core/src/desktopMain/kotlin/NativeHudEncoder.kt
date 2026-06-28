@@ -398,6 +398,23 @@ class NativeHudEncoder(
             e.printStackTrace()
         }
 
+        var exportWidth = videoWidth
+        var exportHeight = videoHeight
+        val maxLongEdge = 1920.0
+        if (exportWidth > maxLongEdge || exportHeight > maxLongEdge) {
+            if (exportWidth >= exportHeight) {
+                val ratio = maxLongEdge / exportWidth
+                exportWidth = maxLongEdge.toInt()
+                exportHeight = (exportHeight * ratio).toInt()
+            } else {
+                val ratio = maxLongEdge / exportHeight
+                exportHeight = maxLongEdge.toInt()
+                exportWidth = (exportWidth * ratio).toInt()
+            }
+        }
+        exportWidth = (exportWidth / 2) * 2
+        exportHeight = (exportHeight / 2) * 2
+
         val actualTrimStart = trimStartSeconds.coerceIn(0.0, videoDurationSeconds.toDouble())
         val actualTrimEnd = if (trimEndSeconds <= 0.0 || trimEndSeconds > videoDurationSeconds.toDouble()) {
             videoDurationSeconds.toDouble()
@@ -653,7 +670,7 @@ class NativeHudEncoder(
             pbArgs.add("-pixel_format")
             pbArgs.add("abgr")
             pbArgs.add("-video_size")
-            pbArgs.add("${videoWidth}x${videoHeight}")
+            pbArgs.add("${exportWidth}x${exportHeight}")
             pbArgs.add("-framerate")
             pbArgs.add("1")
             pbArgs.add("-i")
@@ -676,7 +693,7 @@ class NativeHudEncoder(
             pbArgs.add(localVideoPath)
             
             pbArgs.add("-filter_complex")
-            pbArgs.add("[0:v]setpts=PTS-STARTPTS[hud];[1:v]setpts=PTS-STARTPTS[vid];[vid][hud]overlay=0:0:shortest=1")
+            pbArgs.add("[0:v]setpts=PTS-STARTPTS[hud];[1:v]scale=$exportWidth:$exportHeight,setpts=PTS-STARTPTS[vid];[vid][hud]overlay=0:0:shortest=1")
             
             pbArgs.add("-c:v")
             pbArgs.add(encoderName)
@@ -759,7 +776,7 @@ class NativeHudEncoder(
             
             val out = process.outputStream
             val pBuf = mutableListOf<Double>()
-            val img = BufferedImage(videoWidth, videoHeight, BufferedImage.TYPE_4BYTE_ABGR)
+            val img = BufferedImage(exportWidth, exportHeight, BufferedImage.TYPE_4BYTE_ABGR)
             val frameTimes = mutableListOf<Long>()
             
             // Pre-fill power buffer for context if we're not at the start
@@ -806,7 +823,7 @@ class NativeHudEncoder(
                     g.composite = AlphaComposite.SrcOver
                     
                     val isValid = currentFitTs >= telemetry.first().timestamp && currentFitTs <= telemetry.last().timestamp
-                    val scale = videoWidth.toFloat() / 1920f
+                    val scale = exportWidth.toFloat() / 1920f
                     val canvas = DesktopHudCanvas(g, scale)
                     if (customRenderer != null) {
                         customRenderer.invoke(canvas, point, telemetry, pBuf, i.toFloat() / targetDurationSeconds)
@@ -844,7 +861,7 @@ class NativeHudEncoder(
                     
                     if (showLivePreviewSupplier()) {
                         val targetW = 960
-                        val targetH = (videoHeight * (targetW.toFloat() / videoWidth)).toInt().coerceAtLeast(1)
+                        val targetH = (exportHeight * (targetW.toFloat() / exportWidth)).toInt().coerceAtLeast(1)
                         val copy = BufferedImage(targetW, targetH, img.type)
                         val g2d = copy.createGraphics()
                         g2d.drawImage(img, 0, 0, targetW, targetH, null)
@@ -950,6 +967,16 @@ class NativeHudEncoder(
             onProgress(1.0f, "✨ Finished Successfully!")
         }
         } finally {
+            try {
+                globalActiveJobDir?.let {
+                    if (it.exists()) {
+                        println("DEBUG: Cleaning up active job directory after failure/cancel: ${it.absolutePath}")
+                        it.deleteRecursively()
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
             globalActiveJobDir = null
         }
     }
