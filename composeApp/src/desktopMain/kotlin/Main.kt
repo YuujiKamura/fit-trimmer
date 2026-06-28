@@ -51,12 +51,26 @@ import utils.*
 import components.*
 import viewmodel.*
 
-const val APP_VERSION = "v1.8.9"
+const val APP_VERSION = "v1.9.0"
 
 private const val PLAYBACK_PREVIEW_INTERVAL_MS = 250L
 
 @OptIn(ExperimentalTextApi::class)
 fun main(args: Array<String>) {
+    Runtime.getRuntime().addShutdownHook(Thread {
+        try {
+            fit.globalActiveJobDir?.let {
+                if (it.exists()) {
+                    it.deleteRecursively()
+                    println("🧹 JVM Shutdown Hook: Cleaned up active job directory: ${it.absolutePath}")
+                }
+            }
+        } catch (e: Exception) {}
+    })
+
+    // Clean up stale job folders older than 24h at application startup to prevent disk bloat
+    fit.PathResolver.cleanStaleJobs()
+
     System.setProperty("compose.interop.blending", "false")
     System.setProperty("sun.java2d.noddraw", "true")
     if (args.contains("--test-update")) {

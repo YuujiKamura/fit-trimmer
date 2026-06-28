@@ -140,12 +140,28 @@ fun findFfmpegPath(): String {
 }
 
 private fun getSegmentDuration(ffmpegPath: String, file: File): Double {
+    var process: Process? = null
     try {
         val pb = ProcessBuilder(ffmpegPath, "-i", file.absolutePath)
         pb.redirectErrorStream(true)
         val p = pb.start()
-        val output = p.inputStream.bufferedReader().readText()
-        p.waitFor()
+        process = p
+        
+        // Spawn a thread to read output to avoid blocking pipe buffer
+        var output = ""
+        val reader = Thread {
+            try {
+                output = p.inputStream.bufferedReader().readText()
+            } catch (e: Exception) {}
+        }
+        reader.start()
+        
+        val completed = p.waitFor(5000, java.util.concurrent.TimeUnit.MILLISECONDS)
+        if (!completed) {
+            println("⚠️ Timeout probing duration for: ${file.name}")
+            p.destroyForcibly()
+        }
+        try { reader.join(1000) } catch (e: Exception) {}
         
         val durRegex = Regex("""Duration:\s*(\d+):(\d+):(\d+)\.(\d+)""")
         val durMatch = durRegex.find(output)
@@ -159,6 +175,8 @@ private fun getSegmentDuration(ffmpegPath: String, file: File): Double {
         }
     } catch (e: Exception) {
         e.printStackTrace()
+    } finally {
+        process?.let { if (it.isAlive) try { it.destroyForcibly() } catch (e: Exception) {} }
     }
     return 60.0
 }
@@ -271,6 +289,7 @@ class NativeHudEncoder(
     }
 
     private fun testEncoder(ffmpegPath: String, encoder: String, hwaccel: String?): Boolean {
+        var process: Process? = null
         try {
             val args = mutableListOf<String>()
             args.add(ffmpegPath)
@@ -292,10 +311,29 @@ class NativeHudEncoder(
             val pb = ProcessBuilder(args)
             pb.redirectErrorStream(true)
             val p = pb.start()
-            val exitCode = p.waitFor()
-            return exitCode == 0
+            process = p
+            
+            // Spawn a thread to discard output to prevent buffer blocking
+            val reader = Thread {
+                try {
+                    p.inputStream.copyTo(java.io.OutputStream.nullOutputStream())
+                } catch (e: Exception) {}
+            }
+            reader.start()
+            
+            val completed = p.waitFor(3000, java.util.concurrent.TimeUnit.MILLISECONDS)
+            if (!completed) {
+                println("⚠️ Timeout testing encoder: $encoder")
+                p.destroyForcibly()
+                return false
+            }
+            try { reader.join(500) } catch (e: Exception) {}
+            
+            return p.exitValue() == 0
         } catch (e: Exception) {
             return false
+        } finally {
+            process?.let { if (it.isAlive) try { it.destroyForcibly() } catch (e: Exception) {} }
         }
     }
 
@@ -810,7 +848,14 @@ class NativeHudEncoder(
             if (pid != null) {
                 kotlin.concurrent.thread(start = true, isDaemon = true) {
                     try {
-                        ProcessBuilder("powershell", "-Command", "\$p = Get-Process -Id $pid -ErrorAction SilentlyContinue; if (\$p) { \$p.PriorityClass = 'High' }").start()
+                        val pbBoost = ProcessBuilder("powershell", "-Command", "\$p = Get-Process -Id $pid -ErrorAction SilentlyContinue; if (\$p) { \$p.PriorityClass = 'High' }")
+                        pbBoost.redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                        pbBoost.redirectError(ProcessBuilder.Redirect.DISCARD)
+                        val pBoost = pbBoost.start()
+                        pBoost.waitFor(5000, java.util.concurrent.TimeUnit.MILLISECONDS)
+                        if (pBoost.isAlive) {
+                            try { pBoost.destroyForcibly() } catch (e: Exception) {}
+                        }
                         println("DEBUG: Boosted ffmpeg process (PID=$pid) priority to High")
                     } catch (e: Exception) {
                         e.printStackTrace()
@@ -1060,10 +1105,15 @@ class NativeHudEncoder(
         } finally {
             try {
                 globalActiveJobDir?.let {
-                    // Check if canceled by user. Only clean up if explicitly canceled.
-                    // If failed due to error, we preserve the directory for resume / crash recovery.
-                    if (cancelSupplier() && it.exists()) {
-                        println("DEBUG: Cleaning up active job directory after manual cancel: ${it.absolutePath}")
+                    val usableSpace = try { it.usableSpace } catch (e: Exception) { Long.MAX_VALUE }
+                    val isDiskFull = usableSpace < 100 * 1024 * 1024 // Less than 100MB free space
+                    
+                    if ((cancelSupplier() || isDiskFull) && it.exists()) {
+                        if (isDiskFull) {
+                            println("⚠️ Critical: Low disk space detected (<100MB). Forcibly cleaning up job folder to free space: ${it.absolutePath}")
+                        } else {
+                            println("DEBUG: Cleaning up active job directory after manual cancel: ${it.absolutePath}")
+                        }
                         it.deleteRecursively()
                     } else {
                         println("DEBUG: Preserving active job directory for resume/recovery: ${it.absolutePath}")
