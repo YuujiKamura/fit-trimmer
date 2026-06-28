@@ -13,7 +13,8 @@ data class HudConfig(
     val xOffset: Float,
     val yOffset: Float,
     val graphH: Float,
-    val graphW: Float
+    val graphW: Float,
+    val roadCaptions: List<RoadCaptionSegment> = emptyList()
 )
 
 interface HudCanvas {
@@ -270,6 +271,33 @@ class HudRenderer(val config: HudConfig) {
             val graphLabelSize = 9f
             canvas.drawText(startText, startPt.first, startPt.second - 4f, graphLabelSize, "#ffffff", bold = true, anchor = "bottom-left")
             canvas.drawText(endText, endPt.first, endPt.second - 4f, graphLabelSize, "#ffffff", bold = true, anchor = "bottom-right")
+        }
+
+        // Draw Road Caption overlay
+        val totalDuration = if (allPoints.isNotEmpty()) {
+            allPoints.last().timestamp - allPoints.first().timestamp
+        } else {
+            300.0
+        }
+        val currentSeconds = currentRatio * totalDuration
+        val activeCaption = config.roadCaptions.find { 
+            it.isEnabled && currentSeconds >= it.startSeconds && currentSeconds <= it.endSeconds 
+        }
+        if (activeCaption != null && activeCaption.text.isNotEmpty()) {
+            val capText = activeCaption.text
+            val capSize = 24f
+            val capWidth = canvas.getTextWidth(capText, capSize, bold = true)
+            val capHeight = capSize
+            val padX = 20f
+            val padY = 10f
+            
+            val boxW = capWidth + padX * 2f
+            val boxH = capHeight + padY * 2f
+            val boxX = 960f - boxW / 2f
+            val boxY = 960f - boxH / 2f
+            
+            canvas.drawRect(boxX, boxY, boxW, boxH, "#000000", alpha = 0.65f)
+            canvas.drawText(capText, 960f, boxY + padY + capHeight / 2f, capSize, "#ffffff", bold = true, anchor = "center")
         }
     }
 

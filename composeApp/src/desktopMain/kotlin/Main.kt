@@ -136,6 +136,8 @@ fun startGui(args: Array<String>) = application {
     var hasEnoughSpaceForSample by viewModel::hasEnoughSpaceForSample
     var isSampleEncoding by viewModel::isSampleEncoding
     var appTempSpaceGB by viewModel::appTempSpaceGB
+    var isDetectingRoads by remember { mutableStateOf(false) }
+    var roadDetectionStatus by remember { mutableStateOf("") }
     val playerState = rememberVideoPlayerState()
     var composeWindow: java.awt.Window? by remember { mutableStateOf(null) }
     var ignoreNextStartUtcClear by remember { mutableStateOf(false) }
@@ -149,7 +151,8 @@ fun startGui(args: Array<String>) = application {
             xOffset = settings.xOffset,
             yOffset = settings.yOffset,
             graphH = settings.graphH,
-            graphW = settings.graphW
+            graphW = settings.graphW,
+            roadCaptions = settings.roadCaptions
         )
     }
     
@@ -1902,6 +1905,135 @@ suspend fun fireEncode(
             throw e
         }
     }
+}
+
+suspend fun queryRoadName(lat: Double, lon: Double): String? {
+    return withContext(Dispatchers.IO) {
+        try {
+            val client = java.net.http.HttpClient.newBuilder()
+                .connectTimeout(java.time.Duration.ofSeconds(5))
+                .build()
+            
+            val url = "https://nominatim.openstreetmap.org/reverse?lat=$lat&lon=$lon&format=json&accept-language=ja"
+            val request = java.net.http.HttpRequest.newBuilder()
+                .uri(java.net.URI.create(url))
+                .header("User-Agent", "FitTrimmerApp/1.0 (yuuji@kamura.jp)")
+                .timeout(java.time.Duration.ofSeconds(5))
+                .build()
+            
+            val response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString())
+            if (response.statusCode() == 200) {
+                val body = response.body()
+                val roadRegex = Regex("""\"road\"\s*:\s*\"([^\"]+)\"""")
+                val roadMatch = roadRegex.find(body)
+                if (roadMatch != null) {
+                    val road = roadMatch.groupValues[1]
+                    return@withContext unescapeUnicode(road)
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        null
+    }
+}
+
+fun unescapeUnicode(str: String): String {
+    val regex = Regex("""\\u([0-9a-fA-F]{4})""")
+    return regex.replace(str) { match ->
+        val code = match.groupValues[1].toInt(16)
+        code.toChar().toString()
+    }
+}
+
+suspend fun detectRoadSegments(
+    points: List<fit.FitParser.TelemetryPoint>,
+    videoStartUtc: String,
+    timeOffsetMillis: Long,
+    videoDurationSeconds: Double,
+    onProgress: (String) -> Unit
+): List<RoadCaptionSegment> {
+    if (points.isEmpty() || videoStartUtc.isEmpty()) return emptyList()
+    
+    val fitEpoch = java.time.Instant.parse("1989-12-31T00:00:00Z").epochSecond
+    val videoStartInstant = try {
+        java.time.Instant.parse(videoStartUtc).plusMillis(timeOffsetMillis)
+    } catch (e: Exception) {
+        return emptyList()
+    }
+    
+    val startFitTime = videoStartInstant.epochSecond - fitEpoch
+    val endFitTime = startFitTime + videoDurationSeconds
+    
+    val rangePoints = points.filter { it.timestamp in startFitTime.toDouble()..endFitTime.toDouble() }
+    if (rangePoints.isEmpty()) return emptyList()
+    
+    val segments = mutableListOf<RoadCaptionSegment>()
+    var currentRoadName: String? = null
+    var segmentStartSeconds = 0.0
+    
+    val sampleInterval = 15
+    val numSteps = (videoDurationSeconds / sampleInterval).toInt().coerceAtLeast(1)
+    
+    for (i in 0..numSteps) {
+        val currentOffset = i * sampleInterval.toDouble()
+        if (currentOffset > videoDurationSeconds) break
+        
+        val targetFitTime = startFitTime + currentOffset
+        val point = rangePoints.minByOrNull { kotlin.math.abs(it.timestamp - targetFitTime) } ?: continue
+        
+        onProgress("GPS解析中 (${(currentOffset / videoDurationSeconds * 100).toInt()}%): 座標 (${"%.4f".format(point.lat)}, ${"%.4f".format(point.lon)}) を検索中...")
+        
+        kotlinx.coroutines.delay(1000)
+        
+        val roadName = queryRoadName(point.lat, point.lon)
+        
+        if (roadName != null && roadName.isNotEmpty()) {
+            if (currentRoadName == null) {
+                currentRoadName = roadName
+                segmentStartSeconds = currentOffset
+            } else if (currentRoadName != roadName) {
+                segments.add(
+                    RoadCaptionSegment(
+                        id = java.util.UUID.randomUUID().toString(),
+                        startSeconds = segmentStartSeconds,
+                        endSeconds = currentOffset,
+                        text = currentRoadName,
+                        isEnabled = true
+                    )
+                )
+                currentRoadName = roadName
+                segmentStartSeconds = currentOffset
+            }
+        } else {
+            if (currentRoadName != null) {
+                segments.add(
+                    RoadCaptionSegment(
+                        id = java.util.UUID.randomUUID().toString(),
+                        startSeconds = segmentStartSeconds,
+                        endSeconds = currentOffset,
+                        text = currentRoadName,
+                        isEnabled = true
+                    )
+                )
+                currentRoadName = null
+            }
+        }
+    }
+    
+    if (currentRoadName != null) {
+        segments.add(
+            RoadCaptionSegment(
+                id = java.util.UUID.randomUUID().toString(),
+                startSeconds = segmentStartSeconds,
+                endSeconds = videoDurationSeconds,
+                text = currentRoadName,
+                isEnabled = true
+            )
+        )
+    }
+    
+    return segments
 }
 
 @Composable
