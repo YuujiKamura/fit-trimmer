@@ -485,9 +485,43 @@ class NativeHudEncoder(
                 }
             }
             readerThread.start()
+
+            val cancelMonitorThread = kotlin.concurrent.thread {
+                while (process.isAlive) {
+                    if (cancelSupplier()) {
+                        process.destroy()
+                        try { process.destroyForcibly() } catch (e: Exception) {}
+                        break
+                    }
+                    try { Thread.sleep(100) } catch (e: Exception) { break }
+                }
+            }
             
-            val exitCode = process.waitFor()
-            readerThread.join(1000)
+            // Loop with timeout to allow cancel detection during process execution
+            var exitCode = -1
+            while (process.isAlive) {
+                if (cancelSupplier()) {
+                    process.destroy()
+                    try { process.destroyForcibly() } catch (e: Exception) {}
+                    break
+                }
+                if (process.waitFor(500, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+                    exitCode = process.exitValue()
+                    break
+                }
+            }
+            if (!process.isAlive) {
+                exitCode = process.exitValue()
+            }
+            
+            try { readerThread.interrupt() } catch (e: Exception) {}
+            try { readerThread.join(1000) } catch (e: Exception) {}
+            try { cancelMonitorThread.interrupt() } catch (e: Exception) {}
+            try { cancelMonitorThread.join(1000) } catch (e: Exception) {}
+
+            if (cancelSupplier()) {
+                throw Exception("Encoding was canceled by user.")
+            }
             
             if (exitCode == 0 && tempOutput.exists() && tempOutput.length() > 0L) {
                 val outFile = File(output)
@@ -524,8 +558,8 @@ class NativeHudEncoder(
         val (hwaccel, encoderName) = detectEncoderAndHardware(ffmpegPath, originalCodec)
         println("DEBUG: Auto-detected encoder: $encoderName, hwaccel: $hwaccel")
 
-        // Create deterministic job hash for crash recovery
-        val jobHash = kotlin.math.abs((fitPath + videoPath + startUtc + maxDurationSeconds + actualTrimStart + actualTrimEnd + config.hashCode()).hashCode()).toString()
+        // Create deterministic job hash for crash recovery (include resolution to avoid mismatched segment reuse)
+        val jobHash = kotlin.math.abs((fitPath + videoPath + startUtc + maxDurationSeconds + actualTrimStart + actualTrimEnd + videoWidth + videoHeight + config.hashCode()).hashCode()).toString()
         val jobDir = File(workDir, "job_$jobHash")
         if (!jobDir.exists()) jobDir.mkdirs()
         globalActiveJobDir = jobDir
@@ -602,17 +636,21 @@ class NativeHudEncoder(
                         while (pCut.isAlive) {
                             if (cancelSupplier()) {
                                 pCut.destroy()
+                                try { pCut.destroyForcibly() } catch (e: Exception) {}
                                 break
                             }
-                            Thread.sleep(100)
+                            try { Thread.sleep(100) } catch (e: Exception) { break }
                         }
                     }
                     
                     val exitCut = pCut.waitFor()
+                    try { cutLogThread.interrupt() } catch (e: Exception) {}
                     cutLogThread.join(1000)
+                    try { cutCancelMonitorThread.interrupt() } catch (e: Exception) {}
                     cutCancelMonitorThread.join(1000)
                     
                     if (cancelSupplier()) {
+                        try { tempTrimmedVideo.delete() } catch (e: Exception) {}
                         throw Exception("Encoding was canceled by user during cloud copy.")
                     }
                     
@@ -621,9 +659,11 @@ class NativeHudEncoder(
                         localVideoPath = tempTrimmedVideo.absolutePath
                         isLocalTrimmedVideo = true
                     } else {
+                        try { tempTrimmedVideo.delete() } catch (e: Exception) {}
                         println("❌ Failed to perform fast trim-copy (exit code $exitCut). Falling back to direct cloud stream.")
                     }
                 } catch (e: Exception) {
+                    try { tempTrimmedVideo.delete() } catch (e2: Exception) {}
                     println("❌ Error during cloud copy: ${e.message}. Falling back to direct cloud stream.")
                 }
             } else {

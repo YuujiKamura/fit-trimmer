@@ -21,18 +21,21 @@ class HotReloadClassLoader(urls: Array<URL>, parent: ClassLoader) : URLClassLoad
     }
 }
 
-class DynamicRendererProxy(private var config: HudConfig) {
+class DynamicRendererProxy(@Volatile private var config: HudConfig) {
+    @Volatile
     private var delegate: Any? = null
+    @Volatile
     private var renderMethod: java.lang.reflect.Method? = null
     private var previousTempDir: File? = null
     private var previousClassLoader: java.net.URLClassLoader? = null
+    @Volatile
     private var fallbackRenderer: HudRenderer? = null
 
     init {
         reload()
     }
 
-    fun updateConfig(newConfig: HudConfig) {
+    fun updateConfig(newConfig: HudConfig) = synchronized(this) {
         this.config = newConfig
         delegate?.let { del ->
             try {
@@ -45,7 +48,7 @@ class DynamicRendererProxy(private var config: HudConfig) {
         fallbackRenderer = HudRenderer(newConfig)
     }
 
-    fun reload(): Boolean {
+    fun reload(): Boolean = synchronized(this) {
         try {
             var projectDir = File(System.getProperty("user.dir"))
             if (!File(projectDir, "shared-core").exists() && File(projectDir.parentFile, "shared-core").exists()) {
@@ -93,17 +96,19 @@ class DynamicRendererProxy(private var config: HudConfig) {
     }
 
     fun renderFrame(canvas: HudCanvas, point: TelemetryPoint, allPoints: List<TelemetryPoint>, powerBuffer: List<Double>, progressRatio: Float) {
-        if (delegate != null && renderMethod != null) {
-            try {
-                renderMethod?.invoke(delegate, canvas, point, allPoints, powerBuffer, progressRatio)
-                return
-            } catch (e: Exception) {
-                println("⚠️ Failed to invoke hot-reloaded renderer, falling back to static renderer: ${e.message}")
+        synchronized(this) {
+            if (delegate != null && renderMethod != null) {
+                try {
+                    renderMethod?.invoke(delegate, canvas, point, allPoints, powerBuffer, progressRatio)
+                    return
+                } catch (e: Exception) {
+                    println("⚠️ Failed to invoke hot-reloaded renderer, falling back to static renderer: ${e.message}")
+                }
             }
+            if (fallbackRenderer == null) {
+                fallbackRenderer = HudRenderer(config)
+            }
+            fallbackRenderer?.renderFrame(canvas, point, allPoints, powerBuffer, progressRatio)
         }
-        if (fallbackRenderer == null) {
-            fallbackRenderer = HudRenderer(config)
-        }
-        fallbackRenderer?.renderFrame(canvas, point, allPoints, powerBuffer, progressRatio)
     }
 }

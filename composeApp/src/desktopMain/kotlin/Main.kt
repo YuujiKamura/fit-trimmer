@@ -51,7 +51,7 @@ import utils.*
 import components.*
 import viewmodel.*
 
-const val APP_VERSION = "v1.8.7"
+const val APP_VERSION = "v1.8.8"
 
 private const val PLAYBACK_PREVIEW_INTERVAL_MS = 250L
 
@@ -988,7 +988,7 @@ fun startGui(args: Array<String>) = application {
         }
 
         // Derived video time depending on encoding state to prevent double recomposition
-        val effectiveVideoTimeMs by remember(isEncoding, progress, videoCurrentTimeMs, trimStartSeconds, trimEndSeconds, videoLengthMs) {
+        val effectiveVideoTimeMs by remember {
             derivedStateOf {
                 if (isEncoding) {
                     val actualTrimStart = trimStartSeconds.coerceIn(0.0, videoLengthMs / 1000.0)

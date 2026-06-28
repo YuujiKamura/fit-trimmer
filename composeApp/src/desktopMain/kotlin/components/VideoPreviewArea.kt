@@ -186,10 +186,12 @@ fun VideoPreviewArea(
         }
     }
 
-    LaunchedEffect(playerState.sliderPos, playerState.metadata.duration) {
-        val durationMs = playerState.metadata.duration ?: 0L
-        val currentDuration = if (videoLengthMs > 0L) videoLengthMs else durationMs
-        onCurrentTimeChange(((playerState.sliderPos / 1000f) * currentDuration).toLong())
+    LaunchedEffect(playerState) {
+        snapshotFlow { playerState.sliderPos to (playerState.metadata.duration ?: 0L) }
+            .collect { (sliderPos, durationMs) ->
+                val currentDuration = if (videoLengthMs > 0L) videoLengthMs else durationMs
+                onCurrentTimeChange(((sliderPos / 1000f) * currentDuration).toLong())
+            }
     }
 
     // Video path change side effect inside the player area
@@ -244,7 +246,7 @@ fun VideoPreviewArea(
         }
     }
 
-    val currentPoint = remember(videoCurrentTimeMs, telemetryPoints, adjustedStartUtc) {
+    val currentPointAndIndex = remember(videoCurrentTimeMs, telemetryPoints, adjustedStartUtc) {
         if (telemetryPoints.isEmpty() || adjustedStartUtc.isEmpty()) null
         else {
             try {
@@ -253,7 +255,14 @@ fun VideoPreviewArea(
                 val elapsedSeconds = videoCurrentTimeMs / 1000.0
                 val currentUtc = startTime.toEpochMilli() / 1000.0 + elapsedSeconds
                 val currentFitTs = currentUtc - fitEpoch
-                telemetryPoints.find { it.timestamp >= currentFitTs } ?: telemetryPoints.lastOrNull()
+                
+                // Binary search for timestamp to achieve O(log N) performance instead of O(N)
+                var idx = telemetryPoints.binarySearch { it.timestamp.compareTo(currentFitTs) }
+                if (idx < 0) {
+                    idx = -idx - 1
+                }
+                val targetIdx = idx.coerceIn(telemetryPoints.indices)
+                Pair(telemetryPoints[targetIdx], targetIdx)
             } catch (e: Exception) {
                 e.printStackTrace()
                 null
@@ -261,16 +270,15 @@ fun VideoPreviewArea(
         }
     }
 
-    val currentTrendPoints = remember(currentPoint, telemetryPoints) {
-        if (currentPoint == null || telemetryPoints.isEmpty()) emptyList<Double>()
+    val currentPoint = currentPointAndIndex?.first
+    val currentPointIdx = currentPointAndIndex?.second
+
+    val currentTrendPoints = remember(currentPoint, currentPointIdx, telemetryPoints) {
+        if (currentPoint == null || telemetryPoints.isEmpty() || currentPointIdx == null) emptyList<Double>()
         else {
-            val idx = telemetryPoints.indexOfFirst { it.timestamp >= currentPoint.timestamp }
-            if (idx == -1) {
-                emptyList()
-            } else {
-                val startIdx = maxOf(0, idx - 30)
-                telemetryPoints.subList(startIdx, idx + 1).map { it.power }
-            }
+            val idx = currentPointIdx
+            val startIdx = maxOf(0, idx - 30)
+            telemetryPoints.subList(startIdx, idx + 1).map { it.power }
         }
     }
 
