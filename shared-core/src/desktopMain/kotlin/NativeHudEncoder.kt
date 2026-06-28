@@ -338,8 +338,9 @@ class NativeHudEncoder(
     }
 
     private fun detectEncoderAndHardware(ffmpegPath: String, originalCodec: String): Pair<String?, String> {
+        val forceCpu = System.getProperty("FIT_TRIMMER_FORCE_CPU") == "true" || System.getenv("FIT_TRIMMER_FORCE_CPU") == "true"
         val useHevc = (originalCodec == "hevc")
-        if (useHevc) {
+        if (useHevc && !forceCpu) {
             // Test NVIDIA NVENC HEVC
             if (testEncoder(ffmpegPath, "hevc_nvenc", "auto")) {
                 return Pair("auto", "hevc_nvenc")
@@ -355,20 +356,25 @@ class NativeHudEncoder(
             // CPU fallback HEVC
             return Pair(null, "libx265")
         } else {
-            // Test NVIDIA NVENC H.264
-            if (testEncoder(ffmpegPath, "h264_nvenc", "auto")) {
-                return Pair("auto", "h264_nvenc")
-            }
-            // Test Intel QSV H.264
-            if (testEncoder(ffmpegPath, "h264_qsv", "auto")) {
-                return Pair("auto", "h264_qsv")
-            }
-            // Test AMD AMF H.264
-            if (testEncoder(ffmpegPath, "h264_amf", "auto")) {
-                return Pair("auto", "h264_amf")
+            if (!forceCpu) {
+                // Test NVIDIA NVENC H.264
+                if (testEncoder(ffmpegPath, "h264_nvenc", "auto")) {
+                    return Pair("auto", "h264_nvenc")
+                }
+                // Test Intel QSV H.264
+                if (testEncoder(ffmpegPath, "h264_qsv", "auto")) {
+                    return Pair("auto", "h264_qsv")
+                }
+                // Test AMD AMF H.264
+                if (testEncoder(ffmpegPath, "h264_amf", "auto")) {
+                    return Pair("auto", "h264_amf")
+                }
             }
             // CPU fallback H.264
-            return Pair(null, "libx264")
+            if (testEncoder(ffmpegPath, "libx264", null)) {
+                return Pair(null, "libx264")
+            }
+            return Pair(null, "libopenh264")
         }
     }
 
@@ -993,7 +999,12 @@ class NativeHudEncoder(
                 isEncodingActive.set(false)
                 try { out.close() } catch (e: Exception) {}
                 
-                // Ensure process is terminated forcibly if it's still alive
+                // Wait for the process to finish naturally first (especially if we finished loop normally)
+                if (process.isAlive) {
+                    process.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)
+                }
+                
+                // Ensure process is terminated forcibly if it's still alive after waiting
                 if (process.isAlive) {
                     process.destroy()
                     if (!process.waitFor(500, java.util.concurrent.TimeUnit.MILLISECONDS)) {
