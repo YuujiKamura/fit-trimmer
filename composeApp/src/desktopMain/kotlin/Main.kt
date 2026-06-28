@@ -139,6 +139,7 @@ fun startGui(args: Array<String>) = application {
     var isDetectingRoads by remember { mutableStateOf(false) }
     var roadDetectionStatus by remember { mutableStateOf("") }
     var roadDetectionJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    var roadScanIntervalSeconds by remember { mutableStateOf(30) }
     val playerState = rememberVideoPlayerState()
     var composeWindow: java.awt.Window? by remember { mutableStateOf(null) }
     var ignoreNextStartUtcClear by remember { mutableStateOf(false) }
@@ -1303,6 +1304,30 @@ fun startGui(args: Array<String>) = application {
                                       }
                                   }
 
+                                  Row(
+                                      modifier = Modifier.fillMaxWidth(),
+                                      horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                      verticalAlignment = Alignment.CenterVertically
+                                  ) {
+                                      Text("スキャン間隔:", fontSize = 9.sp, color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold)
+                                      val intervals = listOf(10, 30, 60, 120)
+                                      intervals.forEach { sec ->
+                                          val isSelected = roadScanIntervalSeconds == sec
+                                          Button(
+                                              onClick = { roadScanIntervalSeconds = sec },
+                                              colors = ButtonDefaults.buttonColors(
+                                                  backgroundColor = if (isSelected) Color(0xFF007AFF) else Color(0xFFE5E5EA),
+                                                  contentColor = if (isSelected) Color.White else Color(0xFF1C1C1E)
+                                              ),
+                                              contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
+                                              shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp),
+                                              modifier = Modifier.height(18.dp)
+                                          ) {
+                                              Text("${sec}秒", fontSize = 8.sp)
+                                          }
+                                      }
+                                  }
+
                                   if (isDetectingRoads) {
                                       Column(
                                           modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
@@ -1343,6 +1368,7 @@ fun startGui(args: Array<String>) = application {
                                                               videoStartUtc = adjustedStartUtc.ifEmpty { videoStartUtc },
                                                               timeOffsetMillis = timeOffsetState.millis.toLong(),
                                                               videoDurationSeconds = durationSec,
+                                                              sampleInterval = roadScanIntervalSeconds,
                                                               onProgress = { progressText ->
                                                                   roadDetectionStatus = progressText
                                                               }
@@ -1457,6 +1483,7 @@ fun startGui(args: Array<String>) = application {
                                                                   videoStartUtc = adjustedStartUtc.ifEmpty { videoStartUtc },
                                                                   timeOffsetMillis = timeOffsetState.millis.toLong(),
                                                                   videoDurationSeconds = durationSec,
+                                                                  sampleInterval = roadScanIntervalSeconds,
                                                                   onProgress = { progressText ->
                                                                       roadDetectionStatus = progressText
                                                                   }
@@ -2140,6 +2167,7 @@ suspend fun detectRoadSegments(
     videoStartUtc: String,
     timeOffsetMillis: Long,
     videoDurationSeconds: Double,
+    sampleInterval: Int = 30,
     onProgress: (String) -> Unit
 ): List<RoadCaptionSegment> {
     if (points.isEmpty() || videoStartUtc.isEmpty()) return emptyList()
@@ -2161,7 +2189,6 @@ suspend fun detectRoadSegments(
     var currentRoadName: String? = null
     var segmentStartSeconds = 0.0
     
-    val sampleInterval = 30
     val numSteps = (videoDurationSeconds / sampleInterval).toInt().coerceAtLeast(1)
     
     var lastApiLat = 0.0
