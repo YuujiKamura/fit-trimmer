@@ -159,7 +159,7 @@ fun VideoPreviewArea(
             if (proxyVideoPath != null && File(proxyVideoPath).exists()) {
                 proxyVideoPath
             } else {
-                ""
+                videoPath
             }
         } else {
             videoPath
