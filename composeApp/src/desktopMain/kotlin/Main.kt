@@ -2431,8 +2431,15 @@ fun startGui(args: Array<String>) = application {
                             modifier = Modifier.fillMaxWidth().height(140.dp),
                             isEncoding = isEncoding
                         )
-
-                        Text("1920x1080 Overlay Preview", color = Color(0xFF1C1C1E), fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
+                        
+                        val previewLabel = when (settings.exportResolution) {
+                            "360p" -> "360p (640x360) Overlay Preview"
+                            "720p" -> "720p (1280x720) Overlay Preview"
+                            "1080p" -> "1080p (1920x1080) Overlay Preview"
+                            "2.7k" -> "2.7k (2704x1520) Overlay Preview"
+                            else -> "${settings.exportResolution} Overlay Preview"
+                        }
+                        Text(previewLabel, color = Color(0xFF1C1C1E), fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
                     }
                 }
             }
