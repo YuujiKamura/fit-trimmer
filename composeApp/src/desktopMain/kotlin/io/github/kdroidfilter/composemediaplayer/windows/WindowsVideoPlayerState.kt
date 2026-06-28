@@ -556,6 +556,7 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
                 }
                 val sharedBuffer = sharedFrameBuffer!!
 
+                var needsUnlock = true
                 try {
                     val buffer = ptrRef.value.getByteBuffer(0, sizeRef.value.toLong())
                     val copySize = min(sizeRef.value, frameBufferSize)
@@ -563,12 +564,15 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
                         buffer.get(sharedBuffer, 0, copySize)
                     }
                 } catch (e: Exception) {
+                    if (e is CancellationException) throw e
                     setError("Error copying frame data: ${e.message}")
                     delay(100)
                     continue
+                } finally {
+                    if (needsUnlock) {
+                        player.UnlockVideoFrame(instance)
+                    }
                 }
-
-                player.UnlockVideoFrame(instance)
 
                 var bitmap = frameBitmapRecycler
                 if (bitmap == null) {
@@ -594,6 +598,7 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
                     frameChannel.trySend(FrameData(frameBitmap, frameTime))
                     frameBitmapRecycler = null
                 } catch (e: Exception) {
+                    if (e is CancellationException) throw e
                     windowsLogger.e { "Error processing frame bitmap: ${e.message}" }
                     frameBitmapRecycler = bitmap
                 }
