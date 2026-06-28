@@ -1,3 +1,5 @@
+import java.io.ByteArrayOutputStream
+
 plugins {
     kotlin("multiplatform")
     id("org.jetbrains.compose")
@@ -29,13 +31,23 @@ kotlin {
     }
 }
 
+val gitVersion: String by lazy {
+    try {
+        project.providers.exec {
+            commandLine("git", "describe", "--tags", "--abbrev=0")
+        }.standardOutput.asText.get().trim().removePrefix("v")
+    } catch (e: Exception) {
+        "1.7.1"
+    }
+}
+
 compose.desktop {
     application {
         mainClass = "MainKt"
         nativeDistributions {
             targetFormats(org.jetbrains.compose.desktop.application.dsl.TargetFormat.Dmg, org.jetbrains.compose.desktop.application.dsl.TargetFormat.Msi, org.jetbrains.compose.desktop.application.dsl.TargetFormat.Deb)
             packageName = "FitTrimmer"
-            packageVersion = "1.6.0"
+            packageVersion = gitVersion
 
             windows {
                 menu = true
