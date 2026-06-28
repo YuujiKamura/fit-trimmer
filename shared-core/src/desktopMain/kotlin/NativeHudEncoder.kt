@@ -173,7 +173,9 @@ class NativeHudEncoder(
     val showLivePreviewSupplier: () -> Boolean = { true }
 ) {
 
-    class DesktopHudCanvas(val g: Graphics2D, val scale: Float) : HudCanvas {
+    class DesktopHudCanvas(val g: Graphics2D, val scale: Float, val logicalWidth: Float, val logicalHeight: Float) : HudCanvas {
+        override val width: Float get() = logicalWidth
+        override val height: Float get() = logicalHeight
         override fun drawText(text: String, x: Float, y: Float, size: Float, color: String, bold: Boolean, anchor: String) {
             g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
             val scaledSize = (size * scale).toInt().coerceAtLeast(1)
@@ -845,7 +847,7 @@ class NativeHudEncoder(
                     
                     val isValid = currentFitTs >= telemetry.first().timestamp && currentFitTs <= telemetry.last().timestamp
                     val scale = exportWidth.toFloat() / 1920f
-                    val canvas = DesktopHudCanvas(g, scale)
+                    val canvas = DesktopHudCanvas(g, scale, videoWidth.toFloat() / scale, videoHeight.toFloat() / scale)
                     if (customRenderer != null) {
                         customRenderer.invoke(canvas, point, telemetry, pBuf, i.toFloat() / targetDurationSeconds)
                     } else {
