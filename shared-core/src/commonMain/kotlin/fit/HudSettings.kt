@@ -10,5 +10,6 @@ data class HudSettings(
     val xOffset: Float = 25f,
     val yOffset: Float = 60f,
     val graphH: Float = 60f,
-    val graphW: Float = 139f
+    val graphW: Float = 139f,
+    val exportResolution: String = "2.7k"
 )
