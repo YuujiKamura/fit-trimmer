@@ -308,7 +308,7 @@ class HudRenderer(val config: HudConfig) {
                     Pair(40f + dtBoxW + 20f, 40f)
                 }
                 "top_center" -> Pair(960f - boxW / 2f, margin)
-                else -> Pair(960f - boxW / 2f, 960f - boxH / 2f) // "bottom_center"
+                else -> Pair(960f - boxW / 2f, 1080f - boxH - margin) // "bottom_center" (1080p基準で下部に配置)
             }
             
             canvas.drawRect(boxX, boxY, boxW, boxH, "#000000", alpha = 0.65f)

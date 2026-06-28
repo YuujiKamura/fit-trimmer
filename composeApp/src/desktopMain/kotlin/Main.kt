@@ -51,7 +51,7 @@ import utils.*
 import components.*
 import viewmodel.*
 
-const val APP_VERSION = "v1.8.2"
+const val APP_VERSION = "v1.8.3"
 
 private const val PLAYBACK_PREVIEW_INTERVAL_MS = 250L
 
@@ -2259,13 +2259,13 @@ fun startGui(args: Array<String>) = application {
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Text("HUD LAYOUT CONFIG", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 0.5.sp)
-                            ControlSlider("VAL SIZE", settings.valSize, 10f, 150f) { settings = settings.copy(valSize = it) }
-                            ControlSlider("TIGHTNESS", settings.tightness, -10f, 40f) { settings = settings.copy(tightness = it) }
-                            ControlSlider("SPACING", settings.spacing, 0f, 100f) { settings = settings.copy(spacing = it) }
-                            ControlSlider("X OFFSET", settings.xOffset, 0f, 500f) { settings = settings.copy(xOffset = it) }
-                            ControlSlider("Y OFFSET", settings.yOffset, 0f, 500f) { settings = settings.copy(yOffset = it) }
-                            ControlSlider("GRAPH H", settings.graphH, 20f, 300f) { settings = settings.copy(graphH = it) }
-                            ControlSlider("GRAPH W", settings.graphW, 50f, 800f) { settings = settings.copy(graphW = it) }
+                            ControlSlider("VAL SIZE", settings.valSize, 10f, 150f, enabled = !isEncoding) { settings = settings.copy(valSize = it) }
+                            ControlSlider("TIGHTNESS", settings.tightness, -10f, 40f, enabled = !isEncoding) { settings = settings.copy(tightness = it) }
+                            ControlSlider("SPACING", settings.spacing, 0f, 100f, enabled = !isEncoding) { settings = settings.copy(spacing = it) }
+                            ControlSlider("X OFFSET", settings.xOffset, 0f, 500f, enabled = !isEncoding) { settings = settings.copy(xOffset = it) }
+                            ControlSlider("Y OFFSET", settings.yOffset, 0f, 500f, enabled = !isEncoding) { settings = settings.copy(yOffset = it) }
+                            ControlSlider("GRAPH H", settings.graphH, 20f, 300f, enabled = !isEncoding) { settings = settings.copy(graphH = it) }
+                            ControlSlider("GRAPH W", settings.graphW, 50f, 800f, enabled = !isEncoding) { settings = settings.copy(graphW = it) }
 
                             Spacer(Modifier.height(4.dp))
                             Text("ROAD CAPTION POSITION", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 0.5.sp)
@@ -2283,14 +2283,17 @@ fun startGui(args: Array<String>) = application {
                                     val isSelected = settings.captionPosition == posKey
                                     Button(
                                         onClick = { settings = settings.copy(captionPosition = posKey) },
+                                        enabled = !isEncoding,
                                         colors = ButtonDefaults.buttonColors(
                                             backgroundColor = if (isSelected) Color(0xFF007AFF) else Color(0xFFE5E5EA),
-                                            contentColor = if (isSelected) Color.White else Color(0xFF1C1C1E)
+                                            contentColor = if (isSelected) Color.White else Color(0xFF1C1C1E),
+                                            disabledBackgroundColor = if (isSelected) Color(0xFF007AFF).copy(alpha = 0.5f) else Color(0xFFF2F2F7),
+                                            disabledContentColor = Color(0xFF8E8E93)
                                         ),
-                                        modifier = Modifier.weight(1f).height(28.dp),
+                                        modifier = Modifier.weight(1f).height(32.dp),
                                         contentPadding = PaddingValues(0.dp)
                                     ) {
-                                        Text(label, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                        Text(label, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                     }
                                 }
                             }
@@ -2400,7 +2403,8 @@ fun startGui(args: Array<String>) = application {
                                     videoCurrentTimeMs = timeMs
                                 }
                             },
-                            modifier = Modifier.fillMaxWidth().height(140.dp)
+                            modifier = Modifier.fillMaxWidth().height(140.dp),
+                            isEncoding = isEncoding
                         )
 
                         Text("1920x1080 Overlay Preview", color = Color(0xFF1C1C1E), fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
@@ -2852,21 +2856,25 @@ object UpdateManager {
 }
 
 @Composable
-fun ControlSlider(label: String, value: Float, min: Float, max: Float, onValueChange: (Float) -> Unit) {
+fun ControlSlider(label: String, value: Float, min: Float, max: Float, enabled: Boolean = true, onValueChange: (Float) -> Unit) {
     Column(modifier = Modifier.padding(vertical = 1.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(label, color = Color(0xFF1C1C1E), fontSize = 10.sp, fontWeight = FontWeight.Bold)
-            Text("%.1f".format(value), color = Color(0xFF007AFF), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            Text(label, color = if (enabled) Color(0xFF1C1C1E) else Color(0xFF8E8E93), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            Text("%.1f".format(value), color = if (enabled) Color(0xFF007AFF) else Color(0xFF8E8E93), fontSize = 10.sp, fontWeight = FontWeight.Bold)
         }
         Slider(
             value = value, 
             onValueChange = onValueChange, 
             valueRange = min..max,
+            enabled = enabled,
             modifier = Modifier.height(20.dp),
             colors = SliderDefaults.colors(
                 thumbColor = Color(0xFF007AFF),
                 activeTrackColor = Color(0xFF007AFF),
-                inactiveTrackColor = Color(0xFFE5E5EA)
+                inactiveTrackColor = Color(0xFFE5E5EA),
+                disabledThumbColor = Color(0xFFD1D1D6),
+                disabledActiveTrackColor = Color(0xFFD1D1D6),
+                disabledInactiveTrackColor = Color(0xFFE5E5EA)
             )
         )
     }
