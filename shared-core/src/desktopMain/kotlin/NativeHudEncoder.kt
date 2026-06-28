@@ -400,8 +400,12 @@ class NativeHudEncoder(
 
         var exportWidth = videoWidth
         var exportHeight = videoHeight
-        val maxLongEdge = 1920.0
-        if (exportWidth > maxLongEdge || exportHeight > maxLongEdge) {
+        val maxLongEdge = when (settings.exportResolution) {
+            "1080p" -> 1920.0
+            "2.7k" -> 2704.0
+            else -> 0.0 // "original" size
+        }
+        if (maxLongEdge > 0.0 && (exportWidth > maxLongEdge || exportHeight > maxLongEdge)) {
             if (exportWidth >= exportHeight) {
                 val ratio = maxLongEdge / exportWidth
                 exportWidth = maxLongEdge.toInt()

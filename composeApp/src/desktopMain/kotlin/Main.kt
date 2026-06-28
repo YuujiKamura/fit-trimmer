@@ -1249,6 +1249,49 @@ fun startGui(args: Array<String>) = application {
                                   )
                               }
 
+                              Spacer(modifier = Modifier.height(4.dp))
+
+                              // Export Resolution Selector
+                              Column(
+                                  modifier = Modifier
+                                      .fillMaxWidth()
+                                      .background(Color(0xFFF2F2F7), shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                                      .border(1.dp, Color(0xFFE5E5EA), shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                                      .padding(horizontal = 10.dp, vertical = 8.dp),
+                                  verticalArrangement = Arrangement.spacedBy(6.dp)
+                              ) {
+                                  Column {
+                                      Text("Output Resolution", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Medium, fontSize = 11.sp)
+                                      Text("Downscales resolution to save space & speed up", color = Color(0xFF636366), fontSize = 9.sp)
+                                  }
+                                  Row(
+                                      modifier = Modifier.fillMaxWidth().height(28.dp),
+                                      horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                  ) {
+                                      val options = listOf(
+                                          Triple("1080p", "1080p", Modifier.weight(1f)),
+                                          Triple("2.7k", "2.7K", Modifier.weight(1f)),
+                                          Triple("original", "Original", Modifier.weight(1.2f))
+                                      )
+                                      options.forEach { (value, label, weightModifier) ->
+                                          val isSelected = settings.exportResolution == value
+                                          Button(
+                                              onClick = { settings = settings.copy(exportResolution = value) },
+                                              colors = ButtonDefaults.buttonColors(
+                                                  backgroundColor = if (isSelected) Color(0xFF007AFF) else Color(0xFFE5E5EA),
+                                                  contentColor = if (isSelected) Color.White else Color(0xFF1C1C1E)
+                                              ),
+                                              contentPadding = PaddingValues(0.dp),
+                                              shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp),
+                                              modifier = weightModifier.fillMaxHeight(),
+                                              enabled = !isEncoding
+                                          ) {
+                                              Text(label, fontSize = 10.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
+                                          }
+                                      }
+                                  }
+                              }
+
                               // Display FIT start/end timestamp and warning if video range is out of bounds
                               if (fitStartInstant != null && fitEndInstant != null) {
                                   val fitStartStr = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
