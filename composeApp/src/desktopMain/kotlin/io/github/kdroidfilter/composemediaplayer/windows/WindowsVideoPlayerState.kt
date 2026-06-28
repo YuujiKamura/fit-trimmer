@@ -546,7 +546,12 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
                 val sizeRef = IntByReference()
                 val readResult = player.ReadVideoFrame(instance, ptrRef, sizeRef)
 
-                if (readResult < 0 || ptrRef.value == null || sizeRef.value <= 0) {
+                if (readResult < 0) {
+                    windowsLogger.w { "ReadVideoFrame failed (hr=0x${readResult.toString(16)})" }
+                    yield()
+                    continue
+                }
+                if (ptrRef.value == null || sizeRef.value <= 0) {
                     yield()
                     continue
                 }
@@ -603,7 +608,7 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
                     frameBitmapRecycler = bitmap
                 }
 
-                delay(1)
+                delay(10)
 
             } catch (e: CancellationException) {
                 break
