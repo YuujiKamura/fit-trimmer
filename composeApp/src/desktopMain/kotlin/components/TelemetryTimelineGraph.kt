@@ -61,7 +61,8 @@ fun TelemetryTimelineGraph(
     onTrimStartChange: (Double) -> Unit,
     onTrimEndChange: (Double) -> Unit,
     onSeek: (Long) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isEncoding: Boolean = false
 ) {
     val textMeasurer = rememberTextMeasurer()
     val videoDurationSec = videoLengthMs / 1000.0
@@ -234,9 +235,11 @@ fun TelemetryTimelineGraph(
                     .fillMaxWidth()
                     .height(130.dp)
                     .clip(RoundedCornerShape(6.dp))
-                    .background(Color(0xFFF2F2F7))
+                    .androidx.compose.ui.draw.alpha(if (isEncoding) 0.6f else 1f)
+                    .background(if (isEncoding) Color(0xFFE5E5EA).copy(alpha = 0.5f) else Color(0xFFF2F2F7))
                     .border(1.dp, Color(0xFFE5E5EA), RoundedCornerShape(6.dp))
-                    .pointerInput(Unit) {
+                    .pointerInput(isEncoding) {
+                        if (isEncoding) return@pointerInput
                         detectDragGestures(
                             onDragStart = { offset ->
                                 val vLength = currentVideoLengthMs
