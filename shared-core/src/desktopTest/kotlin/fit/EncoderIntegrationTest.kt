@@ -224,4 +224,160 @@ class EncoderIntegrationTest {
             try { tempDir.deleteRecursively() } catch (e: Exception) {}
         }
     }
+
+    @Test
+    fun testRealEncodingWithOffsetTrim() {
+        System.setProperty("FIT_TRIMMER_FORCE_CPU", "true")
+        val tempDir = File(System.getProperty("java.io.tmpdir"), "fit-trimmer-test-offset-${System.currentTimeMillis()}")
+        tempDir.mkdirs()
+
+        val inputFit = File(tempDir, "test_input.fit")
+        val inputMp4 = File(tempDir, "test_input.mp4")
+        val outputMp4 = File(tempDir, "test_output.mp4")
+
+        try {
+            // 1. Generate a valid dummy .fit file programmatically with 10 data records
+            val headerSize = 14
+            val recordsSize = 12 + (9 * 10)
+            val totalSize = headerSize + recordsSize + 2
+            val bytes = ByteArray(totalSize)
+
+            bytes[0] = headerSize.toByte()
+            bytes[1] = 32
+            bytes[2] = 0xDC.toByte()
+            bytes[3] = 0x07.toByte()
+            bytes[4] = (recordsSize and 0xFF).toByte()
+            bytes[5] = ((recordsSize shr 8) and 0xFF).toByte()
+            bytes[6] = 0x00.toByte()
+            bytes[7] = 0x00.toByte()
+            ".FIT".encodeToByteArray().copyInto(bytes, 8)
+
+            var offset = headerSize
+            bytes[offset] = 0x40.toByte()
+            bytes[offset + 1] = 0
+            bytes[offset + 2] = 0
+            bytes[offset + 3] = 0x14.toByte()
+            bytes[offset + 4] = 0x00.toByte()
+            bytes[offset + 5] = 2
+
+            bytes[offset + 6] = 253.toByte()
+            bytes[offset + 7] = 4.toByte()
+            bytes[offset + 8] = 0x86.toByte()
+
+            bytes[offset + 9] = 5.toByte()
+            bytes[offset + 10] = 4.toByte()
+            bytes[offset + 11] = 0x86.toByte()
+
+            offset += 12
+
+            val baseFitTimestamp = 1000000000L
+            for (t in 0..9) {
+                bytes[offset] = 0x00.toByte()
+                val ts = baseFitTimestamp + t
+                bytes[offset + 1] = (ts and 0xFF).toByte()
+                bytes[offset + 2] = ((ts shr 8) and 0xFF).toByte()
+                bytes[offset + 3] = ((ts shr 16) and 0xFF).toByte()
+                bytes[offset + 4] = ((ts shr 24) and 0xFF).toByte()
+                
+                val dist = 10000 + t * 10
+                bytes[offset + 5] = (dist and 0xFF).toByte()
+                bytes[offset + 6] = ((dist shr 8) and 0xFF).toByte()
+                bytes[offset + 7] = ((dist shr 16) and 0xFF).toByte()
+                bytes[offset + 8] = ((dist shr 24) and 0xFF).toByte()
+                offset += 9
+            }
+
+            val computedCrc = Crc16.calculate(bytes, offset = 0, length = totalSize - 2)
+            bytes[totalSize - 2] = (computedCrc and 0xFF).toByte()
+            bytes[totalSize - 1] = ((computedCrc shr 8) and 0xFF).toByte()
+
+            inputFit.writeBytes(bytes)
+
+            // 2. Generate a 10-second SOLID BLUE test video at 25fps using local ffmpeg
+            val ffmpegPath = try { findFfmpegPath() } catch (e: Exception) { "ffmpeg" }
+            val pbVideo = ProcessBuilder(
+                ffmpegPath, "-y",
+                "-f", "lavfi", "-i", "color=c=blue:s=1920x1080:d=10",
+                "-c:v", "libopenh264", "-pix_fmt", "yuv420p", "-r", "25", "-t", "10",
+                inputMp4.absolutePath
+            )
+            pbVideo.redirectErrorStream(true)
+            val pVideo = pbVideo.start()
+            pVideo.waitFor()
+
+            // 3. Request road caption burn-in
+            val testCaption = RoadCaptionSegment(
+                id = "test-integration-caption-offset",
+                startSeconds = 0.0,
+                endSeconds = 5.0,
+                text = "OFFSET TRIM TEST",
+                isEnabled = true
+            )
+            val settings = HudSettings(
+                roadCaptions = listOf(testCaption),
+                captionPosition = "top_center",
+                exportResolution = "360p"
+            )
+
+            val renderedFrames = mutableListOf<java.awt.image.BufferedImage>()
+            val encoder = NativeHudEncoder(settings,
+                onProgress = { _, _ -> },
+                onFrameRendered = { img ->
+                    val copy = java.awt.image.BufferedImage(img.width, img.height, img.type)
+                    val g = copy.createGraphics()
+                    g.drawImage(img, 0, 0, null)
+                    g.dispose()
+                    synchronized(renderedFrames) { renderedFrames.add(copy) }
+                }
+            )
+
+            // 4. Trigger actual encoding pipeline with Offset (trimStartSeconds = 3.0, trimEndSeconds = 8.0)
+            val fitEpochSec = 631065600L
+            val startInstant = java.time.Instant.ofEpochSecond(baseFitTimestamp + fitEpochSec)
+            val computedStartUtc = startInstant.toString()
+
+            encoder.encode(
+                fitPath = inputFit.absolutePath,
+                videoPath = inputMp4.absolutePath,
+                output = outputMp4.absolutePath,
+                startUtc = computedStartUtc,
+                maxDurationSeconds = 5,
+                trimStartSeconds = 3.0,
+                trimEndSeconds = 8.0
+            )
+
+            // 5. Check physical file output assertions
+            assertTrue(outputMp4.exists() && outputMp4.length() > 0)
+
+            // 6. Visual Verification
+            assertTrue(renderedFrames.isNotEmpty())
+            val testFrame = renderedFrames.getOrNull(renderedFrames.size / 2)
+            assertTrue(testFrame != null)
+
+            var nonBluePixels = 0
+            var whitePixels = 0
+            var darkPixels = 0
+            for (x in 150 until 490) {
+                for (y in 10 until 50) {
+                    val rgb = testFrame.getRGB(x, y)
+                    val r = (rgb shr 16) and 0xFF
+                    val g = (rgb shr 8) and 0xFF
+                    val b = rgb and 0xFF
+                    if (r > 200 && g > 200 && b > 200) whitePixels++
+                    if (r < 100 && g < 100 && b < 100) darkPixels++
+                    if (r > 50 || g > 50 || b < 200) nonBluePixels++
+                }
+            }
+
+            assertTrue(darkPixels > 100, "Caption box must exist in offset trim.")
+            assertTrue(whitePixels > 20, "Caption text must exist in offset trim.")
+            println("✅ Offset trim VRT passed successfully!")
+
+        } finally {
+            try { inputFit.delete() } catch (e: Exception) {}
+            try { inputMp4.delete() } catch (e: Exception) {}
+            try { outputMp4.delete() } catch (e: Exception) {}
+            try { tempDir.deleteRecursively() } catch (e: Exception) {}
+        }
+    }
 }
