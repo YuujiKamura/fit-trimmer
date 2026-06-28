@@ -421,7 +421,7 @@ fun startGui(args: Array<String>) = application {
 
 
 
-    LaunchedEffect(videoPath, settings.useProxyPreview) {
+    LaunchedEffect(videoPath) {
         val originalPathAtStart = videoPath
         // Initialize states immediately on video changes to prevent obsolete metadata leak (Requirement 2)
         videoLengthMs = 0L
@@ -438,47 +438,6 @@ fun startGui(args: Array<String>) = application {
                 outputDir = parentDir.absolutePath
             }
             var targetVideoPath = videoPath
-            
-            val isDrive = utils.isGoogleDrivePath(videoPath)
-            val isHevcOrHigh = utils.isHevcOrHighRes(videoPath)
-            val shouldGenerateProxy = settings.useProxyPreview && (isDrive || isHevcOrHigh)
-            
-            println("DEBUG: LaunchedEffect(videoPath) check - videoPath='$videoPath', isDrive=$isDrive, isHevcOrHigh=$isHevcOrHigh")
-            if (shouldGenerateProxy) {
-                println("DEBUG: LaunchedEffect(videoPath) - Triggering proxy generation block")
-                launch {
-                    try {
-                        viewModel.isGeneratingProxy = true
-                        viewModel.proxyProgress = 0f
-                        viewModel.proxyVideoPath = null
-                        println("DEBUG: LaunchedEffect(videoPath) - Cleaning old proxies...")
-                        utils.cleanOldProxies()
-                        println("DEBUG: LaunchedEffect(videoPath) - Getting duration...")
-                        val durationMs = utils.getVideoDuration(videoPath) ?: 0L
-                        println("DEBUG: LaunchedEffect(videoPath) - Duration obtained: $durationMs ms. Generating proxy...")
-                        val pPath = utils.generateProxyVideo(
-                            videoPath = videoPath,
-                            ffmpegPath = fit.findFfmpegPath(),
-                            videoDurationSec = durationMs / 1000.0,
-                            onProgress = { prog ->
-                                viewModel.proxyProgress = prog
-                            }
-                        )
-                        println("DEBUG: LaunchedEffect(videoPath) - Proxy generated successfully: $pPath")
-                        if (videoPath == originalPathAtStart) {
-                            viewModel.proxyVideoPath = pPath
-                            println("DEBUG: LaunchedEffect(videoPath) - Updated viewModel.proxyVideoPath = $pPath")
-                        } else {
-                            println("DEBUG: LaunchedEffect(videoPath) - Path mismatch, originalPathAtStart='$originalPathAtStart', current='$videoPath'")
-                        }
-                    } catch (e: Exception) {
-                        println("DEBUG: LaunchedEffect(videoPath) - Error during proxy generation: ${e.message}")
-                        e.printStackTrace()
-                    } finally {
-                        viewModel.isGeneratingProxy = false
-                    }
-                }
-            }
             
             // WMF fails to play directly from DriveFS (H:\) so we create a temporary directory junction on local C: drive
             if (videoPath.startsWith("H:\\", ignoreCase = true)) {
@@ -1321,24 +1280,7 @@ fun startGui(args: Array<String>) = application {
                                   }
                               }
 
-                               Spacer(Modifier.height(10.dp))
-                               Row(
-                                   modifier = Modifier.fillMaxWidth(),
-                                   verticalAlignment = Alignment.CenterVertically
-                               ) {
-                                   Checkbox(
-                                       checked = settings.useProxyPreview,
-                                       onCheckedChange = { checked ->
-                                           settings = settings.copy(useProxyPreview = checked)
-                                       },
-                                       enabled = !isEncoding
-                                   )
-                                   Spacer(Modifier.width(4.dp))
-                                   Column {
-                                       Text("プロキシプレビューを使用する", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1C1C1E))
-                                       Text("HEVCや4K動画を軽量プロキシに変換してプレビューを滑らかにします", fontSize = 9.sp, color = Color.Gray)
-                                   }
-                               }
+
 
                                // Display FIT start/end timestamp and warning if video range is out of bounds
                               if (fitStartInstant != null && fitEndInstant != null) {
@@ -1732,41 +1674,8 @@ fun startGui(args: Array<String>) = application {
                                 playerState = playerState,
                                 videoCurrentTimeMs = videoCurrentTimeMs,
                                 onCurrentTimeChange = { videoCurrentTimeMs = it },
-                                isGeneratingProxy = viewModel.isGeneratingProxy,
-                                proxyProgress = viewModel.proxyProgress,
-                                proxyVideoPath = viewModel.proxyVideoPath,
                                 modifier = Modifier.weight(1f).fillMaxWidth()
                             )
-                            
-                            if (viewModel.isGeneratingProxy) {
-                                Spacer(Modifier.height(4.dp))
-                                val proxyFile = getProxyFileForVideo(videoPath)
-                                Card(
-                                    backgroundColor = Color(0xFFF2F2F7),
-                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
-                                    border = BorderStroke(1.dp, Color(0xFFE5E5EA)),
-                                    elevation = 0.dp,
-                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp)
-                                ) {
-                                    Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        Text(
-                                            text = "PROXY ENCODING STATUS",
-                                            color = Color(0xFF007AFF),
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 9.sp,
-                                            letterSpacing = 0.5.sp
-                                        )
-                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            Text("Source:", color = Color.Gray, fontWeight = FontWeight.Bold, fontSize = 10.sp, modifier = Modifier.width(60.dp))
-                                            Text(videoPath, color = Color(0xFF1C1C1E), fontSize = 10.sp)
-                                        }
-                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            Text("Output:", color = Color.Gray, fontWeight = FontWeight.Bold, fontSize = 10.sp, modifier = Modifier.width(60.dp))
-                                            Text(proxyFile.absolutePath, color = Color(0xFF1C1C1E), fontSize = 10.sp)
-                                        }
-                                    }
-                                }
-                            }
                             
                             Spacer(Modifier.height(8.dp))
                             
