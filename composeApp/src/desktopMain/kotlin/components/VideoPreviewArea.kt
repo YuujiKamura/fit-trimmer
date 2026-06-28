@@ -350,7 +350,7 @@ fun VideoPreviewArea(
         }
 
         // Video Player Control UI
-        if (activePath.isNotEmpty()) {
+        if (videoPath.isNotEmpty() && File(videoPath).exists()) {
             Spacer(Modifier.height(8.dp))
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
@@ -359,7 +359,8 @@ fun VideoPreviewArea(
             ) {
                 Button(
                     onClick = togglePlay,
-                    colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF007AFF))
+                    colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF007AFF)),
+                    enabled = activePath.isNotEmpty()
                 ) {
                     Text(if (isPlaying) "⏸ PAUSE" else "▶ PLAY", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
                 }
@@ -381,7 +382,8 @@ fun VideoPreviewArea(
                         thumbColor = Color(0xFF007AFF),
                         activeTrackColor = Color(0xFF007AFF),
                         inactiveTrackColor = Color(0xFFE5E5EA)
-                    )
+                    ),
+                    enabled = activePath.isNotEmpty()
                 )
 
                 // Volume Controls (Mute & Slider)
@@ -402,7 +404,8 @@ fun VideoPreviewArea(
                         },
                         modifier = Modifier.size(28.dp),
                         contentPadding = PaddingValues(0.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF1C1C1E))
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF1C1C1E)),
+                        enabled = activePath.isNotEmpty()
                     ) {
                         Text(if (isMute) "🔇" else "🔊", fontSize = 11.sp)
                     }
@@ -420,7 +423,8 @@ fun VideoPreviewArea(
                             thumbColor = Color(0xFF007AFF),
                             activeTrackColor = Color(0xFF007AFF),
                             inactiveTrackColor = Color(0xFFE5E5EA)
-                        )
+                        ),
+                        enabled = activePath.isNotEmpty()
                     )
                 }
 
@@ -455,7 +459,8 @@ fun VideoPreviewArea(
                         onClick = { seekTo((videoCurrentTimeMs + delta).coerceIn(0L, maxOf(0L, videoLengthMs))) },
                         modifier = seekBtnModifier,
                         colors = seekBtnColors,
-                        contentPadding = PaddingValues(0.dp)
+                        contentPadding = PaddingValues(0.dp),
+                        enabled = activePath.isNotEmpty()
                     ) {
                         Text(label, fontSize = 9.sp)
                     }
