@@ -47,12 +47,17 @@ kotlin {
 }
 
 val gitVersion: String by lazy {
-    try {
-        project.providers.exec {
-            commandLine("git", "describe", "--tags", "--abbrev=0")
-        }.standardOutput.asText.get().trim().removePrefix("v")
-    } catch (e: Exception) {
-        "1.7.1"
+    val envVersion = System.getenv("APP_RELEASE_VERSION") ?: System.getProperty("APP_RELEASE_VERSION")
+    if (!envVersion.isNullOrBlank()) {
+        envVersion.removePrefix("v").trim()
+    } else {
+        try {
+            project.providers.exec {
+                commandLine("git", "describe", "--tags", "--abbrev=0")
+            }.standardOutput.asText.get().trim().removePrefix("v")
+        } catch (e: Exception) {
+            "1.7.1"
+        }
     }
 }
 

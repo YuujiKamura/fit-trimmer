@@ -30,6 +30,8 @@ jobs:
 
       - name: Build Desktop Distribution
         run: ./gradlew :composeApp:packageMsi
+        env:
+          APP_RELEASE_VERSION: ${{ github.ref_name }}
 
       - name: List Artifacts
         shell: bash
