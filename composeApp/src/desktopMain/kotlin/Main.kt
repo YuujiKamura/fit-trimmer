@@ -51,7 +51,7 @@ import utils.*
 import components.*
 import viewmodel.*
 
-const val APP_VERSION = "v1.7.8"
+const val APP_VERSION = "v1.7.9"
 
 private const val PLAYBACK_PREVIEW_INTERVAL_MS = 250L
 
@@ -103,7 +103,7 @@ fun main(args: Array<String>) {
             batchFile.writeText("""
                 @echo off
                 timeout /t 2 /nobreak > nul
-                start /wait "" msiexec.exe /i "${tempFile.absolutePath}" /qn /norestart
+                start /wait "" msiexec.exe /i "${tempFile.absolutePath}" /qb /norestart
                 start "" "$targetPath"
                 del "${launcherFile.absolutePath}"
                 del "%~f0"
@@ -360,14 +360,89 @@ fun startGui(args: Array<String>) = application {
                                     
                                     isDownloadingUpdate = false
                                     if (result == "SUCCESS") {
-                                        statusText = "アップデート完了。再起動します..."
-                                        javax.swing.JOptionPane.showMessageDialog(
+                                        val tempDir = File(System.getProperty("java.io.tmpdir"))
+                                        val batchFile = File(tempDir, "fit-trimmer-apply-update.bat")
+                                        val launcherFile = File(tempDir, "fit-trimmer-launcher.vbs")
+
+                                        val options = arrayOf("今すぐ再起動して適用", "後で（アプリ終了時に適用）", "キャンセル")
+                                        val choice = javax.swing.JOptionPane.showOptionDialog(
                                             composeWindow,
-                                            "アップデートの適用準備が整いました。\nOKを押すとアプリを終了し、自動差し替えと再起動を行います。",
+                                            "アップデートのダウンロードが完了しました。\n今すぐアプリを再起動して適用しますか？",
                                             "アップデート適用",
-                                            javax.swing.JOptionPane.INFORMATION_MESSAGE
+                                            javax.swing.JOptionPane.YES_NO_CANCEL_OPTION,
+                                            javax.swing.JOptionPane.QUESTION_MESSAGE,
+                                            null,
+                                            options,
+                                            options[0]
                                         )
-                                        System.exit(0)
+
+                                        if (choice == 0) { // 今すぐ再起動して適用
+                                            statusText = "アップデート完了。再起動します..."
+                                            val isWindows = System.getProperty("os.name").lowercase().contains("win")
+                                            if (isWindows) {
+                                                launcherFile.writeText(
+                                                    "Set WshShell = CreateObject(\"WScript.Shell\")\n" +
+                                                    "WshShell.Run \"cmd.exe /c \"\"" + batchFile.absolutePath + "\"\" restart\", 0, false",
+                                                    charset("Shift_JIS")
+                                                )
+                                                ProcessBuilder("wscript.exe", launcherFile.absolutePath)
+                                                    .directory(tempDir)
+                                                    .start()
+                                            } else {
+                                                val shellFile = File(tempDir, "fit-trimmer-apply-update.sh")
+                                                ProcessBuilder("/bin/bash", shellFile.absolutePath)
+                                                    .directory(tempDir)
+                                                    .start()
+                                            }
+                                            System.exit(0)
+                                        } else if (choice == 1) { // 後で（アプリ終了時に適用）
+                                            statusText = "⏬ アップデート待機中（次回終了時に適用）"
+                                            val isWindows = System.getProperty("os.name").lowercase().contains("win")
+                                            if (isWindows) {
+                                                // Re-write launcher VBS to execute batch WITHOUT "restart" parameter
+                                                launcherFile.writeText(
+                                                    "Set WshShell = CreateObject(\"WScript.Shell\")\n" +
+                                                    "WshShell.Run \"cmd.exe /c \"\"" + batchFile.absolutePath + "\"\"\", 0, false",
+                                                    charset("Shift_JIS")
+                                                )
+                                                Runtime.getRuntime().addShutdownHook(Thread {
+                                                    try {
+                                                        ProcessBuilder("wscript.exe", launcherFile.absolutePath)
+                                                            .directory(tempDir)
+                                                            .start()
+                                                    } catch (e: Exception) {
+                                                        e.printStackTrace()
+                                                    }
+                                                })
+                                            } else {
+                                                val shellFile = File(tempDir, "fit-trimmer-apply-update.sh")
+                                                Runtime.getRuntime().addShutdownHook(Thread {
+                                                    try {
+                                                        ProcessBuilder("/bin/bash", shellFile.absolutePath)
+                                                            .directory(tempDir)
+                                                            .start()
+                                                    } catch (e: Exception) {
+                                                        e.printStackTrace()
+                                                    }
+                                                })
+                                            }
+                                            javax.swing.JOptionPane.showMessageDialog(
+                                                composeWindow,
+                                                "アップデートは保留されました。\n次回アプリ終了時にバックグラウンドで適用されます。",
+                                                "アップデート保留",
+                                                javax.swing.JOptionPane.INFORMATION_MESSAGE
+                                            )
+                                        } else { // キャンセル
+                                            statusText = "アップデート適用をキャンセルしました"
+                                            try {
+                                                batchFile.delete()
+                                                launcherFile.delete()
+                                                val shellFile = File(tempDir, "fit-trimmer-apply-update.sh")
+                                                shellFile.delete()
+                                            } catch (e: Exception) {
+                                                // Ignore cleanup errors
+                                            }
+                                        }
                                     } else if (result == "DEVELOPMENT_ENV") {
                                         javax.swing.JOptionPane.showMessageDialog(
                                             composeWindow,
@@ -2683,7 +2758,7 @@ object UpdateManager {
                     batchFile.writeText("""
                         @echo off
                         timeout /t 2 /nobreak > nul
-                        start /wait "" msiexec.exe /i "${tempFile.absolutePath}" /qn /norestart
+                        start /wait "" msiexec.exe /i "${tempFile.absolutePath}" /qb /norestart
                         start "" "$targetPath"
                         del "${launcherFile.absolutePath}"
                         del "%~f0"
@@ -2696,10 +2771,7 @@ object UpdateManager {
                         charset("Shift_JIS")
                     )
 
-                    // Execute silently via Windows Script Host (wscript.exe)
-                    ProcessBuilder("wscript.exe", launcherFile.absolutePath)
-                        .directory(tempDir)
-                        .start()
+                    // Launcher creation complete. The caller will execute the launcher (VBS) based on user preference.
                 } else {
                     val shellFile = File(tempDir, "fit-trimmer-apply-update.sh")
                     shellFile.writeText("""
