@@ -51,7 +51,7 @@ import utils.*
 import components.*
 import viewmodel.*
 
-const val APP_VERSION = "v1.5.0"
+const val APP_VERSION = "v1.7.6"
 
 private const val PLAYBACK_PREVIEW_INTERVAL_MS = 250L
 
@@ -271,7 +271,12 @@ fun startGui(args: Array<String>) = application {
                         if (isDev) {
                             java.awt.Desktop.getDesktop().browse(java.net.URI(release.htmlUrl))
                         } else {
-                            val matchedAsset = release.assets.find { it.name.endsWith(".$ext") } ?: release.assets.firstOrNull()
+                            val isWindows = System.getProperty("os.name").lowercase().contains("win")
+                            val matchedAsset = if (isWindows) {
+                                release.assets.find { it.name.endsWith(".msi") }
+                            } else {
+                                release.assets.find { it.name.endsWith(".dmg") }
+                            } ?: release.assets.firstOrNull()
                             if (matchedAsset != null) {
                                 isDownloadingUpdate = true
                                 updateStatusText = "ダウンロード中 (0%)..."
@@ -2605,9 +2610,7 @@ object UpdateManager {
                     batchFile.writeText("""
                         @echo off
                         timeout /t 2 /nobreak > nul
-                        copy /y "${tempFile.absolutePath}" "$targetPath"
-                        start "" "$targetPath"
-                        del "${tempFile.absolutePath}"
+                        start "" "${tempFile.absolutePath}"
                         del "${launcherFile.absolutePath}"
                         del "%~f0"
                     """.trimIndent(), charset("Shift_JIS"))
