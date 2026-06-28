@@ -1,0 +1,264 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1782679085644,
+  "projectRoot": "C:\\Users\\yuuji\\fit-trimmer",
+  "techStack": {
+    "languages": [
+      {
+        "name": "JavaScript/TypeScript",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "package.json"
+        ]
+      },
+      {
+        "name": "Kotlin",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "build.gradle.kts"
+        ]
+      }
+    ],
+    "frameworks": [
+      {
+        "name": "vite",
+        "version": "8.0.16",
+        "category": "build"
+      }
+    ],
+    "packageManager": "npm",
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": null,
+    "testCommand": "npm test",
+    "lintCommand": null,
+    "devCommand": "npm run dev",
+    "scripts": {
+      "test": "node --test test/parser.test.js",
+      "dev": "vite",
+      "build-wasm": "gradlew.bat :shared-core:wasmJsBrowserDistribution",
+      "watch-wasm": "gradlew.bat -t :shared-core:wasmJsBrowserDevelopmentExecutableDistribution"
+    }
+  },
+  "conventions": {
+    "namingStyle": "camelCase/PascalCase",
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "docs",
+      "public",
+      "src",
+      "test"
+    ],
+    "gitBranches": {
+      "defaultBranch": "main",
+      "branchingStrategy": null
+    }
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "build": {
+      "path": "build",
+      "purpose": "Build output",
+      "fileCount": 0,
+      "lastAccessed": 1782679085510,
+      "keyFiles": []
+    },
+    "composeApp": {
+      "path": "composeApp",
+      "purpose": null,
+      "fileCount": 5,
+      "lastAccessed": 1782679085512,
+      "keyFiles": [
+        "build.gradle.kts",
+        "current_gui_config.json",
+        "hs_err_pid5004.log",
+        "hs_err_pid8068.log",
+        "hud_params.json"
+      ]
+    },
+    "decompiled": {
+      "path": "decompiled",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1782679085564,
+      "keyFiles": [
+        "MainKt.java"
+      ]
+    },
+    "docs": {
+      "path": "docs",
+      "purpose": "Documentation",
+      "fileCount": 2,
+      "lastAccessed": 1782679085565,
+      "keyFiles": [
+        "ARCHITECTURE.md",
+        "design_decisions_imu_alignment.md"
+      ]
+    },
+    "gradle": {
+      "path": "gradle",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1782679085567,
+      "keyFiles": [
+        "gradle-daemon-jvm.properties"
+      ]
+    },
+    "kotlin-js-store": {
+      "path": "kotlin-js-store",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1782679085567,
+      "keyFiles": [
+        "yarn.lock"
+      ]
+    },
+    "public": {
+      "path": "public",
+      "purpose": "Public files",
+      "fileCount": 0,
+      "lastAccessed": 1782679085568,
+      "keyFiles": []
+    },
+    "rails-hub": {
+      "path": "rails-hub",
+      "purpose": null,
+      "fileCount": 16,
+      "lastAccessed": 1782679085568,
+      "keyFiles": [
+        "config.ru",
+        "dashboard.png",
+        "dashboard_final.png",
+        "dashboard_fixed.png",
+        "dashboard_v2.png"
+      ]
+    },
+    "scratch": {
+      "path": "scratch",
+      "purpose": null,
+      "fileCount": 6,
+      "lastAccessed": 1782679085570,
+      "keyFiles": [
+        "db_output.txt",
+        "measure_f_drive.py",
+        "measure_f_subdirs.py",
+        "query_db.py",
+        "test_acceleration.py"
+      ]
+    },
+    "shared-core": {
+      "path": "shared-core",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1782679085571,
+      "keyFiles": [
+        "build.gradle.kts"
+      ]
+    },
+    "src": {
+      "path": "src",
+      "purpose": "Source code",
+      "fileCount": 2,
+      "lastAccessed": 1782679085572,
+      "keyFiles": [
+        "app.js",
+        "parser.js"
+      ]
+    },
+    "temp_work": {
+      "path": "temp_work",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1782679085573,
+      "keyFiles": [
+        "ffmpeg_log.txt"
+      ]
+    },
+    "test": {
+      "path": "test",
+      "purpose": "Test files",
+      "fileCount": 1,
+      "lastAccessed": 1782679085574,
+      "keyFiles": [
+        "parser.test.js"
+      ]
+    },
+    "composeApp\\build": {
+      "path": "composeApp\\build",
+      "purpose": "Build output",
+      "fileCount": 0,
+      "lastAccessed": 1782679085576,
+      "keyFiles": []
+    },
+    "composeApp\\src": {
+      "path": "composeApp\\src",
+      "purpose": "Source code",
+      "fileCount": 0,
+      "lastAccessed": 1782679085578,
+      "keyFiles": []
+    },
+    "rails-hub\\app": {
+      "path": "rails-hub\\app",
+      "purpose": "Application code",
+      "fileCount": 0,
+      "lastAccessed": 1782679085579,
+      "keyFiles": []
+    },
+    "rails-hub\\bin": {
+      "path": "rails-hub\\bin",
+      "purpose": "Executable scripts",
+      "fileCount": 10,
+      "lastAccessed": 1782679085580,
+      "keyFiles": [
+        "brakeman",
+        "bundler-audit",
+        "ci"
+      ]
+    },
+    "rails-hub\\config": {
+      "path": "rails-hub\\config",
+      "purpose": "Configuration files",
+      "fileCount": 12,
+      "lastAccessed": 1782679085580,
+      "keyFiles": [
+        "application.rb",
+        "boot.rb",
+        "bundler-audit.yml"
+      ]
+    },
+    "shared-core\\build": {
+      "path": "shared-core\\build",
+      "purpose": "Build output",
+      "fileCount": 0,
+      "lastAccessed": 1782679085581,
+      "keyFiles": []
+    },
+    "shared-core\\src": {
+      "path": "shared-core\\src",
+      "purpose": "Source code",
+      "fileCount": 0,
+      "lastAccessed": 1782679085581,
+      "keyFiles": []
+    },
+    "temp_work\\bin": {
+      "path": "temp_work\\bin",
+      "purpose": "Executable scripts",
+      "fileCount": 1,
+      "lastAccessed": 1782679085582,
+      "keyFiles": [
+        "ffmpeg.exe"
+      ]
+    }
+  },
+  "hotPaths": [],
+  "userDirectives": []
+}
