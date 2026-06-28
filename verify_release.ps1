@@ -71,7 +71,8 @@ Write-Host "Using test FIT: $realFitPath" -ForegroundColor Green
 Write-Host "=== 4. Executing E2E Tests ===" -ForegroundColor Cyan
 # Run the extracted production binary in E2E test mode
 $e2eArgs = @("--test-e2e", "--fit", "`"$realFitPath`"", "--video", "`"$dummyVideoPath`"", "--output", "`"$testOutputVideoPath`"")
-$process = Start-Process -FilePath $exePath.FullName -ArgumentList $e2eArgs -PassThru -Wait -NoNewWindow
+$process = Start-Process -FilePath $exePath.FullName -ArgumentList $e2eArgs -PassThru -NoNewWindow
+$process.WaitForExit()
 
 # Check E2E test exit code
 if ($process.ExitCode -ne 0) {
@@ -79,8 +80,9 @@ if ($process.ExitCode -ne 0) {
 }
 
 Write-Host "=== 5. Executing Auto-Update Verification ===" -ForegroundColor Cyan
-$updateArgs = @("--test-update")
-$updateProcess = Start-Process -FilePath $exePath.FullName -ArgumentList $updateArgs -PassThru -Wait -NoNewWindow
+$updateArgs = @("--test-update", "`"$($msiPath.FullName)`"")
+$updateProcess = Start-Process -FilePath $exePath.FullName -ArgumentList $updateArgs -PassThru -NoNewWindow
+$updateProcess.WaitForExit()
 if ($updateProcess.ExitCode -ne 0) {
     Write-Error "Auto-Update Verification Failed (Exit Code: $($updateProcess.ExitCode))"
 }

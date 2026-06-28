@@ -51,7 +51,7 @@ import utils.*
 import components.*
 import viewmodel.*
 
-const val APP_VERSION = "v1.7.7"
+const val APP_VERSION = "v1.7.8"
 
 private const val PLAYBACK_PREVIEW_INTERVAL_MS = 250L
 
@@ -62,33 +62,65 @@ fun main(args: Array<String>) {
     if (args.contains("--test-update")) {
         kotlinx.coroutines.runBlocking {
             println("=== STARTING LOCAL UPDATE TEST ===")
-            val release = UpdateManager.fetchLatestRelease() ?: run {
-                println("ERROR: Could not fetch latest release info from GitHub")
-                System.exit(1)
-                return@runBlocking
-            }
-            val matchedAsset = release.assets.find { it.name.endsWith(".msi") } ?: run {
-                println("ERROR: Could not find .msi asset in release ${release.tagName}")
-                System.exit(1)
-                return@runBlocking
-            }
-            val downloadUrl = matchedAsset.browserDownloadUrl
-            val assetName = matchedAsset.name
-            println("Downloading from: $downloadUrl")
-            val result = UpdateManager.performUpdate(
-                downloadUrl = downloadUrl,
-                fileName = assetName,
-                onProgress = { progress ->
-                    println("Progress: ${(progress * 100).toInt()}%")
-                }
-            )
-            println("Update perform result: $result")
-            if (result == "SUCCESS") {
-                println("Update trigger succeeded. Exiting process to let installer run.")
-                System.exit(0)
+            val testUpdateIdx = args.indexOf("--test-update")
+            val localMsiPath = if (testUpdateIdx != -1 && testUpdateIdx + 1 < args.size) {
+                args[testUpdateIdx + 1]
             } else {
-                System.exit(1)
+                null
             }
+
+            if (localMsiPath == null || !File(localMsiPath).exists()) {
+                println("ERROR: Local MSI path for testing not found or not provided: $localMsiPath")
+                System.exit(1)
+                return@runBlocking
+            }
+
+            val localFile = File(localMsiPath)
+            val tempDir = File(System.getProperty("java.io.tmpdir"))
+            val uniqueId = java.util.UUID.randomUUID().toString().take(8)
+            val tempFile = File(tempDir, "fit-trimmer-update-$uniqueId-${localFile.name}")
+            
+            println("Copying local msi to: ${tempFile.absolutePath}")
+            try {
+                localFile.copyTo(tempFile, overwrite = true)
+            } catch (e: Exception) {
+                println("ERROR: Failed to copy msi: ${e.message}")
+                System.exit(1)
+                return@runBlocking
+            }
+
+            val runningUri = UpdateManager::class.java.protectionDomain.codeSource.location.toURI()
+            val runningFile = File(runningUri)
+            val targetPath = if (runningFile.parentFile?.name == "app") {
+                File(runningFile.parentFile.parentFile, "FitTrimmer.exe").absolutePath
+            } else {
+                runningFile.absolutePath
+            }
+
+            val batchFile = File(tempDir, "fit-trimmer-apply-update.bat")
+            val launcherFile = File(tempDir, "fit-trimmer-launcher.vbs")
+            
+            batchFile.writeText("""
+                @echo off
+                timeout /t 2 /nobreak > nul
+                start /wait "" msiexec.exe /i "${tempFile.absolutePath}" /qn /norestart
+                start "" "$targetPath"
+                del "${launcherFile.absolutePath}"
+                del "%~f0"
+            """.trimIndent(), charset("Shift_JIS"))
+
+            launcherFile.writeText(
+                "Set WshShell = CreateObject(\"WScript.Shell\")\n" +
+                "WshShell.Run \"cmd.exe /c \"\"" + batchFile.absolutePath + "\"\"\", 0, false",
+                charset("Shift_JIS")
+            )
+
+            ProcessBuilder("wscript.exe", launcherFile.absolutePath)
+                .directory(tempDir)
+                .start()
+
+            println("Update trigger succeeded. Exiting process.")
+            System.exit(0)
         }
         return
     }
@@ -2604,7 +2636,14 @@ object UpdateManager {
             try {
                 val runningUri = UpdateManager::class.java.protectionDomain.codeSource.location.toURI()
                 val runningFile = File(runningUri)
-                val targetPath = runningFile.absolutePath
+                
+                // If running from packaged app (jpackage), the JAR is inside the 'app' directory,
+                // and the executable 'FitTrimmer.exe' is located two levels up.
+                val targetPath = if (runningFile.parentFile?.name == "app") {
+                    File(runningFile.parentFile.parentFile, "FitTrimmer.exe").absolutePath
+                } else {
+                    runningFile.absolutePath
+                }
                 val extension = runningFile.extension.lowercase()
                 
                 if (extension != "jar" && extension != "exe") {
@@ -2644,8 +2683,7 @@ object UpdateManager {
                     batchFile.writeText("""
                         @echo off
                         timeout /t 2 /nobreak > nul
-                        msiexec.exe /i "${tempFile.absolutePath}" /qn /norestart
-                        timeout /t 3 /nobreak > nul
+                        start /wait "" msiexec.exe /i "${tempFile.absolutePath}" /qn /norestart
                         start "" "$targetPath"
                         del "${launcherFile.absolutePath}"
                         del "%~f0"
