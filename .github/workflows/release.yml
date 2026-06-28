@@ -10,19 +10,8 @@ permissions:
 
 jobs:
   build-and-release:
-    name: Build & Release for ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        include:
-          - os: windows-latest
-            task: ':composeApp:packageMsi'
-            artifact_dir: 'composeApp/build/compose/binaries/main/msi'
-            pattern: '*.msi'
-          - os: macos-latest
-            task: ':composeApp:packageDmg'
-            artifact_dir: 'composeApp/build/compose/binaries/main/dmg'
-            pattern: '*.dmg'
+    name: Build & Release Windows App
+    runs-on: windows-latest
 
     steps:
       - name: Checkout repository
@@ -40,18 +29,18 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
 
       - name: Build Desktop Distribution
-        run: ./gradlew ${{ matrix.task }}
+        run: ./gradlew :composeApp:packageMsi
 
       - name: List Artifacts
         shell: bash
         run: |
           echo "Listing artifacts in target directory..."
-          ls -R ${{ matrix.artifact_dir }} || true
+          ls -R composeApp/build/compose/binaries/main/msi || true
 
       - name: Release and Upload Assets
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            ${{ matrix.artifact_dir }}/${{ matrix.pattern }}
+            composeApp/build/compose/binaries/main/msi/*.msi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

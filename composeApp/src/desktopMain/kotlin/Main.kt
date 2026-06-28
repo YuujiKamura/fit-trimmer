@@ -51,7 +51,7 @@ import utils.*
 import components.*
 import viewmodel.*
 
-const val APP_VERSION = "v1.7.6"
+const val APP_VERSION = "v1.7.7"
 
 private const val PLAYBACK_PREVIEW_INTERVAL_MS = 250L
 
@@ -59,6 +59,39 @@ private const val PLAYBACK_PREVIEW_INTERVAL_MS = 250L
 fun main(args: Array<String>) {
     System.setProperty("compose.interop.blending", "false")
     System.setProperty("sun.java2d.noddraw", "true")
+    if (args.contains("--test-update")) {
+        kotlinx.coroutines.runBlocking {
+            println("=== STARTING LOCAL UPDATE TEST ===")
+            val release = UpdateManager.fetchLatestRelease() ?: run {
+                println("ERROR: Could not fetch latest release info from GitHub")
+                System.exit(1)
+                return@runBlocking
+            }
+            val matchedAsset = release.assets.find { it.name.endsWith(".msi") } ?: run {
+                println("ERROR: Could not find .msi asset in release ${release.tagName}")
+                System.exit(1)
+                return@runBlocking
+            }
+            val downloadUrl = matchedAsset.browserDownloadUrl
+            val assetName = matchedAsset.name
+            println("Downloading from: $downloadUrl")
+            val result = UpdateManager.performUpdate(
+                downloadUrl = downloadUrl,
+                fileName = assetName,
+                onProgress = { progress ->
+                    println("Progress: ${(progress * 100).toInt()}%")
+                }
+            )
+            println("Update perform result: $result")
+            if (result == "SUCCESS") {
+                println("Update trigger succeeded. Exiting process to let installer run.")
+                System.exit(0)
+            } else {
+                System.exit(1)
+            }
+        }
+        return
+    }
     if (args.contains("--test-e2e")) {
         runE2ETest(args)
         return
@@ -2579,7 +2612,8 @@ object UpdateManager {
                 }
 
                 val tempDir = File(System.getProperty("java.io.tmpdir"))
-                val tempFile = File(tempDir, "fit-trimmer-update-$fileName")
+                val uniqueId = java.util.UUID.randomUUID().toString().take(8)
+                val tempFile = File(tempDir, "fit-trimmer-update-$uniqueId-$fileName")
                 
                 val url = java.net.URL(downloadUrl)
                 val conn = url.openConnection() as java.net.HttpURLConnection
@@ -2610,7 +2644,9 @@ object UpdateManager {
                     batchFile.writeText("""
                         @echo off
                         timeout /t 2 /nobreak > nul
-                        start "" "${tempFile.absolutePath}"
+                        msiexec.exe /i "${tempFile.absolutePath}" /qn /norestart
+                        timeout /t 3 /nobreak > nul
+                        start "" "$targetPath"
                         del "${launcherFile.absolutePath}"
                         del "%~f0"
                     """.trimIndent(), charset("Shift_JIS"))
