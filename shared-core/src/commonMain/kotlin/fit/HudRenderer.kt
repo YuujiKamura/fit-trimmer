@@ -14,7 +14,7 @@ data class HudConfig(
     val yOffset: Float,
     val graphH: Float,
     val graphW: Float,
-    val captionPosition: String = "top_right",
+    val captionPosition: String = "top_center",
     val roadCaptions: List<RoadCaptionSegment> = emptyList()
 )
 
