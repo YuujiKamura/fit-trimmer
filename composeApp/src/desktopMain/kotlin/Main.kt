@@ -138,6 +138,7 @@ fun startGui(args: Array<String>) = application {
     var appTempSpaceGB by viewModel::appTempSpaceGB
     var isDetectingRoads by remember { mutableStateOf(false) }
     var roadDetectionStatus by remember { mutableStateOf("") }
+    var roadDetectionJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     val playerState = rememberVideoPlayerState()
     var composeWindow: java.awt.Window? by remember { mutableStateOf(null) }
     var ignoreNextStartUtcClear by remember { mutableStateOf(false) }
@@ -1275,6 +1276,216 @@ fun startGui(args: Array<String>) = application {
                                               enabled = !isEncoding
                                           ) {
                                               Text(label, fontSize = 10.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
+                                          }
+                                      }
+                                  }
+                              }
+
+                              Spacer(modifier = Modifier.height(6.dp))
+
+                              // Route Captions / Road Captions Settings
+                              Column(
+                                  modifier = Modifier
+                                      .fillMaxWidth()
+                                      .background(Color(0xFFF2F2F7), shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                                      .border(1.dp, Color(0xFFE5E5EA), shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                                      .padding(horizontal = 10.dp, vertical = 8.dp),
+                                  verticalArrangement = Arrangement.spacedBy(6.dp)
+                              ) {
+                                  Row(
+                                      modifier = Modifier.fillMaxWidth(),
+                                      horizontalArrangement = Arrangement.SpaceBetween,
+                                      verticalAlignment = Alignment.CenterVertically
+                                  ) {
+                                      Column {
+                                          Text("ROUTE CAPTIONS (路線名テロップ)", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                                          Text("動画上に道路の路線名を焼き込みます", color = Color(0xFF636366), fontSize = 8.sp)
+                                      }
+                                  }
+
+                                  if (isDetectingRoads) {
+                                      Column(
+                                          modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                          verticalArrangement = Arrangement.spacedBy(4.dp),
+                                          horizontalAlignment = Alignment.CenterHorizontally
+                                      ) {
+                                          CircularProgressIndicator(
+                                              modifier = Modifier.size(20.dp),
+                                              color = Color(0xFF007AFF),
+                                              strokeWidth = 2.dp
+                                          )
+                                          Text(roadDetectionStatus, fontSize = 9.sp, color = Color(0xFF1C1C1E))
+                                          OutlinedButton(
+                                              onClick = {
+                                                  roadDetectionJob?.cancel()
+                                                  isDetectingRoads = false
+                                              },
+                                              modifier = Modifier.height(20.dp),
+                                              contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                              colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.Red)
+                                          ) {
+                                              Text("キャンセル", fontSize = 8.sp)
+                                          }
+                                      }
+                                  } else {
+                                      val captions = settings.roadCaptions
+                                      if (captions.isEmpty()) {
+                                          Text("路線名データがありません。GPSログから自動検出できます。", fontSize = 9.sp, color = Color.Gray)
+                                          Button(
+                                              onClick = {
+                                                  isDetectingRoads = true
+                                                  roadDetectionStatus = "スキャン準備中..."
+                                                  roadDetectionJob = scope.launch {
+                                                      try {
+                                                          val durationSec = videoLengthMs / 1000.0
+                                                          val detected = detectRoadSegments(
+                                                              points = telemetryPoints,
+                                                              videoStartUtc = adjustedStartUtc.ifEmpty { videoStartUtc },
+                                                              timeOffsetMillis = timeOffsetState.millis.toLong(),
+                                                              videoDurationSeconds = durationSec,
+                                                              onProgress = { progressText ->
+                                                                  roadDetectionStatus = progressText
+                                                              }
+                                                          )
+                                                          settings = settings.copy(roadCaptions = detected)
+                                                      } catch (e: Exception) {
+                                                          e.printStackTrace()
+                                                          roadDetectionStatus = "エラーが発生しました: ${e.message}"
+                                                      } finally {
+                                                          isDetectingRoads = false
+                                                      }
+                                                  }
+                                              },
+                                              colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF007AFF)),
+                                              contentPadding = PaddingValues(0.dp),
+                                              shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp),
+                                              modifier = Modifier.fillMaxWidth().height(24.dp),
+                                              enabled = videoPath.isNotEmpty() && telemetryPoints.isNotEmpty() && !isEncoding
+                                          ) {
+                                              Text("🔍 GPSから路線名を自動検出する", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                          }
+                                      } else {
+                                          Column(
+                                              modifier = Modifier.fillMaxWidth().heightIn(max = 120.dp).verticalScroll(rememberScrollState()),
+                                              verticalArrangement = Arrangement.spacedBy(4.dp)
+                                          ) {
+                                              captions.forEachIndexed { index, segment ->
+                                                  Row(
+                                                      modifier = Modifier
+                                                          .fillMaxWidth()
+                                                          .background(Color.White, shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                                                          .border(0.5.dp, Color(0xFFE5E5EA), shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                                                          .padding(4.dp),
+                                                      verticalAlignment = Alignment.CenterVertically
+                                                  ) {
+                                                      Checkbox(
+                                                          checked = segment.isEnabled,
+                                                          onCheckedChange = { checked ->
+                                                              val updated = captions.mapIndexed { idx, item ->
+                                                                  if (idx == index) item.copy(isEnabled = checked) else item
+                                                              }
+                                                              settings = settings.copy(roadCaptions = updated)
+                                                          },
+                                                          modifier = Modifier.size(24.dp)
+                                                      )
+                                                      Spacer(Modifier.width(2.dp))
+                                                      Column(modifier = Modifier.weight(1f)) {
+                                                          androidx.compose.foundation.text.BasicTextField(
+                                                              value = segment.text,
+                                                              onValueChange = { newText ->
+                                                                  val updated = captions.mapIndexed { idx, item ->
+                                                                      if (idx == index) item.copy(text = newText) else item
+                                                                  }
+                                                                  settings = settings.copy(roadCaptions = updated)
+                                                              },
+                                                              textStyle = androidx.compose.ui.text.TextStyle(fontSize = 10.sp, color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold),
+                                                              modifier = Modifier.fillMaxWidth().background(Color(0xFFF2F2F7)).padding(2.dp)
+                                                          )
+                                                          Text(
+                                                              text = "${utils.formatTime((segment.startSeconds * 1000).toLong())} - ${utils.formatTime((segment.endSeconds * 1000).toLong())}",
+                                                              fontSize = 8.sp,
+                                                              color = Color.Gray
+                                                          )
+                                                      }
+                                                      Spacer(Modifier.width(2.dp))
+                                                      IconButton(
+                                                          onClick = {
+                                                              val updated = captions.filterIndexed { idx, _ -> idx != index }
+                                                              settings = settings.copy(roadCaptions = updated)
+                                                          },
+                                                          modifier = Modifier.size(20.dp)
+                                                      ) {
+                                                          Text("❌", fontSize = 8.sp)
+                                                      }
+                                                  }
+                                              }
+                                          }
+
+                                          Spacer(modifier = Modifier.height(2.dp))
+
+                                          Row(
+                                              modifier = Modifier.fillMaxWidth(),
+                                              horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                          ) {
+                                              Button(
+                                                  onClick = {
+                                                      val newSegment = RoadCaptionSegment(
+                                                          id = java.util.UUID.randomUUID().toString(),
+                                                          startSeconds = 0.0,
+                                                          endSeconds = videoLengthMs / 1000.0,
+                                                          text = "新しいテロップ",
+                                                          isEnabled = true
+                                                      )
+                                                      settings = settings.copy(roadCaptions = captions + newSegment)
+                                                  },
+                                                  colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFE5E5EA)),
+                                                  contentPadding = PaddingValues(0.dp),
+                                                  modifier = Modifier.weight(1f).height(20.dp)
+                                              ) {
+                                                  Text("＋ 追加", fontSize = 9.sp, color = Color(0xFF1C1C1E))
+                                              }
+
+                                              Button(
+                                                  onClick = {
+                                                      isDetectingRoads = true
+                                                      roadDetectionStatus = "スキャン準備中..."
+                                                      roadDetectionJob = scope.launch {
+                                                          try {
+                                                              val durationSec = videoLengthMs / 1000.0
+                                                              val detected = detectRoadSegments(
+                                                                  points = telemetryPoints,
+                                                                  videoStartUtc = adjustedStartUtc.ifEmpty { videoStartUtc },
+                                                                  timeOffsetMillis = timeOffsetState.millis.toLong(),
+                                                                  videoDurationSeconds = durationSec,
+                                                                  onProgress = { progressText ->
+                                                                      roadDetectionStatus = progressText
+                                                                  }
+                                                              )
+                                                              settings = settings.copy(roadCaptions = detected)
+                                                          } catch (e: Exception) {
+                                                              e.printStackTrace()
+                                                          } finally {
+                                                              isDetectingRoads = false
+                                                          }
+                                                      }
+                                                  },
+                                                  colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFE5E5EA)),
+                                                  contentPadding = PaddingValues(0.dp),
+                                                  modifier = Modifier.weight(1f).height(20.dp)
+                                              ) {
+                                                  Text("🔄 再検出", fontSize = 9.sp, color = Color(0xFF1C1C1E))
+                                              }
+
+                                              Button(
+                                                  onClick = {
+                                                      settings = settings.copy(roadCaptions = emptyList())
+                                                  },
+                                                  colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFFFD6D6)),
+                                                  contentPadding = PaddingValues(0.dp),
+                                                  modifier = Modifier.weight(1f).height(20.dp)
+                                              ) {
+                                                  Text("🗑 クリア", fontSize = 9.sp, color = Color.Red)
+                                              }
                                           }
                                       }
                                   }

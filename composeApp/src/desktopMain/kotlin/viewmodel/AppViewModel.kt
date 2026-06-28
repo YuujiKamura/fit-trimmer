@@ -17,6 +17,9 @@ class AppViewModel(
     var proxyProgress by mutableStateOf(0f)
     var proxyVideoPath by mutableStateOf<String?>(null)
 
+    var isDetectingRoads by mutableStateOf(false)
+    var roadDetectionProgressText by mutableStateOf("")
+
     private var _videoPath by mutableStateOf(initialCache?.videoPath ?: "")
     var videoPath: String
         get() = _videoPath
