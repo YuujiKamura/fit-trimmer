@@ -59,6 +59,10 @@ private const val PLAYBACK_PREVIEW_INTERVAL_MS = 250L
 fun main(args: Array<String>) {
     System.setProperty("compose.interop.blending", "false")
     System.setProperty("sun.java2d.noddraw", "true")
+    if (args.contains("--test-e2e")) {
+        runE2ETest(args)
+        return
+    }
     if (args.contains("--auto-sample")) {
         startGui(args)
         return
@@ -2662,6 +2666,85 @@ fun ControlSlider(label: String, value: Float, min: Float, max: Float, onValueCh
                 inactiveTrackColor = Color(0xFFE5E5EA)
             )
         )
+    }
+}
+
+fun runE2ETest(args: Array<String>) {
+    println("🧪 Running E2E Test on current packaged build...")
+    
+    // 1. SSL/HTTPS connectivity test (reverse geocoding API)
+    println("[1/3] Checking SSL & HTTPS network connectivity (Nominatim API)...")
+    val testLat = 33.5897 // Fukuoka
+    val testLon = 130.4208
+    kotlinx.coroutines.runBlocking {
+        try {
+            val roadName = queryRoadName(testLat, testLon)
+            println("✅ Network SSL check passed. Road name resolved: $roadName")
+        } catch (e: Throwable) {
+            println("❌ Network SSL check FAILED: ${e.message}")
+            e.printStackTrace()
+            kotlin.system.exitProcess(10)
+        }
+    }
+
+    // 2. Video encoding and rendering test
+    println("[2/3] Checking video encoding functionality...")
+    var fitPath: String? = null
+    var videoPath: String? = null
+    var outputPath: String? = null
+    
+    var i = 0
+    while (i < args.size) {
+        when (args[i]) {
+            "--fit" -> fitPath = args.getOrNull(++i)
+            "--video" -> videoPath = args.getOrNull(++i)
+            "--output" -> outputPath = args.getOrNull(++i)
+        }
+        i++
+    }
+
+    if (fitPath == null || videoPath == null || outputPath == null) {
+        println("❌ E2E Test missing required files. Usage: --test-e2e --fit <fit> --video <video> --output <output>")
+        kotlin.system.exitProcess(1)
+    }
+
+    println("🚀 Starting test encode with duration limit (3 seconds)...")
+    kotlinx.coroutines.runBlocking {
+        try {
+            val settings = HudSettings()
+            val encoder = NativeHudEncoder(settings,
+                onProgress = { prog, status ->
+                    print("\rProgress: ${(prog * 100).toInt()}% - $status")
+                }
+            )
+            // Limit duration to 3 seconds for quick verification
+            encoder.encode(
+                fitPath = fitPath,
+                videoPath = videoPath,
+                output = outputPath,
+                startUtc = "2026-06-21T02:09:49Z", 
+                maxDurationSeconds = 3,
+                trimStartSeconds = 0.0,
+                trimEndSeconds = 3.0
+            )
+            println("\n✅ Video encoding check passed.")
+        } catch (e: Exception) {
+            println("\n❌ Video encoding check FAILED: ${e.message}")
+            e.printStackTrace()
+            kotlin.system.exitProcess(20)
+        }
+    }
+
+    // 3. Output file verification
+    println("[3/3] Verifying output file...")
+    val outFile = File(outputPath)
+    if (outFile.exists() && outFile.length() > 0) {
+        println("✅ Output file verified ($outputPath, size: ${outFile.length()} bytes)")
+        println("\n🎉 ALL E2E TESTS PASSED SUCCESSFULLY!")
+        kotlin.system.exitProcess(0)
+    } else {
+        println("❌ Output file verification FAILED: file does not exist or is empty")
+        kotlin.system.exitProcess(30)
     }
 }
 
