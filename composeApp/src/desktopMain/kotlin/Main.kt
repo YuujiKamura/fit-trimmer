@@ -51,7 +51,7 @@ import utils.*
 import components.*
 import viewmodel.*
 
-const val APP_VERSION = "v1.8.0"
+const val APP_VERSION = "v1.8.1"
 
 private const val PLAYBACK_PREVIEW_INTERVAL_MS = 250L
 
@@ -2260,6 +2260,8 @@ fun startGui(args: Array<String>) = application {
                             ) {
                                 val positions = listOf(
                                     "top_right" to "右上",
+                                    "top_center" to "中央上",
+                                    "top_left" to "左上",
                                     "bottom_center" to "下部中央"
                                 )
                                 positions.forEach { (posKey, label) ->
