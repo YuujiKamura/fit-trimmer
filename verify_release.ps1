@@ -73,17 +73,25 @@ Write-Host "=== 4. Executing E2E Tests ===" -ForegroundColor Cyan
 $e2eArgs = @("--test-e2e", "--fit", "`"$realFitPath`"", "--video", "`"$dummyVideoPath`"", "--output", "`"$testOutputVideoPath`"")
 $process = Start-Process -FilePath $exePath.FullName -ArgumentList $e2eArgs -PassThru -Wait -NoNewWindow
 
+# Check E2E test exit code
+if ($process.ExitCode -ne 0) {
+    Write-Error "E2E Test Failed (Exit Code: $($process.ExitCode))"
+}
+
+Write-Host "=== 5. Executing Auto-Update Verification ===" -ForegroundColor Cyan
+$updateArgs = @("--test-update")
+$updateProcess = Start-Process -FilePath $exePath.FullName -ArgumentList $updateArgs -PassThru -Wait -NoNewWindow
+if ($updateProcess.ExitCode -ne 0) {
+    Write-Error "Auto-Update Verification Failed (Exit Code: $($updateProcess.ExitCode))"
+}
+Write-Host "Auto-Update trigger verified successfully." -ForegroundColor Green
+
 # Clean up extracted temp directory after run to save disk space
 try {
     Remove-Item -Path $extractDir -Recurse -Force
     Remove-Item -Path $tempDir -Recurse -Force
 } catch {
     # Ignore cleanup errors
-}
-
-# Check exit code
-if ($process.ExitCode -ne 0) {
-    Write-Error "E2E Test Failed (Exit Code: $($process.ExitCode))"
 }
 
 Write-Host "=== ALL E2E TESTS PASSED SUCCESSFULLY! ===" -ForegroundColor Green
