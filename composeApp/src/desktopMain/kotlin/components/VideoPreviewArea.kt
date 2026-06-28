@@ -137,7 +137,8 @@ fun VideoPreviewArea(
     playerState: VideoPlayerState,
     videoCurrentTimeMs: Long,
     onCurrentTimeChange: (Long) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isEncoding: Boolean = false
 ) {
     var isPlaying by remember { mutableStateOf(false) }
     var lastVolume by remember { mutableStateOf(1f) }
@@ -318,6 +319,7 @@ fun VideoPreviewArea(
             ) {
                 Button(
                     onClick = togglePlay,
+                    enabled = !isEncoding,
                     colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF007AFF))
                 ) {
                     Text(if (isPlaying) "⏸ PAUSE" else "▶ PLAY", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
@@ -335,6 +337,7 @@ fun VideoPreviewArea(
                         val targetTime = (ratio * videoLengthMs).toLong()
                         seekTo(targetTime)
                     },
+                    enabled = !isEncoding,
                     modifier = Modifier.weight(1f),
                     colors = SliderDefaults.colors(
                         thumbColor = Color(0xFF007AFF),
