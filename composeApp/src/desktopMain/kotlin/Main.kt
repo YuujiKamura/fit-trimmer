@@ -51,7 +51,7 @@ import utils.*
 import components.*
 import viewmodel.*
 
-const val APP_VERSION = "v1.9.0"
+const val APP_VERSION = "v1.9.1"
 
 private const val PLAYBACK_PREVIEW_INTERVAL_MS = 250L
 
@@ -2466,7 +2466,8 @@ suspend fun fireEncode(
             val config = HudConfig(
                 valSize = s.valSize, tightness = s.tightness, spacing = s.spacing,
                 xOffset = s.xOffset, yOffset = s.yOffset, graphH = s.graphH, graphW = s.graphW,
-                captionPosition = s.captionPosition
+                captionPosition = s.captionPosition,
+                roadCaptions = s.roadCaptions
             )
             val proxy = DynamicRendererProxy(config)
             globalRendererProxy = proxy
@@ -2948,7 +2949,14 @@ fun runE2ETest(args: Array<String>) {
     println("🚀 Starting test encode with duration limit (3 seconds)...")
     kotlinx.coroutines.runBlocking {
         try {
-            val settings = HudSettings()
+            val testCaption = fit.RoadCaptionSegment(
+                id = "test-e2e-caption",
+                startSeconds = 0.0,
+                endSeconds = 3.0,
+                text = "E2E Test Route 101",
+                isEnabled = true
+            )
+            val settings = HudSettings(roadCaptions = listOf(testCaption))
             val encoder = NativeHudEncoder(settings,
                 onProgress = { prog, status ->
                     print("\rProgress: ${(prog * 100).toInt()}% - $status")
