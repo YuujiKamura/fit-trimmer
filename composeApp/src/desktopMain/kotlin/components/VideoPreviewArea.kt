@@ -145,7 +145,26 @@ fun VideoPreviewArea(
     var isPlaying by remember { mutableStateOf(false) }
     var lastVolume by remember { mutableStateOf(1f) }
 
-    val activePath = proxyVideoPath ?: videoPath
+    var activePath by remember(videoPath, proxyVideoPath) { mutableStateOf("") }
+
+    LaunchedEffect(videoPath, proxyVideoPath) {
+        if (videoPath.isEmpty() || !File(videoPath).exists()) {
+            activePath = ""
+            return@LaunchedEffect
+        }
+        val isProxyNeeded = withContext(Dispatchers.IO) {
+            isHevcOrHighRes(videoPath)
+        }
+        activePath = if (isProxyNeeded) {
+            if (proxyVideoPath != null && File(proxyVideoPath).exists()) {
+                proxyVideoPath
+            } else {
+                ""
+            }
+        } else {
+            videoPath
+        }
+    }
 
     val togglePlay = {
         println("DEBUG: togglePlay called. current isPlaying=${playerState.isPlaying}")
