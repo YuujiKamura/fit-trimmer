@@ -54,6 +54,7 @@ compose.desktop {
                 shortcut = true
                 upgradeUuid = "682f6e9f-7fd9-4be6-bb16-3e3da5cf21ab"
                 menuGroup = "FitTrimmer"
+                perUserInstall = true
             }
 
             // Include network and cryptography modules explicitly to prevent SSL handshake crashes in packaged runtime
