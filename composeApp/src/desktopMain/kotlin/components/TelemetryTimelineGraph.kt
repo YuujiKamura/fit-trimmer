@@ -75,6 +75,9 @@ fun TelemetryTimelineGraph(
     val currentOnTrimEndChange by rememberUpdatedState(onTrimEndChange)
     val currentOnSeek by rememberUpdatedState(onSeek)
 
+    var lastSeekTime by remember { mutableStateOf(0L) }
+    var pendingSeekTimeMs by remember { mutableStateOf<Long?>(null) }
+
     // Sample telemetry points to match video seconds
     val sampledPoints = remember(telemetryPoints, adjustedStartUtc, videoLengthMs) {
         if (telemetryPoints.isEmpty() || adjustedStartUtc.isEmpty() || videoLengthMs <= 0) {
@@ -234,55 +237,30 @@ fun TelemetryTimelineGraph(
                     .background(Color(0xFFF2F2F7))
                     .border(1.dp, Color(0xFFE5E5EA), RoundedCornerShape(6.dp))
                     .pointerInput(Unit) {
-                        detectTapGestures(
-                            onTap = { offset ->
-                                val vLength = currentVideoLengthMs
-                                val vDuration = vLength / 1000.0
-                                if (vDuration > 0) {
-                                    val w = size.width.toFloat()
-                                    val xStart = (currentTrimStartSeconds / vDuration) * w
-                                    val xEnd = (currentTrimEndSeconds / vDuration) * w
-                                    val xPlayhead = (currentVideoCurrentTimeMs / 1000.0 / vDuration) * w
-                                    
-                                    val threshold = 20.dp.toPx()
-                                    val tappedHandle = when {
-                                        kotlin.math.abs(offset.x - xStart) < threshold -> DragHandle.TRIM_START
-                                        kotlin.math.abs(offset.x - xEnd) < threshold -> DragHandle.TRIM_END
-                                        kotlin.math.abs(offset.x - xPlayhead) < threshold -> DragHandle.PLAYHEAD
-                                        else -> null
-                                    }
-                                    
-                                    if (tappedHandle == null) {
-                                        val ratio = (offset.x / w).coerceIn(0f, 1f)
-                                        currentOnSeek((ratio * vLength).toLong())
-                                    }
-                                }
-                            }
-                        )
-                    }
-                    .pointerInput(Unit) {
                         detectDragGestures(
                             onDragStart = { offset ->
                                 val vLength = currentVideoLengthMs
                                 val vDuration = vLength / 1000.0
                                 if (vDuration > 0) {
                                     val w = size.width.toFloat()
-                                    val xStart = (currentTrimStartSeconds / vDuration) * w
-                                    val xEnd = (currentTrimEndSeconds / vDuration) * w
-                                    val xPlayhead = (currentVideoCurrentTimeMs / 1000.0 / vDuration) * w
-                                    
-                                    val threshold = 20.dp.toPx()
-                                    activeDragHandle = when {
-                                        kotlin.math.abs(offset.x - xStart) < threshold -> DragHandle.TRIM_START
-                                        kotlin.math.abs(offset.x - xEnd) < threshold -> DragHandle.TRIM_END
-                                        kotlin.math.abs(offset.x - xPlayhead) < threshold -> DragHandle.PLAYHEAD
-                                        else -> null
-                                    }
-                                    
-                                    // If no handle is grabbed, perform a seek click
-                                    if (activeDragHandle == null) {
-                                        val ratio = (offset.x / w).coerceIn(0f, 1f)
-                                        currentOnSeek((ratio * vLength).toLong())
+                                    if (w > 0f) {
+                                        val xStart = (currentTrimStartSeconds / vDuration) * w
+                                        val xEnd = (currentTrimEndSeconds / vDuration) * w
+                                        val xPlayhead = (currentVideoCurrentTimeMs / 1000.0 / vDuration) * w
+                                        
+                                        val threshold = 20.dp.toPx()
+                                        activeDragHandle = when {
+                                            kotlin.math.abs(offset.x - xStart) < threshold -> DragHandle.TRIM_START
+                                            kotlin.math.abs(offset.x - xEnd) < threshold -> DragHandle.TRIM_END
+                                            kotlin.math.abs(offset.x - xPlayhead) < threshold -> DragHandle.PLAYHEAD
+                                            else -> null
+                                        }
+                                        
+                                        // If no handle is grabbed, perform a seek click
+                                        if (activeDragHandle == null) {
+                                            val ratio = (offset.x / w).coerceIn(0f, 1f)
+                                            currentOnSeek((ratio * vLength).toLong())
+                                        }
                                     }
                                 }
                             },
@@ -290,8 +268,8 @@ fun TelemetryTimelineGraph(
                                 change.consume()
                                 val vLength = currentVideoLengthMs
                                 val vDuration = vLength / 1000.0
-                                if (vDuration > 0 && activeDragHandle != null) {
-                                    val w = size.width.toFloat()
+                                val w = size.width.toFloat()
+                                if (vDuration > 0 && w > 0f && activeDragHandle != null) {
                                     val ratio = (change.position.x / w).coerceIn(0f, 1f)
                                     val targetSec = ratio * vDuration
                                     
@@ -303,14 +281,33 @@ fun TelemetryTimelineGraph(
                                             currentOnTrimEndChange(targetSec.coerceIn(currentTrimStartSeconds + 1.0, vDuration))
                                         }
                                         DragHandle.PLAYHEAD -> {
-                                            currentOnSeek((targetSec * 1000.0).toLong())
+                                            val targetTimeMs = (targetSec * 1000.0).toLong()
+                                            val now = System.currentTimeMillis()
+                                            if (now - lastSeekTime > 80) {
+                                                currentOnSeek(targetTimeMs)
+                                                lastSeekTime = now
+                                                pendingSeekTimeMs = null
+                                            } else {
+                                                pendingSeekTimeMs = targetTimeMs
+                                            }
                                         }
                                         null -> {}
                                     }
                                 }
                             },
                             onDragEnd = {
+                                if (activeDragHandle == DragHandle.PLAYHEAD && pendingSeekTimeMs != null) {
+                                    currentOnSeek(pendingSeekTimeMs!!)
+                                }
                                 activeDragHandle = null
+                                pendingSeekTimeMs = null
+                            },
+                            onDragCancel = {
+                                if (activeDragHandle == DragHandle.PLAYHEAD && pendingSeekTimeMs != null) {
+                                    currentOnSeek(pendingSeekTimeMs!!)
+                                }
+                                activeDragHandle = null
+                                pendingSeekTimeMs = null
                             }
                         )
                     }
