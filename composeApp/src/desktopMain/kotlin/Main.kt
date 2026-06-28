@@ -51,7 +51,7 @@ import utils.*
 import components.*
 import viewmodel.*
 
-const val APP_VERSION = "v1.7.10"
+const val APP_VERSION = "v1.8.0"
 
 private const val PLAYBACK_PREVIEW_INTERVAL_MS = 250L
 
@@ -233,6 +233,7 @@ fun startGui(args: Array<String>) = application {
             yOffset = settings.yOffset,
             graphH = settings.graphH,
             graphW = settings.graphW,
+            captionPosition = settings.captionPosition,
             roadCaptions = settings.roadCaptions
         )
     }
@@ -2250,6 +2251,32 @@ fun startGui(args: Array<String>) = application {
                             ControlSlider("Y OFFSET", settings.yOffset, 0f, 500f) { settings = settings.copy(yOffset = it) }
                             ControlSlider("GRAPH H", settings.graphH, 20f, 300f) { settings = settings.copy(graphH = it) }
                             ControlSlider("GRAPH W", settings.graphW, 50f, 800f) { settings = settings.copy(graphW = it) }
+
+                            Spacer(Modifier.height(4.dp))
+                            Text("ROAD CAPTION POSITION", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 0.5.sp)
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                val positions = listOf(
+                                    "top_right" to "右上",
+                                    "bottom_center" to "下部中央"
+                                )
+                                positions.forEach { (posKey, label) ->
+                                    val isSelected = settings.captionPosition == posKey
+                                    Button(
+                                        onClick = { settings = settings.copy(captionPosition = posKey) },
+                                        colors = ButtonDefaults.buttonColors(
+                                            backgroundColor = if (isSelected) Color(0xFF007AFF) else Color(0xFFE5E5EA),
+                                            contentColor = if (isSelected) Color.White else Color(0xFF1C1C1E)
+                                        ),
+                                        modifier = Modifier.weight(1f).height(28.dp),
+                                        contentPadding = PaddingValues(0.dp)
+                                    ) {
+                                        Text(label, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -2388,7 +2415,8 @@ suspend fun fireEncode(
         try {
             val config = HudConfig(
                 valSize = s.valSize, tightness = s.tightness, spacing = s.spacing,
-                xOffset = s.xOffset, yOffset = s.yOffset, graphH = s.graphH, graphW = s.graphW
+                xOffset = s.xOffset, yOffset = s.yOffset, graphH = s.graphH, graphW = s.graphW,
+                captionPosition = s.captionPosition
             )
             val proxy = DynamicRendererProxy(config)
             globalRendererProxy = proxy

@@ -512,7 +512,8 @@ class NativeHudEncoder(
 
         val config = HudConfig(
             valSize = settings.valSize, tightness = settings.tightness, spacing = settings.spacing,
-            xOffset = settings.xOffset, yOffset = settings.yOffset, graphH = settings.graphH, graphW = settings.graphW
+            xOffset = settings.xOffset, yOffset = settings.yOffset, graphH = settings.graphH, graphW = settings.graphW,
+            captionPosition = settings.captionPosition
         )
         println("DEBUG: NativeHudEncoder.encode config=$config, videoWidth=$videoWidth, videoHeight=$videoHeight")
         val renderer = HudRenderer(config)
