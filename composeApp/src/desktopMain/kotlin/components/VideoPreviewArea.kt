@@ -173,6 +173,16 @@ fun VideoPreviewArea(
         println("DEBUG: PlayerState isPlaying state changed: isPlaying=${playerState.isPlaying}")
     }
 
+    // Force constant render loop while playing to prevent Compose Desktop from going into idle/sleep mode.
+    // This resolves the bug where video playback/HUD rendering only updates on mouse hover events.
+    LaunchedEffect(playerState.isPlaying) {
+        if (playerState.isPlaying) {
+            while (true) {
+                withFrameNanos { }
+            }
+        }
+    }
+
     LaunchedEffect(playerState.sliderPos, playerState.metadata.duration) {
         val durationMs = playerState.metadata.duration ?: 0L
         val currentDuration = if (videoLengthMs > 0L) videoLengthMs else durationMs
