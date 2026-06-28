@@ -943,12 +943,12 @@ class NativeHudEncoder(
                     
                     val g = img.createGraphics()
                     g.composite = AlphaComposite.Clear
-                    g.fillRect(0, 0, videoWidth, videoHeight)
+                    g.fillRect(0, 0, exportWidth, exportHeight)
                     g.composite = AlphaComposite.SrcOver
                     
                     val isValid = currentFitTs >= telemetry.first().timestamp && currentFitTs <= telemetry.last().timestamp
                     val scale = exportWidth.toFloat() / 1920f
-                    val canvas = DesktopHudCanvas(g, scale, videoWidth.toFloat() / scale, videoHeight.toFloat() / scale)
+                    val canvas = DesktopHudCanvas(g, scale, exportWidth.toFloat() / scale, exportHeight.toFloat() / scale)
                     if (customRenderer != null) {
                         customRenderer.invoke(canvas, point, telemetry, pBuf, i.toFloat() / targetDurationSeconds)
                     } else {
