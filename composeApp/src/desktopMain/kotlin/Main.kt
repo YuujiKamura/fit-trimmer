@@ -51,7 +51,7 @@ import utils.*
 import components.*
 import viewmodel.*
 
-const val APP_VERSION = "v1.8.5"
+const val APP_VERSION = "v1.8.6"
 
 private const val PLAYBACK_PREVIEW_INTERVAL_MS = 250L
 
