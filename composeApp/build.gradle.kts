@@ -7,11 +7,26 @@ plugins {
     kotlin("plugin.serialization")
 }
 
+val generateVersionKt = tasks.register("generateVersionKt") {
+    val outputDir = layout.buildDirectory.dir("generated/version/fit")
+    outputs.dir(outputDir)
+    
+    doLast {
+        val versionFile = outputDir.get().file("Version.kt").asFile
+        versionFile.parentFile.mkdirs()
+        versionFile.writeText("""
+            package fit
+            const val APP_VERSION = "v$gitVersion"
+        """.trimIndent())
+    }
+}
+
 kotlin {
     jvm("desktop")
     
     sourceSets {
         val desktopMain by getting {
+            kotlin.srcDir(generateVersionKt)
             dependencies {
                 implementation(compose.desktop.currentOs)
                 implementation(project(":shared-core"))

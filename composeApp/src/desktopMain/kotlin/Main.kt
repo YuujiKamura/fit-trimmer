@@ -50,8 +50,7 @@ import kotlin.math.roundToInt
 import utils.*
 import components.*
 import viewmodel.*
-
-const val APP_VERSION = "v1.9.2"
+import fit.APP_VERSION
 
 private const val PLAYBACK_PREVIEW_INTERVAL_MS = 250L
 
