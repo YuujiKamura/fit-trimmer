@@ -297,24 +297,39 @@ class NativeHudEncoder(
         }
     }
 
-    private fun detectEncoderAndHardware(ffmpegPath: String): Pair<String?, String> {
-        // Test NVIDIA NVENC
-        if (testEncoder(ffmpegPath, "h264_nvenc", "auto")) {
-            return Pair("auto", "h264_nvenc")
+    private fun detectEncoderAndHardware(ffmpegPath: String, originalCodec: String): Pair<String?, String> {
+        val useHevc = (originalCodec == "hevc")
+        if (useHevc) {
+            // Test NVIDIA NVENC HEVC
+            if (testEncoder(ffmpegPath, "hevc_nvenc", "auto")) {
+                return Pair("auto", "hevc_nvenc")
+            }
+            // Test Intel QSV HEVC
+            if (testEncoder(ffmpegPath, "hevc_qsv", "auto")) {
+                return Pair("auto", "hevc_qsv")
+            }
+            // Test AMD AMF HEVC
+            if (testEncoder(ffmpegPath, "hevc_amf", "auto")) {
+                return Pair("auto", "hevc_amf")
+            }
+            // CPU fallback HEVC
+            return Pair(null, "libx265")
+        } else {
+            // Test NVIDIA NVENC H.264
+            if (testEncoder(ffmpegPath, "h264_nvenc", "auto")) {
+                return Pair("auto", "h264_nvenc")
+            }
+            // Test Intel QSV H.264
+            if (testEncoder(ffmpegPath, "h264_qsv", "auto")) {
+                return Pair("auto", "h264_qsv")
+            }
+            // Test AMD AMF H.264
+            if (testEncoder(ffmpegPath, "h264_amf", "auto")) {
+                return Pair("auto", "h264_amf")
+            }
+            // CPU fallback H.264
+            return Pair(null, "libx264")
         }
-        
-        // Test Intel QSV
-        if (testEncoder(ffmpegPath, "h264_qsv", "auto")) {
-            return Pair("auto", "h264_qsv")
-        }
-        
-        // Test AMD AMF
-        if (testEncoder(ffmpegPath, "h264_amf", "auto")) {
-            return Pair("auto", "h264_amf")
-        }
-        
-        // CPU fallback
-        return Pair(null, "libx264")
     }
 
     fun encode(
@@ -360,6 +375,7 @@ class NativeHudEncoder(
         var videoHeight = 1080
         var videoDurationSeconds = 300
         var videoFps = "30" // default to 30
+        var originalCodec = "h264"
         try {
             // Run ffmpeg -i to gather duration and resolution via stderr stream to avoid missing ffprobe dependency
             val pb = ProcessBuilder(ffmpegPath, "-i", localVideoPath)
@@ -382,6 +398,9 @@ class NativeHudEncoder(
             val lines = outputInfo.lines()
             val videoLine = lines.find { it.contains("Video:") }
             if (videoLine != null) {
+                if (videoLine.contains("hevc", ignoreCase = true) || videoLine.contains("h265", ignoreCase = true)) {
+                    originalCodec = "hevc"
+                }
                 val resRegex = Regex("""\b(\d{3,4})x(\d{3,4})\b""")
                 val resMatch = resRegex.find(videoLine)
                 if (resMatch != null) {
@@ -498,7 +517,7 @@ class NativeHudEncoder(
         println("DEBUG: NativeHudEncoder.encode config=$config, videoWidth=$videoWidth, videoHeight=$videoHeight")
         val renderer = HudRenderer(config)
         
-        val (hwaccel, encoderName) = detectEncoderAndHardware(ffmpegPath)
+        val (hwaccel, encoderName) = detectEncoderAndHardware(ffmpegPath, originalCodec)
         println("DEBUG: Auto-detected encoder: $encoderName, hwaccel: $hwaccel")
 
         // Create deterministic job hash for crash recovery
@@ -706,21 +725,18 @@ class NativeHudEncoder(
             pbArgs.add("-r")
             pbArgs.add(videoFps)
             
-            when (encoderName) {
-                "h264_qsv" -> {
-                    pbArgs.add("-global_quality")
-                    pbArgs.add("18")
-                }
-                "h264_nvenc" -> {
-                    pbArgs.add("-rc")
-                    pbArgs.add("constqp")
-                    pbArgs.add("-qp")
-                    pbArgs.add("18")
-                }
-                else -> {
-                    pbArgs.add("-crf")
-                    pbArgs.add("18")
-                }
+            val qualityVal = "21"
+            if (encoderName.endsWith("_qsv")) {
+                pbArgs.add("-global_quality")
+                pbArgs.add(qualityVal)
+            } else if (encoderName.endsWith("_nvenc")) {
+                pbArgs.add("-rc")
+                pbArgs.add("constqp")
+                pbArgs.add("-qp")
+                pbArgs.add(qualityVal)
+            } else {
+                pbArgs.add("-crf")
+                pbArgs.add(qualityVal)
             }
             pbArgs.add("-pix_fmt")
             pbArgs.add("yuv420p")
