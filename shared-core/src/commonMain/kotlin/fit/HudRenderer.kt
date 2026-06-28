@@ -14,6 +14,7 @@ data class HudConfig(
     val yOffset: Float,
     val graphH: Float,
     val graphW: Float,
+    val captionPosition: String = "top_right",
     val roadCaptions: List<RoadCaptionSegment> = emptyList()
 )
 
@@ -293,11 +294,16 @@ class HudRenderer(val config: HudConfig) {
             
             val boxW = capWidth + padX * 2f
             val boxH = capHeight + padY * 2f
-            val boxX = 960f - boxW / 2f
-            val boxY = 960f - boxH / 2f
+            
+            val margin = 40f
+            val (boxX, boxY) = when (config.captionPosition) {
+                "top_right" -> Pair(1920f - boxW - margin, margin)
+                "top_left" -> Pair(margin, margin)
+                else -> Pair(960f - boxW / 2f, 960f - boxH / 2f) // "bottom_center"
+            }
             
             canvas.drawRect(boxX, boxY, boxW, boxH, "#000000", alpha = 0.65f)
-            canvas.drawText(capText, 960f, boxY + padY + capHeight / 2f, capSize, "#ffffff", bold = true, anchor = "center")
+            canvas.drawText(capText, boxX + boxW / 2f, boxY + padY + capHeight / 2f, capSize, "#ffffff", bold = true, anchor = "center")
         }
     }
 
