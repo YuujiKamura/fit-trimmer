@@ -298,7 +298,16 @@ class HudRenderer(val config: HudConfig) {
             val margin = 40f
             val (boxX, boxY) = when (config.captionPosition) {
                 "top_right" -> Pair(1920f - boxW - margin, margin)
-                "top_left" -> Pair(margin, margin)
+                "top_left" -> {
+                    // Avoid overlapping with Date & Time overlay in top-left by placing it immediately to its right.
+                    val dtText = if (isValid) formatDateTime(telemetry.timestamp) else "----- --:--:--"
+                    val dtTextSize = 24f
+                    val dtTextWidth = canvas.getTextWidth(dtText, dtTextSize, bold = true)
+                    val dtPadX = 12f
+                    val dtBoxW = dtTextWidth + dtPadX * 2f
+                    Pair(40f + dtBoxW + 20f, 40f)
+                }
+                "top_center" -> Pair(960f - boxW / 2f, margin)
                 else -> Pair(960f - boxW / 2f, 960f - boxH / 2f) // "bottom_center"
             }
             
