@@ -13,13 +13,13 @@ data class RoadCaptionSegment(
 
 @Serializable
 data class HudSettings(
-    val valSize: Float = 23f,
-    val tightness: Float = 1f,
-    val spacing: Float = 16f,
-    val xOffset: Float = 25f,
-    val yOffset: Float = 60f,
-    val graphH: Float = 60f,
-    val graphW: Float = 139f,
+    val valSize: Float = 59.27f,
+    val tightness: Float = -10.0f,
+    val spacing: Float = 33.09f,
+    val xOffset: Float = 51.06f,
+    val yOffset: Float = 108.35f,
+    val graphH: Float = 103.63f,
+    val graphW: Float = 207.15f,
     val exportResolution: String = "2.7k",
     val roadCaptions: List<RoadCaptionSegment> = emptyList()
 )
