@@ -145,14 +145,14 @@ fun VideoPreviewArea(
     var isPlaying by remember { mutableStateOf(false) }
     var lastVolume by remember { mutableStateOf(1f) }
 
-    var activePath by remember(videoPath, proxyVideoPath) { mutableStateOf("") }
+    var activePath by remember(videoPath, proxyVideoPath, settings.useProxyPreview) { mutableStateOf("") }
 
-    LaunchedEffect(videoPath, proxyVideoPath) {
+    LaunchedEffect(videoPath, proxyVideoPath, settings.useProxyPreview) {
         if (videoPath.isEmpty() || !File(videoPath).exists()) {
             activePath = ""
             return@LaunchedEffect
         }
-        val isProxyNeeded = withContext(Dispatchers.IO) {
+        val isProxyNeeded = settings.useProxyPreview && withContext(Dispatchers.IO) {
             isHevcOrHighRes(videoPath)
         }
         activePath = if (isProxyNeeded) {
