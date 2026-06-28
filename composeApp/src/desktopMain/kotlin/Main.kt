@@ -797,141 +797,116 @@ fun startGui(args: Array<String>) = application {
                             val ranges = viewModel.getSplitRanges()
                             val destFiles = mutableListOf<File>()
                             
-                            if (proceed && moveOutputToSource) {
-                                val sourceDir = File(targetVideoPath).parentFile
-                                if (sourceDir != null && sourceDir.exists()) {
-                                    val videoFile = File(targetVideoPath)
-                                    val baseName = videoFile.name.replace(".mp4", "", ignoreCase = true).replace(".mov", "", ignoreCase = true)
-                                    
-                                    var anyConflict = false
-                                    for (idx in ranges.indices) {
-                                        val partSuffix = if (ranges.size > 1) "_part${idx + 1}" else ""
-                                        val targetDest = File(sourceDir, baseName + partSuffix + "_KMP_HUD.mp4")
-                                        destFiles.add(targetDest)
-                                        if (targetDest.exists()) {
-                                            anyConflict = true
+                            // 1. Determine all standard target output files
+                            val targetDestFiles = mutableListOf<File>()
+                            val resSuffix = when (settings.exportResolution) {
+                                "1080p" -> "_1080p"
+                                "2.7k" -> "_2.7k"
+                                else -> "_orig"
+                            }
+                            for (idx in ranges.indices) {
+                                val partSuffix = if (ranges.size > 1) "_part${idx + 1}" else ""
+                                val videoFile = File(targetVideoPath)
+                                val baseName = videoFile.name.replace(".mp4", "", ignoreCase = true).replace(".mov", "", ignoreCase = true)
+                                val suffix = baseName + partSuffix + "_KMP_HUD" + resSuffix + ".mp4"
+                                
+                                val file = if (moveOutputToSource) {
+                                    val sourceDir = videoFile.parentFile
+                                    if (sourceDir != null && sourceDir.exists()) {
+                                        File(sourceDir, suffix)
+                                    } else {
+                                        File(outputDir, suffix)
+                                    }
+                                } else {
+                                    File(outputDir, suffix)
+                                }
+                                targetDestFiles.add(file)
+                            }
+
+                            // 2. Check for existing outputs
+                            val existingOutputs = targetDestFiles.filter { it.exists() && it.length() > 0L }
+                            
+                            var shouldResume = false
+                            if (existingOutputs.isNotEmpty()) {
+                                val options = arrayOf("最初からやり直す (Overwrite)", "前回の続きから再開 (Resume)", "別名で保存 (Save as Copy)", "キャンセル (Cancel)")
+                                val choice = javax.swing.JOptionPane.showOptionDialog(
+                                    null,
+                                    "出力ファイルの一部が既に存在します。どうしますか？\n" +
+                                    "・「最初からやり直す」: 既存のファイルを上書きして最初からエンコードします。\n" +
+                                    "・「前回の続きから再開」: 既に作成済みのパートをスキップし、残りの処理から再開します。\n" +
+                                    "・「別名で保存」: 既存のファイルは残し、コピーとして別名で保存します。\n\n" +
+                                    "(Output file already exists. Overwrite, Resume, or Save as Copy?)",
+                                    "出力ファイルの重複 (File Exists)",
+                                    javax.swing.JOptionPane.DEFAULT_OPTION,
+                                    javax.swing.JOptionPane.QUESTION_MESSAGE,
+                                    null,
+                                    options,
+                                    options[0]
+                                )
+                                when (choice) {
+                                    0 -> { // Overwrite
+                                        existingOutputs.forEach { 
+                                            try { if (it.exists()) it.delete() } catch (e: Exception) { e.printStackTrace() }
+                                        }
+                                        destFiles.addAll(targetDestFiles)
+                                        shouldResume = false
+                                    }
+                                    1 -> { // Resume
+                                        destFiles.addAll(targetDestFiles)
+                                        shouldResume = true
+                                    }
+                                    2 -> { // Save as Copy
+                                        shouldResume = false
+                                        for (idx in targetDestFiles.indices) {
+                                            val file = targetDestFiles[idx]
+                                            if (file.exists()) {
+                                                val parent = file.parentFile
+                                                val nameWithoutExt = file.nameWithoutExtension
+                                                val ext = file.extension
+                                                var counter = 1
+                                                var uniqueFile = File(parent, "$nameWithoutExt ($counter).$ext")
+                                                while (uniqueFile.exists()) {
+                                                    counter++
+                                                    uniqueFile = File(parent, "$nameWithoutExt ($counter).$ext")
+                                                }
+                                                destFiles.add(uniqueFile)
+                                            } else {
+                                                destFiles.add(file)
+                                            }
                                         }
                                     }
-                                    
-                                    if (anyConflict) {
-                                        val overwriteResult = javax.swing.JOptionPane.showConfirmDialog(
-                                            null,
-                                            "出力ファイルの一部は既に存在します。\n" +
-                                            "上書きしますか？（「いいえ」を選択すると連番付きの別名で保存します。キャンセルで開始を中止します）\n" +
-                                            "(Some destination files already exist. Overwrite? 'No' will save as copies with suffix, 'Cancel' will abort)",
-                                            "ファイル重複の確認 (File Conflict)",
-                                            javax.swing.JOptionPane.YES_NO_CANCEL_OPTION,
-                                            javax.swing.JOptionPane.WARNING_MESSAGE
-                                        )
-                                        
-                                        when (overwriteResult) {
-                                            javax.swing.JOptionPane.YES_OPTION -> {
-                                                // destFiles is already correctly populated
-                                            }
-                                            javax.swing.JOptionPane.NO_OPTION -> {
-                                                // Re-generate unique file names for all conflict files
-                                                for (idx in ranges.indices) {
-                                                    val partSuffix = if (ranges.size > 1) "_part${idx + 1}" else ""
-                                                    val rawName = baseName + partSuffix + "_KMP_HUD"
-                                                    val ext = "mp4"
-                                                    var counter = 1
-                                                    var uniqueFile = File(sourceDir, "$rawName ($counter).$ext")
-                                                    while (uniqueFile.exists()) {
-                                                        counter++
-                                                        uniqueFile = File(sourceDir, "$rawName ($counter).$ext")
-                                                    }
-                                                    destFiles[idx] = uniqueFile
-                                                }
-                                            }
-                                            else -> {
-                                                proceed = false
-                                            }
-                                        }
+                                    else -> { // Cancel / Closed
+                                        proceed = false
                                     }
                                 }
+                            } else {
+                                destFiles.addAll(targetDestFiles)
                             }
 
                             if (proceed) {
-                                // Check for existing output files to ask for overwrite or resume
-                                val existingOutputs = mutableListOf<File>()
-                                for (idx in ranges.indices) {
-                                    val partSuffix = if (ranges.size > 1) "_part${idx + 1}" else ""
-                                    val finalOutFile = if (moveOutputToSource && destFiles.isNotEmpty()) {
-                                        destFiles.getOrNull(idx)
-                                    } else {
-                                        val videoFile = File(videoPath)
-                                        val baseName = videoFile.name.replace(".mp4", "", ignoreCase = true).replace(".mov", "", ignoreCase = true)
-                                        File(outputDir, baseName + partSuffix + "_KMP_HUD.mp4")
-                                    }
-                                    if (finalOutFile != null && finalOutFile.exists() && finalOutFile.length() > 0L) {
-                                        existingOutputs.add(finalOutFile)
-                                    }
-                                }
-
-                                var shouldResume = false
-                                if (existingOutputs.isNotEmpty()) {
-                                    val options = arrayOf("最初からやり直す (Overwrite)", "前回の続きから再開 (Resume)", "キャンセル (Cancel)")
-                                    val choice = javax.swing.JOptionPane.showOptionDialog(
-                                        null,
-                                        "出力ファイルの一部が既に存在します。どうしますか？\n" +
-                                        "・「最初からやり直す」: 既存のファイルを上書きして最初からエンコードします。\n" +
-                                        "・「前回の続きから再開」: 既に作成済みのパートをスキップし、残りの処理から再開します。\n\n" +
-                                        "(Output file already exists. Overwrite or Resume?)",
-                                        "出力ファイルの重複 (File Exists)",
-                                        javax.swing.JOptionPane.DEFAULT_OPTION,
-                                        javax.swing.JOptionPane.QUESTION_MESSAGE,
-                                        null,
-                                        options,
-                                        options[0]
-                                    )
-                                    when (choice) {
-                                        0 -> { // Overwrite
-                                            existingOutputs.forEach { 
-                                                try { if (it.exists()) it.delete() } catch (e: Exception) { e.printStackTrace() }
-                                            }
-                                            shouldResume = false
-                                        }
-                                        1 -> { // Resume
-                                            shouldResume = true
-                                        }
-                                        else -> { // Cancel / Closed
-                                            proceed = false
-                                        }
-                                    }
-                                }
-
-                                if (proceed) {
-                                    scope.launch {
-                                        encodingPreviewImage = null
-                                        isSampleEncoding = false
-                                        isEncoding = true
-                                        isPaused = false
-                                        isCanceled = false
-                                        try {
-                                            val totalDuration = ranges.sumOf { it.second - it.first }
-                                            var completedDuration = 0.0
-                                            var hasCloudSyncMsg = false
+                                scope.launch {
+                                    encodingPreviewImage = null
+                                    isSampleEncoding = false
+                                    isEncoding = true
+                                    isPaused = false
+                                    isCanceled = false
+                                    try {
+                                        val totalDuration = ranges.sumOf { it.second - it.first }
+                                        var completedDuration = 0.0
+                                        var hasCloudSyncMsg = false
+                                        
+                                        for (idx in ranges.indices) {
+                                            if (isCanceled) break
+                                            val (pStart, pEnd) = ranges[idx]
+                                            val partDuration = pEnd - pStart
                                             
-                                            for (idx in ranges.indices) {
-                                                if (isCanceled) break
-                                                val (pStart, pEnd) = ranges[idx]
-                                                val partDuration = pEnd - pStart
-                                                
-                                                // Determine final output file path for this segment to check if it's already finished
-                                                val partSuffix = if (ranges.size > 1) "_part${idx + 1}" else ""
-                                                val finalOutFile = if (moveOutputToSource && destFiles.isNotEmpty()) {
-                                                    destFiles.getOrNull(idx)
-                                                } else {
-                                                    val videoFile = File(videoPath)
-                                                    val baseName = videoFile.name.replace(".mp4", "", ignoreCase = true).replace(".mov", "", ignoreCase = true)
-                                                    File(outputDir, baseName + partSuffix + "_KMP_HUD.mp4")
-                                                }
-                                                
-                                                if (shouldResume && finalOutFile != null && finalOutFile.exists() && finalOutFile.length() > 0L) {
-                                                    println("DEBUG: Segment ${idx + 1} already finished. Skipping. File: ${finalOutFile.absolutePath}")
-                                                    completedDuration += partDuration
-                                                    continue
-                                                }
+                                            val finalOutFile = destFiles.getOrNull(idx)
+                                            
+                                            if (shouldResume && finalOutFile != null && finalOutFile.exists() && finalOutFile.length() > 0L) {
+                                                println("DEBUG: Segment ${idx + 1} already finished. Skipping. File: ${finalOutFile.absolutePath}")
+                                                completedDuration += partDuration
+                                                continue
+                                            }
                                             
                                             viewModel.encodingSegmentStart = pStart
                                             viewModel.encodingSegmentEnd = pEnd
@@ -960,25 +935,27 @@ fun startGui(args: Array<String>) = application {
                                                 numParts = ranges.size
                                             )
                                             
-                                            if (moveOutputToSource && destFiles.isNotEmpty() && !isCanceled) {
+                                            if (destFiles.isNotEmpty() && !isCanceled) {
                                                 val finalDestFile = destFiles.getOrNull(idx)
                                                 if (finalDestFile != null) {
                                                     val outFile = File(partOutPath)
                                                     if (outFile.absolutePath != finalDestFile.absolutePath) {
-                                                        statusText = "[Part ${idx + 1}/${ranges.size}] Moving file to source directory..."
+                                                        statusText = "[Part ${idx + 1}/${ranges.size}] Moving file to destination..."
                                                         withContext(Dispatchers.IO) {
                                                             java.nio.file.Files.copy(outFile.toPath(), finalDestFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
                                                             outFile.delete()
                                                         }
                                                     }
                                                     
-                                                     val normalized = targetVideoPath.replace("\\", "/").lowercase()
-                                                    if (normalized.contains("google drive") || 
-                                                        normalized.contains("マイドライブ") || 
-                                                        normalized.contains("my drive") ||
-                                                        normalized.startsWith("g:/") || 
-                                                        normalized.startsWith("h:/")) {
-                                                        hasCloudSyncMsg = true
+                                                    if (moveOutputToSource) {
+                                                        val normalized = targetVideoPath.replace("\\", "/").lowercase()
+                                                        if (normalized.contains("google drive") || 
+                                                            normalized.contains("マイドライブ") || 
+                                                            normalized.contains("my drive") ||
+                                                            normalized.startsWith("g:/") || 
+                                                            normalized.startsWith("h:/")) {
+                                                            hasCloudSyncMsg = true
+                                                        }
                                                     }
                                                 }
                                             }
@@ -1018,10 +995,9 @@ fun startGui(args: Array<String>) = application {
                                     }
                                 }
                             }
+                            Unit
                         }
-                        Unit
                     }
-                }
 
                     val onSampleEncodeClick = remember(settings, fitPath, videoPath, videoStartUtc, adjustedStartUtc, isVideoInFitRange, outputDir, moveOutputToSource, showLivePreview) {
                         {
@@ -1903,7 +1879,16 @@ suspend fun fireEncode(
             val videoFile = File(video)
             val baseName = videoFile.name.replace(".mp4", "", ignoreCase = true).replace(".mov", "", ignoreCase = true)
             val partSuffix = if (partIndex >= 0 && numParts > 1) "_part${partIndex + 1}" else ""
-            val suffix = if (maxDurationSeconds > 0) "${partSuffix}_TEST_HUD.mp4" else "${partSuffix}_KMP_HUD.mp4"
+            val resSuffix = when (s.exportResolution) {
+                "1080p" -> "_1080p"
+                "2.7k" -> "_2.7k"
+                else -> "_orig"
+            }
+            val suffix = if (maxDurationSeconds > 0) {
+                "${partSuffix}_TEST_HUD.mp4"
+            } else {
+                "${partSuffix}_KMP_HUD${resSuffix}.mp4"
+            }
             val output = File(outDir, baseName + suffix).absolutePath
             encoder.encode(fit, video, output, startUtc, 
                 maxDurationSeconds = maxDurationSeconds,
