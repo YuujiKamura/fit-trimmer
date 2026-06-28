@@ -792,9 +792,14 @@ class NativeHudEncoder(
                 while (isEncodingActive.get() && process.isAlive) {
                     if (cancelSupplier()) {
                         process.destroy()
+                        try { process.destroyForcibly() } catch (e: Exception) {}
                         break
                     }
-                    Thread.sleep(100)
+                    try {
+                        Thread.sleep(100)
+                    } catch (e: InterruptedException) {
+                        break
+                    }
                 }
             }
             
@@ -819,11 +824,13 @@ class NativeHudEncoder(
                 loop@ for (i in resumeSeconds until targetDurationSeconds) {
                     if (cancelSupplier()) {
                         process.destroy()
+                        try { process.destroyForcibly() } catch (e: Exception) {}
                         break@loop
                     }
                     while (pauseSupplier()) {
                         if (cancelSupplier()) {
                             process.destroy()
+                            try { process.destroyForcibly() } catch (e: Exception) {}
                             break@loop
                         }
                         Thread.sleep(100)
@@ -897,11 +904,23 @@ class NativeHudEncoder(
                 println("\n❌ Pipe Write Error: ${e.message}")
             } finally {
                 isEncodingActive.set(false)
-                out.close()
+                try { out.close() } catch (e: Exception) {}
+                
+                // Ensure process is terminated forcibly if it's still alive
+                if (process.isAlive) {
+                    process.destroy()
+                    if (!process.waitFor(500, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+                        try { process.destroyForcibly() } catch (e: Exception) {}
+                    }
+                }
                 val exitCode = process.waitFor()
-                readerThread.join(1000)
-                cancelMonitorThread.join(1000)
-                cancelMonitorThread.join(1000)
+                
+                // Interrupt threads to avoid hanging on blocking IO/sleep
+                try { readerThread.interrupt() } catch (e: Exception) {}
+                try { readerThread.join(1000) } catch (e: Exception) {}
+                
+                try { cancelMonitorThread.interrupt() } catch (e: Exception) {}
+                try { cancelMonitorThread.join(1000) } catch (e: Exception) {}
                 
                 if (cancelSupplier()) {
                     throw Exception("Encoding was canceled by user.")
@@ -993,9 +1012,13 @@ class NativeHudEncoder(
         } finally {
             try {
                 globalActiveJobDir?.let {
-                    if (it.exists()) {
-                        println("DEBUG: Cleaning up active job directory after failure/cancel: ${it.absolutePath}")
+                    // Check if canceled by user. Only clean up if explicitly canceled.
+                    // If failed due to error, we preserve the directory for resume / crash recovery.
+                    if (cancelSupplier() && it.exists()) {
+                        println("DEBUG: Cleaning up active job directory after manual cancel: ${it.absolutePath}")
                         it.deleteRecursively()
+                    } else {
+                        println("DEBUG: Preserving active job directory for resume/recovery: ${it.absolutePath}")
                     }
                 }
             } catch (e: Exception) {

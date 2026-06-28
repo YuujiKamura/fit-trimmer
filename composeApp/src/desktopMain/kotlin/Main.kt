@@ -51,7 +51,7 @@ import utils.*
 import components.*
 import viewmodel.*
 
-const val APP_VERSION = "v1.8.6"
+const val APP_VERSION = "v1.8.7"
 
 private const val PLAYBACK_PREVIEW_INTERVAL_MS = 250L
 
@@ -987,35 +987,47 @@ fun startGui(args: Array<String>) = application {
             taskbar?.isSupported(java.awt.Taskbar.Feature.PROGRESS_VALUE_WINDOW) == true
         }
 
-        LaunchedEffect(isEncoding, progress, isPaused, statusText) {
-            if (isEncoding) {
-                val actualTrimStart = trimStartSeconds.coerceIn(0.0, videoLengthMs / 1000.0)
-                val actualTrimEnd = if (trimEndSeconds <= 0.0 || trimEndSeconds > videoLengthMs / 1000.0) {
-                    videoLengthMs / 1000.0
+        // Derived video time depending on encoding state to prevent double recomposition
+        val effectiveVideoTimeMs by remember(isEncoding, progress, videoCurrentTimeMs, trimStartSeconds, trimEndSeconds, videoLengthMs) {
+            derivedStateOf {
+                if (isEncoding) {
+                    val actualTrimStart = trimStartSeconds.coerceIn(0.0, videoLengthMs / 1000.0)
+                    val actualTrimEnd = if (trimEndSeconds <= 0.0 || trimEndSeconds > videoLengthMs / 1000.0) {
+                        videoLengthMs / 1000.0
+                    } else {
+                        trimEndSeconds
+                    }
+                    val durationSec = actualTrimEnd - actualTrimStart
+                    ((actualTrimStart + progress * durationSec) * 1000).toLong()
                 } else {
-                    trimEndSeconds
+                    videoCurrentTimeMs
                 }
-                val durationSec = actualTrimEnd - actualTrimStart
-                val encodingCurrentMs = ((actualTrimStart + progress * durationSec) * 1000).toLong()
-                videoCurrentTimeMs = encodingCurrentMs
             }
+        }
 
+        var lastPercent by remember { mutableStateOf(-1) }
+        var lastState by remember { mutableStateOf<java.awt.Taskbar.State?>(null) }
+
+        LaunchedEffect(isEncoding, progress, isPaused, statusText) {
             if (taskbar != null && isProgressSupported) {
                 try {
-                    if (isEncoding) {
-                        if (isPaused) {
-                            taskbar.setWindowProgressState(window, java.awt.Taskbar.State.PAUSED)
-                            val percent = (progress * 100).toInt().coerceIn(0, 100)
-                            taskbar.setWindowProgressValue(window, percent)
-                        } else if (statusText.contains("Merging", ignoreCase = true)) {
-                            taskbar.setWindowProgressState(window, java.awt.Taskbar.State.INDETERMINATE)
-                        } else {
-                            taskbar.setWindowProgressState(window, java.awt.Taskbar.State.NORMAL)
-                            val percent = (progress * 100).toInt().coerceIn(0, 100)
-                            taskbar.setWindowProgressValue(window, percent)
+                    val targetState = when {
+                        !isEncoding -> java.awt.Taskbar.State.OFF
+                        isPaused -> java.awt.Taskbar.State.PAUSED
+                        statusText.contains("Merging", ignoreCase = true) -> java.awt.Taskbar.State.INDETERMINATE
+                        else -> java.awt.Taskbar.State.NORMAL
+                    }
+                    val targetPercent = if (isEncoding) (progress * 100).toInt().coerceIn(0, 100) else 0
+
+                    if (targetState != lastState) {
+                        taskbar.setWindowProgressState(window, targetState)
+                        lastState = targetState
+                    }
+                    if (targetState == java.awt.Taskbar.State.NORMAL || targetState == java.awt.Taskbar.State.PAUSED) {
+                        if (targetPercent != lastPercent) {
+                            taskbar.setWindowProgressValue(window, targetPercent)
+                            lastPercent = targetPercent
                         }
-                    } else {
-                        taskbar.setWindowProgressState(window, java.awt.Taskbar.State.OFF)
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()
@@ -1982,7 +1994,7 @@ fun startGui(args: Array<String>) = application {
                     TimeAlignmentCard(
                         state = timeOffsetState,
                         isEncoding = isEncoding,
-                        videoCurrentTimeMs = videoCurrentTimeMs,
+                        videoCurrentTimeMs = effectiveVideoTimeMs,
                         videoStartUtc = videoStartUtc,
                         onVideoStartUtcChange = { videoStartUtc = it },
                         videoPath = videoPath,
@@ -2027,7 +2039,7 @@ fun startGui(args: Array<String>) = application {
                         Spacer(Modifier.height(8.dp))
                         VideoSplitCard(
                             viewModel = viewModel,
-                            videoCurrentTimeMs = videoCurrentTimeMs,
+                            videoCurrentTimeMs = effectiveVideoTimeMs,
                             isEncoding = isEncoding
                         )
                     }
@@ -2393,7 +2405,7 @@ fun startGui(args: Array<String>) = application {
                             trimStartSeconds = trimStartSeconds,
                             trimEndSeconds = trimEndSeconds,
                             splitPoints = viewModel.splitPoints,
-                            videoCurrentTimeMs = videoCurrentTimeMs,
+                            videoCurrentTimeMs = effectiveVideoTimeMs,
                             onTrimStartChange = { if (!isEncoding) trimStartSeconds = it },
                             onTrimEndChange = { if (!isEncoding) trimEndSeconds = it },
                             onSeek = { timeMs ->
