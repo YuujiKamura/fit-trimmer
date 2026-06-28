@@ -852,37 +852,86 @@ fun startGui(args: Array<String>) = application {
                             }
 
                             if (proceed) {
-                                scope.launch {
-                                    encodingPreviewImage = null
-                                    isSampleEncoding = false
-                                    isEncoding = true
-                                    isPaused = false
-                                    isCanceled = false
-                                    try {
-                                        val totalDuration = ranges.sumOf { it.second - it.first }
-                                        var completedDuration = 0.0
-                                        var hasCloudSyncMsg = false
-                                        
-                                        for (idx in ranges.indices) {
-                                            if (isCanceled) break
-                                            val (pStart, pEnd) = ranges[idx]
-                                            val partDuration = pEnd - pStart
-                                            
-                                            // Determine final output file path for this segment to check if it's already finished
-                                            val partSuffix = if (ranges.size > 1) "_part${idx + 1}" else ""
-                                            val finalOutFile = if (moveOutputToSource && destFiles.isNotEmpty()) {
-                                                destFiles.getOrNull(idx)
-                                            } else {
-                                                val videoFile = File(videoPath)
-                                                val baseName = videoFile.name.replace(".mp4", "", ignoreCase = true).replace(".mov", "", ignoreCase = true)
-                                                File(outputDir, baseName + partSuffix + "_KMP_HUD.mp4")
+                                // Check for existing output files to ask for overwrite or resume
+                                val existingOutputs = mutableListOf<File>()
+                                for (idx in ranges.indices) {
+                                    val partSuffix = if (ranges.size > 1) "_part${idx + 1}" else ""
+                                    val finalOutFile = if (moveOutputToSource && destFiles.isNotEmpty()) {
+                                        destFiles.getOrNull(idx)
+                                    } else {
+                                        val videoFile = File(videoPath)
+                                        val baseName = videoFile.name.replace(".mp4", "", ignoreCase = true).replace(".mov", "", ignoreCase = true)
+                                        File(outputDir, baseName + partSuffix + "_KMP_HUD.mp4")
+                                    }
+                                    if (finalOutFile != null && finalOutFile.exists() && finalOutFile.length() > 0L) {
+                                        existingOutputs.add(finalOutFile)
+                                    }
+                                }
+
+                                var shouldResume = false
+                                if (existingOutputs.isNotEmpty()) {
+                                    val options = arrayOf("最初からやり直す (Overwrite)", "前回の続きから再開 (Resume)", "キャンセル (Cancel)")
+                                    val choice = javax.swing.JOptionPane.showOptionDialog(
+                                        null,
+                                        "出力ファイルの一部が既に存在します。どうしますか？\n" +
+                                        "・「最初からやり直す」: 既存のファイルを上書きして最初からエンコードします。\n" +
+                                        "・「前回の続きから再開」: 既に作成済みのパートをスキップし、残りの処理から再開します。\n\n" +
+                                        "(Output file already exists. Overwrite or Resume?)",
+                                        "出力ファイルの重複 (File Exists)",
+                                        javax.swing.JOptionPane.DEFAULT_OPTION,
+                                        javax.swing.JOptionPane.QUESTION_MESSAGE,
+                                        null,
+                                        options,
+                                        options[0]
+                                    )
+                                    when (choice) {
+                                        0 -> { // Overwrite
+                                            existingOutputs.forEach { 
+                                                try { if (it.exists()) it.delete() } catch (e: Exception) { e.printStackTrace() }
                                             }
+                                            shouldResume = false
+                                        }
+                                        1 -> { // Resume
+                                            shouldResume = true
+                                        }
+                                        else -> { // Cancel / Closed
+                                            proceed = false
+                                        }
+                                    }
+                                }
+
+                                if (proceed) {
+                                    scope.launch {
+                                        encodingPreviewImage = null
+                                        isSampleEncoding = false
+                                        isEncoding = true
+                                        isPaused = false
+                                        isCanceled = false
+                                        try {
+                                            val totalDuration = ranges.sumOf { it.second - it.first }
+                                            var completedDuration = 0.0
+                                            var hasCloudSyncMsg = false
                                             
-                                            if (finalOutFile != null && finalOutFile.exists() && finalOutFile.length() > 0L) {
-                                                println("DEBUG: Segment ${idx + 1} already finished. Skipping. File: ${finalOutFile.absolutePath}")
-                                                completedDuration += partDuration
-                                                continue
-                                            }
+                                            for (idx in ranges.indices) {
+                                                if (isCanceled) break
+                                                val (pStart, pEnd) = ranges[idx]
+                                                val partDuration = pEnd - pStart
+                                                
+                                                // Determine final output file path for this segment to check if it's already finished
+                                                val partSuffix = if (ranges.size > 1) "_part${idx + 1}" else ""
+                                                val finalOutFile = if (moveOutputToSource && destFiles.isNotEmpty()) {
+                                                    destFiles.getOrNull(idx)
+                                                } else {
+                                                    val videoFile = File(videoPath)
+                                                    val baseName = videoFile.name.replace(".mp4", "", ignoreCase = true).replace(".mov", "", ignoreCase = true)
+                                                    File(outputDir, baseName + partSuffix + "_KMP_HUD.mp4")
+                                                }
+                                                
+                                                if (shouldResume && finalOutFile != null && finalOutFile.exists() && finalOutFile.length() > 0L) {
+                                                    println("DEBUG: Segment ${idx + 1} already finished. Skipping. File: ${finalOutFile.absolutePath}")
+                                                    completedDuration += partDuration
+                                                    continue
+                                                }
                                             
                                             viewModel.encodingSegmentStart = pStart
                                             viewModel.encodingSegmentEnd = pEnd
@@ -969,9 +1018,10 @@ fun startGui(args: Array<String>) = application {
                                     }
                                 }
                             }
-                            Unit
                         }
+                        Unit
                     }
+                }
 
                     val onSampleEncodeClick = remember(settings, fitPath, videoPath, videoStartUtc, adjustedStartUtc, isVideoInFitRange, outputDir, moveOutputToSource, showLivePreview) {
                         {
