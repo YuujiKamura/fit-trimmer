@@ -51,7 +51,7 @@ import utils.*
 import components.*
 import viewmodel.*
 
-const val APP_VERSION = "v1.8.1"
+const val APP_VERSION = "v1.8.2"
 
 private const val PLAYBACK_PREVIEW_INTERVAL_MS = 250L
 
@@ -988,6 +988,18 @@ fun startGui(args: Array<String>) = application {
         }
 
         LaunchedEffect(isEncoding, progress, isPaused, statusText) {
+            if (isEncoding) {
+                val actualTrimStart = trimStartSeconds.coerceIn(0.0, videoLengthMs / 1000.0)
+                val actualTrimEnd = if (trimEndSeconds <= 0.0 || trimEndSeconds > videoLengthMs / 1000.0) {
+                    videoLengthMs / 1000.0
+                } else {
+                    trimEndSeconds
+                }
+                val durationSec = actualTrimEnd - actualTrimStart
+                val encodingCurrentMs = ((actualTrimStart + progress * durationSec) * 1000).toLong()
+                videoCurrentTimeMs = encodingCurrentMs
+            }
+
             if (taskbar != null && isProgressSupported) {
                 try {
                     if (isEncoding) {
@@ -1969,6 +1981,7 @@ fun startGui(args: Array<String>) = application {
                     // TIME ALIGNMENT Card
                     TimeAlignmentCard(
                         state = timeOffsetState,
+                        isEncoding = isEncoding,
                         videoCurrentTimeMs = videoCurrentTimeMs,
                         videoStartUtc = videoStartUtc,
                         onVideoStartUtcChange = { videoStartUtc = it },
@@ -2008,12 +2021,14 @@ fun startGui(args: Array<String>) = application {
                             trimStartSeconds = trimStartSeconds,
                             trimEndSeconds = trimEndSeconds,
                             onTrimStartChange = { trimStartSeconds = it },
-                            onTrimEndChange = { trimEndSeconds = it }
+                            onTrimEndChange = { trimEndSeconds = it },
+                            isEncoding = isEncoding
                         )
                         Spacer(Modifier.height(8.dp))
                         VideoSplitCard(
                             viewModel = viewModel,
-                            videoCurrentTimeMs = videoCurrentTimeMs
+                            videoCurrentTimeMs = videoCurrentTimeMs,
+                            isEncoding = isEncoding
                         )
                     }
 
@@ -2302,27 +2317,8 @@ fun startGui(args: Array<String>) = application {
                                 playerState = playerState,
                                 videoCurrentTimeMs = videoCurrentTimeMs,
                                 onCurrentTimeChange = { videoCurrentTimeMs = it },
-                                modifier = Modifier.weight(1f).fillMaxWidth()
-                            )
-                            
-                            Spacer(Modifier.height(8.dp))
-                            
-                            TelemetryTimelineGraph(
-                                videoLengthMs = videoLengthMs,
-                                adjustedStartUtc = adjustedStartUtc,
-                                telemetryPoints = telemetryPoints,
-                                trimStartSeconds = trimStartSeconds,
-                                trimEndSeconds = trimEndSeconds,
-                                splitPoints = viewModel.splitPoints,
-                                videoCurrentTimeMs = videoCurrentTimeMs,
-                                onTrimStartChange = { trimStartSeconds = it },
-                                onTrimEndChange = { trimEndSeconds = it },
-                                onSeek = { timeMs ->
-                                    val ratio = if (videoLengthMs > 0) timeMs.toFloat() / videoLengthMs.toFloat() else 0f
-                                    playerState.seekTo(ratio * 1000f)
-                                    videoCurrentTimeMs = timeMs
-                                },
-                                modifier = Modifier.fillMaxWidth().height(140.dp)
+                                modifier = Modifier.weight(1f).fillMaxWidth(),
+                                isEncoding = isEncoding
                             )
                         } else {
                             val actualTrimStart = trimStartSeconds.coerceIn(0.0, videoLengthMs / 1000.0)
@@ -2342,7 +2338,7 @@ fun startGui(args: Array<String>) = application {
                                 videoLengthMs = trimmedDurationMs,
                                 onPauseToggle = { isPaused = !isPaused },
                                 onCancel = { isCanceled = true },
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier.weight(1f).fillMaxWidth()
                             )
 
                             Spacer(Modifier.height(8.dp))
@@ -2384,6 +2380,28 @@ fun startGui(args: Array<String>) = application {
                                 }
                             }
                         }
+                        
+                        Spacer(Modifier.height(8.dp))
+                        
+                        TelemetryTimelineGraph(
+                            videoLengthMs = videoLengthMs,
+                            adjustedStartUtc = adjustedStartUtc,
+                            telemetryPoints = telemetryPoints,
+                            trimStartSeconds = trimStartSeconds,
+                            trimEndSeconds = trimEndSeconds,
+                            splitPoints = viewModel.splitPoints,
+                            videoCurrentTimeMs = videoCurrentTimeMs,
+                            onTrimStartChange = { if (!isEncoding) trimStartSeconds = it },
+                            onTrimEndChange = { if (!isEncoding) trimEndSeconds = it },
+                            onSeek = { timeMs ->
+                                if (!isEncoding) {
+                                    val ratio = if (videoLengthMs > 0) timeMs.toFloat() / videoLengthMs.toFloat() else 0f
+                                    playerState.seekTo(ratio * 1000f)
+                                    videoCurrentTimeMs = timeMs
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth().height(140.dp)
+                        )
 
                         Text("1920x1080 Overlay Preview", color = Color(0xFF1C1C1E), fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
                     }
@@ -3020,7 +3038,8 @@ fun TimeAlignmentCard(
     videoPath: String,
     telemetryPoints: List<FitParser.TelemetryPoint>,
     isAligning: Boolean,
-    onAlignTelemetryClick: () -> Unit
+    onAlignTelemetryClick: () -> Unit,
+    isEncoding: Boolean
 ) {
     Card(
         backgroundColor = Color.White,
@@ -3052,6 +3071,7 @@ fun TimeAlignmentCard(
             Slider(
                 value = state.seconds,
                 onValueChange = { state.update((it * 1000).roundToInt()) },
+                enabled = !isEncoding,
                 valueRange = -TimeAlignmentState.MAX_OFFSET_SECONDS..TimeAlignmentState.MAX_OFFSET_SECONDS,
                 modifier = Modifier.height(20.dp),
                 colors = SliderDefaults.colors(
@@ -3082,6 +3102,7 @@ fun TimeAlignmentCard(
                             val nextVal = if (delta == 0) 0 else state.millis + delta
                             state.update(nextVal)
                         },
+                        enabled = !isEncoding,
                         modifier = buttonModifier,
                         colors = buttonColors,
                         contentPadding = PaddingValues(0.dp)
@@ -3102,7 +3123,7 @@ fun TimeAlignmentCard(
             ) {
                 Button(
                     onClick = onAlignTelemetryClick,
-                    enabled = !isAligning && videoPath.isNotEmpty() && telemetryPoints.isNotEmpty(),
+                    enabled = !isAligning && videoPath.isNotEmpty() && telemetryPoints.isNotEmpty() && !isEncoding,
                     modifier = Modifier.fillMaxWidth().height(36.dp),
                     colors = ButtonDefaults.buttonColors(
                         backgroundColor = Color(0xFF34C759),
@@ -3233,7 +3254,8 @@ fun VideoTrimCard(
     trimStartSeconds: Double,
     trimEndSeconds: Double,
     onTrimStartChange: (Double) -> Unit,
-    onTrimEndChange: (Double) -> Unit
+    onTrimEndChange: (Double) -> Unit,
+    isEncoding: Boolean
 ) {
     val totalSec = videoLengthMs / 1000.0
     val range = trimStartSeconds.toFloat()..trimEndSeconds.toFloat()
@@ -3272,6 +3294,7 @@ fun VideoTrimCard(
                     onTrimStartChange(r.start.toDouble())
                     onTrimEndChange(r.endInclusive.toDouble())
                 },
+                enabled = !isEncoding,
                 valueRange = 0f..totalSec.toFloat(),
                 modifier = Modifier.height(20.dp),
                 colors = SliderDefaults.colors(
@@ -3302,7 +3325,8 @@ fun VideoTrimCard(
 @Composable
 fun VideoSplitCard(
     viewModel: AppViewModel,
-    videoCurrentTimeMs: Long
+    videoCurrentTimeMs: Long,
+    isEncoding: Boolean
 ) {
     val splitPoints = viewModel.splitPoints
     val ranges = viewModel.getSplitRanges()
@@ -3321,7 +3345,7 @@ fun VideoSplitCard(
             Text("VIDEO SPLIT POINTS", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 0.5.sp)
             
             val playheadSec = videoCurrentTimeMs / 1000.0
-            val canAdd = playheadSec > viewModel.trimStartSeconds && playheadSec < viewModel.trimEndSeconds && playheadSec !in splitPoints
+            val canAdd = !isEncoding && playheadSec > viewModel.trimStartSeconds && playheadSec < viewModel.trimEndSeconds && playheadSec !in splitPoints
             
             Button(
                 onClick = { viewModel.addSplitPoint(playheadSec) },
@@ -3352,6 +3376,7 @@ fun VideoSplitCard(
                             )
                             Button(
                                 onClick = { viewModel.removeSplitPoint(splitSec) },
+                                enabled = !isEncoding,
                                 colors = ButtonDefaults.buttonColors(
                                     backgroundColor = Color(0xFFFF3B30),
                                     contentColor = Color.White
@@ -3367,6 +3392,7 @@ fun VideoSplitCard(
                 
                 Button(
                     onClick = { viewModel.clearSplitPoints() },
+                    enabled = !isEncoding,
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(
                         backgroundColor = Color(0xFFFF3B30),
