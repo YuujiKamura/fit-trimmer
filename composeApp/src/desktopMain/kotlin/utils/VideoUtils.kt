@@ -433,7 +433,7 @@ fun getProxyFileForVideo(videoPath: String): File {
     if (!proxyDir.exists()) {
         proxyDir.mkdirs()
     }
-    val hash = getMd5Hash(videoPath)
+    val hash = getMd5Hash(videoPath + "_v2_noaudio")
     return File(proxyDir, "$hash.mp4")
 }
 
@@ -547,8 +547,7 @@ suspend fun generateProxyVideo(
     }
 
     args.addAll(listOf(
-        "-c:a", "aac",
-        "-b:a", "64k",
+        "-an",
         "-threads", "4",
         "-f", "mp4",
         tempFile.absolutePath
