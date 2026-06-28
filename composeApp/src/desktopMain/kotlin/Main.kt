@@ -43,12 +43,15 @@ import org.jetbrains.skia.Image
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+
 import kotlin.math.roundToInt
 // VLC dependency removed
 
 import utils.*
 import components.*
 import viewmodel.*
+
+const val APP_VERSION = "v1.5.0"
 
 private const val PLAYBACK_PREVIEW_INTERVAL_MS = 250L
 
@@ -140,6 +143,13 @@ fun startGui(args: Array<String>) = application {
     var roadDetectionStatus by remember { mutableStateOf("") }
     var roadDetectionJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     var roadScanIntervalSeconds by remember { mutableStateOf(30) }
+
+    var isCheckingUpdate by remember { mutableStateOf(false) }
+    var latestReleaseInfo by remember { mutableStateOf<UpdateManager.ReleaseInfo?>(null) }
+    var isDownloadingUpdate by remember { mutableStateOf(false) }
+    var updateProgress by remember { mutableStateOf(0f) }
+    var updateStatusText by remember { mutableStateOf("") }
+    var manualCheckFeedback by remember { mutableStateOf<String?>(null) }
     val playerState = rememberVideoPlayerState()
     var composeWindow: java.awt.Window? by remember { mutableStateOf(null) }
     var ignoreNextStartUtcClear by remember { mutableStateOf(false) }
@@ -215,6 +225,109 @@ fun startGui(args: Array<String>) = application {
 
     val scope = rememberCoroutineScope()
 
+    val triggerUpdatePrompt = remember(latestReleaseInfo, composeWindow) {
+        fun() {
+            val release = latestReleaseInfo ?: return
+            scope.launch(Dispatchers.Main) {
+                try {
+                    val runningUri = UpdateManager::class.java.protectionDomain.codeSource.location.toURI()
+                    val runningFile = File(runningUri)
+                    val ext = runningFile.extension.lowercase()
+                    
+                    val isDev = ext != "jar" && ext != "exe"
+                    val message = if (isDev) {
+                        "新しいバージョン ${release.tagName} が利用可能です。\n\n" +
+                        "変更内容:\n${release.body.take(300)}${if (release.body.length > 300) "..." else ""}\n\n" +
+                        "※現在の環境は開発用ソース実行（$ext）のため自動更新できません。\n" +
+                        "GitHubの配布ページを開いて最新版をダウンロードしますか？"
+                    } else {
+                        "新しいバージョン ${release.tagName} が利用可能です。\n\n" +
+                        "変更内容:\n${release.body.take(300)}${if (release.body.length > 300) "..." else ""}\n\n" +
+                        "今すぐ自動アップデートをダウンロードし、アプリを再起動しますか？"
+                    }
+
+                    val options = if (isDev) {
+                        arrayOf("GitHubを開く", "キャンセル")
+                    } else {
+                        arrayOf("アップデートして再起動", "キャンセル")
+                    }
+
+                    val choice = javax.swing.JOptionPane.showOptionDialog(
+                        composeWindow,
+                        message,
+                        "ソフトウェア・アップデート",
+                        javax.swing.JOptionPane.YES_NO_OPTION,
+                        javax.swing.JOptionPane.INFORMATION_MESSAGE,
+                        null,
+                        options,
+                        options[0]
+                    )
+
+                    if (choice == javax.swing.JOptionPane.YES_OPTION) {
+                        if (isDev) {
+                            java.awt.Desktop.getDesktop().browse(java.net.URI(release.htmlUrl))
+                        } else {
+                            val matchedAsset = release.assets.find { it.name.endsWith(".$ext") } ?: release.assets.firstOrNull()
+                            if (matchedAsset != null) {
+                                isDownloadingUpdate = true
+                                updateStatusText = "ダウンロード中 (0%)..."
+                                statusText = "⏬ ソフトウェア更新: $updateStatusText"
+                                
+                                scope.launch {
+                                    val result = UpdateManager.performUpdate(
+                                        downloadUrl = matchedAsset.browserDownloadUrl,
+                                        fileName = matchedAsset.name,
+                                        onProgress = { progress ->
+                                            updateProgress = progress
+                                            updateStatusText = "ダウンロード中 (${(progress * 100).toInt()}%)..."
+                                            statusText = "⏬ ソフトウェア更新: $updateStatusText"
+                                        }
+                                    )
+                                    
+                                    isDownloadingUpdate = false
+                                    if (result == "SUCCESS") {
+                                        statusText = "アップデート完了。再起動します..."
+                                        javax.swing.JOptionPane.showMessageDialog(
+                                            composeWindow,
+                                            "アップデートの適用準備が整いました。\nOKを押すとアプリを終了し、自動差し替えと再起動を行います。",
+                                            "アップデート適用",
+                                            javax.swing.JOptionPane.INFORMATION_MESSAGE
+                                        )
+                                        System.exit(0)
+                                    } else if (result == "DEVELOPMENT_ENV") {
+                                        javax.swing.JOptionPane.showMessageDialog(
+                                            composeWindow,
+                                            "開発環境での実行を検知したため、自動更新を中止しました。\nGit Pull 等で手動更新を行ってください。",
+                                            "アップデート中止",
+                                            javax.swing.JOptionPane.WARNING_MESSAGE
+                                        )
+                                    } else {
+                                        javax.swing.JOptionPane.showMessageDialog(
+                                            composeWindow,
+                                            "アップデート適用中にエラーが発生しました:\n$result",
+                                            "エラー",
+                                            javax.swing.JOptionPane.ERROR_MESSAGE
+                                        )
+                                    }
+                                }
+                            } else {
+                                javax.swing.JOptionPane.showMessageDialog(
+                                    composeWindow,
+                                    "該当するリリースアセットが見つかりませんでした。\nブラウザから手動でインストールしてください。",
+                                    "アセット不足",
+                                    javax.swing.JOptionPane.ERROR_MESSAGE
+                                )
+                                java.awt.Desktop.getDesktop().browse(java.net.URI(release.htmlUrl))
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        }
+    }
+
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
             // Auto-cleanup temporary workspaces on startup
@@ -233,6 +346,21 @@ fun startGui(args: Array<String>) = application {
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
+            }
+        }
+        
+        // Startup silent update check (only if not encoding)
+        if (!isEncoding) {
+            scope.launch {
+                try {
+                    val latest = UpdateManager.fetchLatestRelease()
+                    if (latest != null && UpdateManager.isNewerVersion(APP_VERSION, latest.tagName)) {
+                        latestReleaseInfo = latest
+                        triggerUpdatePrompt()
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
             }
         }
     }
@@ -1518,6 +1646,89 @@ fun startGui(args: Array<String>) = application {
                                   }
                               }
 
+                              Spacer(modifier = Modifier.height(6.dp))
+
+                              // Software Update Section
+                              Column(
+                                  modifier = Modifier
+                                      .fillMaxWidth()
+                                      .background(Color(0xFFF2F2F7), shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                                      .border(1.dp, Color(0xFFE5E5EA), shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                                      .padding(horizontal = 10.dp, vertical = 8.dp),
+                                  verticalArrangement = Arrangement.spacedBy(6.dp)
+                              ) {
+                                  Row(
+                                      modifier = Modifier.fillMaxWidth(),
+                                      horizontalArrangement = Arrangement.SpaceBetween,
+                                      verticalAlignment = Alignment.CenterVertically
+                                  ) {
+                                      Column {
+                                          Text("SOFTWARE UPDATE", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                                          Text("現在のバージョン: $APP_VERSION", color = Color(0xFF636366), fontSize = 8.sp)
+                                      }
+                                  }
+
+                                  if (isCheckingUpdate) {
+                                      Row(
+                                          modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                          horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                          verticalAlignment = Alignment.CenterVertically
+                                      ) {
+                                          CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 1.5.dp, color = Color(0xFF007AFF))
+                                          Text("更新プログラムを確認中...", fontSize = 9.sp, color = Color(0xFF1C1C1E))
+                                      }
+                                  } else if (isDownloadingUpdate) {
+                                      Column(
+                                          modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                          verticalArrangement = Arrangement.spacedBy(4.dp)
+                                      ) {
+                                          Text(updateStatusText, fontSize = 9.sp, color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold)
+                                          LinearProgressIndicator(
+                                              progress = updateProgress,
+                                              modifier = Modifier.fillMaxWidth().height(4.dp),
+                                              color = Color(0xFF34C759),
+                                              backgroundColor = Color(0xFFE5E5EA)
+                                          )
+                                      }
+                                  } else {
+                                      Button(
+                                          onClick = {
+                                              isCheckingUpdate = true
+                                              manualCheckFeedback = null
+                                              scope.launch {
+                                                  try {
+                                                      val latest = UpdateManager.fetchLatestRelease()
+                                                      if (latest != null) {
+                                                          latestReleaseInfo = latest
+                                                          if (UpdateManager.isNewerVersion(APP_VERSION, latest.tagName)) {
+                                                              triggerUpdatePrompt()
+                                                          } else {
+                                                              manualCheckFeedback = "最新のバージョンです ($APP_VERSION)"
+                                                          }
+                                                      } else {
+                                                          manualCheckFeedback = "更新情報の取得に失敗しました"
+                                                      }
+                                                  } catch (e: Exception) {
+                                                       manualCheckFeedback = "エラー: ${e.message}"
+                                                  } finally {
+                                                      isCheckingUpdate = false
+                                                  }
+                                              }
+                                          },
+                                          colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF007AFF)),
+                                          contentPadding = PaddingValues(0.dp),
+                                          shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp),
+                                          modifier = Modifier.fillMaxWidth().height(24.dp),
+                                          enabled = !isEncoding
+                                      ) {
+                                          Text("🔄 更新プログラムの確認", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                      }
+                                      manualCheckFeedback?.let { feedback ->
+                                          Text(feedback, fontSize = 9.sp, color = if (feedback.contains("エラー") || feedback.contains("失敗")) Color.Red else Color(0xFF34C759))
+                                      }
+                                  }
+                              }
+
 
 
                                // Display FIT start/end timestamp and warning if video range is out of bounds
@@ -2273,6 +2484,163 @@ suspend fun detectRoadSegments(
     }
     
     return segments
+}
+
+object UpdateManager {
+    private const val GITHUB_API_URL = "https://api.github.com/repos/YuujiKamura/fit-trimmer/releases/latest"
+
+    data class ReleaseInfo(
+        val tagName: String,
+        val htmlUrl: String,
+        val assets: List<AssetInfo>,
+        val body: String
+    )
+
+    data class AssetInfo(
+        val name: String,
+        val browserDownloadUrl: String
+    )
+
+    fun isNewerVersion(current: String, latest: String): Boolean {
+        fun parseVersion(v: String): List<Int> {
+            val clean = v.trim().lowercase().removePrefix("v")
+            return clean.split(".").mapNotNull { it.toIntOrNull() }
+        }
+        val currParts = parseVersion(current)
+        val lateParts = parseVersion(latest)
+        val size = maxOf(currParts.size, lateParts.size)
+        for (i in 0 until size) {
+            val currVal = currParts.getOrNull(i) ?: 0
+            val lateVal = lateParts.getOrNull(i) ?: 0
+            if (lateVal > currVal) return true
+            if (currVal > lateVal) return false
+        }
+        return false
+    }
+
+    suspend fun fetchLatestRelease(): ReleaseInfo? {
+        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val conn = java.net.URL(GITHUB_API_URL).openConnection() as java.net.HttpURLConnection
+                conn.requestMethod = "GET"
+                conn.setRequestProperty("User-Agent", "FitTrimmerApp/1.0")
+                conn.connectTimeout = 5000
+                conn.readTimeout = 5000
+                
+                if (conn.responseCode == 200) {
+                    val json = conn.inputStream.bufferedReader().use { it.readText() }
+                    val tagName = extractJsonValue(json, "tag_name") ?: return@withContext null
+                    val htmlUrl = extractJsonValue(json, "html_url") ?: ""
+                    val body = extractJsonValue(json, "body") ?: ""
+                    
+                    val assets = mutableListOf<AssetInfo>()
+                    val assetRegex = Regex("""\"name\"\s*:\s*\"([^\"]+)\"[\s\S]*?\"browser_download_url\"\s*:\s*\"([^\"]+)\"""")
+                    assetRegex.findAll(json).forEach { match ->
+                        val name = match.groupValues[1]
+                        val url = match.groupValues[2]
+                        assets.add(AssetInfo(name, url))
+                    }
+                    
+                    ReleaseInfo(tagName, htmlUrl, assets, body)
+                } else {
+                    null
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                null
+            }
+        }
+    }
+
+    suspend fun performUpdate(
+        downloadUrl: String,
+        fileName: String,
+        onProgress: (Float) -> Unit
+    ): String? {
+        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val runningUri = UpdateManager::class.java.protectionDomain.codeSource.location.toURI()
+                val runningFile = File(runningUri)
+                val targetPath = runningFile.absolutePath
+                val extension = runningFile.extension.lowercase()
+                
+                if (extension != "jar" && extension != "exe") {
+                    return@withContext "DEVELOPMENT_ENV"
+                }
+
+                val tempDir = File(System.getProperty("java.io.tmpdir"))
+                val tempFile = File(tempDir, "fit-trimmer-update-$fileName")
+                
+                val url = java.net.URL(downloadUrl)
+                val conn = url.openConnection() as java.net.HttpURLConnection
+                conn.connectTimeout = 10000
+                conn.readTimeout = 10000
+                
+                val fileLength = conn.contentLengthLong
+                conn.inputStream.use { input ->
+                    tempFile.outputStream().use { output ->
+                        val buffer = ByteArray(4096)
+                        var bytesRead: Int
+                        var totalBytesRead = 0L
+                        while (input.read(buffer).also { bytesRead = it } != -1) {
+                            output.write(buffer, 0, bytesRead)
+                            totalBytesRead += bytesRead
+                            if (fileLength > 0) {
+                                onProgress(totalBytesRead.toFloat() / fileLength)
+                            }
+                        }
+                    }
+                }
+
+                val isWindows = System.getProperty("os.name").lowercase().contains("win")
+                if (isWindows) {
+                    val batchFile = File(tempDir, "fit-trimmer-apply-update.bat")
+                    batchFile.writeText("""
+                        @echo off
+                        title FitTrimmer Updater
+                        echo Waiting for FitTrimmer process to exit...
+                        timeout /t 2 /nobreak > nul
+                        echo Copying new version...
+                        copy /y "${tempFile.absolutePath}" "$targetPath"
+                        echo Restarting application...
+                        start "" "$targetPath"
+                        echo Clean up...
+                        del "${tempFile.absolutePath}"
+                        del "%~f0"
+                    """.trimIndent(), charset("Shift_JIS"))
+
+                    ProcessBuilder("cmd.exe", "/c", batchFile.absolutePath)
+                        .directory(tempDir)
+                        .start()
+                } else {
+                    val shellFile = File(tempDir, "fit-trimmer-apply-update.sh")
+                    shellFile.writeText("""
+                        #!/bin/bash
+                        echo "Waiting for FitTrimmer process to exit..."
+                        sleep 2
+                        echo "Copying new version..."
+                        cp -f "${tempFile.absolutePath}" "$targetPath"
+                        echo "Restarting application..."
+                        open "$targetPath" || "$targetPath" &
+                        echo "Clean up..."
+                        rm -f "${tempFile.absolutePath}"
+                        rm -- "${'$'}0"
+                    """.trimIndent())
+                    
+                    shellFile.setExecutable(true)
+                    
+                    ProcessBuilder("/bin/bash", shellFile.absolutePath)
+                        .directory(tempDir)
+                        .start()
+                }
+
+                "SUCCESS"
+            } catch (e: Exception) {
+                e.printStackTrace()
+                e.message
+            }
+        }
+    }
 }
 
 @Composable
