@@ -2161,8 +2161,20 @@ suspend fun detectRoadSegments(
     var currentRoadName: String? = null
     var segmentStartSeconds = 0.0
     
-    val sampleInterval = 15
+    val sampleInterval = 30
     val numSteps = (videoDurationSeconds / sampleInterval).toInt().coerceAtLeast(1)
+    
+    var lastApiLat = 0.0
+    var lastApiLon = 0.0
+    var lastApiRoadName: String? = null
+    var hasLastApi = false
+    
+    fun isCoordinatesClose(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Boolean {
+        val dLat = lat1 - lat2
+        val dLon = lon1 - lon2
+        // 0.0005 degrees is roughly 50-55 meters
+        return (dLat * dLat + dLon * dLon) < (0.0005 * 0.0005)
+    }
     
     for (i in 0..numSteps) {
         val currentOffset = i * sampleInterval.toDouble()
@@ -2171,11 +2183,22 @@ suspend fun detectRoadSegments(
         val targetFitTime = startFitTime + currentOffset
         val point = rangePoints.minByOrNull { kotlin.math.abs(it.timestamp - targetFitTime) } ?: continue
         
-        onProgress("GPS解析中 (${(currentOffset / videoDurationSeconds * 100).toInt()}%): 座標 (${"%.4f".format(point.lat)}, ${"%.4f".format(point.lon)}) を検索中...")
-        
-        kotlinx.coroutines.delay(1000)
-        
-        val roadName = queryRoadName(point.lat, point.lon)
+        // Skip API request and wait if we are very close to the last queried location
+        val roadName = if (hasLastApi && isCoordinatesClose(point.lat, point.lon, lastApiLat, lastApiLon)) {
+            onProgress("GPS解析中 (${(currentOffset / videoDurationSeconds * 100).toInt()}%): 座標 (${"%.4f".format(point.lat)}, ${"%.4f".format(point.lon)}) 付近をキャッシュからスキップ処理中...")
+            lastApiRoadName
+        } else {
+            onProgress("GPS解析中 (${(currentOffset / videoDurationSeconds * 100).toInt()}%): 座標 (${"%.4f".format(point.lat)}, ${"%.4f".format(point.lon)}) を検索中...")
+            // Rate limit wait (1s) only when we actually query the Nominatim API
+            kotlinx.coroutines.delay(1000)
+            val name = queryRoadName(point.lat, point.lon)
+            
+            lastApiLat = point.lat
+            lastApiLon = point.lon
+            lastApiRoadName = name
+            hasLastApi = true
+            name
+        }
         
         if (roadName != null && roadName.isNotEmpty()) {
             if (currentRoadName == null) {
