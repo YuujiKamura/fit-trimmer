@@ -1502,7 +1502,7 @@ fun startGui(args: Array<String>) = application {
                                                               }
                                                           )
                                                           settings = settings.copy(roadCaptions = detected)
-                                                      } catch (e: Exception) {
+                                                      } catch (e: Throwable) {
                                                           e.printStackTrace()
                                                           roadDetectionStatus = "エラーが発生しました: ${e.message}"
                                                       } finally {
@@ -1617,8 +1617,9 @@ fun startGui(args: Array<String>) = application {
                                                                   }
                                                               )
                                                               settings = settings.copy(roadCaptions = detected)
-                                                          } catch (e: Exception) {
+                                                          } catch (e: Throwable) {
                                                               e.printStackTrace()
+                                                              roadDetectionStatus = "エラーが発生しました: ${e.message}"
                                                           } finally {
                                                               isDetectingRoads = false
                                                           }
