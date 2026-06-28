@@ -198,6 +198,7 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
     private val mediaOperationMutex = Mutex()
     private val isResizing = AtomicBoolean(false)
     private var videoJob: Job? = null
+    private var posterJob: Job? = null
     private var resizeJob: Job? = null
     private var audioLevelsJob: Job? = null
 
@@ -286,6 +287,7 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
     private fun releaseAllResources() {
         // Cancel any remaining jobs related to video processing
         videoJob?.cancel()
+        posterJob?.cancel()
         audioLevelsJob?.cancel()
         resizeJob?.cancel()
 
@@ -349,6 +351,7 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
                     }
 
                     videoJob?.cancelAndJoin()
+                    posterJob?.cancelAndJoin()
                     releaseAllResources()
                     player.CloseMedia(instance)
 
@@ -443,11 +446,12 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
                     _isPlaying = false
 
                     // Retrieve and render the first frame as a poster frame
-                    scope.launch {
+                    posterJob = scope.launch {
                         try {
+                            val currentInstance = videoPlayerInstance ?: return@launch
                             val ptrRef = PointerByReference()
                             val sizeRef = IntByReference()
-                            val readResult = player.ReadVideoFrame(instance, ptrRef, sizeRef)
+                            val readResult = player.ReadVideoFrame(currentInstance, ptrRef, sizeRef)
                             if (readResult >= 0 && ptrRef.value != null && sizeRef.value > 0) {
                                 val sharedBuffer = sharedFrameBuffer ?: ByteArray(frameBufferSize).also { sharedFrameBuffer = it }
                                 val buffer = ptrRef.value.getByteBuffer(0, sizeRef.value.toLong())
@@ -455,7 +459,10 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
                                 if (buffer != null && copySize > 0) {
                                     buffer.get(sharedBuffer, 0, copySize)
                                 }
-                                player.UnlockVideoFrame(instance)
+                                
+                                if (videoPlayerInstance == currentInstance) {
+                                    player.UnlockVideoFrame(currentInstance)
+                                }
 
                                 val bitmap = Bitmap().apply {
                                     allocPixels(createVideoImageInfo())
