@@ -37,6 +37,8 @@ class ComposeHudCanvas(
     private val scale: Float,
     private val density: Float
 ) : fit.HudCanvas {
+    override val width: Float get() = drawScope.size.width / scale
+    override val height: Float get() = drawScope.size.height / scale
 
     private fun parseColor(colorStr: String): Color {
         val clean = colorStr.replace("#", "")
