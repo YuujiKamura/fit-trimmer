@@ -2600,21 +2600,27 @@ object UpdateManager {
                 val isWindows = System.getProperty("os.name").lowercase().contains("win")
                 if (isWindows) {
                     val batchFile = File(tempDir, "fit-trimmer-apply-update.bat")
+                    val launcherFile = File(tempDir, "fit-trimmer-launcher.vbs")
+                    
                     batchFile.writeText("""
                         @echo off
-                        title FitTrimmer Updater
-                        echo Waiting for FitTrimmer process to exit...
                         timeout /t 2 /nobreak > nul
-                        echo Copying new version...
                         copy /y "${tempFile.absolutePath}" "$targetPath"
-                        echo Restarting application...
                         start "" "$targetPath"
-                        echo Clean up...
                         del "${tempFile.absolutePath}"
+                        del "${launcherFile.absolutePath}"
                         del "%~f0"
                     """.trimIndent(), charset("Shift_JIS"))
 
-                    ProcessBuilder("cmd.exe", "/c", batchFile.absolutePath)
+                    // Generate a silent VBScript launcher to run the batch file completely hidden
+                    launcherFile.writeText(
+                        "Set WshShell = CreateObject(\"WScript.Shell\")\n" +
+                        "WshShell.Run \"cmd.exe /c \"\"" + batchFile.absolutePath + "\"\"\", 0, false",
+                        charset("Shift_JIS")
+                    )
+
+                    // Execute silently via Windows Script Host (wscript.exe)
+                    ProcessBuilder("wscript.exe", launcherFile.absolutePath)
                         .directory(tempDir)
                         .start()
                 } else {
