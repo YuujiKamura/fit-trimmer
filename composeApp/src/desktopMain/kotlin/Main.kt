@@ -1747,11 +1747,102 @@ fun startGui(args: Array<String>) = application {
                                                               textStyle = androidx.compose.ui.text.TextStyle(fontSize = 10.sp, color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold),
                                                               modifier = Modifier.fillMaxWidth().background(Color(0xFFF2F2F7)).padding(2.dp)
                                                           )
-                                                          Text(
-                                                              text = "${utils.formatTime((segment.startSeconds * 1000).toLong())} - ${utils.formatTime((segment.endSeconds * 1000).toLong())}",
-                                                              fontSize = 8.sp,
-                                                              color = Color.Gray
-                                                          )
+                                                          Spacer(modifier = Modifier.height(2.dp))
+                                                          Row(
+                                                              verticalAlignment = Alignment.CenterVertically,
+                                                              horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                                              modifier = Modifier.fillMaxWidth()
+                                                          ) {
+                                                              // Start seconds control
+                                                              Row(
+                                                                  verticalAlignment = Alignment.CenterVertically,
+                                                                  horizontalArrangement = Arrangement.spacedBy(1.dp)
+                                                              ) {
+                                                                  Text("始:${utils.formatTime((segment.startSeconds * 1000).toLong())}", fontSize = 8.sp, color = Color.DarkGray)
+                                                                  IconButton(
+                                                                      onClick = {
+                                                                          val updated = captions.mapIndexed { idx, item ->
+                                                                              if (idx == index) item.copy(startSeconds = maxOf(0.0, item.startSeconds - 1.0)) else item
+                                                                          }
+                                                                          settings = settings.copy(roadCaptions = updated)
+                                                                      },
+                                                                      modifier = Modifier.size(12.dp)
+                                                                  ) {
+                                                                      Text("◀", fontSize = 6.sp, color = Color.Gray)
+                                                                  }
+                                                                  IconButton(
+                                                                      onClick = {
+                                                                          val updated = captions.mapIndexed { idx, item ->
+                                                                              if (idx == index) item.copy(startSeconds = minOf(item.endSeconds, item.startSeconds + 1.0)) else item
+                                                                          }
+                                                                          settings = settings.copy(roadCaptions = updated)
+                                                                      },
+                                                                      modifier = Modifier.size(12.dp)
+                                                                  ) {
+                                                                      Text("▶", fontSize = 6.sp, color = Color.Gray)
+                                                                  }
+                                                                  Button(
+                                                                      onClick = {
+                                                                          val currentSec = videoCurrentTimeMs / 1000.0
+                                                                          val updated = captions.mapIndexed { idx, item ->
+                                                                              if (idx == index) item.copy(startSeconds = currentSec.coerceIn(0.0, item.endSeconds)) else item
+                                                                          }
+                                                                          settings = settings.copy(roadCaptions = updated)
+                                                                      },
+                                                                      colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFE5E5EA)),
+                                                                      contentPadding = PaddingValues(horizontal = 2.dp, vertical = 0.dp),
+                                                                      modifier = Modifier.height(12.dp)
+                                                                  ) {
+                                                                      Text("現在地", fontSize = 6.sp)
+                                                                  }
+                                                              }
+                                                              
+                                                              Spacer(Modifier.weight(1f))
+                                                              
+                                                              // End seconds control
+                                                              Row(
+                                                                  verticalAlignment = Alignment.CenterVertically,
+                                                                  horizontalArrangement = Arrangement.spacedBy(1.dp)
+                                                              ) {
+                                                                  Text("終:${utils.formatTime((segment.endSeconds * 1000).toLong())}", fontSize = 8.sp, color = Color.DarkGray)
+                                                                  IconButton(
+                                                                      onClick = {
+                                                                          val updated = captions.mapIndexed { idx, item ->
+                                                                              if (idx == index) item.copy(endSeconds = maxOf(item.startSeconds, item.endSeconds - 1.0)) else item
+                                                                          }
+                                                                          settings = settings.copy(roadCaptions = updated)
+                                                                      },
+                                                                      modifier = Modifier.size(12.dp)
+                                                                  ) {
+                                                                      Text("◀", fontSize = 6.sp, color = Color.Gray)
+                                                                  }
+                                                                  IconButton(
+                                                                      onClick = {
+                                                                          val updated = captions.mapIndexed { idx, item ->
+                                                                              if (idx == index) item.copy(endSeconds = minOf(videoLengthMs / 1000.0, item.endSeconds + 1.0)) else item
+                                                                          }
+                                                                          settings = settings.copy(roadCaptions = updated)
+                                                                      },
+                                                                      modifier = Modifier.size(12.dp)
+                                                                  ) {
+                                                                      Text("▶", fontSize = 6.sp, color = Color.Gray)
+                                                                  }
+                                                                  Button(
+                                                                      onClick = {
+                                                                          val currentSec = videoCurrentTimeMs / 1000.0
+                                                                          val updated = captions.mapIndexed { idx, item ->
+                                                                              if (idx == index) item.copy(endSeconds = currentSec.coerceIn(item.startSeconds, videoLengthMs / 1000.0)) else item
+                                                                          }
+                                                                          settings = settings.copy(roadCaptions = updated)
+                                                                      },
+                                                                      colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFE5E5EA)),
+                                                                      contentPadding = PaddingValues(horizontal = 2.dp, vertical = 0.dp),
+                                                                      modifier = Modifier.height(12.dp)
+                                                                  ) {
+                                                                      Text("現在地", fontSize = 6.sp)
+                                                                  }
+                                                              }
+                                                          }
                                                       }
                                                       Spacer(Modifier.width(2.dp))
                                                       IconButton(
