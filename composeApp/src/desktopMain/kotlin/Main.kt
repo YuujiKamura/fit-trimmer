@@ -2735,9 +2735,31 @@ object UpdateManager {
     fun isDevelopment(): Boolean {
         return try {
             if (System.getProperty("idea.active") == "true") return true
+            val userDir = System.getProperty("user.dir").lowercase()
+            if (userDir.contains("fit-trimmer") || userDir.contains("build") || userDir.contains("out")) return true
+
             val runningUri = UpdateManager::class.java.protectionDomain.codeSource.location.toURI()
             val runningFile = File(runningUri)
-            isDevelopmentPath(runningFile.absolutePath)
+            val isDev = isDevelopmentPath(runningFile.absolutePath)
+            
+            try {
+                val logFile = File(System.getProperty("user.home"), "fit-trimmer-debug-env.txt")
+                logFile.writeText("""
+                    runningUri: ${runningUri}
+                    runningFile.absolutePath: ${runningFile.absolutePath}
+                    runningFile.isDirectory: ${runningFile.isDirectory}
+                    extension: ${runningFile.extension}
+                    isDevResult: ${isDev}
+                    idea.active: ${System.getProperty("idea.active")}
+                    sun.java.command: ${System.getProperty("sun.java.command")}
+                    os.name: ${System.getProperty("os.name")}
+                    user.dir: ${System.getProperty("user.dir")}
+                """.trimIndent())
+            } catch (e: Exception) {
+                // ignore
+            }
+
+            isDev
         } catch (e: Exception) {
             true
         }
@@ -2748,7 +2770,8 @@ object UpdateManager {
         if (lowerPath.contains("${File.separator}build${File.separator}") ||
             lowerPath.contains("${File.separator}out${File.separator}") ||
             lowerPath.contains("/build/") ||
-            lowerPath.contains("/out/")) {
+            lowerPath.contains("/out/") ||
+            lowerPath.contains("fit-trimmer")) {
             return true
         }
         val file = File(path)
