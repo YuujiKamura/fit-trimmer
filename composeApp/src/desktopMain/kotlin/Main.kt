@@ -2365,6 +2365,63 @@ fun startGui(args: Array<String>) = application {
                                 }
                             }
                         }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Card(
+                        backgroundColor = Color.White,
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, Color(0xFFE5E5EA)),
+                        elevation = 1.dp,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text("SETTINGS IMPORT / EXPORT", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 0.5.sp)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Button(
+                                    onClick = {
+                                        val path = pickFile("Load Settings JSON", listOf("*.json"))
+                                        if (path != null) {
+                                            try {
+                                                val jsonStr = File(path).readText(Charsets.UTF_8)
+                                                val loaded = kotlinx.serialization.json.Json.decodeFromString<fit.HudSettings>(jsonStr)
+                                                settings = loaded
+                                                statusText = "設定ファイルを読み込みました"
+                                            } catch (e: Exception) {
+                                                statusText = "読み込みエラー: ${e.message}"
+                                            }
+                                        }
+                                    },
+                                    modifier = Modifier.weight(1f).height(36.dp),
+                                    colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFE5E5EA))
+                                ) {
+                                    Text("LOAD JSON", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                }
+                                Button(
+                                    onClick = {
+                                        val path = saveFile("Save Settings JSON", "fit_trimmer_settings.json")
+                                        if (path != null) {
+                                            try {
+                                                val jsonStr = kotlinx.serialization.json.Json.encodeToString(settings)
+                                                File(path).writeText(jsonStr, Charsets.UTF_8)
+                                                statusText = "設定ファイルを保存しました"
+                                            } catch (e: Exception) {
+                                                statusText = "保存エラー: ${e.message}"
+                                            }
+                                        }
+                                    },
+                                    modifier = Modifier.weight(1f).height(36.dp),
+                                    colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFE5E5EA))
+                                ) {
+                                    Text("SAVE JSON", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
                     }
                     }
                     VerticalScrollbar(
