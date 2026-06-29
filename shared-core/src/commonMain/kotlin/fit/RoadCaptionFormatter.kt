@@ -102,14 +102,25 @@ class JpRoadCaptionFormatter : RoadCaptionFormatter {
             if (areaBuilder.contains(part)) return
             areaBuilder.append(part)
         }
-        // 日本の住所体系において「市(city)」は「郡(county)」に属さないため、cityが存在する場合はcountyを無視する
-        if (city.isNullOrEmpty()) {
+        
+        val isCountyArea = !town.isNullOrEmpty() || !village.isNullOrEmpty()
+        
+        if (isCountyArea) {
+            // 郡部（町村）の処理: 市(city)や行政区("区")は不整合データとして無視する
             appendArea(county)
+            appendArea(town)
+            appendArea(village)
+            
+            // suburbが「区」で終わらない場合（大字・地区名など）のみ結合を許可する
+            val isSuburbAdministrativeDistrict = suburb != null && suburb.endsWith("区")
+            if (!isSuburbAdministrativeDistrict) {
+                appendArea(suburb)
+            }
+        } else {
+            // 市部（政令指定都市・一般市）の処理: 郡(county)は無視する
+            appendArea(city)
+            appendArea(suburb)
         }
-        appendArea(city)
-        appendArea(suburb)
-        appendArea(town)
-        appendArea(village)
         appendArea(neighbourhood)
         
         val area = areaBuilder.toString()
