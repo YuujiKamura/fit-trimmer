@@ -348,5 +348,45 @@ class AppViewModelTest {
         viewModel.clearBatchQueue()
         assertTrue(viewModel.batchQueue.isEmpty())
     }
+
+    @Test
+    fun testVideoPathChangeSavesAndRestoresHistory() {
+        // Clean history files if any from previous test runs
+        val cleanHistory = {
+            val historyDir = java.io.File(System.getProperty("user.home"), ".fittrimmer_history")
+            if (historyDir.exists()) {
+                historyDir.deleteRecursively()
+            }
+        }
+        cleanHistory()
+        
+        val viewModel = AppViewModel(null)
+        viewModel.videoPath = "/path/to/my_video1.mp4"
+        viewModel.trimStartSeconds = 15.5
+        viewModel.trimEndSeconds = 85.2
+        viewModel.settings = viewModel.settings.copy(
+            roadCaptions = listOf(
+                fit.RoadCaptionSegment("id-hist", 10.0, 20.0, "Saved History Route", true)
+            )
+        )
+        
+        // Changing videoPath should trigger history save for video1.mp4
+        viewModel.videoPath = "/path/to/my_video2.mp4"
+        
+        // UI values for video2.mp4 should be clean (flashed)
+        assertEquals(0.0, viewModel.trimStartSeconds)
+        assertEquals(0.0, viewModel.trimEndSeconds)
+        assertTrue(viewModel.settings.roadCaptions.isEmpty())
+        
+        // Restoring videoPath back to video1.mp4 should load and restore settings
+        viewModel.videoPath = "/path/to/my_video1.mp4"
+        
+        assertEquals(15.5, viewModel.trimStartSeconds)
+        assertEquals(85.2, viewModel.trimEndSeconds)
+        assertEquals(1, viewModel.settings.roadCaptions.size)
+        assertEquals("Saved History Route", viewModel.settings.roadCaptions[0].text)
+        
+        cleanHistory()
+    }
 }
 

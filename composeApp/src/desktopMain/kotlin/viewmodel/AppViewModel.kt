@@ -25,10 +25,36 @@ class AppViewModel(
         get() = _videoPath
         set(value) {
             if (_videoPath != value) {
+                val oldPath = _videoPath
+                if (oldPath.isNotEmpty()) {
+                    val currentCache = utils.GuiPathCache(
+                        fitPath = fitPath,
+                        videoPath = oldPath,
+                        videoStartUtc = videoStartUtc,
+                        timeOffsetMillis = timeOffsetState.millis,
+                        settings = settings.copy(),
+                        moveOutputToSource = moveOutputToSource,
+                        showLivePreview = showLivePreview,
+                        trimStartSeconds = trimStartSeconds,
+                        trimEndSeconds = trimEndSeconds,
+                        splitPoints = splitPoints
+                    )
+                    utils.GuiCache.saveHistory(oldPath, currentCache)
+                }
                 _videoPath = value
-                trimStartSeconds = 0.0
-                trimEndSeconds = 0.0
-                splitPoints = emptyList()
+                val history = utils.GuiCache.loadHistory(value)
+                if (history != null) {
+                    trimStartSeconds = history.trimStartSeconds ?: 0.0
+                    trimEndSeconds = history.trimEndSeconds ?: 0.0
+                    splitPoints = history.splitPoints ?: emptyList()
+                    settings = history.settings
+                    history.timeOffsetMillis?.let { timeOffsetState.update(it) }
+                } else {
+                    trimStartSeconds = 0.0
+                    trimEndSeconds = 0.0
+                    splitPoints = emptyList()
+                    settings = settings.copy(roadCaptions = emptyList())
+                }
                 isGeneratingProxy = false
                 proxyProgress = 0f
                 proxyVideoPath = null
