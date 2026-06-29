@@ -2614,6 +2614,8 @@ suspend fun queryRoadName(lat: Double, lon: Double): String? {
                 val town = extractJsonValue(body, "town")
                 val village = extractJsonValue(body, "village")
                 val suburb = extractJsonValue(body, "suburb")
+                val county = extractJsonValue(body, "county")
+                val neighbourhood = extractJsonValue(body, "neighbourhood")
                 
                 // If municipal road has no official name, reject snapped OSM road name
                 val finalRoadName = if (rdCtg == "市区町村道等" && gsiRoadName == null) {
@@ -2622,7 +2624,17 @@ suspend fun queryRoadName(lat: Double, lon: Double): String? {
                     gsiRoadName ?: road
                 }
                 
-                return@withContext fit.RoadNameBuilder.buildCaptionText(rdCtg, finalRoadName, ref, city, town, village, suburb)
+                return@withContext fit.RoadNameBuilder.buildCaptionText(
+                    rdCtg = rdCtg,
+                    roadName = finalRoadName,
+                    ref = ref,
+                    city = city,
+                    town = town,
+                    village = village,
+                    suburb = suburb,
+                    county = county,
+                    neighbourhood = neighbourhood
+                )
             }
         } catch (e: Exception) {
             e.printStackTrace()

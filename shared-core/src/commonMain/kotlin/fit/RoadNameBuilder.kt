@@ -8,7 +8,9 @@ object RoadNameBuilder {
         city: String?,
         town: String?,
         village: String?,
-        suburb: String?
+        suburb: String?,
+        county: String? = null,
+        neighbourhood: String? = null
     ): String? {
         val normalizedRoadName = roadName ?: ""
         val normalizedRef = ref ?: ""
@@ -78,7 +80,20 @@ object RoadNameBuilder {
         
         if (mainRoadText.isEmpty()) return null
         
-        val area = town ?: city ?: village ?: suburb ?: ""
+        val areaBuilder = StringBuilder()
+        fun appendArea(part: String?) {
+            if (part.isNullOrEmpty()) return
+            if (areaBuilder.contains(part)) return
+            areaBuilder.append(part)
+        }
+        appendArea(county)
+        appendArea(city)
+        appendArea(suburb)
+        appendArea(town)
+        appendArea(village)
+        appendArea(neighbourhood)
+        
+        val area = areaBuilder.toString()
         val areaSuffix = if (area.isNotEmpty()) "（$area 付近）" else ""
         
         return "$mainRoadText$areaSuffix"
