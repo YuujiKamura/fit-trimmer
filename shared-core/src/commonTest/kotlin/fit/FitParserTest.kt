@@ -399,4 +399,69 @@ class FitParserTest {
         
         assertTrue(new120sSafeguard.size < old10sPolls, "New method should call API fewer times than old 10s polling")
     }
+
+    @Test
+    fun dumpRealTelemetryApiData() {
+        var fitFile = java.io.File("Lunch_Ride.fit")
+        if (!fitFile.exists()) fitFile = java.io.File("../Lunch_Ride.fit")
+        if (!fitFile.exists()) fitFile = java.io.File("../../Lunch_Ride.fit")
+        val fileBytes = try { fitFile.readBytes() } catch (e: Exception) { return }
+        
+        val parser = FitParser(fileBytes)
+        parser.parse()
+        val telemetry = parser.getTelemetry()
+        
+        val fitEpoch = java.time.Instant.parse("1989-12-31T00:00:00Z").epochSecond
+        val videoStartInstant = java.time.Instant.parse("2026-06-21T02:09:49Z")
+        val startFitTime = videoStartInstant.epochSecond - fitEpoch
+        
+        val targetOffsets = listOf(0.0, 61.0, 610.0, 880.0, 1415.0, 1594.0)
+        
+        val client = java.net.http.HttpClient.newHttpClient()
+        val logFile = java.io.File("real_api_dumps.txt")
+        logFile.writeText("=== REAL API DUMPS FOR LUNCH_RIDE.FIT ===\n\n")
+        
+        for (offset in targetOffsets) {
+            val targetFitTime = startFitTime + offset
+            val point = telemetry.minByOrNull { kotlin.math.abs(it.timestamp - targetFitTime) } ?: continue
+            
+            logFile.appendText("--- OFFSET: ${offset}s (lat=${point.lat}, lon=${point.lon}) ---\n")
+            
+            // 1. GSI Vector Tile
+            val (tileX, tileY) = GsiRoadDetector.deg2tile(point.lat, point.lon, 16)
+            val gsiUrl = "https://cyberjapandata.gsi.go.jp/xyz/experimental_rdcl/16/$tileX/$tileY.geojson"
+            logFile.appendText("GSI URL: $gsiUrl\n")
+            try {
+                val req = java.net.http.HttpRequest.newBuilder().uri(java.net.URI.create(gsiUrl)).header("User-Agent", "Mozilla/5.0").build()
+                val resp = client.send(req, java.net.http.HttpResponse.BodyHandlers.ofString())
+                logFile.appendText("GSI STATUS: ${resp.statusCode()}\n")
+                if (resp.statusCode() == 200) {
+                    val road = GsiRoadDetector.findClosestRoad(point.lat, point.lon, resp.body())
+                    logFile.appendText("GSI CLOSEST ROAD: $road\n")
+                } else {
+                    logFile.appendText("GSI BODY: (Failed to fetch)\n")
+                }
+            } catch (e: Exception) {
+                logFile.appendText("GSI ERROR: ${e.message}\n")
+            }
+            
+            // 2. OSM Nominatim
+            val osmUrl = "https://nominatim.openstreetmap.org/reverse?lat=${point.lat}&lon=${point.lon}&format=json&accept-language=ja&addressdetails=1"
+            logFile.appendText("OSM URL: $osmUrl\n")
+            Thread.sleep(1000)
+            try {
+                val req = java.net.http.HttpRequest.newBuilder().uri(java.net.URI.create(osmUrl)).header("User-Agent", "FitTrimmerApp/1.0 (yuuji@kamura.jp)").build()
+                val resp = client.send(req, java.net.http.HttpResponse.BodyHandlers.ofString())
+                logFile.appendText("OSM STATUS: ${resp.statusCode()}\n")
+                if (resp.statusCode() == 200) {
+                    logFile.appendText("OSM BODY: ${resp.body()}\n")
+                }
+            } catch (e: Exception) {
+                logFile.appendText("OSM ERROR: ${e.message}\n")
+            }
+            logFile.appendText("\n==========================================\n\n")
+        }
+        println("SUCCESS: Dumped real API data to ${logFile.absolutePath}")
+    }
 }
+
