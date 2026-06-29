@@ -2533,7 +2533,31 @@ suspend fun queryRoadName(lat: Double, lon: Double): String? {
             val client = java.net.http.HttpClient.newBuilder()
                 .connectTimeout(java.time.Duration.ofSeconds(5))
                 .build()
-            
+
+            // 1. Fetch GSI (国土地理院) vector tile for road category
+            var rdCtg: String? = null
+            var gsiRoadName: String? = null
+            try {
+                val (tileX, tileY) = fit.GsiRoadDetector.deg2tile(lat, lon, 16)
+                val gsiUrl = "https://cyberjapandata.gsi.go.jp/xyz/experimental_rdcl/16/$tileX/$tileY.geojson"
+                val gsiRequest = java.net.http.HttpRequest.newBuilder()
+                    .uri(java.net.URI.create(gsiUrl))
+                    .header("User-Agent", "FitTrimmerApp/1.0")
+                    .timeout(java.time.Duration.ofSeconds(5))
+                    .build()
+                val gsiResponse = client.send(gsiRequest, java.net.http.HttpResponse.BodyHandlers.ofString())
+                if (gsiResponse.statusCode() == 200) {
+                    val roadInfo = fit.GsiRoadDetector.findClosestRoad(lat, lon, gsiResponse.body())
+                    if (roadInfo != null && roadInfo.distanceMeters <= 50.0) {
+                        rdCtg = roadInfo.rdCtg
+                        gsiRoadName = roadInfo.name ?: roadInfo.comName
+                    }
+                }
+            } catch (e: Exception) {
+                println("⚠️ Failed to query GSI vector tile: ${e.message}")
+            }
+
+            // 2. Fetch OSM Nominatim for local area and road names
             val url = "https://nominatim.openstreetmap.org/reverse?lat=$lat&lon=$lon&format=json&accept-language=ja&addressdetails=1&extratags=1"
             val request = java.net.http.HttpRequest.newBuilder()
                 .uri(java.net.URI.create(url))
@@ -2551,7 +2575,14 @@ suspend fun queryRoadName(lat: Double, lon: Double): String? {
                 val village = extractJsonValue(body, "village")
                 val suburb = extractJsonValue(body, "suburb")
                 
-                return@withContext buildCaptionText(ref, road, city, town, village, suburb)
+                // If municipal road has no official name, reject snapped OSM road name
+                val finalRoadName = if (rdCtg == "市区町村道等" && gsiRoadName == null) {
+                    null
+                } else {
+                    gsiRoadName ?: road
+                }
+                
+                return@withContext fit.RoadNameBuilder.buildCaptionText(rdCtg, finalRoadName, ref, city, town, village, suburb)
             }
         } catch (e: Exception) {
             e.printStackTrace()
