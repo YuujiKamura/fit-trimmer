@@ -2671,47 +2671,124 @@ suspend fun detectRoadSegments(
     val rangePoints = points.filter { it.timestamp in startFitTime.toDouble()..endFitTime.toDouble() }
     if (rangePoints.isEmpty()) return emptyList()
     
+    // 1. Calculate headings at each second point
+    val numSecs = videoDurationSeconds.toInt()
+    val headings = DoubleArray(numSecs + 1) { -1.0 }
+    
+    fun getHeadingAtSeconds(sec: Double): Double? {
+        val targetFitTime = startFitTime + sec
+        val prevPoint = rangePoints.minByOrNull { kotlin.math.abs(it.timestamp - (targetFitTime - 4.0)) } ?: return null
+        val nextPoint = rangePoints.minByOrNull { kotlin.math.abs(it.timestamp - (targetFitTime + 4.0)) } ?: return null
+        
+        // Skip heading calculation if there's no movement
+        val dist = kotlin.math.sqrt((nextPoint.lat - prevPoint.lat).pow(2) + (nextPoint.lon - prevPoint.lon).pow(2))
+        if (dist < 0.00005) return null // Less than ~5 meters of movement
+        
+        val dLon = (nextPoint.lon - prevPoint.lon) * (Math.PI / 180.0)
+        val lat1 = prevPoint.lat * (Math.PI / 180.0)
+        val lat2 = nextPoint.lat * (Math.PI / 180.0)
+        val y = kotlin.math.sin(dLon) * kotlin.math.cos(lat2)
+        val x = kotlin.math.cos(lat1) * kotlin.math.sin(lat2) - kotlin.math.sin(lat1) * kotlin.math.cos(lat2) * kotlin.math.cos(dLon)
+        var brng = kotlin.math.atan2(y, x) * 180.0 / Math.PI
+        return (brng + 360.0) % 360.0
+    }
+    
+    for (s in 0..numSecs) {
+        headings[s] = getHeadingAtSeconds(s.toDouble()) ?: -1.0
+    }
+    
+    // Helper to compute absolute heading difference
+    fun headingDiff(h1: Double, h2: Double): Double {
+        val diff = kotlin.math.abs(h1 - h2)
+        return if (diff > 180.0) 360.0 - diff else diff
+    }
+    
+    // 2. Identify Turn Event Points (Intersections)
+    val queryOffsets = mutableListOf<Double>()
+    queryOffsets.add(0.0) // Always query start point
+    
+    var baseHeading = -1.0
+    var isTurning = false
+    var lastQueryOffset = 0.0
+    
+    // Find initial stable heading
+    for (s in 0..numSecs) {
+        if (headings[s] >= 0.0) {
+            baseHeading = headings[s]
+            break
+        }
+    }
+    
+    val maxStraightInterval = sampleInterval.toDouble().coerceAtLeast(10.0) // Use sampleInterval as maximum straight interval
+    
+    for (s in 1..numSecs) {
+        val currentHeading = headings[s]
+        if (currentHeading < 0.0) continue
+        
+        if (baseHeading < 0.0) {
+            baseHeading = currentHeading
+            continue
+        }
+        
+        val diff = headingDiff(currentHeading, baseHeading)
+        
+        if (!isTurning) {
+            if (diff >= 25.0) {
+                // Entered a turn!
+                isTurning = true
+            } else {
+                // If straight for too long, trigger a fallback polling query to catch boundaries
+                if (s - lastQueryOffset >= maxStraightInterval) {
+                    queryOffsets.add(s.toDouble())
+                    lastQueryOffset = s.toDouble()
+                }
+            }
+        } else {
+            // We are turning. Check if the turn has finished and stabilized.
+            val lookaheadStable = (1..3).all { offset ->
+                val nextH = headings.getOrNull(s + offset) ?: -1.0
+                nextH >= 0.0 && headingDiff(currentHeading, nextH) < 8.0
+            }
+            
+            if (lookaheadStable) {
+                // Stabilized after turn! Trigger query right after exiting the intersection.
+                queryOffsets.add(s.toDouble())
+                lastQueryOffset = s.toDouble()
+                baseHeading = currentHeading
+                isTurning = false
+            }
+        }
+    }
+    
+    // Always check the end point if it's far from the last query
+    if (videoDurationSeconds - lastQueryOffset >= 5.0) {
+        queryOffsets.add(videoDurationSeconds)
+    }
+    
+    // Filter and deduplicate query offsets to respect Nominatim API rate limit (at least 3.0 seconds gap)
+    val cleanQueryOffsets = mutableListOf<Double>()
+    for (offset in queryOffsets) {
+        if (cleanQueryOffsets.isEmpty() || offset - cleanQueryOffsets.last() >= 3.0) {
+            cleanQueryOffsets.add(offset)
+        }
+    }
+    
+    // 3. Perform Road Queries at clean query points and build segments
     val segments = mutableListOf<RoadCaptionSegment>()
     var currentRoadName: String? = null
     var segmentStartSeconds = 0.0
     
-    val numSteps = (videoDurationSeconds / sampleInterval).toInt().coerceAtLeast(1)
-    
-    var lastApiLat = 0.0
-    var lastApiLon = 0.0
-    var lastApiRoadName: String? = null
-    var hasLastApi = false
-    
-    fun isCoordinatesClose(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Boolean {
-        val dLat = lat1 - lat2
-        val dLon = lon1 - lon2
-        // 0.00015 degrees is roughly 15-16 meters (reduces snap transition lag at corners)
-        return (dLat * dLat + dLon * dLon) < (0.00015 * 0.00015)
-    }
-    
-    for (i in 0..numSteps) {
-        val currentOffset = i * sampleInterval.toDouble()
-        if (currentOffset > videoDurationSeconds) break
-        
+    val totalQueries = cleanQueryOffsets.size
+    for ((index, currentOffset) in cleanQueryOffsets.withIndex()) {
         val targetFitTime = startFitTime + currentOffset
         val point = rangePoints.minByOrNull { kotlin.math.abs(it.timestamp - targetFitTime) } ?: continue
         
-        // Skip API request and wait if we are very close to the last queried location
-        val roadName = if (hasLastApi && isCoordinatesClose(point.lat, point.lon, lastApiLat, lastApiLon)) {
-            onProgress("GPS解析中 (${(currentOffset / videoDurationSeconds * 100).toInt()}%): 座標 (${"%.4f".format(point.lat)}, ${"%.4f".format(point.lon)}) 付近をキャッシュからスキップ処理中...")
-            lastApiRoadName
-        } else {
-            onProgress("GPS解析中 (${(currentOffset / videoDurationSeconds * 100).toInt()}%): 座標 (${"%.4f".format(point.lat)}, ${"%.4f".format(point.lon)}) を検索中...")
-            // Rate limit wait (1s) only when we actually query the Nominatim API
-            kotlinx.coroutines.delay(1000)
-            val name = queryRoadName(point.lat, point.lon)
-            
-            lastApiLat = point.lat
-            lastApiLon = point.lon
-            lastApiRoadName = name
-            hasLastApi = true
-            name
-        }
+        val progressPercent = ((index.toDouble() / totalQueries) * 100).toInt()
+        onProgress("GPS解析中 (${progressPercent}%): 座標 (${"%.4f".format(point.lat)}, ${"%.4f".format(point.lon)}) 付近で道路判定中...")
+        
+        // Safe rate limiting (1s wait) only for active queries
+        kotlinx.coroutines.delay(1000)
+        val roadName = queryRoadName(point.lat, point.lon)
         
         if (roadName != null && roadName.isNotEmpty()) {
             if (currentRoadName == null) {
