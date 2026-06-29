@@ -40,20 +40,23 @@ class AppViewModel(
                         splitPoints = splitPoints
                     )
                     utils.GuiCache.saveHistory(oldPath, currentCache)
-                }
-                _videoPath = value
-                val history = utils.GuiCache.loadHistory(value)
-                if (history != null) {
-                    trimStartSeconds = history.trimStartSeconds ?: 0.0
-                    trimEndSeconds = history.trimEndSeconds ?: 0.0
-                    splitPoints = history.splitPoints ?: emptyList()
-                    settings = history.settings
-                    history.timeOffsetMillis?.let { timeOffsetState.update(it) }
+
+                    _videoPath = value
+                    val history = utils.GuiCache.loadHistory(value)
+                    if (history != null) {
+                        trimStartSeconds = history.trimStartSeconds ?: 0.0
+                        trimEndSeconds = history.trimEndSeconds ?: 0.0
+                        splitPoints = history.splitPoints ?: emptyList()
+                        settings = history.settings
+                        history.timeOffsetMillis?.let { timeOffsetState.update(it) }
+                    } else {
+                        trimStartSeconds = 0.0
+                        trimEndSeconds = 0.0
+                        splitPoints = emptyList()
+                        settings = settings.copy(roadCaptions = emptyList())
+                    }
                 } else {
-                    trimStartSeconds = 0.0
-                    trimEndSeconds = 0.0
-                    splitPoints = emptyList()
-                    settings = settings.copy(roadCaptions = emptyList())
+                    _videoPath = value
                 }
                 isGeneratingProxy = false
                 proxyProgress = 0f
