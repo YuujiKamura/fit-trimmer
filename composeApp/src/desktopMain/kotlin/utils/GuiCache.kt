@@ -16,6 +16,7 @@ data class GuiPathCache(
     val settings: HudSettings = HudSettings(),
     val moveOutputToSource: Boolean = false,
     val showLivePreview: Boolean = true,
+    val previewQualityMode: String = "original",
     val trimStartSeconds: Double? = null,
     val trimEndSeconds: Double? = null,
     val splitPoints: List<Double>? = null,

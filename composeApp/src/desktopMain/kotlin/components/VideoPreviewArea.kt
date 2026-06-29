@@ -141,11 +141,15 @@ fun VideoPreviewArea(
     onCurrentTimeChange: (Long) -> Unit,
     modifier: Modifier = Modifier,
     isEncoding: Boolean = false,
+    previewQualityMode: String = "original",
+    onPreviewQualityModeChange: (String) -> Unit = {},
+    isFullscreen: Boolean = false,
     onFullscreenToggle: (() -> Unit)? = null
 ) {
     var isPlaying by remember { mutableStateOf(false) }
     var lastVolume by remember { mutableStateOf(1f) }
     var currentRenderTimeMs by remember { mutableStateOf(videoCurrentTimeMs) }
+    var activePreviewSourceLabel by remember { mutableStateOf("Original") }
 
     LaunchedEffect(videoCurrentTimeMs) {
         currentRenderTimeMs = videoCurrentTimeMs
@@ -175,10 +179,6 @@ fun VideoPreviewArea(
 
     LaunchedEffect(playerState.isPlaying) {
         isPlaying = playerState.isPlaying
-        if (isPlaying) {
-            playerState.volume = 0f
-            println("DEBUG: Enforced volume = 0f on play start")
-        }
         println("DEBUG: PlayerState isPlaying state changed: isPlaying=${playerState.isPlaying}")
     }
 
@@ -232,68 +232,85 @@ fun VideoPreviewArea(
             }
     }
 
-    // Video path change side effect inside the player area
-    LaunchedEffect(videoPath) {
+    fun findCompanionLrvFile(originalFile: File): File? {
+        val parentDir = originalFile.parentFile ?: return null
+        val originalName = originalFile.name
+        val lrvName = when {
+            originalName.startsWith("VID_", ignoreCase = true) ->
+                originalName.replace("VID_", "LRV_", ignoreCase = true).replace(".mp4", ".lrv", ignoreCase = true)
+            originalName.startsWith("PRO_VID_", ignoreCase = true) ->
+                originalName.replace("PRO_VID_", "PRO_LRV_", ignoreCase = true).replace(".mp4", ".lrv", ignoreCase = true)
+            else -> return null
+        }
+        return File(parentDir, lrvName).takeIf { it.exists() }
+    }
+
+    fun isCloudOrExternalPath(path: String): Boolean {
+        val normalized = path.replace("\\", "/").lowercase()
+        return !normalized.startsWith("c:/") ||
+            normalized.contains("google drive") ||
+            normalized.contains("マイドライブ") ||
+            normalized.contains("my drive")
+    }
+
+    suspend fun materializeLrvProxy(lrvFile: File): String? = withContext(Dispatchers.IO) {
+        try {
+            val tempDir = System.getProperty("java.io.tmpdir")
+            try {
+                File(tempDir).listFiles { _, name ->
+                    name.startsWith("fit_trimmer_lrv_proxy_") && name.endsWith(".mp4")
+                }?.forEach { it.delete() }
+            } catch (e: Exception) {}
+
+            val proxyFile = File(tempDir, "fit_trimmer_lrv_proxy_${java.util.UUID.randomUUID()}.mp4")
+            val ffmpegPath = fit.findFfmpegPath()
+            val pb = ProcessBuilder(
+                ffmpegPath, "-y",
+                "-i", lrvFile.absolutePath,
+                "-c", "copy",
+                proxyFile.absolutePath
+            )
+            pb.redirectOutput(ProcessBuilder.Redirect.DISCARD)
+            pb.redirectError(ProcessBuilder.Redirect.DISCARD)
+            val p = pb.start()
+            val exited = p.waitFor(12, java.util.concurrent.TimeUnit.SECONDS)
+            if (exited && p.exitValue() == 0 && proxyFile.exists()) {
+                proxyFile.absolutePath
+            } else {
+                println("WARN: LRV proxy extraction failed or timed out (exitCode=${if (exited) p.exitValue() else "timeout"}).")
+                null
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    // Video path or preview quality change side effect inside the player area
+    LaunchedEffect(videoPath, previewQualityMode) {
         println("DEBUG: VideoPreviewArea LaunchedEffect(videoPath) triggered with path: $videoPath")
         if (videoPath.isNotEmpty() && File(videoPath).exists()) {
             val savedTimeMs = videoCurrentTimeMs
             val originalFile = File(videoPath)
-            
-            // 1. Detect low-res LRV proxy file
-            val parentDir = originalFile.parentFile
-            val originalName = originalFile.name
-            var lrvName = ""
-            if (originalName.startsWith("VID_", ignoreCase = true)) {
-                lrvName = originalName.replace("VID_", "LRV_").replace(".mp4", ".lrv")
-            } else if (originalName.startsWith("PRO_VID_", ignoreCase = true)) {
-                lrvName = originalName.replace("PRO_VID_", "PRO_LRV_").replace(".mp4", ".lrv")
+            val lrvFile = findCompanionLrvFile(originalFile)
+            val mode = previewQualityMode.lowercase()
+            val shouldUseProxy = when (mode) {
+                "proxy" -> lrvFile != null
+                "auto" -> lrvFile != null && (isCloudOrExternalPath(originalFile.absolutePath) || isHevcOrHighRes(originalFile.absolutePath))
+                else -> false
             }
-            val lrvFile = if (lrvName.isNotEmpty() && parentDir != null) File(parentDir, lrvName) else null
-            val useProxy = lrvFile != null && lrvFile.exists()
-            val activeFile = if (useProxy && lrvFile != null) {
-                println("DEBUG: Low-res proxy (LRV) detected for preview: ${lrvFile.absolutePath}")
-                lrvFile
-            } else {
-                originalFile
-            }
-
-            var targetVideoPath = activeFile.absolutePath
-            if (useProxy && lrvFile != null) {
-                try {
-                    val tempDir = System.getProperty("java.io.tmpdir")
-                    // Clean up any old proxy files in temp dir to prevent storage buildup
-                    try {
-                        File(tempDir).listFiles { _, name ->
-                            name.startsWith("fit_trimmer_lrv_proxy_") && name.endsWith(".mp4")
-                        }?.forEach { it.delete() }
-                    } catch (e: Exception) {}
-                    
-                    val proxyFile = File(tempDir, "fit_trimmer_lrv_proxy_${java.util.UUID.randomUUID()}.mp4")
-                    
-                    val ffmpegPath = fit.findFfmpegPath()
-                    // Stream-copy the LRV container to a real temp MP4 file using FFmpeg.
-                    // This takes less than 2 seconds for 5 minutes (300s) of video,
-                    // producing a real local NTFS MP4 that guarantees smooth WMF playback without I/O deadlocks.
-                    val pb = ProcessBuilder(
-                        ffmpegPath, "-y", 
-                        "-i", lrvFile.absolutePath, 
-                        "-c", "copy", 
-                        "-an", 
-                        proxyFile.absolutePath
-                    )
-                    pb.redirectOutput(ProcessBuilder.Redirect.DISCARD)
-                    pb.redirectError(ProcessBuilder.Redirect.DISCARD)
-                    val p = pb.start()
-                    val exited = p.waitFor(12, java.util.concurrent.TimeUnit.SECONDS)
-                    if (exited && p.exitValue() == 0 && proxyFile.exists()) {
-                        targetVideoPath = proxyFile.absolutePath
-                        println("DEBUG: Successfully extracted low-res proxy MP4: $targetVideoPath (size=${proxyFile.length()})")
-                    } else {
-                        println("⚠️ FFmpeg proxy extraction failed or timed out (exitCode=${if (exited) p.exitValue() else "timeout"}).")
-                    }
-                } catch (e: Exception) {
-                    e.printStackTrace()
+            var targetVideoPath = if (shouldUseProxy && lrvFile != null) {
+                val proxyPath = materializeLrvProxy(lrvFile)
+                if (proxyPath != null) {
+                    activePreviewSourceLabel = if (mode == "auto") "Auto: Proxy" else "Proxy"
+                    proxyPath
+                } else {
+                    activePreviewSourceLabel = "Original"
+                    originalFile.absolutePath
                 }
+            } else {
+                activePreviewSourceLabel = if (mode == "auto") "Auto: Original" else "Original"
+                originalFile.absolutePath
             }
 
             if (!targetVideoPath.startsWith("C:\\", ignoreCase = true) && targetVideoPath.contains(":\\")) {
@@ -334,10 +351,9 @@ fun VideoPreviewArea(
                         val durationMs = (playerState.metadata.duration ?: 0.0).toLong()
                         val isProxy = targetVideoPath.contains("fit_trimmer_lrv_proxy_")
                         if (isProxy && !fit.TimelineMapper.isProxyDurationValid(durationMs, videoLengthMs)) {
-                            println("❌ [CRITICAL] Loaded proxy duration ($durationMs ms) is unsafe relative to full video ($videoLengthMs ms). Reloading original file as fallback...")
-                            launch {
-                                playerState.openUri(videoPath)
-                            }
+                            println("WARN: Loaded proxy duration ($durationMs ms) is unsafe relative to full video ($videoLengthMs ms). Reloading original file.")
+                            activePreviewSourceLabel = "Original"
+                            playerState.openUri(videoPath)
                             return@launch
                         }
                         println("DEBUG: Restoring playhead position to $savedTimeMs ms")
@@ -386,15 +402,184 @@ fun VideoPreviewArea(
         }
     }
 
-    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(
-            modifier = Modifier
-                .weight(1f, fill = false)
-                .aspectRatio(16f / 9f)
-                .background(Color.Black, shape = RoundedCornerShape(8.dp))
-                .border(1.dp, Color(0xFFE5E5EA), shape = RoundedCornerShape(8.dp))
-                .clip(RoundedCornerShape(8.dp))
+    @Composable
+    fun PlayerControls(floating: Boolean) {
+        val foreground = if (floating) Color.White else Color(0xFF1C1C1E)
+        val mutedForeground = if (floating) Color(0xFFE5E5EA) else Color(0xFF1C1C1E)
+        val inactiveTrack = if (floating) Color.White.copy(alpha = 0.25f) else Color(0xFFE5E5EA)
+        val horizontalPadding = if (floating) 10.dp else 8.dp
+        val controlButtonBg = if (floating) Color.White.copy(alpha = 0.10f) else Color.Transparent
+
+        @Composable
+        fun IconControlButton(
+            label: String,
+            onClick: () -> Unit,
+            modifier: Modifier = Modifier,
+            enabled: Boolean = true
         ) {
+            OutlinedButton(
+                onClick = onClick,
+                enabled = enabled,
+                modifier = modifier.size(30.dp),
+                contentPadding = PaddingValues(0.dp),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = mutedForeground,
+                    backgroundColor = controlButtonBg
+                )
+            ) {
+                Text(label, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+            }
+        }
+
+        Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = horizontalPadding),
+                horizontalArrangement = Arrangement.spacedBy(9.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Button(
+                    onClick = togglePlay,
+                    enabled = !isEncoding,
+                    modifier = Modifier.size(34.dp),
+                    contentPadding = PaddingValues(0.dp),
+                    colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF007AFF))
+                ) {
+                    Text(if (isPlaying) "⏸" else "▶", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                }
+
+                Text(
+                    text = "${formatTime(videoCurrentTimeMs)} / ${formatTime(videoLengthMs)}",
+                    color = foreground,
+                    fontSize = 11.sp,
+                    maxLines = 1
+                )
+
+                Slider(
+                    value = if (videoLengthMs > 0) videoCurrentTimeMs.toFloat() / videoLengthMs.toFloat() else 0f,
+                    onValueChange = { ratio ->
+                        val targetTime = (ratio * videoLengthMs).toLong()
+                        seekTo(targetTime)
+                    },
+                    enabled = !isEncoding,
+                    modifier = Modifier.weight(1f),
+                    colors = SliderDefaults.colors(
+                        thumbColor = Color(0xFF007AFF),
+                        activeTrackColor = Color(0xFF007AFF),
+                        inactiveTrackColor = inactiveTrack
+                    )
+                )
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    val vol = playerState.volume
+                    val isMute = vol == 0f
+                    IconControlButton(
+                        label = if (isMute) "🔇" else "🔊",
+                        onClick = {
+                            if (isMute) {
+                                playerState.volume = if (lastVolume > 0f) lastVolume else 0.5f
+                            } else {
+                                lastVolume = vol
+                                playerState.volume = 0f
+                            }
+                        }
+                    )
+
+                    Slider(
+                        value = vol,
+                        onValueChange = { newVol ->
+                            playerState.volume = newVol
+                            if (newVol > 0f) {
+                                lastVolume = newVol
+                            }
+                        },
+                        modifier = Modifier.width(60.dp),
+                        colors = SliderDefaults.colors(
+                            thumbColor = Color(0xFF007AFF),
+                            activeTrackColor = Color(0xFF007AFF),
+                            inactiveTrackColor = inactiveTrack
+                        )
+                    )
+                }
+
+                if (onFullscreenToggle != null) {
+                    IconControlButton(
+                        label = if (isFullscreen) "×" else "⛶",
+                        onClick = onFullscreenToggle,
+                        modifier = Modifier.size(30.dp)
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = horizontalPadding),
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = activePreviewSourceLabel,
+                    color = foreground,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    modifier = Modifier.width(if (floating) 90.dp else 82.dp)
+                )
+                val modes = listOf(
+                    "original" to "Original",
+                    "auto" to "Auto",
+                    "proxy" to "Proxy"
+                )
+                for ((mode, label) in modes) {
+                    val selected = previewQualityMode.equals(mode, ignoreCase = true)
+                    Button(
+                        onClick = { onPreviewQualityModeChange(mode) },
+                        enabled = !isEncoding,
+                        modifier = Modifier.height(24.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            backgroundColor = if (selected) Color(0xFF007AFF) else if (floating) Color.White.copy(alpha = 0.12f) else Color(0xFFE5E5EA),
+                            contentColor = if (selected) Color.White else mutedForeground
+                        )
+                    ) {
+                        Text(label, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                    }
+                }
+
+                Spacer(Modifier.width(4.dp))
+                val seekBtnModifier = Modifier.weight(1f).height(24.dp)
+                val seekBtnColors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = mutedForeground,
+                    backgroundColor = controlButtonBg
+                )
+                val seekSpecs = listOf(
+                    "-30" to -30000L,
+                    "-10" to -10000L,
+                    "-5" to -5000L,
+                    "-1" to -1000L,
+                    "+1" to 1000L,
+                    "+5" to 5000L,
+                    "+10" to 10000L,
+                    "+30" to 30000L
+                )
+                for ((label, delta) in seekSpecs) {
+                    OutlinedButton(
+                        onClick = { seekTo((videoCurrentTimeMs + delta).coerceIn(0L, maxOf(0L, videoLengthMs))) },
+                        modifier = seekBtnModifier,
+                        colors = seekBtnColors,
+                        contentPadding = PaddingValues(0.dp)
+                    ) {
+                        Text(label, fontSize = 9.sp, maxLines = 1)
+                    }
+                }
+            }
+        }
+    }
+
+    @Composable
+    fun VideoLayer(modifier: Modifier) {
+        Box(modifier = modifier.background(Color.Black)) {
             if (videoPath.isNotEmpty()) {
                 VideoPlayerSurface(
                     playerState = playerState,
@@ -430,125 +615,66 @@ fun VideoPreviewArea(
                 )
             }
         }
+    }
 
-        // Video Player Control UI
-        if (videoPath.isNotEmpty() && File(videoPath).exists()) {
-            Spacer(Modifier.height(8.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Button(
-                    onClick = togglePlay,
-                    enabled = !isEncoding,
-                    colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF007AFF))
-                ) {
-                    Text(if (isPlaying) "⏸ PAUSE" else "▶ PLAY", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
-                }
+    @Composable
+    fun PreviewSurface(modifier: Modifier) {
+        val shape = if (isFullscreen) RoundedCornerShape(0.dp) else RoundedCornerShape(8.dp)
+        val frameModifier = modifier
+            .background(Color.Black, shape = shape)
+            .then(
+                if (isFullscreen) Modifier
+                else Modifier.border(1.dp, Color(0xFFE5E5EA), shape = shape)
+            )
+            .clip(shape)
 
-                Text(
-                    text = "${formatTime(videoCurrentTimeMs)} / ${formatTime(videoLengthMs)}",
-                    color = Color(0xFF1C1C1E),
-                    fontSize = 11.sp
-                )
-
-                Slider(
-                    value = if (videoLengthMs > 0) videoCurrentTimeMs.toFloat() / videoLengthMs.toFloat() else 0f,
-                    onValueChange = { ratio ->
-                        val targetTime = (ratio * videoLengthMs).toLong()
-                        seekTo(targetTime)
-                    },
-                    enabled = !isEncoding,
-                    modifier = Modifier.weight(1f),
-                    colors = SliderDefaults.colors(
-                        thumbColor = Color(0xFF007AFF),
-                        activeTrackColor = Color(0xFF007AFF),
-                        inactiveTrackColor = Color(0xFFE5E5EA)
-                    )
-                )
-
-                // Volume Controls (Mute & Slider)
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    val vol = playerState.volume
-                    val isMute = vol == 0f
-                    OutlinedButton(
-                        onClick = {
-                            if (isMute) {
-                                playerState.volume = if (lastVolume > 0f) lastVolume else 0.5f
-                            } else {
-                                lastVolume = vol
-                                playerState.volume = 0f
-                            }
-                        },
-                        modifier = Modifier.size(28.dp),
-                        contentPadding = PaddingValues(0.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF1C1C1E))
+        if (isFullscreen) {
+            Box(modifier = frameModifier) {
+                VideoLayer(Modifier.fillMaxSize())
+                if (videoPath.isNotEmpty() && File(videoPath).exists()) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .background(Color.Black.copy(alpha = 0.58f))
+                            .padding(vertical = 8.dp)
                     ) {
-                        Text(if (isMute) "🔇" else "🔊", fontSize = 11.sp)
-                    }
-
-                    Slider(
-                        value = vol,
-                        onValueChange = { newVol ->
-                            playerState.volume = newVol
-                            if (newVol > 0f) {
-                                lastVolume = newVol
-                            }
-                        },
-                        modifier = Modifier.width(60.dp),
-                        colors = SliderDefaults.colors(
-                            thumbColor = Color(0xFF007AFF),
-                            activeTrackColor = Color(0xFF007AFF),
-                            inactiveTrackColor = Color(0xFFE5E5EA)
-                        )
-                    )
-                }
-
-                // Fullscreen toggle button
-                if (onFullscreenToggle != null) {
-                    OutlinedButton(
-                        onClick = onFullscreenToggle,
-                        modifier = Modifier.size(28.dp),
-                        contentPadding = PaddingValues(0.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF1C1C1E))
-                    ) {
-                        Text("⛶", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        PlayerControls(floating = true)
                     }
                 }
             }
-
-            Spacer(Modifier.height(4.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                val seekBtnModifier = Modifier.weight(1f).height(24.dp)
-                val seekBtnColors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF1C1C1E))
-                val seekSpecs = listOf(
-                    "-30s" to -30000L,
-                    "-10s" to -10000L,
-                    "-5s" to -5000L,
-                    "-1s" to -1000L,
-                    "+1s" to 1000L,
-                    "+5s" to 5000L,
-                    "+10s" to 10000L,
-                    "+30s" to 30000L
+        } else {
+            Column(modifier = frameModifier) {
+                VideoLayer(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
                 )
-                for ((label, delta) in seekSpecs) {
-                    OutlinedButton(
-                        onClick = { seekTo((videoCurrentTimeMs + delta).coerceIn(0L, maxOf(0L, videoLengthMs))) },
-                        modifier = seekBtnModifier,
-                        colors = seekBtnColors,
-                        contentPadding = PaddingValues(0.dp)
+                if (videoPath.isNotEmpty() && File(videoPath).exists()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color.Black.copy(alpha = 0.92f))
+                            .padding(vertical = 6.dp)
                     ) {
-                        Text(label, fontSize = 9.sp)
+                        PlayerControls(floating = true)
                     }
                 }
             }
+        }
+    }
+
+    if (isFullscreen) {
+        Box(modifier = modifier.fillMaxSize().background(Color.Black)) {
+            PreviewSurface(Modifier.fillMaxSize())
+        }
+    } else {
+        Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+            PreviewSurface(
+                Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+            )
         }
     }
 }
