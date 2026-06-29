@@ -58,4 +58,24 @@ object PathResolver {
     fun getTmpHudDir(): File {
         return File(getProjectRoot(), "tmp_hud")
     }
+
+    /**
+     * Cleans up stale job folders older than 24 hours in the temporary working directory.
+     */
+    fun cleanStaleJobs(videoPath: String? = null) {
+        try {
+            val workDir = getTempWorkDir(videoPath)
+            if (workDir.exists() && workDir.isDirectory) {
+                val cutoff = System.currentTimeMillis() - (24 * 60 * 60 * 1000) // 24 hours
+                workDir.listFiles { _, name -> name.startsWith("job_") }?.forEach { jobFolder ->
+                    if (jobFolder.lastModified() < cutoff) {
+                        println("🧹 PathResolver: Deleting stale job folder: ${jobFolder.absolutePath}")
+                        jobFolder.deleteRecursively()
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
 }
