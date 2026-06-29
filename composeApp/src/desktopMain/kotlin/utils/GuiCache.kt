@@ -29,6 +29,10 @@ object GuiCache {
     private val file = File(System.getProperty("user.home"), ".fittrimmer_gui_cache.json")
     private val json = Json { ignoreUnknownKeys = true }
 
+    fun shouldDeferSaveUntilVideoStartIsLoaded(videoPath: String, videoStartUtc: String): Boolean {
+        return videoPath.isNotEmpty() && videoStartUtc.isEmpty() && File(videoPath).exists()
+    }
+
     private fun getHistoryFile(videoPath: String): File? {
         if (videoPath.isEmpty()) return null
         val safeName = "hist_" + kotlin.math.abs(videoPath.hashCode()).toString() + ".json"
