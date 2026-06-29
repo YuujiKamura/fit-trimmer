@@ -282,12 +282,7 @@ class HudRenderer(val config: HudConfig) {
         }
 
         // Draw Road Caption overlay
-        val totalDuration = if (allPoints.isNotEmpty()) {
-            allPoints.last().timestamp - allPoints.first().timestamp
-        } else {
-            300.0
-        }
-        val currentSeconds = currentRatio * totalDuration
+        val currentSeconds = currentRatio.toDouble()
         val activeCaption = config.roadCaptions.find { 
             it.isEnabled && currentSeconds >= it.startSeconds && currentSeconds <= it.endSeconds 
         }

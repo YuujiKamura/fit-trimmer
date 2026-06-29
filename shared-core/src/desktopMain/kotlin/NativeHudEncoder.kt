@@ -950,9 +950,9 @@ class NativeHudEncoder(
                     val scale = exportWidth.toFloat() / 1920f
                     val canvas = DesktopHudCanvas(g, scale, exportWidth.toFloat() / scale, exportHeight.toFloat() / scale)
                     if (customRenderer != null) {
-                        customRenderer.invoke(canvas, point, telemetry, pBuf, i.toFloat() / targetDurationSeconds)
+                        customRenderer.invoke(canvas, point, telemetry, pBuf, i.toFloat())
                     } else {
-                        renderer.renderFrame(canvas, point, telemetry, pBuf, i.toFloat() / targetDurationSeconds, isValid)
+                        renderer.renderFrame(canvas, point, telemetry, pBuf, i.toFloat(), isValid)
                     }
                     g.dispose()
                     
