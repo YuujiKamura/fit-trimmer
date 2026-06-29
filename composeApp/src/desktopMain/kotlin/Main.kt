@@ -629,9 +629,13 @@ fun startGui(args: Array<String>) = application {
         }
     }
     // Save path cache when modified.
-    LaunchedEffect(fitPath, videoPath, timeOffsetState.millis, settings, moveOutputToSource, showLivePreview, windowState.position, windowState.size, viewModel.splitPoints) {
+    LaunchedEffect(fitPath, videoPath, videoStartUtc, timeOffsetState.millis, settings, moveOutputToSource, showLivePreview, windowState.position, windowState.size, viewModel.splitPoints) {
         if (isLoaded) {
             kotlinx.coroutines.delay(500)
+            if (GuiCache.shouldDeferSaveUntilVideoStartIsLoaded(videoPath, videoStartUtc)) {
+                println("DEBUG: Deferring GUI cache save until videoStartUtc is loaded for $videoPath")
+                return@LaunchedEffect
+            }
             withContext(Dispatchers.IO) {
                 try {
                     val pos = windowState.position
