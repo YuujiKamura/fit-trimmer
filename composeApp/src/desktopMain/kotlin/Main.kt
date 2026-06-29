@@ -980,10 +980,14 @@ fun startGui(args: Array<String>) = application {
         MaterialTheme(colors = lightColors(primary = Color(0xFF007AFF))) {
             Row(modifier = Modifier.fillMaxSize().background(Color.White)) {
                 val sidebarScrollState = rememberScrollState()
-                Box(modifier = Modifier.width(320.dp).fillMaxHeight()) {
+                val sidebarWidth = if (viewModel.isSidebarVisible) 320.dp else 0.dp
+                Box(modifier = Modifier.width(sidebarWidth).fillMaxHeight()) {
                     Column(
                         modifier = Modifier.fillMaxSize().background(Color(0xFFF5F5F7))
-                            .verticalScroll(sidebarScrollState).padding(horizontal = 16.dp, vertical = 16.dp),
+                            .verticalScroll(sidebarScrollState).padding(
+                                horizontal = if (viewModel.isSidebarVisible) 16.dp else 0.dp,
+                                vertical = if (viewModel.isSidebarVisible) 16.dp else 0.dp
+                            ),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                     val onNativeEncodeClick = remember(settings, fitPath, videoPath, videoStartUtc, adjustedStartUtc, isVideoInFitRange, outputDir, moveOutputToSource, showLivePreview, viewModel.splitPoints) {
@@ -2424,10 +2428,12 @@ fun startGui(args: Array<String>) = application {
                     }
                     }
                     }
-                    VerticalScrollbar(
-                        adapter = rememberScrollbarAdapter(sidebarScrollState),
-                        modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight()
-                    )
+                    if (viewModel.isSidebarVisible) {
+                        VerticalScrollbar(
+                            adapter = rememberScrollbarAdapter(sidebarScrollState),
+                            modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight()
+                        )
+                    }
                 }
                 Box(modifier = Modifier.fillMaxSize().background(Color.White).padding(16.dp), contentAlignment = Alignment.Center) {
                     Column(
@@ -2449,7 +2455,8 @@ fun startGui(args: Array<String>) = application {
                                 videoCurrentTimeMs = videoCurrentTimeMs,
                                 onCurrentTimeChange = { videoCurrentTimeMs = it },
                                 modifier = Modifier.weight(1f).fillMaxWidth(),
-                                isEncoding = isEncoding
+                                isEncoding = isEncoding,
+                                onFullscreenToggle = { viewModel.isSidebarVisible = !viewModel.isSidebarVisible }
                             )
                         } else {
                             val actualTrimStart = trimStartSeconds.coerceIn(0.0, videoLengthMs / 1000.0)

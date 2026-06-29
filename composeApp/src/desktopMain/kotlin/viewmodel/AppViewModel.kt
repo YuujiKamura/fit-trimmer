@@ -292,6 +292,8 @@ class AppViewModel(
     fun clearBatchQueue() {
         batchQueue.clear()
     }
+
+    var isSidebarVisible by mutableStateOf(true)
 }
 
 enum class BatchJobStatus {
