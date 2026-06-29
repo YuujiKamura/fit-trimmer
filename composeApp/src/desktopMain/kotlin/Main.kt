@@ -628,8 +628,11 @@ fun startGui(args: Array<String>) = application {
             telemetryPoints = emptyList()
         }
     }
-    // Save path cache when modified
-    LaunchedEffect(fitPath, videoPath, videoStartUtc, timeOffsetState.millis, settings, moveOutputToSource, showLivePreview, windowState.position, windowState.size, viewModel.splitPoints) {
+    // Save path cache when modified.
+    // NOTE: videoStartUtc is intentionally NOT in the key list — it is ephemeral state always
+    // read from the video file. Saving it would cause a race where videoStartUtc="" during
+    // async file read overwrites the cache, corrupting the timeOffset on next launch.
+    LaunchedEffect(fitPath, videoPath, timeOffsetState.millis, settings, moveOutputToSource, showLivePreview, windowState.position, windowState.size, viewModel.splitPoints) {
         if (isLoaded) {
             kotlinx.coroutines.delay(500)
             withContext(Dispatchers.IO) {
@@ -643,7 +646,7 @@ fun startGui(args: Array<String>) = application {
                     val cache = GuiPathCache(
                         fitPath = fitPath,
                         videoPath = videoPath,
-                        videoStartUtc = videoStartUtc,
+                        videoStartUtc = "",  // Never persist — always read from file on startup
                         timeOffsetSeconds = null,
                         timeOffsetMillis = timeOffsetState.millis,
                         settings = settings,
@@ -666,9 +669,11 @@ fun startGui(args: Array<String>) = application {
     }
     LaunchedEffect(videoPath) {
         val originalPathAtStart = videoPath
-        // Initialize states immediately on video changes to prevent obsolete metadata leak (Requirement 2)
+        // Clear derived video metadata immediately to prevent stale data from previous video
         videoLengthMs = 0L
         isHudBurned = false
+        // videoStartUtc is ephemeral — always read from the file, never from cache.
+        // Clear it immediately; it will be repopulated by getVideoStartUtc() below.
         if (!ignoreNextStartUtcClear) {
             videoStartUtc = ""
         }

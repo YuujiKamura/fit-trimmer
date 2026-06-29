@@ -20,7 +20,8 @@ class AppViewModelTest {
         assertFalse(viewModel.isGeneratingProxy)
         assertEquals(0f, viewModel.proxyProgress)
         assertNull(viewModel.proxyVideoPath)
-        assertEquals("2026-06-21T02:09:49Z", viewModel.videoStartUtc)
+        // videoStartUtc is ephemeral — always read from video file, never from cache
+        assertEquals("", viewModel.videoStartUtc)
         assertEquals(0.0, viewModel.trimStartSeconds)
         assertEquals(0.0, viewModel.trimEndSeconds)
         assertTrue(viewModel.splitPoints.isEmpty())
@@ -44,7 +45,8 @@ class AppViewModelTest {
         val viewModel = AppViewModel(cache)
         assertEquals("/path/to/fit", viewModel.fitPath)
         assertEquals("/path/to/video", viewModel.videoPath)
-        assertEquals("2026-06-29T10:00:00Z", viewModel.videoStartUtc)
+        // videoStartUtc is ephemeral — always read from video file, never restored from cache
+        assertEquals("", viewModel.videoStartUtc)
         assertEquals(10.0, viewModel.trimStartSeconds)
         assertEquals(100.0, viewModel.trimEndSeconds)
         assertEquals(listOf(30.0, 60.0), viewModel.splitPoints)
@@ -428,6 +430,32 @@ class AppViewModelTest {
         assertEquals(4500, viewModel.timeOffsetState.millis)
         assertEquals(1, viewModel.settings.roadCaptions.size)
         assertEquals("Initial Route", viewModel.settings.roadCaptions[0].text)
+    }
+
+    /**
+     * videoStartUtc はキャッシュから復元すべきではない（常に動画ファイルから読む揮発値）。
+     * AppViewModel は videoStartUtc を initialCache.videoStartUtc で初期化してはいけない。
+     * キャッシュに videoStartUtc が入っていても、ViewModel の初期値は "" であること。
+     * timeOffsetMillis は正しく復元される（これだけが重要）。
+     */
+    @Test
+    fun testVideoStartUtcIsNotRestoredFromCache() {
+        val initialCache = utils.GuiPathCache(
+            fitPath = "/path/to/ride.fit",
+            videoPath = "/path/to/ride.mp4",
+            videoStartUtc = "2026-06-29T10:20:40Z",  // キャッシュに入っているが
+            timeOffsetMillis = -7528,
+            settings = fit.HudSettings(),
+            trimStartSeconds = 0.0,
+            trimEndSeconds = 1198.0
+        )
+        val viewModel = AppViewModel(initialCache)
+
+        // timeOffsetMillis は復元される
+        assertEquals(-7528, viewModel.timeOffsetState.millis)
+
+        // videoStartUtc はキャッシュから復元されない（動画ファイルから読む値）
+        assertEquals("", viewModel.videoStartUtc)
     }
 }
 
