@@ -167,6 +167,14 @@ fun VideoPreviewArea(
         playerState.seekTo(ratio * 1000f)
     }
 
+    var lastSyncedTimeMs by remember { mutableStateOf(-1L) }
+    LaunchedEffect(videoCurrentTimeMs) {
+        if (!playerState.isPlaying && Math.abs(videoCurrentTimeMs - lastSyncedTimeMs) > 100) {
+            lastSyncedTimeMs = videoCurrentTimeMs
+            seekTo(videoCurrentTimeMs)
+        }
+    }
+
     LaunchedEffect(playerState.isPlaying) {
         isPlaying = playerState.isPlaying
         if (isPlaying) {
@@ -194,6 +202,7 @@ fun VideoPreviewArea(
                     durationMs = durationMs,
                     fullVideoLengthMs = videoLengthMs
                 )
+                lastSyncedTimeMs = elapsedMs
                 onCurrentTimeChange(elapsedMs)
             }
     }

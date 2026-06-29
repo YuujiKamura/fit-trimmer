@@ -1753,94 +1753,188 @@ fun startGui(args: Array<String>) = application {
                                                               horizontalArrangement = Arrangement.spacedBy(4.dp),
                                                               modifier = Modifier.fillMaxWidth()
                                                           ) {
-                                                              // Start seconds control
+                                                              // Start seconds control (In)
+
                                                               Row(
+
                                                                   verticalAlignment = Alignment.CenterVertically,
-                                                                  horizontalArrangement = Arrangement.spacedBy(1.dp)
+
+                                                                  horizontalArrangement = Arrangement.spacedBy(2.dp),
+
+                                                                  modifier = Modifier
+
+                                                                      .background(Color(0xFFF2F2F7), shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+
+                                                                      .padding(horizontal = 4.dp, vertical = 2.dp)
+
                                                               ) {
-                                                                  Text("始:${utils.formatTime((segment.startSeconds * 1000).toLong())}", fontSize = 8.sp, color = Color.DarkGray)
+
+                                                                  Text(
+
+                                                                      text = "In:${utils.formatTime((segment.startSeconds * 1000).toLong())}",
+
+                                                                      fontSize = 9.sp,
+
+                                                                      color = Color(0xFF007AFF),
+
+                                                                      fontWeight = FontWeight.Bold,
+
+                                                                      modifier = Modifier.clickable {
+
+                                                                          videoCurrentTimeMs = (segment.startSeconds * 1000).toLong()
+
+                                                                      }
+
+                                                                  )
+
                                                                   IconButton(
+
                                                                       onClick = {
-                                                                          val updated = captions.mapIndexed { idx, item ->
-                                                                              if (idx == index) item.copy(startSeconds = maxOf(0.0, item.startSeconds - 1.0)) else item
-                                                                          }
-                                                                          settings = settings.copy(roadCaptions = updated)
+
+                                                                          viewModel.updateRoadCaptionStart(index, segment.startSeconds - 1.0)
+
                                                                       },
-                                                                      modifier = Modifier.size(12.dp)
+
+                                                                      modifier = Modifier.size(18.dp)
+
                                                                   ) {
-                                                                      Text("◀", fontSize = 6.sp, color = Color.Gray)
+
+                                                                      Text("◀", fontSize = 8.sp, color = Color.DarkGray)
+
                                                                   }
+
                                                                   IconButton(
+
                                                                       onClick = {
-                                                                          val updated = captions.mapIndexed { idx, item ->
-                                                                              if (idx == index) item.copy(startSeconds = minOf(item.endSeconds, item.startSeconds + 1.0)) else item
-                                                                          }
-                                                                          settings = settings.copy(roadCaptions = updated)
+
+                                                                          viewModel.updateRoadCaptionStart(index, segment.startSeconds + 1.0)
+
                                                                       },
-                                                                      modifier = Modifier.size(12.dp)
+
+                                                                      modifier = Modifier.size(18.dp)
+
                                                                   ) {
-                                                                      Text("▶", fontSize = 6.sp, color = Color.Gray)
+
+                                                                      Text("▶", fontSize = 8.sp, color = Color.DarkGray)
+
                                                                   }
+
                                                                   Button(
+
                                                                       onClick = {
-                                                                          val currentSec = videoCurrentTimeMs / 1000.0
-                                                                          val updated = captions.mapIndexed { idx, item ->
-                                                                              if (idx == index) item.copy(startSeconds = currentSec.coerceIn(0.0, item.endSeconds)) else item
-                                                                          }
-                                                                          settings = settings.copy(roadCaptions = updated)
+
+                                                                          viewModel.updateRoadCaptionStart(index, videoCurrentTimeMs / 1000.0)
+
                                                                       },
-                                                                      colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFE5E5EA)),
-                                                                      contentPadding = PaddingValues(horizontal = 2.dp, vertical = 0.dp),
-                                                                      modifier = Modifier.height(12.dp)
+
+                                                                      colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF007AFF)),
+
+                                                                      contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
+
+                                                                      shape = androidx.compose.foundation.shape.RoundedCornerShape(2.dp),
+
+                                                                      modifier = Modifier.height(18.dp)
+
                                                                   ) {
-                                                                      Text("現在地", fontSize = 6.sp)
+
+                                                                      Text("In設定", fontSize = 8.sp, color = Color.White, fontWeight = FontWeight.Bold)
+
                                                                   }
+
                                                               }
-                                                              
+
+
                                                               Spacer(Modifier.weight(1f))
-                                                              
-                                                              // End seconds control
+
+
+                                                              // End seconds control (Out)
+
                                                               Row(
+
                                                                   verticalAlignment = Alignment.CenterVertically,
-                                                                  horizontalArrangement = Arrangement.spacedBy(1.dp)
+
+                                                                  horizontalArrangement = Arrangement.spacedBy(2.dp),
+
+                                                                  modifier = Modifier
+
+                                                                      .background(Color(0xFFF2F2F7), shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+
+                                                                      .padding(horizontal = 4.dp, vertical = 2.dp)
+
                                                               ) {
-                                                                  Text("終:${utils.formatTime((segment.endSeconds * 1000).toLong())}", fontSize = 8.sp, color = Color.DarkGray)
+
+                                                                  Text(
+
+                                                                      text = "Out:${utils.formatTime((segment.endSeconds * 1000).toLong())}",
+
+                                                                      fontSize = 9.sp,
+
+                                                                      color = Color(0xFF007AFF),
+
+                                                                      fontWeight = FontWeight.Bold,
+
+                                                                      modifier = Modifier.clickable {
+
+                                                                          videoCurrentTimeMs = (segment.endSeconds * 1000).toLong()
+
+                                                                      }
+
+                                                                  )
+
                                                                   IconButton(
+
                                                                       onClick = {
-                                                                          val updated = captions.mapIndexed { idx, item ->
-                                                                              if (idx == index) item.copy(endSeconds = maxOf(item.startSeconds, item.endSeconds - 1.0)) else item
-                                                                          }
-                                                                          settings = settings.copy(roadCaptions = updated)
+
+                                                                          viewModel.updateRoadCaptionEnd(index, segment.endSeconds - 1.0)
+
                                                                       },
-                                                                      modifier = Modifier.size(12.dp)
+
+                                                                      modifier = Modifier.size(18.dp)
+
                                                                   ) {
-                                                                      Text("◀", fontSize = 6.sp, color = Color.Gray)
+
+                                                                      Text("◀", fontSize = 8.sp, color = Color.DarkGray)
+
                                                                   }
+
                                                                   IconButton(
+
                                                                       onClick = {
-                                                                          val updated = captions.mapIndexed { idx, item ->
-                                                                              if (idx == index) item.copy(endSeconds = minOf(videoLengthMs / 1000.0, item.endSeconds + 1.0)) else item
-                                                                          }
-                                                                          settings = settings.copy(roadCaptions = updated)
+
+                                                                          viewModel.updateRoadCaptionEnd(index, segment.endSeconds + 1.0)
+
                                                                       },
-                                                                      modifier = Modifier.size(12.dp)
+
+                                                                      modifier = Modifier.size(18.dp)
+
                                                                   ) {
-                                                                      Text("▶", fontSize = 6.sp, color = Color.Gray)
+
+                                                                      Text("▶", fontSize = 8.sp, color = Color.DarkGray)
+
                                                                   }
+
                                                                   Button(
+
                                                                       onClick = {
-                                                                          val currentSec = videoCurrentTimeMs / 1000.0
-                                                                          val updated = captions.mapIndexed { idx, item ->
-                                                                              if (idx == index) item.copy(endSeconds = currentSec.coerceIn(item.startSeconds, videoLengthMs / 1000.0)) else item
-                                                                          }
-                                                                          settings = settings.copy(roadCaptions = updated)
+
+                                                                          viewModel.updateRoadCaptionEnd(index, videoCurrentTimeMs / 1000.0)
+
                                                                       },
-                                                                      colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFE5E5EA)),
-                                                                      contentPadding = PaddingValues(horizontal = 2.dp, vertical = 0.dp),
-                                                                      modifier = Modifier.height(12.dp)
+
+                                                                      colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF007AFF)),
+
+                                                                      contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
+
+                                                                      shape = androidx.compose.foundation.shape.RoundedCornerShape(2.dp),
+
+                                                                      modifier = Modifier.height(18.dp)
+
                                                                   ) {
-                                                                      Text("現在地", fontSize = 6.sp)
+
+                                                                      Text("Out設定", fontSize = 8.sp, color = Color.White, fontWeight = FontWeight.Bold)
+
                                                                   }
+
                                                               }
                                                           }
                                                       }

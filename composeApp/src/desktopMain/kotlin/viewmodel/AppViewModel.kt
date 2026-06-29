@@ -209,4 +209,28 @@ class AppViewModel(
             telemetryPoints
         }
     }
+
+    fun updateRoadCaptionStart(index: Int, startSeconds: Double) {
+        val captions = settings.roadCaptions
+        if (index in captions.indices) {
+            val updated = captions.mapIndexed { idx, item ->
+                if (idx == index) item.copy(startSeconds = startSeconds.coerceIn(0.0, item.endSeconds)) else item
+            }
+            settings = settings.copy(roadCaptions = updated)
+        }
+    }
+
+    fun updateRoadCaptionEnd(index: Int, endSeconds: Double) {
+        val captions = settings.roadCaptions
+        if (index in captions.indices) {
+            val updated = captions.mapIndexed { idx, item ->
+                if (idx == index) {
+                    val duration = videoLengthMs / 1000.0
+                    val maxSec = if (duration <= 0.0) item.endSeconds else duration
+                    item.copy(endSeconds = endSeconds.coerceIn(item.startSeconds, maxSec))
+                } else item
+            }
+            settings = settings.copy(roadCaptions = updated)
+        }
+    }
 }
