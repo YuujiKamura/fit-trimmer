@@ -136,4 +136,36 @@ class RoadNameBuilderTest {
         )
         assertEquals("県道145号 瀬田竜田線（菊陽町 付近）", result)
     }
+
+    @Test
+    fun testBuildCaptionTextDetailedArea() {
+        val result = RoadNameBuilder.buildCaptionText(
+            rdCtg = "一般国道",
+            roadName = null,
+            ref = "57",
+            city = "熊本市",
+            town = null,
+            village = null,
+            suburb = "北区",
+            county = null,
+            neighbourhood = "弓削"
+        )
+        assertEquals("国道57号（熊本市北区弓削 付近）", result)
+    }
+
+    @Test
+    fun testBuildCaptionTextDetailedAreaCounty() {
+        val result = RoadNameBuilder.buildCaptionText(
+            rdCtg = "都道府県道",
+            roadName = "瀬田竜田線",
+            ref = "145",
+            city = null,
+            town = "菊陽町",
+            village = null,
+            suburb = null,
+            county = "菊池郡",
+            neighbourhood = "津久礼"
+        )
+        assertEquals("県道145号 瀬田竜田線（菊池郡菊陽町津久礼 付近）", result)
+    }
 }
