@@ -2392,9 +2392,24 @@ fun startGui(args: Array<String>) = application {
                                         if (path != null) {
                                             try {
                                                 val jsonStr = File(path).readText(Charsets.UTF_8)
-                                                val loaded = kotlinx.serialization.json.Json.decodeFromString<fit.HudSettings>(jsonStr)
-                                                settings = loaded
-                                                statusText = "設定ファイルを読み込みました"
+                                                val jsonParser = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+                                                try {
+                                                    val loadedCache = jsonParser.decodeFromString<utils.GuiPathCache>(jsonStr)
+                                                    settings = loadedCache.settings
+                                                    loadedCache.timeOffsetMillis?.let {
+                                                        timeOffsetState.update(it)
+                                                    }
+                                                    loadedCache.trimStartSeconds?.let { trimStartSeconds = it }
+                                                    loadedCache.trimEndSeconds?.let { trimEndSeconds = it }
+                                                    loadedCache.splitPoints?.let {
+                                                        viewModel.splitPoints = it
+                                                    }
+                                                    statusText = "設定ファイル（同期範囲込）を読み込みました"
+                                                } catch (e: Exception) {
+                                                    val loadedSettings = jsonParser.decodeFromString<fit.HudSettings>(jsonStr)
+                                                    settings = loadedSettings
+                                                    statusText = "設定ファイルを読み込みました"
+                                                }
                                             } catch (e: Exception) {
                                                 statusText = "読み込みエラー: ${e.message}"
                                             }
@@ -2410,7 +2425,17 @@ fun startGui(args: Array<String>) = application {
                                         val path = saveFile("Save Settings JSON", "fit_trimmer_settings.json")
                                         if (path != null) {
                                             try {
-                                                val jsonStr = kotlinx.serialization.json.Json.encodeToString(settings)
+                                                val cacheToSave = utils.GuiPathCache(
+                                                    fitPath = fitPath,
+                                                    videoPath = videoPath,
+                                                    videoStartUtc = adjustedStartUtc,
+                                                    timeOffsetMillis = timeOffsetState.millis,
+                                                    settings = settings,
+                                                    trimStartSeconds = trimStartSeconds,
+                                                    trimEndSeconds = trimEndSeconds,
+                                                    splitPoints = viewModel.splitPoints.toList()
+                                                )
+                                                val jsonStr = kotlinx.serialization.json.Json.encodeToString(cacheToSave)
                                                 File(path).writeText(jsonStr, Charsets.UTF_8)
                                                 statusText = "設定ファイルを保存しました"
                                             } catch (e: Exception) {
@@ -2516,35 +2541,37 @@ fun startGui(args: Array<String>) = application {
                                 }
                             }
                         }
-                        Spacer(Modifier.height(8.dp))
-                        TelemetryTimelineGraph(
-                            videoLengthMs = videoLengthMs,
-                            adjustedStartUtc = adjustedStartUtc,
-                            telemetryPoints = telemetryPoints,
-                            trimStartSeconds = trimStartSeconds,
-                            trimEndSeconds = trimEndSeconds,
-                            splitPoints = viewModel.splitPoints,
-                            videoCurrentTimeMs = effectiveVideoTimeMs,
-                            onTrimStartChange = { if (!isEncoding) trimStartSeconds = it },
-                            onTrimEndChange = { if (!isEncoding) trimEndSeconds = it },
-                            onSeek = { timeMs ->
-                                if (!isEncoding) {
-                                    val ratio = if (videoLengthMs > 0) timeMs.toFloat() / videoLengthMs.toFloat() else 0f
-                                    playerState.seekTo(ratio * 1000f)
-                                    videoCurrentTimeMs = timeMs
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth().height(140.dp),
-                            isEncoding = isEncoding
-                        )
-                        val previewLabel = when (settings.exportResolution) {
-                            "360p" -> "360p (640x360) Overlay Preview"
-                            "720p" -> "720p (1280x720) Overlay Preview"
-                            "1080p" -> "1080p (1920x1080) Overlay Preview"
-                            "2.7k" -> "2.7k (2704x1520) Overlay Preview"
-                            else -> "${settings.exportResolution} Overlay Preview"
+                        if (viewModel.isSidebarVisible) {
+                            Spacer(Modifier.height(8.dp))
+                            TelemetryTimelineGraph(
+                                videoLengthMs = videoLengthMs,
+                                adjustedStartUtc = adjustedStartUtc,
+                                telemetryPoints = telemetryPoints,
+                                trimStartSeconds = trimStartSeconds,
+                                trimEndSeconds = trimEndSeconds,
+                                splitPoints = viewModel.splitPoints,
+                                videoCurrentTimeMs = effectiveVideoTimeMs,
+                                onTrimStartChange = { if (!isEncoding) trimStartSeconds = it },
+                                onTrimEndChange = { if (!isEncoding) trimEndSeconds = it },
+                                onSeek = { timeMs ->
+                                    if (!isEncoding) {
+                                        val ratio = if (videoLengthMs > 0) timeMs.toFloat() / videoLengthMs.toFloat() else 0f
+                                        playerState.seekTo(ratio * 1000f)
+                                        videoCurrentTimeMs = timeMs
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth().height(140.dp),
+                                isEncoding = isEncoding
+                            )
+                            val previewLabel = when (settings.exportResolution) {
+                                "360p" -> "360p (640x360) Overlay Preview"
+                                "720p" -> "720p (1280x720) Overlay Preview"
+                                "1080p" -> "1080p (1920x1080) Overlay Preview"
+                                "2.7k" -> "2.7k (2704x1520) Overlay Preview"
+                                else -> "${settings.exportResolution} Overlay Preview"
+                            }
+                            Text(previewLabel, color = Color(0xFF1C1C1E), fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
                         }
-                        Text(previewLabel, color = Color(0xFF1C1C1E), fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
                     }
                 }
             }
