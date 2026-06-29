@@ -184,4 +184,40 @@ class RoadNameBuilderTest {
         )
         assertEquals("国道57号（熊本市北区弓削 付近）", result)
     }
+
+    @Test
+    fun testBuildCaptionTextUsRoad() {
+        val result = RoadNameBuilder.buildCaptionText(
+            rdCtg = null,
+            roadName = "El Camino Real",
+            ref = "US 101",
+            city = "San Jose",
+            town = null,
+            village = null,
+            suburb = null,
+            county = null,
+            neighbourhood = null,
+            countryCode = "us",
+            state = "California"
+        )
+        assertEquals("US 101 El Camino Real (San Jose, California)", result)
+    }
+
+    @Test
+    fun testBuildCaptionTextFallbackRoad() {
+        val result = RoadNameBuilder.buildCaptionText(
+            rdCtg = null,
+            roadName = "Champs-Élysées",
+            ref = "N12",
+            city = "Paris",
+            town = null,
+            village = null,
+            suburb = null,
+            county = null,
+            neighbourhood = null,
+            countryCode = "fr",
+            state = "Île-de-France"
+        )
+        assertEquals("Champs-Élysées (Paris, Île-de-France)", result)
+    }
 }
