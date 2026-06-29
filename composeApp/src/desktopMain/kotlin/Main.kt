@@ -197,6 +197,7 @@ fun startGui(args: Array<String>) = application {
     val viewModel = remember { AppViewModel(initialCache) }
     
     var settings by viewModel::settings
+    var editingCaptionIndex by viewModel::editingCaptionIndex
     var fitPath by viewModel::fitPath
     var videoPath by viewModel::videoPath
     var outputDir by viewModel::outputDir
@@ -1747,196 +1748,29 @@ fun startGui(args: Array<String>) = application {
                                                               textStyle = androidx.compose.ui.text.TextStyle(fontSize = 10.sp, color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold),
                                                               modifier = Modifier.fillMaxWidth().background(Color(0xFFF2F2F7)).padding(2.dp)
                                                           )
-                                                          Spacer(modifier = Modifier.height(2.dp))
-                                                          Row(
-                                                              verticalAlignment = Alignment.CenterVertically,
-                                                              horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                                              modifier = Modifier.fillMaxWidth()
-                                                          ) {
-                                                              // Start seconds control (In)
-
-                                                              Row(
-
-                                                                  verticalAlignment = Alignment.CenterVertically,
-
-                                                                  horizontalArrangement = Arrangement.spacedBy(2.dp),
-
-                                                                  modifier = Modifier
-
-                                                                      .background(Color(0xFFF2F2F7), shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
-
-                                                                      .padding(horizontal = 4.dp, vertical = 2.dp)
-
-                                                              ) {
-
-                                                                  Text(
-
-                                                                      text = "In:${utils.formatTime((segment.startSeconds * 1000).toLong())}",
-
-                                                                      fontSize = 9.sp,
-
-                                                                      color = Color(0xFF007AFF),
-
-                                                                      fontWeight = FontWeight.Bold,
-
-                                                                      modifier = Modifier.clickable {
-
-                                                                          videoCurrentTimeMs = (segment.startSeconds * 1000).toLong()
-
-                                                                      }
-
-                                                                  )
-
-                                                                  IconButton(
-
-                                                                      onClick = {
-
-                                                                          viewModel.updateRoadCaptionStart(index, segment.startSeconds - 1.0)
-
-                                                                      },
-
-                                                                      modifier = Modifier.size(18.dp)
-
-                                                                  ) {
-
-                                                                      Text("◀", fontSize = 8.sp, color = Color.DarkGray)
-
-                                                                  }
-
-                                                                  IconButton(
-
-                                                                      onClick = {
-
-                                                                          viewModel.updateRoadCaptionStart(index, segment.startSeconds + 1.0)
-
-                                                                      },
-
-                                                                      modifier = Modifier.size(18.dp)
-
-                                                                  ) {
-
-                                                                      Text("▶", fontSize = 8.sp, color = Color.DarkGray)
-
-                                                                  }
-
-                                                                  Button(
-
-                                                                      onClick = {
-
-                                                                          viewModel.updateRoadCaptionStart(index, videoCurrentTimeMs / 1000.0)
-
-                                                                      },
-
-                                                                      colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF007AFF)),
-
-                                                                      contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
-
-                                                                      shape = androidx.compose.foundation.shape.RoundedCornerShape(2.dp),
-
-                                                                      modifier = Modifier.height(18.dp)
-
-                                                                  ) {
-
-                                                                      Text("In設定", fontSize = 8.sp, color = Color.White, fontWeight = FontWeight.Bold)
-
-                                                                  }
-
-                                                              }
-
-
-                                                              Spacer(Modifier.weight(1f))
-
-
-                                                              // End seconds control (Out)
-
-                                                              Row(
-
-                                                                  verticalAlignment = Alignment.CenterVertically,
-
-                                                                  horizontalArrangement = Arrangement.spacedBy(2.dp),
-
-                                                                  modifier = Modifier
-
-                                                                      .background(Color(0xFFF2F2F7), shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
-
-                                                                      .padding(horizontal = 4.dp, vertical = 2.dp)
-
-                                                              ) {
-
-                                                                  Text(
-
-                                                                      text = "Out:${utils.formatTime((segment.endSeconds * 1000).toLong())}",
-
-                                                                      fontSize = 9.sp,
-
-                                                                      color = Color(0xFF007AFF),
-
-                                                                      fontWeight = FontWeight.Bold,
-
-                                                                      modifier = Modifier.clickable {
-
-                                                                          videoCurrentTimeMs = (segment.endSeconds * 1000).toLong()
-
-                                                                      }
-
-                                                                  )
-
-                                                                  IconButton(
-
-                                                                      onClick = {
-
-                                                                          viewModel.updateRoadCaptionEnd(index, segment.endSeconds - 1.0)
-
-                                                                      },
-
-                                                                      modifier = Modifier.size(18.dp)
-
-                                                                  ) {
-
-                                                                      Text("◀", fontSize = 8.sp, color = Color.DarkGray)
-
-                                                                  }
-
-                                                                  IconButton(
-
-                                                                      onClick = {
-
-                                                                          viewModel.updateRoadCaptionEnd(index, segment.endSeconds + 1.0)
-
-                                                                      },
-
-                                                                      modifier = Modifier.size(18.dp)
-
-                                                                  ) {
-
-                                                                      Text("▶", fontSize = 8.sp, color = Color.DarkGray)
-
-                                                                  }
-
-                                                                  Button(
-
-                                                                      onClick = {
-
-                                                                          viewModel.updateRoadCaptionEnd(index, videoCurrentTimeMs / 1000.0)
-
-                                                                      },
-
-                                                                      colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF007AFF)),
-
-                                                                      contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
-
-                                                                      shape = androidx.compose.foundation.shape.RoundedCornerShape(2.dp),
-
-                                                                      modifier = Modifier.height(18.dp)
-
-                                                                  ) {
-
-                                                                      Text("Out設定", fontSize = 8.sp, color = Color.White, fontWeight = FontWeight.Bold)
-
-                                                                  }
-
-                                                              }
-                                                          }
+                                                                                                                     Spacer(modifier = Modifier.height(2.dp))
+                                                           Row(
+                                                               verticalAlignment = Alignment.CenterVertically,
+                                                               modifier = Modifier.fillMaxWidth()
+                                                           ) {
+                                                               Text(
+                                                                   text = "${utils.formatTime((segment.startSeconds * 1000).toLong())} - ${utils.formatTime((segment.endSeconds * 1000).toLong())}",
+                                                                   fontSize = 9.sp,
+                                                                   color = Color.Gray
+                                                               )
+                                                               Spacer(Modifier.weight(1f))
+                                                               Button(
+                                                                   onClick = {
+                                                                       editingCaptionIndex = index
+                                                                   },
+                                                                   colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFE5E5EA)),
+                                                                   contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                                                                   shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp),
+                                                                   modifier = Modifier.height(18.dp)
+                                                               ) {
+                                                                   Text("⚙ 編集", fontSize = 8.sp, color = Color(0xFF1C1C1E))
+                                                               }
+                                                           }
                                                       }
                                                       Spacer(Modifier.width(2.dp))
                                                       IconButton(
@@ -2636,6 +2470,24 @@ fun startGui(args: Array<String>) = application {
                         Text(previewLabel, color = Color(0xFF1C1C1E), fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
                     }
                 }
+            }
+
+            val editingIndex = editingCaptionIndex
+            if (editingIndex != null && editingIndex in settings.roadCaptions.indices) {
+                val segment = settings.roadCaptions[editingIndex]
+                RoadCaptionEditDialog(
+                    segment = segment,
+                    index = editingIndex,
+                    videoCurrentTimeMs = videoCurrentTimeMs,
+                    videoLengthMs = videoLengthMs,
+                    viewModel = viewModel,
+                    onClose = { editingCaptionIndex = null },
+                    onSeek = { targetMs ->
+                        val ratio = if (videoLengthMs > 0) targetMs.toFloat() / videoLengthMs.toFloat() else 0f
+                        playerState.seekTo(ratio * 1000f)
+                        videoCurrentTimeMs = targetMs
+                    }
+                )
             }
         }
     }
@@ -3811,6 +3663,222 @@ fun VideoSplitCard(
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Bold
             )
+        }
+    }
+}
+
+@Composable
+fun RoadCaptionEditDialog(
+    segment: fit.RoadCaptionSegment,
+    index: Int,
+    videoCurrentTimeMs: Long,
+    videoLengthMs: Long,
+    viewModel: AppViewModel,
+    onClose: () -> Unit,
+    onSeek: (Long) -> Unit
+) {
+    Box(
+        modifier = androidx.compose.ui.Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.5f))
+            .clickable(
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                indication = null
+            ) { onClose() },
+        contentAlignment = Alignment.Center
+    ) {
+        Card(
+            modifier = androidx.compose.ui.Modifier
+                .width(480.dp)
+                .wrapContentHeight()
+                .clickable(
+                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                    indication = null
+                ) { /* クリック伝播防止 */ },
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+            elevation = 8.dp,
+            backgroundColor = Color.White
+        ) {
+            Column(
+                modifier = androidx.compose.ui.Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Header
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = androidx.compose.ui.Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "路線名テロップの調整",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF1C1C1E)
+                    )
+                    Spacer(Modifier.weight(1f))
+                    IconButton(
+                        onClick = onClose,
+                        modifier = androidx.compose.ui.Modifier.size(24.dp)
+                    ) {
+                        Text("❌", fontSize = 10.sp)
+                    }
+                }
+
+                Divider(color = Color(0xFFE5E5EA))
+
+                // Text Input
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("表示テキスト", fontSize = 10.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                    OutlinedTextField(
+                        value = segment.text,
+                        onValueChange = { newText ->
+                            val updated = viewModel.settings.roadCaptions.mapIndexed { idx, item ->
+                                if (idx == index) item.copy(text = newText) else item
+                            }
+                            viewModel.settings = viewModel.settings.copy(roadCaptions = updated)
+                        },
+                        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 11.sp, color = Color(0xFF1C1C1E)),
+                        modifier = androidx.compose.ui.Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        colors = TextFieldDefaults.outlinedTextFieldColors(
+                            focusedBorderColor = Color(0xFF007AFF),
+                            unfocusedBorderColor = Color(0xFFE5E5EA)
+                        )
+                    )
+                }
+
+                // Current Time Display
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = androidx.compose.ui.Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFFF2F2F7), shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                        .padding(8.dp)
+                ) {
+                    Text(
+                        text = "動画の現在位置:",
+                        fontSize = 10.sp,
+                        color = Color.DarkGray,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = utils.formatTime(videoCurrentTimeMs),
+                        fontSize = 11.sp,
+                        color = Color(0xFF007AFF),
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                // In / Out controls side-by-side
+                Row(
+                    modifier = androidx.compose.ui.Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    // Start (In)
+                    Column(
+                        modifier = androidx.compose.ui.Modifier
+                            .weight(1f)
+                            .background(Color(0xFFF2F2F7), shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                            .padding(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text("開始時間 (In)", fontSize = 10.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                        Text(
+                            text = utils.formatTime((segment.startSeconds * 1000).toLong()),
+                            fontSize = 14.sp,
+                            color = Color(0xFF007AFF),
+                            fontWeight = FontWeight.Bold,
+                            modifier = androidx.compose.ui.Modifier.clickable {
+                                onSeek((segment.startSeconds * 1000).toLong())
+                            }
+                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            IconButton(
+                                onClick = { viewModel.updateRoadCaptionStart(index, segment.startSeconds - 1.0) },
+                                modifier = androidx.compose.ui.Modifier.size(24.dp)
+                            ) {
+                                Text("◀ 1s", fontSize = 8.sp, color = Color.DarkGray)
+                            }
+                            IconButton(
+                                onClick = { viewModel.updateRoadCaptionStart(index, segment.startSeconds + 1.0) },
+                                modifier = androidx.compose.ui.Modifier.size(24.dp)
+                            ) {
+                                Text("1s ▶", fontSize = 8.sp, color = Color.DarkGray)
+                            }
+                        }
+                        Button(
+                            onClick = { viewModel.updateRoadCaptionStart(index, videoCurrentTimeMs / 1000.0) },
+                            colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF007AFF)),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                            modifier = androidx.compose.ui.Modifier.height(24.dp),
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+                        ) {
+                            Text("現在位置をInに設定", fontSize = 8.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    // End (Out)
+                    Column(
+                        modifier = androidx.compose.ui.Modifier
+                            .weight(1f)
+                            .background(Color(0xFFF2F2F7), shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                            .padding(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text("終了時間 (Out)", fontSize = 10.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                        Text(
+                            text = utils.formatTime((segment.endSeconds * 1000).toLong()),
+                            fontSize = 14.sp,
+                            color = Color(0xFF007AFF),
+                            fontWeight = FontWeight.Bold,
+                            modifier = androidx.compose.ui.Modifier.clickable {
+                                onSeek((segment.endSeconds * 1000).toLong())
+                            }
+                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            IconButton(
+                                onClick = { viewModel.updateRoadCaptionEnd(index, segment.endSeconds - 1.0) },
+                                modifier = androidx.compose.ui.Modifier.size(24.dp)
+                            ) {
+                                Text("◀ 1s", fontSize = 8.sp, color = Color.DarkGray)
+                            }
+                            IconButton(
+                                onClick = { viewModel.updateRoadCaptionEnd(index, segment.endSeconds + 1.0) },
+                                modifier = androidx.compose.ui.Modifier.size(24.dp)
+                            ) {
+                                Text("1s ▶", fontSize = 8.sp, color = Color.DarkGray)
+                            }
+                        }
+                        Button(
+                            onClick = { viewModel.updateRoadCaptionEnd(index, videoCurrentTimeMs / 1000.0) },
+                            colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF007AFF)),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                            modifier = androidx.compose.ui.Modifier.height(24.dp),
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+                        ) {
+                            Text("現在位置をOutに設定", fontSize = 8.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(4.dp))
+                Button(
+                    onClick = onClose,
+                    colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFE5E5EA)),
+                    modifier = androidx.compose.ui.Modifier.align(Alignment.End).height(28.dp),
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+                ) {
+                    Text("閉じる", fontSize = 10.sp, color = Color(0xFF1C1C1E))
+                }
+            }
         }
     }
 }

@@ -214,7 +214,9 @@ class AppViewModel(
         val captions = settings.roadCaptions
         if (index in captions.indices) {
             val updated = captions.mapIndexed { idx, item ->
-                if (idx == index) item.copy(startSeconds = startSeconds.coerceIn(0.0, item.endSeconds)) else item
+                if (idx == index) {
+                    item.copy(startSeconds = startSeconds.coerceIn(0.0, item.endSeconds))
+                } else item
             }
             settings = settings.copy(roadCaptions = updated)
         }
@@ -233,4 +235,6 @@ class AppViewModel(
             settings = settings.copy(roadCaptions = updated)
         }
     }
+
+    var editingCaptionIndex by mutableStateOf<Int?>(null)
 }
