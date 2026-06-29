@@ -45,6 +45,8 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 import kotlin.math.roundToInt
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectDragGestures
 // VLC dependency removed
 
 import utils.*
@@ -3677,20 +3679,25 @@ fun RoadCaptionEditDialog(
     onClose: () -> Unit,
     onSeek: (Long) -> Unit
 ) {
+    var offsetX by remember { mutableStateOf(0f) }
+    var offsetY by remember { mutableStateOf(0f) }
+
     Box(
-        modifier = androidx.compose.ui.Modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.5f))
-            .clickable(
-                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                indication = null
-            ) { onClose() },
+        modifier = androidx.compose.ui.Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
         Card(
             modifier = androidx.compose.ui.Modifier
+                .offset { IntOffset(offsetX.roundToInt(), offsetY.roundToInt()) }
                 .width(480.dp)
                 .wrapContentHeight()
+                .pointerInput(Unit) {
+                    detectDragGestures { change, dragAmount ->
+                        change.consume()
+                        offsetX += dragAmount.x
+                        offsetY += dragAmount.y
+                    }
+                }
                 .clickable(
                     interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
                     indication = null
