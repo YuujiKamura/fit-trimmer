@@ -2705,7 +2705,7 @@ suspend fun fireEncode(
         }
     }
 }
-suspend fun queryRoadName(lat: Double, lon: Double): String? {
+suspend fun queryRoadName(lat: Double, lon: Double, heading: Double? = null): String? {
     return withContext(Dispatchers.IO) {
         try {
             val client = java.net.http.HttpClient.newBuilder()
@@ -2724,7 +2724,7 @@ suspend fun queryRoadName(lat: Double, lon: Double): String? {
                     .build()
                 val gsiResponse = client.send(gsiRequest, java.net.http.HttpResponse.BodyHandlers.ofString())
                 if (gsiResponse.statusCode() == 200) {
-                    val roadInfo = fit.GsiRoadDetector.findClosestRoad(lat, lon, gsiResponse.body())
+                    val roadInfo = fit.GsiRoadDetector.findClosestRoad(lat, lon, gsiResponse.body(), carHeading = heading, maxDistanceMeters = 15.0)
                     if (roadInfo != null && roadInfo.distanceMeters <= 50.0) {
                         rdCtg = roadInfo.rdCtg
                         gsiRoadName = roadInfo.name ?: roadInfo.comName
@@ -2932,7 +2932,8 @@ suspend fun detectRoadSegments(
         onProgress("GPS解析中 (${progressPercent}%): 座標 (${"%.4f".format(point.lat)}, ${"%.4f".format(point.lon)}) 付近で道路判定中...")
         // Safe rate limiting (1s wait) only for active queries
         kotlinx.coroutines.delay(1000)
-        val roadName = queryRoadName(point.lat, point.lon)
+        val headingVal = headings.getOrNull(currentOffset.toInt()) ?: -1.0
+        val roadName = queryRoadName(point.lat, point.lon, if (headingVal >= 0.0) headingVal else null)
         if (roadName != null && roadName.isNotEmpty()) {
             if (currentRoadName == null) {
                 currentRoadName = roadName
