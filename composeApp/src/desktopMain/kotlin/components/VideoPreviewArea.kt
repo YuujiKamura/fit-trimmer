@@ -223,10 +223,14 @@ fun VideoPreviewArea(
             if (useProxy && lrvFile != null) {
                 try {
                     val tempDir = System.getProperty("java.io.tmpdir")
-                    val proxyFile = File(tempDir, "fit_trimmer_lrv_proxy.mp4")
-                    if (proxyFile.exists()) {
-                        proxyFile.delete()
-                    }
+                    // Clean up any old proxy files in temp dir to prevent storage buildup
+                    try {
+                        File(tempDir).listFiles { _, name ->
+                            name.startsWith("fit_trimmer_lrv_proxy_") && name.endsWith(".mp4")
+                        }?.forEach { it.delete() }
+                    } catch (e: Exception) {}
+                    
+                    val proxyFile = File(tempDir, "fit_trimmer_lrv_proxy_${java.util.UUID.randomUUID()}.mp4")
                     
                     val ffmpegPath = fit.findFfmpegPath()
                     // Stream-copy the LRV container to a real temp MP4 file using FFmpeg.
