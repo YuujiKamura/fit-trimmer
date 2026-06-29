@@ -29,6 +29,14 @@ object GuiCache {
     private val file = File(System.getProperty("user.home"), ".fittrimmer_gui_cache.json")
     private val json = Json { ignoreUnknownKeys = true }
 
+    private fun getHistoryFile(videoPath: String): File? {
+        if (videoPath.isEmpty()) return null
+        val safeName = "hist_" + kotlin.math.abs(videoPath.hashCode()).toString() + ".json"
+        val historyDir = File(System.getProperty("user.home"), ".fittrimmer_history")
+        if (!historyDir.exists()) historyDir.mkdirs()
+        return File(historyDir, safeName)
+    }
+
     fun load(): GuiPathCache? {
         return try {
             if (file.exists()) {
@@ -47,5 +55,27 @@ object GuiCache {
         } catch (e: Exception) {
             e.printStackTrace()
         }
+    }
+
+    fun saveHistory(videoPath: String, cache: GuiPathCache) {
+        try {
+            val hFile = getHistoryFile(videoPath) ?: return
+            hFile.writeText(json.encodeToString(cache), Charsets.UTF_8)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    fun loadHistory(videoPath: String): GuiPathCache? {
+        try {
+            val hFile = getHistoryFile(videoPath) ?: return null
+            if (hFile.exists()) {
+                val content = hFile.readText(Charsets.UTF_8)
+                return json.decodeFromString<GuiPathCache>(content)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return null
     }
 }
