@@ -629,9 +629,6 @@ fun startGui(args: Array<String>) = application {
         }
     }
     // Save path cache when modified.
-    // NOTE: videoStartUtc is intentionally NOT in the key list — it is ephemeral state always
-    // read from the video file. Saving it would cause a race where videoStartUtc="" during
-    // async file read overwrites the cache, corrupting the timeOffset on next launch.
     LaunchedEffect(fitPath, videoPath, timeOffsetState.millis, settings, moveOutputToSource, showLivePreview, windowState.position, windowState.size, viewModel.splitPoints) {
         if (isLoaded) {
             kotlinx.coroutines.delay(500)
@@ -646,7 +643,7 @@ fun startGui(args: Array<String>) = application {
                     val cache = GuiPathCache(
                         fitPath = fitPath,
                         videoPath = videoPath,
-                        videoStartUtc = "",  // Never persist — always read from file on startup
+                        videoStartUtc = videoStartUtc,
                         timeOffsetSeconds = null,
                         timeOffsetMillis = timeOffsetState.millis,
                         settings = settings,
