@@ -44,6 +44,9 @@ class FitParser(private val bytes: ByteArray) {
 
         while (offset < endOffset && offset < bytes.size) {
             val recordStart = offset
+            if (offset >= bytes.size) {
+                throw IllegalArgumentException("Truncated FIT file: reached end of bytes before finishing records.")
+            }
             val headerByte = bytes[offset].toInt() and 0xFF
             offset++
 
@@ -65,7 +68,9 @@ class FitParser(private val bytes: ByteArray) {
                 for (f in def.developerFields) dataSize += f.size
 
                 val recordEnd = offset + dataSize
-                if (recordEnd > bytes.size) break
+                if (recordEnd > bytes.size) {
+                    throw IllegalArgumentException("Truncated FIT file: compressed data record ends out of bounds.")
+                }
                 
                 var currentOffset = recordStart + 1
                 val parsedFields = mutableMapOf<Int, ParsedField>()
@@ -106,6 +111,9 @@ class FitParser(private val bytes: ByteArray) {
                 val localId = headerByte and 0x0F
 
                 if (isDefinition) {
+                    if (offset + 5 > bytes.size) {
+                        throw IllegalArgumentException("Truncated FIT file: definition record header out of bounds.")
+                    }
                     offset++ 
                     val architecture = bytes[offset].toInt() and 0xFF
                     offset++
@@ -114,6 +122,9 @@ class FitParser(private val bytes: ByteArray) {
                     offset += 2
                     val fieldCount = bytes[offset].toInt() and 0xFF
                     offset++
+                    if (offset + fieldCount * 3 > bytes.size) {
+                        throw IllegalArgumentException("Truncated FIT file: definition fields out of bounds.")
+                    }
                     val fields = mutableListOf<FieldDefinition>()
                     for (i in 0 until fieldCount) {
                         fields.add(FieldDefinition(bytes[offset].toInt() and 0xFF, bytes[offset+1].toInt() and 0xFF, bytes[offset+2].toInt() and 0xFF))
@@ -121,8 +132,14 @@ class FitParser(private val bytes: ByteArray) {
                     }
                     val developerFields = mutableListOf<DevFieldDefinition>()
                     if (hasDeveloperData) {
+                        if (offset >= bytes.size) {
+                            throw IllegalArgumentException("Truncated FIT file: developer fields count out of bounds.")
+                        }
                         val devFieldCount = bytes[offset].toInt() and 0xFF
                         offset++
+                        if (offset + devFieldCount * 3 > bytes.size) {
+                            throw IllegalArgumentException("Truncated FIT file: developer fields out of bounds.")
+                        }
                         for (i in 0 until devFieldCount) {
                             developerFields.add(DevFieldDefinition(bytes[offset].toInt() and 0xFF, bytes[offset+1].toInt() and 0xFF, bytes[offset+2].toInt() and 0xFF))
                             offset += 3
@@ -137,7 +154,9 @@ class FitParser(private val bytes: ByteArray) {
                     for (f in def.fields) dataSize += f.size
                     for (f in def.developerFields) dataSize += f.size
                     val recordEnd = offset + dataSize
-                    if (recordEnd > bytes.size) break
+                    if (recordEnd > bytes.size) {
+                        throw IllegalArgumentException("Truncated FIT file: data record ends out of bounds.")
+                    }
                     
                     var currentOffset = recordStart + 1
                     val parsedFields = mutableMapOf<Int, ParsedField>()

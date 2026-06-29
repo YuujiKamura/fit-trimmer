@@ -380,4 +380,106 @@ class EncoderIntegrationTest {
             try { tempDir.deleteRecursively() } catch (e: Exception) {}
         }
     }
+
+    @Test
+    fun testEncodingFailsWithInvalidVideoPath() {
+        System.setProperty("FIT_TRIMMER_FORCE_CPU", "true")
+        val tempDir = File(System.getProperty("java.io.tmpdir"), "fit-trimmer-test-fail-video-${System.currentTimeMillis()}")
+        tempDir.mkdirs()
+
+        val inputFit = File(tempDir, "test_input.fit")
+        val headerSize = 14
+        val bytes = ByteArray(headerSize + 2)
+        bytes[0] = headerSize.toByte()
+        bytes[1] = 32
+        bytes[2] = 0xDC.toByte()
+        bytes[3] = 0x07.toByte()
+        ".FIT".encodeToByteArray().copyInto(bytes, 8)
+        inputFit.writeBytes(bytes)
+
+        val invalidMp4 = File(tempDir, "non_existent_video.mp4")
+        val outputMp4 = File(tempDir, "test_output.mp4")
+
+        val settings = HudSettings(exportResolution = "360p")
+        val encoder = NativeHudEncoder(settings)
+
+        var thrown = false
+        try {
+            encoder.encode(
+                fitPath = inputFit.absolutePath,
+                videoPath = invalidMp4.absolutePath,
+                output = outputMp4.absolutePath,
+                startUtc = "2026-06-21T02:09:49Z",
+                maxDurationSeconds = 5
+            )
+        } catch (e: Exception) {
+            println("Caught expected exception for invalid video: ${e.message}")
+            thrown = true
+        }
+
+        assertTrue(thrown, "Should throw exception when video file does not exist")
+
+        try { inputFit.delete() } catch (e: Exception) {}
+        try { tempDir.deleteRecursively() } catch (e: Exception) {}
+    }
+
+    @Test
+    fun testEncodingCancelCleanup() {
+        System.setProperty("FIT_TRIMMER_FORCE_CPU", "true")
+        val tempDir = File(System.getProperty("java.io.tmpdir"), "fit-trimmer-test-cancel-${System.currentTimeMillis()}")
+        tempDir.mkdirs()
+
+        val inputFit = File(tempDir, "test_input.fit")
+        val headerSize = 14
+        val bytes = ByteArray(headerSize + 2)
+        bytes[0] = headerSize.toByte()
+        bytes[1] = 32
+        bytes[2] = 0xDC.toByte()
+        bytes[3] = 0x07.toByte()
+        ".FIT".encodeToByteArray().copyInto(bytes, 8)
+        inputFit.writeBytes(bytes)
+
+        val dummyMp4 = File(tempDir, "dummy_video.mp4")
+        val ffmpegPath = try { findFfmpegPath() } catch (e: Exception) { "ffmpeg" }
+        val pbVideo = ProcessBuilder(
+            ffmpegPath, "-y",
+            "-f", "lavfi", "-i", "color=c=blue:s=128x128:d=2",
+            "-c:v", "libopenh264", "-pix_fmt", "yuv420p", "-r", "25", "-t", "2",
+            dummyMp4.absolutePath
+        )
+        pbVideo.redirectErrorStream(true)
+        val pVideo = pbVideo.start()
+        pVideo.waitFor()
+
+        val outputMp4 = File(tempDir, "test_output.mp4")
+        val settings = HudSettings(exportResolution = "360p")
+        val encoder = NativeHudEncoder(settings, cancelSupplier = { true })
+
+        var thrown = false
+        try {
+            encoder.encode(
+                fitPath = inputFit.absolutePath,
+                videoPath = dummyMp4.absolutePath,
+                output = outputMp4.absolutePath,
+                startUtc = "2026-06-21T02:09:49Z",
+                maxDurationSeconds = 2
+            )
+        } catch (e: Exception) {
+            println("Caught expected cancel exception: ${e.message}")
+            if (e.message?.contains("canceled") == true) {
+                thrown = true
+            }
+        }
+
+        assertTrue(thrown, "Should throw exception stating that encoding was canceled")
+
+        val workDir = PathResolver.getTempWorkDir(dummyMp4.absolutePath)
+        val jobDirs = workDir.listFiles { _, name -> name.startsWith("job_") }
+        assertTrue(jobDirs.isNullOrEmpty(), "Job directories should be fully cleaned up after cancellation")
+
+        try { inputFit.delete() } catch (e: Exception) {}
+        try { dummyMp4.delete() } catch (e: Exception) {}
+        try { tempDir.deleteRecursively() } catch (e: Exception) {}
+    }
 }
+

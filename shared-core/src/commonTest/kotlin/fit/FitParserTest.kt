@@ -463,5 +463,35 @@ class FitParserTest {
         }
         println("SUCCESS: Dumped real API data to ${logFile.absolutePath}")
     }
+
+    @Test
+    fun testParseTruncatedFitData() {
+        val headerSize = 14
+        val bytes = ByteArray(headerSize + 5) // Truncated, missing data records
+        bytes[0] = headerSize.toByte()
+        bytes[1] = 32
+        bytes[2] = 0xDC.toByte()
+        bytes[3] = 0x07.toByte()
+        // recordsSize = 1000 (indicates more data than available)
+        bytes[4] = 0xE8.toByte()
+        bytes[5] = 0x03.toByte()
+        bytes[6] = 0x00.toByte()
+        bytes[7] = 0x00.toByte()
+        ".FIT".encodeToByteArray().copyInto(bytes, 8)
+
+        val parser = FitParser(bytes)
+        var thrown = false
+        try {
+            parser.parse()
+        } catch (e: IllegalArgumentException) {
+            thrown = true
+        } catch (e: IllegalStateException) {
+            thrown = true
+        } catch (e: Exception) {
+            println("Caught unexpected exception: ${e::class.simpleName}: ${e.message}")
+        }
+        assertTrue(thrown, "Should throw IllegalArgumentException or IllegalStateException when parsing truncated/corrupted FIT data")
+    }
 }
+
 

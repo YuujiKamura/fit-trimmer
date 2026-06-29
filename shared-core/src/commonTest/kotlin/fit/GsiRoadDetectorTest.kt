@@ -66,4 +66,26 @@ class GsiRoadDetectorTest {
         assertEquals("熊本菊陽線", info.name)
         assertEquals("熊本菊陽線", info.comName)
     }
+
+    @Test
+    fun testFindClosestRoadWithCorruptedGeoJson() {
+        val lat = 32.854
+        val lon = 130.779
+
+        // 1. Completely invalid JSON
+        val corruptedJson = "{ invalid json }"
+        val result1 = GsiRoadDetector.findClosestRoad(lat, lon, corruptedJson)
+        kotlin.test.assertNull(result1, "Should return null for invalid JSON structure")
+
+        // 2. Empty JSON object
+        val emptyJson = "{}"
+        val result2 = GsiRoadDetector.findClosestRoad(lat, lon, emptyJson)
+        kotlin.test.assertNull(result2, "Should return null for empty JSON object")
+
+        // 3. API Error Response
+        val apiErrorJson = """{"error": "Too Many Requests", "status": 429}"""
+        val result3 = GsiRoadDetector.findClosestRoad(lat, lon, apiErrorJson)
+        kotlin.test.assertNull(result3, "Should return null when API returns an error response instead of GeoJSON")
+    }
 }
+
