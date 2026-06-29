@@ -262,6 +262,16 @@ class AppViewModelTest {
     }
 
     @Test
+    fun testEditingCaptionIndexState() {
+        val viewModel = AppViewModel(null)
+        assertNull(viewModel.editingCaptionIndex)
+        viewModel.editingCaptionIndex = 5
+        assertEquals(5, viewModel.editingCaptionIndex)
+        viewModel.editingCaptionIndex = null
+        assertNull(viewModel.editingCaptionIndex)
+    }
+
+    @Test
     fun testUpdateRoadCaptionStartAndEnd() {
         val cache = utils.GuiPathCache(
             fitPath = "", videoPath = "", videoStartUtc = "",
