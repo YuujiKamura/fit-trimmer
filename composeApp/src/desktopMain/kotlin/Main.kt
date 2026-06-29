@@ -2685,8 +2685,8 @@ suspend fun detectRoadSegments(
     fun isCoordinatesClose(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Boolean {
         val dLat = lat1 - lat2
         val dLon = lon1 - lon2
-        // 0.0005 degrees is roughly 50-55 meters
-        return (dLat * dLat + dLon * dLon) < (0.0005 * 0.0005)
+        // 0.00015 degrees is roughly 15-16 meters (reduces snap transition lag at corners)
+        return (dLat * dLat + dLon * dLon) < (0.00015 * 0.00015)
     }
     
     for (i in 0..numSteps) {
