@@ -188,4 +188,77 @@ class AppViewModelTest {
         assertNull(viewModel.videoStartInstant, "Invalid videoStartUtc should return null instead of throwing an exception")
         assertNull(viewModel.videoEndInstant, "Invalid videoStartUtc should result in null videoEndInstant")
     }
+
+    @Test
+    fun testVideoLengthMsSetterScenarios() {
+        // シナリオ1: キャッシュがある場合 (oldVal == 0L で既に trim が非ゼロ)
+        val cache = utils.GuiPathCache(
+            fitPath = "", videoPath = "", videoStartUtc = "",
+            trimStartSeconds = 10.0, trimEndSeconds = 50.0,
+            splitPoints = emptyList(), settings = fit.HudSettings(),
+            timeOffsetMillis = 0, timeOffsetSeconds = null,
+            moveOutputToSource = false, showLivePreview = true
+        )
+        val viewModel = AppViewModel(cache)
+        assertEquals(10.0, viewModel.trimStartSeconds)
+        assertEquals(50.0, viewModel.trimEndSeconds)
+
+        // videoLengthMs を設定したとき、既に trimStart/End が非ゼロなら上書きされないこと
+        viewModel.videoLengthMs = 100000L // 100s
+        assertEquals(10.0, viewModel.trimStartSeconds)
+        assertEquals(50.0, viewModel.trimEndSeconds)
+
+        // シナリオ2: 2回目以降の設定 (oldVal > 0L)
+        // 値が更新されると、トリム範囲は強制リセットされること
+        viewModel.videoLengthMs = 120000L // 120s
+        androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
+        assertEquals(0.0, viewModel.trimStartSeconds)
+        assertEquals(120.0, viewModel.trimEndSeconds)
+    }
+
+    @Test
+    fun testTimeOffsetStateAndAdjustedStartUtcDerivedState() {
+        val viewModel = AppViewModel(null)
+        viewModel.videoStartUtc = "2026-06-21T02:09:49Z"
+        
+        // 初期状態 (Offset = 0)
+        assertEquals("2026-06-21T02:09:49Z", viewModel.adjustedStartUtc)
+
+        // オフセットを +5000ms (+5s) に更新
+        viewModel.timeOffsetState.update(5000)
+        androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
+
+        // 2026-06-21T02:09:49Z + 5s = 2026-06-21T02:09:54Z
+        assertEquals("2026-06-21T02:09:54Z", viewModel.adjustedStartUtc)
+    }
+
+    @Test
+    fun testTrimmedTelemetryPointsFiltering() {
+        val viewModel = AppViewModel(null)
+        val videoStartStr = "2026-06-21T02:09:49Z"
+        viewModel.videoStartUtc = videoStartStr
+        
+        // 動画開始時刻のエポック秒とFIT基準エポック（1989-12-31T00:00:00Z = 631065600）の差分から、動画開始時点のFITタイムスタンプを動的に算出する
+        val videoStart = java.time.Instant.parse(videoStartStr)
+        val fitEpoch = java.time.Instant.parse("1989-12-31T00:00:00Z").epochSecond
+        val baseFitTime = (videoStart.epochSecond - fitEpoch).toDouble()
+        
+        val p1 = FitParser.TelemetryPoint(baseFitTime, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0) // 0s
+        val p2 = FitParser.TelemetryPoint(baseFitTime + 5.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0) // 5s
+        val p3 = FitParser.TelemetryPoint(baseFitTime + 10.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0) // 10s
+        val p4 = FitParser.TelemetryPoint(baseFitTime + 15.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0) // 15s
+
+        viewModel.telemetryPoints = listOf(p1, p2, p3, p4)
+        
+        // トリム範囲: 5.0s ~ 12.0s (p2, p3 が含まれるべき)
+        viewModel.trimStartSeconds = 5.0
+        viewModel.trimEndSeconds = 12.0
+        androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
+
+        val trimmed = viewModel.trimmedTelemetryPoints
+        assertEquals(2, trimmed.size)
+        assertEquals(baseFitTime + 5.0, trimmed[0].timestamp)
+        assertEquals(baseFitTime + 10.0, trimmed[1].timestamp)
+    }
 }
+
