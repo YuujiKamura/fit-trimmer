@@ -146,4 +146,130 @@ class FitParserTest {
         val parsedNewFileCrc = FitParser.getUShort(trimmedBytes, 44, true)
         assertEquals(newFileCrc, parsedNewFileCrc)
     }
+
+    @Test
+    fun testLunchRideHeadingAnalysis() {
+        var fitFile = java.io.File("Lunch_Ride.fit")
+        if (!fitFile.exists()) {
+            fitFile = java.io.File("../Lunch_Ride.fit")
+        }
+        if (!fitFile.exists()) {
+            fitFile = java.io.File("../../Lunch_Ride.fit")
+        }
+        
+        val fileBytes = try {
+            fitFile.readBytes()
+        } catch (e: Exception) {
+            println("Skipping test: Lunch_Ride.fit not found in any expected directory (cwd=${java.io.File(".").absolutePath})")
+            return
+        }
+        
+        val parser = FitParser(fileBytes)
+        parser.parse()
+        val telemetry = parser.getTelemetry()
+        assertTrue(telemetry.isNotEmpty(), "Telemetry should not be empty")
+        
+        // Simulate video start (same as standard run settings)
+        val fitEpoch = java.time.Instant.parse("1989-12-31T00:00:00Z").epochSecond
+        val videoStartInstant = java.time.Instant.parse("2026-06-21T02:09:49Z")
+        val startFitTime = videoStartInstant.epochSecond - fitEpoch
+        val videoDurationSeconds = 120.0 // Check first 2 minutes of ride
+        val endFitTime = startFitTime + videoDurationSeconds
+        
+        val rangePoints = telemetry.filter { it.timestamp in startFitTime.toDouble()..endFitTime.toDouble() }
+        println("INFO: Telemetry range points size: ${rangePoints.size}")
+        
+        // 1. Calculate headings
+        val numSecs = videoDurationSeconds.toInt()
+        val headings = DoubleArray(numSecs + 1) { -1.0 }
+        
+        fun getHeadingAtSeconds(sec: Double): Double? {
+            val targetFitTime = startFitTime + sec
+            val prevPoint = rangePoints.minByOrNull { kotlin.math.abs(it.timestamp - (targetFitTime - 4.0)) } ?: return null
+            val nextPoint = rangePoints.minByOrNull { kotlin.math.abs(it.timestamp - (targetFitTime + 4.0)) } ?: return null
+            
+            val dLat = nextPoint.lat - prevPoint.lat
+            val dLon = nextPoint.lon - prevPoint.lon
+            val dist = kotlin.math.sqrt(dLat * dLat + dLon * dLon)
+            if (dist < 0.00005) return null
+            
+            val dLonRad = (nextPoint.lon - prevPoint.lon) * (Math.PI / 180.0)
+            val lat1 = prevPoint.lat * (Math.PI / 180.0)
+            val lat2 = nextPoint.lat * (Math.PI / 180.0)
+            val y = kotlin.math.sin(dLonRad) * kotlin.math.cos(lat2)
+            val x = kotlin.math.cos(lat1) * kotlin.math.sin(lat2) - kotlin.math.sin(lat1) * kotlin.math.cos(lat2) * kotlin.math.cos(dLonRad)
+            val brng = kotlin.math.atan2(y, x) * 180.0 / Math.PI
+            return (brng + 360.0) % 360.0
+        }
+        
+        for (s in 0..numSecs) {
+            headings[s] = getHeadingAtSeconds(s.toDouble()) ?: -1.0
+        }
+        
+        fun headingDiff(h1: Double, h2: Double): Double {
+            val diff = kotlin.math.abs(h1 - h2)
+            return if (diff > 180.0) 360.0 - diff else diff
+        }
+        
+        // 2. Identify turn events
+        val queryOffsets = mutableListOf<Double>()
+        queryOffsets.add(0.0)
+        
+        var baseHeading = -1.0
+        var isTurning = false
+        var lastQueryOffset = 0.0
+        
+        for (s in 0..numSecs) {
+            if (headings[s] >= 0.0) {
+                baseHeading = headings[s]
+                break
+            }
+        }
+        
+        val maxStraightInterval = 30.0
+        val detectedTurns = mutableListOf<Double>()
+        
+        for (s in 1..numSecs) {
+            val currentHeading = headings[s]
+            if (currentHeading < 0.0) continue
+            if (baseHeading < 0.0) {
+                baseHeading = currentHeading
+                continue
+            }
+            
+            val diff = headingDiff(currentHeading, baseHeading)
+            if (!isTurning) {
+                if (diff >= 25.0) {
+                    isTurning = true
+                    println("DEBUG: Entering turn at ${s}s, diff=${"%.1f".format(diff)} deg, heading=${"%.1f".format(currentHeading)} deg")
+                } else {
+                    if (s - lastQueryOffset >= maxStraightInterval) {
+                        queryOffsets.add(s.toDouble())
+                        lastQueryOffset = s.toDouble()
+                    }
+                }
+            } else {
+                val lookaheadStable = (1..3).all { offset ->
+                    val nextH = headings.getOrNull(s + offset) ?: -1.0
+                    nextH >= 0.0 && headingDiff(currentHeading, nextH) < 8.0
+                }
+                if (lookaheadStable) {
+                    queryOffsets.add(s.toDouble())
+                    detectedTurns.add(s.toDouble())
+                    println("DEBUG: Stabilized/Exited turn at ${s}s, heading=${"%.1f".format(currentHeading)} deg (Previous stable: ${"%.1f".format(baseHeading)} deg)")
+                    lastQueryOffset = s.toDouble()
+                    baseHeading = currentHeading
+                    isTurning = false
+                }
+            }
+        }
+        
+        println("INFO: Final Query Offsets: $queryOffsets")
+        println("INFO: Detected Turns (Intersection Exits): $detectedTurns")
+        
+        // Assertions
+        assertTrue(queryOffsets.contains(0.0), "Should always query start point")
+        assertTrue(detectedTurns.isNotEmpty(), "Should detect at least one turn event in the first 2 minutes")
+        assertTrue(detectedTurns.any { it in 50.0..70.0 }, "Should detect the initial turn out of the residential street between 50s and 70s (actual corner at 61.0s)")
+    }
 }
