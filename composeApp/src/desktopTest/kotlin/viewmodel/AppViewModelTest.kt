@@ -260,5 +260,39 @@ class AppViewModelTest {
         assertEquals(baseFitTime + 5.0, trimmed[0].timestamp)
         assertEquals(baseFitTime + 10.0, trimmed[1].timestamp)
     }
+
+    @Test
+    fun testUpdateRoadCaptionStartAndEnd() {
+        val cache = utils.GuiPathCache(
+            fitPath = "", videoPath = "", videoStartUtc = "",
+            trimStartSeconds = 0.0, trimEndSeconds = 0.0,
+            splitPoints = emptyList(),
+            settings = fit.HudSettings(
+                roadCaptions = listOf(
+                    fit.RoadCaptionSegment("id-1", 10.0, 20.0, "Route 1", true)
+                )
+            ),
+            timeOffsetMillis = 0, timeOffsetSeconds = null,
+            moveOutputToSource = false, showLivePreview = true
+        )
+        val viewModel = AppViewModel(cache)
+        viewModel.videoLengthMs = 100000L // 100s
+
+        // 始点の更新
+        viewModel.updateRoadCaptionStart(0, 15.0)
+        assertEquals(15.0, viewModel.settings.roadCaptions[0].startSeconds)
+
+        // 始点の更新（終点を超える値は制限されること）
+        viewModel.updateRoadCaptionStart(0, 25.0)
+        assertEquals(20.0, viewModel.settings.roadCaptions[0].startSeconds) // 20.0(endSeconds)に制限される
+
+        // 終点の更新
+        viewModel.updateRoadCaptionEnd(0, 30.0)
+        assertEquals(30.0, viewModel.settings.roadCaptions[0].endSeconds)
+
+        // 終点の更新（始点を下回る値は制限されること）
+        viewModel.updateRoadCaptionEnd(0, 5.0)
+        assertEquals(20.0, viewModel.settings.roadCaptions[0].endSeconds) // 20.0(現在のstartSecondsである20.0)に制限される
+    }
 }
 
