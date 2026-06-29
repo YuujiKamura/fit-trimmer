@@ -303,7 +303,7 @@ fun VideoPreviewArea(
             val density = androidx.compose.ui.platform.LocalDensity.current.density
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val scale = size.width / 1920f
-                val currentRatio = if (videoLengthMs > 0) videoCurrentTimeMs.toFloat() / videoLengthMs.toFloat() else 0f
+                val currentSeconds = videoCurrentTimeMs.toFloat() / 1000f
                 val telemetryPoint = currentPoint ?: fit.FitParser.TelemetryPoint(
                     timestamp = 0.0, speed = 26.2, power = 175.0, cadence = 79.0, heartRate = 148.0, elevation = 63.2, grade = 4.0
                 )
@@ -314,7 +314,7 @@ fun VideoPreviewArea(
                     telemetryPoint,
                     trimmedTelemetryPoints,
                     pBuf,
-                    currentRatio
+                    currentSeconds
                 )
             }
         }
