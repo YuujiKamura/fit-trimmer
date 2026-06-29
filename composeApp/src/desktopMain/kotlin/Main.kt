@@ -37,6 +37,8 @@ import java.io.File
 import java.awt.FileDialog
 import java.awt.Frame
 import fit.*
+import androidx.compose.foundation.VerticalScrollbar
+import androidx.compose.foundation.rememberScrollbarAdapter
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import org.jetbrains.skia.Image
@@ -975,11 +977,13 @@ fun startGui(args: Array<String>) = application {
         }
         MaterialTheme(colors = lightColors(primary = Color(0xFF007AFF))) {
             Row(modifier = Modifier.fillMaxSize().background(Color.White)) {
-                Column(
-                    modifier = Modifier.width(320.dp).fillMaxHeight().background(Color(0xFFF5F5F7))
-                        .verticalScroll(rememberScrollState()).padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
+                val sidebarScrollState = rememberScrollState()
+                Box(modifier = Modifier.width(320.dp).fillMaxHeight()) {
+                    Column(
+                        modifier = Modifier.fillMaxSize().background(Color(0xFFF5F5F7))
+                            .verticalScroll(sidebarScrollState).padding(horizontal = 16.dp, vertical = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
                     val onNativeEncodeClick = remember(settings, fitPath, videoPath, videoStartUtc, adjustedStartUtc, isVideoInFitRange, outputDir, moveOutputToSource, showLivePreview, viewModel.splitPoints) {
                         {
                             val targetVideoPath = videoPath
@@ -2360,6 +2364,11 @@ fun startGui(args: Array<String>) = application {
                             }
                         }
                     }
+                    }
+                    VerticalScrollbar(
+                        adapter = rememberScrollbarAdapter(sidebarScrollState),
+                        modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight()
+                    )
                 }
                 Box(modifier = Modifier.fillMaxSize().background(Color.White).padding(16.dp), contentAlignment = Alignment.Center) {
                     Column(
