@@ -54,10 +54,10 @@ val gitVersion: String by lazy {
         try {
             project.providers.exec {
                 workingDir = project.rootDir
-                commandLine("git", "describe", "--tags", "--abbrev=0")
+                commandLine("git", "describe", "--tags")
             }.standardOutput.asText.get().trim().removePrefix("v")
         } catch (e: Exception) {
-            "1.9.9"
+            "${project.version}-dev"
         }
     }
 }
@@ -68,7 +68,7 @@ compose.desktop {
         nativeDistributions {
             targetFormats(org.jetbrains.compose.desktop.application.dsl.TargetFormat.Dmg, org.jetbrains.compose.desktop.application.dsl.TargetFormat.Msi, org.jetbrains.compose.desktop.application.dsl.TargetFormat.Deb)
             packageName = "FitTrimmer"
-            packageVersion = gitVersion
+            packageVersion = gitVersion.split("-")[0]
 
             windows {
                 menu = true
