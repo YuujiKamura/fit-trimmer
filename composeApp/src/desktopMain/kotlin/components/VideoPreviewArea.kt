@@ -243,8 +243,7 @@ fun VideoPreviewArea(
                     val pb = ProcessBuilder(
                         ffmpegPath, "-y", 
                         "-i", lrvFile.absolutePath, 
-                        "-t", "30", 
-                        "-c:v", "libopenh264", 
+                        "-c", "copy", 
                         "-an", 
                         proxyFile.absolutePath
                     )
