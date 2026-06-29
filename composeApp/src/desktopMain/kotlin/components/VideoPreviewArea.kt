@@ -186,7 +186,7 @@ fun VideoPreviewArea(
         }
     }
 
-    LaunchedEffect(playerState) {
+    LaunchedEffect(playerState, videoLengthMs) {
         snapshotFlow { playerState.sliderPos to (playerState.metadata.duration ?: 0L) }
             .collect { (sliderPos, durationMs) ->
                 val currentDuration = if (videoLengthMs > 0L) videoLengthMs else durationMs
@@ -200,20 +200,74 @@ fun VideoPreviewArea(
         if (videoPath.isNotEmpty() && File(videoPath).exists()) {
             val savedTimeMs = videoCurrentTimeMs
             val originalFile = File(videoPath)
-            var targetVideoPath = videoPath
-            if (videoPath.startsWith("H:\\", ignoreCase = true)) {
+            
+            // 1. Detect low-res LRV proxy file
+            val parentDir = originalFile.parentFile
+            val originalName = originalFile.name
+            var lrvName = ""
+            if (originalName.startsWith("VID_", ignoreCase = true)) {
+                lrvName = originalName.replace("VID_", "LRV_").replace(".mp4", ".lrv")
+            } else if (originalName.startsWith("PRO_VID_", ignoreCase = true)) {
+                lrvName = originalName.replace("PRO_VID_", "PRO_LRV_").replace(".mp4", ".lrv")
+            }
+            val lrvFile = if (lrvName.isNotEmpty() && parentDir != null) File(parentDir, lrvName) else null
+            val useProxy = lrvFile != null && lrvFile.exists()
+            val activeFile = if (useProxy && lrvFile != null) {
+                println("DEBUG: Low-res proxy (LRV) detected for preview: ${lrvFile.absolutePath}")
+                lrvFile
+            } else {
+                originalFile
+            }
+
+            var targetVideoPath = activeFile.absolutePath
+            if (useProxy && lrvFile != null) {
+                try {
+                    val tempDir = System.getProperty("java.io.tmpdir")
+                    val proxyFile = File(tempDir, "fit_trimmer_lrv_proxy.mp4")
+                    if (proxyFile.exists()) {
+                        proxyFile.delete()
+                    }
+                    
+                    val ffmpegPath = fit.findFfmpegPath()
+                    // Stream-copy the LRV container to a real temp MP4 file using FFmpeg.
+                    // This takes less than 2 seconds for 5 minutes (300s) of video,
+                    // producing a real local NTFS MP4 that guarantees smooth WMF playback without I/O deadlocks.
+                    val pb = ProcessBuilder(
+                        ffmpegPath, "-y", 
+                        "-i", lrvFile.absolutePath, 
+                        "-t", "30", 
+                        "-c:v", "libopenh264", 
+                        "-an", 
+                        proxyFile.absolutePath
+                    )
+                    pb.redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                    pb.redirectError(ProcessBuilder.Redirect.DISCARD)
+                    val p = pb.start()
+                    val exited = p.waitFor(12, java.util.concurrent.TimeUnit.SECONDS)
+                    if (exited && p.exitValue() == 0 && proxyFile.exists()) {
+                        targetVideoPath = proxyFile.absolutePath
+                        println("DEBUG: Successfully extracted low-res proxy MP4: $targetVideoPath (size=${proxyFile.length()})")
+                    } else {
+                        println("⚠️ FFmpeg proxy extraction failed or timed out (exitCode=${if (exited) p.exitValue() else "timeout"}).")
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+
+            if (!targetVideoPath.startsWith("C:\\", ignoreCase = true) && targetVideoPath.contains(":\\")) {
                 try {
                     val tempDir = System.getProperty("java.io.tmpdir")
                     val junctionFolder = File(tempDir, "fit_trimmer_video_junction")
                     if (junctionFolder.exists()) {
                         ProcessBuilder("cmd.exe", "/c", "rmdir", junctionFolder.absolutePath).start().waitFor()
                     }
-                    val parentDir = originalFile.parentFile.absolutePath
-                    val pb = ProcessBuilder("cmd.exe", "/c", "mklink", "/j", junctionFolder.absolutePath, parentDir)
+                    val activeParentPath = File(targetVideoPath).parentFile.absolutePath
+                    val pb = ProcessBuilder("cmd.exe", "/c", "mklink", "/j", junctionFolder.absolutePath, activeParentPath)
                     val p = pb.start()
                     p.waitFor()
                     if (junctionFolder.exists()) {
-                        targetVideoPath = File(junctionFolder, originalFile.name).absolutePath
+                        targetVideoPath = File(junctionFolder, File(targetVideoPath).name).absolutePath
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()
