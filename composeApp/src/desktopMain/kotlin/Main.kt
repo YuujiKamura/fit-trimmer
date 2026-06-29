@@ -2390,28 +2390,48 @@ fun startGui(args: Array<String>) = application {
                                     onClick = {
                                         val path = pickFile("Load Settings JSON", listOf("*.json"))
                                         if (path != null) {
-                                            try {
-                                                val jsonStr = File(path).readText(Charsets.UTF_8)
-                                                val jsonParser = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+                                            scope.launch {
                                                 try {
-                                                    val loadedCache = jsonParser.decodeFromString<utils.GuiPathCache>(jsonStr)
-                                                    settings = loadedCache.settings
-                                                    loadedCache.timeOffsetMillis?.let {
-                                                        timeOffsetState.update(it)
+                                                    val jsonStr = File(path).readText(Charsets.UTF_8)
+                                                    val jsonParser = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+                                                    try {
+                                                        val loadedCache = jsonParser.decodeFromString<utils.GuiPathCache>(jsonStr)
+                                                        
+                                                        // 1. Restore file paths first to trigger background parsing
+                                                        var pathChanged = false
+                                                        if (loadedCache.videoPath.isNotEmpty() && loadedCache.videoPath != videoPath && File(loadedCache.videoPath).exists()) {
+                                                            videoPath = loadedCache.videoPath
+                                                            pathChanged = true
+                                                        }
+                                                        if (loadedCache.fitPath.isNotEmpty() && loadedCache.fitPath != fitPath && File(loadedCache.fitPath).exists()) {
+                                                            fitPath = loadedCache.fitPath
+                                                            pathChanged = true
+                                                        }
+                                                        
+                                                        // Wait for automatic history reset block to settle
+                                                        if (pathChanged) {
+                                                            kotlinx.coroutines.delay(300)
+                                                        }
+                                                        
+                                                        // 2. Overwrite target settings and synchronization offsets
+                                                        settings = loadedCache.settings
+                                                        loadedCache.timeOffsetMillis?.let {
+                                                            timeOffsetState.update(it)
+                                                        }
+                                                        loadedCache.trimStartSeconds?.let { trimStartSeconds = it }
+                                                        loadedCache.trimEndSeconds?.let { trimEndSeconds = it }
+                                                        loadedCache.splitPoints?.let {
+                                                            viewModel.splitPoints = it
+                                                        }
+                                                        statusText = "設定ファイル（同期範囲・パス込）を読み込みました"
+                                                    } catch (e: Exception) {
+                                                        val loadedSettings = jsonParser.decodeFromString<fit.HudSettings>(jsonStr)
+                                                        settings = loadedSettings
+                                                        statusText = "設定ファイルを読み込みました"
                                                     }
-                                                    loadedCache.trimStartSeconds?.let { trimStartSeconds = it }
-                                                    loadedCache.trimEndSeconds?.let { trimEndSeconds = it }
-                                                    loadedCache.splitPoints?.let {
-                                                        viewModel.splitPoints = it
-                                                    }
-                                                    statusText = "設定ファイル（同期範囲込）を読み込みました"
                                                 } catch (e: Exception) {
-                                                    val loadedSettings = jsonParser.decodeFromString<fit.HudSettings>(jsonStr)
-                                                    settings = loadedSettings
-                                                    statusText = "設定ファイルを読み込みました"
+                                                    statusText = "読み込みエラー: ${e.message}"
                                                 }
-                                            } catch (e: Exception) {
-                                                statusText = "読み込みエラー: ${e.message}"
                                             }
                                         }
                                     },
