@@ -65,7 +65,7 @@ class AppViewModel(
         }
 
     var outputDir by mutableStateOf(System.getProperty("user.home") + File.separator + "Downloads")
-    var videoStartUtc by mutableStateOf("")
+    var videoStartUtc by mutableStateOf(initialCache?.videoStartUtc ?: "")
 
     // Trim States
     var trimStartSeconds by mutableStateOf(initialCache?.trimStartSeconds ?: 0.0)

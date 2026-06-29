@@ -20,7 +20,7 @@ class AppViewModelTest {
         assertFalse(viewModel.isGeneratingProxy)
         assertEquals(0f, viewModel.proxyProgress)
         assertNull(viewModel.proxyVideoPath)
-        // videoStartUtc is ephemeral — always read from video file, never from cache
+        // videoStartUtc is empty when no cache exists (populated by getVideoStartUtc() after load)
         assertEquals("", viewModel.videoStartUtc)
         assertEquals(0.0, viewModel.trimStartSeconds)
         assertEquals(0.0, viewModel.trimEndSeconds)
@@ -45,8 +45,9 @@ class AppViewModelTest {
         val viewModel = AppViewModel(cache)
         assertEquals("/path/to/fit", viewModel.fitPath)
         assertEquals("/path/to/video", viewModel.videoPath)
-        // videoStartUtc is ephemeral — always read from video file, never restored from cache
-        assertEquals("", viewModel.videoStartUtc)
+        // videoStartUtc is used as initial value from cache so HUD works immediately on startup
+        // (it gets overwritten by getVideoStartUtc() once the file loads)
+        assertEquals("2026-06-29T10:00:00Z", viewModel.videoStartUtc)
         assertEquals(10.0, viewModel.trimStartSeconds)
         assertEquals(100.0, viewModel.trimEndSeconds)
         assertEquals(listOf(30.0, 60.0), viewModel.splitPoints)
@@ -433,17 +434,16 @@ class AppViewModelTest {
     }
 
     /**
-     * videoStartUtc はキャッシュから復元すべきではない（常に動画ファイルから読む揮発値）。
-     * AppViewModel は videoStartUtc を initialCache.videoStartUtc で初期化してはいけない。
-     * キャッシュに videoStartUtc が入っていても、ViewModel の初期値は "" であること。
-     * timeOffsetMillis は正しく復元される（これだけが重要）。
+     * videoStartUtc はキャッシュを初期値として使う（起動直後の HUD 表示のため）。
+     * ただし cache-save の LaunchedEffect のキーには含めない（"" 一時期間での保存汚染防止）。
+     * timeOffsetMillis は常に正しく復元される。
      */
     @Test
-    fun testVideoStartUtcIsNotRestoredFromCache() {
+    fun testVideoStartUtcRestoredFromCacheAsInitialValue() {
         val initialCache = utils.GuiPathCache(
             fitPath = "/path/to/ride.fit",
             videoPath = "/path/to/ride.mp4",
-            videoStartUtc = "2026-06-29T10:20:40Z",  // キャッシュに入っているが
+            videoStartUtc = "2026-06-29T10:20:40Z",
             timeOffsetMillis = -7528,
             settings = fit.HudSettings(),
             trimStartSeconds = 0.0,
@@ -454,8 +454,8 @@ class AppViewModelTest {
         // timeOffsetMillis は復元される
         assertEquals(-7528, viewModel.timeOffsetState.millis)
 
-        // videoStartUtc はキャッシュから復元されない（動画ファイルから読む値）
-        assertEquals("", viewModel.videoStartUtc)
+        // videoStartUtc はキャッシュから初期値として復元される（HUD の即時表示のため）
+        assertEquals("2026-06-29T10:20:40Z", viewModel.videoStartUtc)
     }
 }
 
