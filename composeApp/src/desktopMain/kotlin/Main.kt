@@ -2680,15 +2680,16 @@ suspend fun detectRoadSegments(
         val prevPoint = rangePoints.minByOrNull { kotlin.math.abs(it.timestamp - (targetFitTime - 4.0)) } ?: return null
         val nextPoint = rangePoints.minByOrNull { kotlin.math.abs(it.timestamp - (targetFitTime + 4.0)) } ?: return null
         
-        // Skip heading calculation if there's no movement
-        val dist = kotlin.math.sqrt((nextPoint.lat - prevPoint.lat).pow(2) + (nextPoint.lon - prevPoint.lon).pow(2))
+        val dLat = nextPoint.lat - prevPoint.lat
+        val dLon = nextPoint.lon - prevPoint.lon
+        val dist = kotlin.math.sqrt(dLat * dLat + dLon * dLon)
         if (dist < 0.00005) return null // Less than ~5 meters of movement
         
-        val dLon = (nextPoint.lon - prevPoint.lon) * (Math.PI / 180.0)
+        val dLonRad = (nextPoint.lon - prevPoint.lon) * (Math.PI / 180.0)
         val lat1 = prevPoint.lat * (Math.PI / 180.0)
         val lat2 = nextPoint.lat * (Math.PI / 180.0)
-        val y = kotlin.math.sin(dLon) * kotlin.math.cos(lat2)
-        val x = kotlin.math.cos(lat1) * kotlin.math.sin(lat2) - kotlin.math.sin(lat1) * kotlin.math.cos(lat2) * kotlin.math.cos(dLon)
+        val y = kotlin.math.sin(dLonRad) * kotlin.math.cos(lat2)
+        val x = kotlin.math.cos(lat1) * kotlin.math.sin(lat2) - kotlin.math.sin(lat1) * kotlin.math.cos(lat2) * kotlin.math.cos(dLonRad)
         var brng = kotlin.math.atan2(y, x) * 180.0 / Math.PI
         return (brng + 360.0) % 360.0
     }
