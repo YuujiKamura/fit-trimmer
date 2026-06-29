@@ -140,7 +140,8 @@ fun VideoPreviewArea(
     videoCurrentTimeMs: Long,
     onCurrentTimeChange: (Long) -> Unit,
     modifier: Modifier = Modifier,
-    isEncoding: Boolean = false
+    isEncoding: Boolean = false,
+    onFullscreenToggle: (() -> Unit)? = null
 ) {
     var isPlaying by remember { mutableStateOf(false) }
     var lastVolume by remember { mutableStateOf(1f) }
@@ -176,12 +177,38 @@ fun VideoPreviewArea(
         println("DEBUG: PlayerState isPlaying state changed: isPlaying=${playerState.isPlaying}")
     }
 
-    // Force constant render loop while playing to prevent Compose Desktop from going into idle/sleep mode.
-    // This resolves the bug where video playback/HUD rendering only updates on mouse hover events.
+    // High-performance 60fps frame interpolation loop.
+    // By calculating nanoTime differences, we update videoCurrentTimeMs continuously at 60fps
+    // and sync with the player's true position periodically to avoid audio/video drifts.
     LaunchedEffect(playerState.isPlaying) {
         if (playerState.isPlaying) {
+            var startSystemNanos = System.nanoTime()
+            val getPlayerCurrentTimeMs = {
+                val sliderPos = playerState.sliderPos
+                val durationMs = playerState.metadata.duration ?: 0L
+                fit.TimelineMapper.calculateCurrentTimeMs(sliderPos, durationMs, videoLengthMs)
+            }
+            var startPlayerTimeMs = getPlayerCurrentTimeMs()
+            var lastSyncNanos = System.nanoTime()
+
             while (true) {
-                withFrameNanos { }
+                withFrameNanos { frameNanos ->
+                    val nowNanos = System.nanoTime()
+                    val elapsedMs = (nowNanos - startSystemNanos) / 1_000_000.0
+                    val interpolatedTimeMs = (startPlayerTimeMs + elapsedMs).toLong()
+
+                    // Periodic alignment: Sync with real player playhead if drift exceeds 300ms
+                    if (nowNanos - lastSyncNanos > 100_000_000L) { // 100ms
+                        val playerTimeMs = getPlayerCurrentTimeMs()
+                        val diff = kotlin.math.abs(interpolatedTimeMs - playerTimeMs)
+                        if (diff > 300) {
+                            startSystemNanos = nowNanos
+                            startPlayerTimeMs = playerTimeMs
+                        }
+                        lastSyncNanos = nowNanos
+                    }
+                    onCurrentTimeChange(interpolatedTimeMs.coerceIn(0L, videoLengthMs))
+                }
             }
         }
     }
@@ -464,6 +491,18 @@ fun VideoPreviewArea(
                             inactiveTrackColor = Color(0xFFE5E5EA)
                         )
                     )
+                }
+
+                // Fullscreen toggle button
+                if (onFullscreenToggle != null) {
+                    OutlinedButton(
+                        onClick = onFullscreenToggle,
+                        modifier = Modifier.size(28.dp),
+                        contentPadding = PaddingValues(0.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF1C1C1E))
+                    ) {
+                        Text("⛶", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
 
