@@ -168,4 +168,20 @@ class RoadNameBuilderTest {
         )
         assertEquals("県道145号 瀬田竜田線（菊池郡菊陽町津久礼 付近）", result)
     }
+
+    @Test
+    fun testBuildCaptionTextCityWithCountyShouldIgnoreCounty() {
+        val result = RoadNameBuilder.buildCaptionText(
+            rdCtg = "一般国道",
+            roadName = null,
+            ref = "57",
+            city = "熊本市",
+            town = null,
+            village = null,
+            suburb = "北区",
+            county = "菊池郡",
+            neighbourhood = "弓削"
+        )
+        assertEquals("国道57号（熊本市北区弓削 付近）", result)
+    }
 }

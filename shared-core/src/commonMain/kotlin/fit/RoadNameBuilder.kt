@@ -86,7 +86,10 @@ object RoadNameBuilder {
             if (areaBuilder.contains(part)) return
             areaBuilder.append(part)
         }
-        appendArea(county)
+        // 日本の住所体系において「市(city)」は「郡(county)」に属さないため、cityが存在する場合はcountyを無視する
+        if (city.isNullOrEmpty()) {
+            appendArea(county)
+        }
         appendArea(city)
         appendArea(suburb)
         appendArea(town)
