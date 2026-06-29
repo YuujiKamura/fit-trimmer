@@ -22,6 +22,14 @@ fun pickFile(title: String, extensions: List<String>): String? {
     return if (dialog.file != null) File(dialog.directory, dialog.file).absolutePath else null
 }
 
+fun saveFile(title: String, defaultName: String): String? {
+    val dialog = FileDialog(null as Frame?, title, FileDialog.SAVE)
+    dialog.file = defaultName
+    dialog.isVisible = true
+    return if (dialog.file != null) File(dialog.directory, dialog.file).absolutePath else null
+}
+
+
 fun pickFolder(title: String): String? {
     val chooser = javax.swing.JFileChooser()
     chooser.dialogTitle = title
