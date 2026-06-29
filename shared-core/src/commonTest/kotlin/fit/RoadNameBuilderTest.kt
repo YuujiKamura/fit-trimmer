@@ -103,4 +103,37 @@ class RoadNameBuilderTest {
         )
         assertNull(result)
     }
+
+    @Test
+    fun testBuildCaptionTextGsiMunicipalBlockOsmSnapping() {
+        // 4m 30s case: GSI says "市区町村道等" (no name), but OSM snaps to nearby "熊本菊陽線" (prefectural road)
+        // Main.kt rejects OSM road name when GSI is municipal and nameless
+        val finalRoadName = null // Rejected by Main.kt logic
+        val result = RoadNameBuilder.buildCaptionText(
+            rdCtg = "市区町村道等",
+            roadName = finalRoadName,
+            ref = null,
+            city = "熊本市",
+            town = null,
+            village = null,
+            suburb = null
+        )
+        // Output should be a clean municipal road with area suffix
+        assertEquals("市道（熊本市 付近）", result)
+    }
+
+    @Test
+    fun testBuildCaptionTextGsiPrefecturalWithOsmName() {
+        // 0s case: GSI says "都道府県道", OSM has "瀬田竜田線", ref "145", town "菊陽町"
+        val result = RoadNameBuilder.buildCaptionText(
+            rdCtg = "都道府県道",
+            roadName = "瀬田竜田線",
+            ref = "145",
+            city = null,
+            town = "菊陽町",
+            village = null,
+            suburb = null
+        )
+        assertEquals("県道145号 瀬田竜田線（菊陽町 付近）", result)
+    }
 }

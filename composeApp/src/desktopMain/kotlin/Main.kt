@@ -256,6 +256,7 @@ fun startGui(args: Array<String>) = application {
     LaunchedEffect(hudConfig) {
         rendererProxy.updateConfig(hudConfig)
     }
+    
     var isCompiling by remember { mutableStateOf(false) }
     
     var lastClassModified by remember { mutableStateOf(0L) }
