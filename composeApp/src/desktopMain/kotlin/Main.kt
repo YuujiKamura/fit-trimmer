@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import kotlinx.coroutines.Dispatchers
@@ -269,6 +270,7 @@ fun startGui(args: Array<String>) = application {
     // Output Move State
     var moveOutputToSource by viewModel::moveOutputToSource
     var showLivePreview by viewModel::showLivePreview
+    var previewQualityMode by viewModel::previewQualityMode
     var telemetryPoints by viewModel::telemetryPoints
     var videoLengthMs by viewModel::videoLengthMs
     var lastPreviewRequestId by viewModel::lastPreviewRequestId
@@ -629,7 +631,7 @@ fun startGui(args: Array<String>) = application {
         }
     }
     // Save path cache when modified.
-    LaunchedEffect(fitPath, videoPath, videoStartUtc, timeOffsetState.millis, settings, moveOutputToSource, showLivePreview, windowState.position, windowState.size, viewModel.splitPoints) {
+    LaunchedEffect(fitPath, videoPath, videoStartUtc, timeOffsetState.millis, settings, moveOutputToSource, showLivePreview, previewQualityMode, windowState.position, windowState.size, viewModel.splitPoints) {
         if (isLoaded) {
             kotlinx.coroutines.delay(500)
             if (GuiCache.shouldDeferSaveUntilVideoStartIsLoaded(videoPath, videoStartUtc)) {
@@ -653,6 +655,7 @@ fun startGui(args: Array<String>) = application {
                         settings = settings,
                         moveOutputToSource = moveOutputToSource,
                         showLivePreview = showLivePreview,
+                        previewQualityMode = previewQualityMode,
                         trimStartSeconds = trimStartSeconds,
                         trimEndSeconds = trimEndSeconds,
                         splitPoints = viewModel.splitPoints,
@@ -927,6 +930,13 @@ fun startGui(args: Array<String>) = application {
         LaunchedEffect(window) {
             composeWindow = window
         }
+        LaunchedEffect(viewModel.isPreviewFullscreen) {
+            windowState.placement = if (viewModel.isPreviewFullscreen) {
+                WindowPlacement.Fullscreen
+            } else {
+                WindowPlacement.Floating
+            }
+        }
         val textMeasurer = rememberTextMeasurer()
         // Windows Taskbar Progress integration
         val taskbar = remember {
@@ -984,15 +994,17 @@ fun startGui(args: Array<String>) = application {
             }
         }
         MaterialTheme(colors = lightColors(primary = Color(0xFF007AFF))) {
-            Row(modifier = Modifier.fillMaxSize().background(Color.White)) {
+            val isPreviewFullscreen = viewModel.isPreviewFullscreen
+            val showSidebar = viewModel.isSidebarVisible && !isPreviewFullscreen
+            Row(modifier = Modifier.fillMaxSize().background(if (isPreviewFullscreen) Color.Black else Color.White)) {
                 val sidebarScrollState = rememberScrollState()
-                val sidebarWidth = if (viewModel.isSidebarVisible) 320.dp else 0.dp
+                val sidebarWidth = if (showSidebar) 320.dp else 0.dp
                 Box(modifier = Modifier.width(sidebarWidth).fillMaxHeight()) {
                     Column(
                         modifier = Modifier.fillMaxSize().background(Color(0xFFF5F5F7))
                             .verticalScroll(sidebarScrollState).padding(
-                                horizontal = if (viewModel.isSidebarVisible) 16.dp else 0.dp,
-                                vertical = if (viewModel.isSidebarVisible) 16.dp else 0.dp
+                                horizontal = if (showSidebar) 16.dp else 0.dp,
+                                vertical = if (showSidebar) 16.dp else 0.dp
                             ),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
@@ -2432,6 +2444,7 @@ fun startGui(args: Array<String>) = application {
                                                         
                                                         // 2. Overwrite target settings and synchronization offsets
                                                         settings = loadedCache.settings
+                                                        previewQualityMode = loadedCache.previewQualityMode
                                                         loadedCache.timeOffsetMillis?.let {
                                                             timeOffsetState.update(it)
                                                         }
@@ -2468,6 +2481,7 @@ fun startGui(args: Array<String>) = application {
                                                     videoStartUtc = adjustedStartUtc,
                                                     timeOffsetMillis = timeOffsetState.millis,
                                                     settings = settings,
+                                                    previewQualityMode = previewQualityMode,
                                                     trimStartSeconds = trimStartSeconds,
                                                     trimEndSeconds = trimEndSeconds,
                                                     splitPoints = viewModel.splitPoints.toList()
@@ -2490,18 +2504,24 @@ fun startGui(args: Array<String>) = application {
                     }
                     }
                     }
-                    if (viewModel.isSidebarVisible) {
+                    if (showSidebar) {
                         VerticalScrollbar(
                             adapter = rememberScrollbarAdapter(sidebarScrollState),
                             modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight()
                         )
                     }
                 }
-                Box(modifier = Modifier.fillMaxSize().background(Color.White).padding(16.dp), contentAlignment = Alignment.Center) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(if (isPreviewFullscreen) Color.Black else Color.White)
+                        .padding(if (isPreviewFullscreen) 0.dp else 16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
                     Column(
                         modifier = Modifier.fillMaxSize(),
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                        verticalArrangement = Arrangement.spacedBy(if (isPreviewFullscreen) 0.dp else 8.dp)
                     ) {
                         if (!isEncoding) {
                             VideoPreviewArea(
@@ -2516,9 +2536,12 @@ fun startGui(args: Array<String>) = application {
                                 playerState = playerState,
                                 videoCurrentTimeMs = videoCurrentTimeMs,
                                 onCurrentTimeChange = { videoCurrentTimeMs = it },
-                                modifier = Modifier.weight(1f).fillMaxWidth(),
+                                modifier = if (isPreviewFullscreen) Modifier.fillMaxSize() else Modifier.weight(1f).fillMaxWidth(),
                                 isEncoding = isEncoding,
-                                onFullscreenToggle = { viewModel.isSidebarVisible = !viewModel.isSidebarVisible }
+                                previewQualityMode = previewQualityMode,
+                                onPreviewQualityModeChange = { previewQualityMode = it },
+                                isFullscreen = isPreviewFullscreen,
+                                onFullscreenToggle = { viewModel.isPreviewFullscreen = !viewModel.isPreviewFullscreen }
                             )
                         } else {
                             val actualTrimStart = trimStartSeconds.coerceIn(0.0, videoLengthMs / 1000.0)
@@ -2578,7 +2601,7 @@ fun startGui(args: Array<String>) = application {
                                 }
                             }
                         }
-                        if (viewModel.isSidebarVisible) {
+                        if (showSidebar) {
                             Spacer(Modifier.height(8.dp))
                             TelemetryTimelineGraph(
                                 videoLengthMs = videoLengthMs,

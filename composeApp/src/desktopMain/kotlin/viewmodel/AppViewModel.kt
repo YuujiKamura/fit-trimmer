@@ -35,6 +35,7 @@ class AppViewModel(
                         settings = settings.copy(),
                         moveOutputToSource = moveOutputToSource,
                         showLivePreview = showLivePreview,
+                        previewQualityMode = previewQualityMode,
                         trimStartSeconds = trimStartSeconds,
                         trimEndSeconds = trimEndSeconds,
                         splitPoints = splitPoints
@@ -86,6 +87,8 @@ class AppViewModel(
     fun clearSplitPoints() {
         splitPoints = emptyList()
     }
+
+    var isPreviewFullscreen by mutableStateOf(false)
 
     fun getSplitRanges(): List<Pair<Double, Double>> {
         val totalSec = videoLengthMs / 1000.0
@@ -147,6 +150,7 @@ class AppViewModel(
 
     var moveOutputToSource by mutableStateOf(initialCache?.moveOutputToSource ?: false)
     var showLivePreview by mutableStateOf(initialCache?.showLivePreview ?: true)
+    var previewQualityMode by mutableStateOf(initialCache?.previewQualityMode ?: "original")
 
     // Telemetry and video metadata
     var telemetryPoints by mutableStateOf<List<FitParser.TelemetryPoint>>(emptyList())

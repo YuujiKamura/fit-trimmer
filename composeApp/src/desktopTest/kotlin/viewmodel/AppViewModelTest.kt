@@ -22,6 +22,7 @@ class AppViewModelTest {
         assertNull(viewModel.proxyVideoPath)
         // videoStartUtc is empty when no cache exists (populated by getVideoStartUtc() after load)
         assertEquals("", viewModel.videoStartUtc)
+        assertEquals("original", viewModel.previewQualityMode)
         assertEquals(0.0, viewModel.trimStartSeconds)
         assertEquals(0.0, viewModel.trimEndSeconds)
         assertTrue(viewModel.splitPoints.isEmpty())
@@ -55,6 +56,20 @@ class AppViewModelTest {
         assertEquals(5000, viewModel.timeOffsetState.millis)
         assertTrue(viewModel.moveOutputToSource)
         assertFalse(viewModel.showLivePreview)
+        assertEquals("original", viewModel.previewQualityMode)
+    }
+
+    @Test
+    fun testPreviewQualityModeRestoredFromCache() {
+        val cache = GuiPathCache(
+            fitPath = "/path/to/fit",
+            videoPath = "/path/to/video",
+            videoStartUtc = "2026-06-29T10:00:00Z",
+            settings = HudSettings(),
+            previewQualityMode = "auto"
+        )
+        val viewModel = AppViewModel(cache)
+        assertEquals("auto", viewModel.previewQualityMode)
     }
 
     @Test
@@ -458,4 +473,3 @@ class AppViewModelTest {
         assertEquals("2026-06-29T10:20:40Z", viewModel.videoStartUtc)
     }
 }
-
