@@ -170,6 +170,24 @@ class RoadNameBuilderTest {
     }
 
     @Test
+    fun testBuildCaptionTextJpPrefixesPrefectureWhenStateIsAvailable() {
+        val result = RoadNameBuilder.buildCaptionText(
+            rdCtg = "都道府県道",
+            roadName = "瀬田竜田線",
+            ref = "145",
+            city = null,
+            town = "菊陽町",
+            village = null,
+            suburb = null,
+            county = "菊池郡",
+            neighbourhood = "津久礼",
+            countryCode = "jp",
+            state = "熊本県"
+        )
+        assertEquals("熊本県 県道145号 瀬田竜田線（菊池郡菊陽町津久礼 付近）", result)
+    }
+
+    @Test
     fun testBuildCaptionTextCityWithCountyShouldIgnoreCounty() {
         val result = RoadNameBuilder.buildCaptionText(
             rdCtg = "一般国道",

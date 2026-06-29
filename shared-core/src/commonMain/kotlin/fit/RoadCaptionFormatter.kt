@@ -125,8 +125,9 @@ class JpRoadCaptionFormatter : RoadCaptionFormatter {
         
         val area = areaBuilder.toString()
         val areaSuffix = if (area.isNotEmpty()) "（$area 付近）" else ""
+        val prefecturePrefix = if (!state.isNullOrEmpty()) "$state " else ""
         
-        return "$mainRoadText$areaSuffix"
+        return "$prefecturePrefix$mainRoadText$areaSuffix"
     }
 }
 
