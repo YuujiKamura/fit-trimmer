@@ -2408,9 +2408,20 @@ fun startGui(args: Array<String>) = application {
                                                             pathChanged = true
                                                         }
                                                         
-                                                        // Wait for automatic history reset block to settle
+                                                        // Wait for metadata (videoLengthMs, videoStartUtc) and telemetryPoints to be resolved in background LaunchedEffects
                                                         if (pathChanged) {
-                                                            kotlinx.coroutines.delay(300)
+                                                            var timeoutCount = 0
+                                                            while (timeoutCount < 80) { // Max 8 seconds (80 * 100ms)
+                                                                val isVideoReady = videoPath.isEmpty() || (videoStartUtc.isNotEmpty() && videoLengthMs > 0L)
+                                                                val isFitReady = fitPath.isEmpty() || telemetryPoints.isNotEmpty()
+                                                                if (isVideoReady && isFitReady) {
+                                                                    break
+                                                                }
+                                                                kotlinx.coroutines.delay(100)
+                                                                timeoutCount++
+                                                            }
+                                                            // Extra padding delay to let LaunchedEffects finish writing their state
+                                                            kotlinx.coroutines.delay(200)
                                                         }
                                                         
                                                         // 2. Overwrite target settings and synchronization offsets

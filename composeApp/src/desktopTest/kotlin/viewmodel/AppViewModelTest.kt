@@ -388,5 +388,46 @@ class AppViewModelTest {
         
         cleanHistory()
     }
+
+    @Test
+    fun testAppViewModelPreservesInitialCacheOnStart() {
+        val initialSettings = fit.HudSettings(
+            valSize = 75f,
+            roadCaptions = listOf(
+                fit.RoadCaptionSegment("id-init", 5.0, 15.0, "Initial Route", true)
+            )
+        )
+        val initialCache = utils.GuiPathCache(
+            fitPath = "/path/to/init.fit",
+            videoPath = "/path/to/init.mp4",
+            videoStartUtc = "2026-06-29T10:20:40Z",
+            timeOffsetMillis = 4500,
+            settings = initialSettings,
+            trimStartSeconds = 25.0,
+            trimEndSeconds = 95.0,
+            splitPoints = listOf(40.0, 70.0)
+        )
+        
+        val viewModel = AppViewModel(initialCache)
+        
+        // At launch, values must be populated from initialCache
+        assertEquals("/path/to/init.mp4", viewModel.videoPath)
+        assertEquals("/path/to/init.fit", viewModel.fitPath)
+        assertEquals(25.0, viewModel.trimStartSeconds)
+        assertEquals(95.0, viewModel.trimEndSeconds)
+        assertEquals(4500, viewModel.timeOffsetState.millis)
+        assertEquals(1, viewModel.settings.roadCaptions.size)
+        assertEquals("Initial Route", viewModel.settings.roadCaptions[0].text)
+        
+        // Re-assigning the same path (or starting UI initialization bindings)
+        // should NOT clear the memory-restored cache values.
+        viewModel.videoPath = "/path/to/init.mp4"
+        
+        assertEquals(25.0, viewModel.trimStartSeconds)
+        assertEquals(95.0, viewModel.trimEndSeconds)
+        assertEquals(4500, viewModel.timeOffsetState.millis)
+        assertEquals(1, viewModel.settings.roadCaptions.size)
+        assertEquals("Initial Route", viewModel.settings.roadCaptions[0].text)
+    }
 }
 
