@@ -189,10 +189,12 @@ fun VideoPreviewArea(
     LaunchedEffect(playerState, videoLengthMs) {
         snapshotFlow { playerState.sliderPos to (playerState.metadata.duration ?: 0L) }
             .collect { (sliderPos, durationMs) ->
-                // If using a short proxy preview (e.g. 30s crop), use the actual proxy duration to calculate 1:1 real-time playback speed
-                val isProxy = durationMs > 0L && videoLengthMs > 0L && durationMs < (videoLengthMs * 0.9).toLong()
-                val currentDuration = if (isProxy) durationMs else (if (videoLengthMs > 0L) videoLengthMs else durationMs)
-                onCurrentTimeChange(((sliderPos / 1000f) * currentDuration).toLong())
+                val elapsedMs = fit.TimelineMapper.calculateCurrentTimeMs(
+                    sliderPos = sliderPos,
+                    durationMs = durationMs,
+                    fullVideoLengthMs = videoLengthMs
+                )
+                onCurrentTimeChange(elapsedMs)
             }
     }
 
