@@ -304,5 +304,49 @@ class AppViewModelTest {
         viewModel.updateRoadCaptionEnd(0, 5.0)
         assertEquals(20.0, viewModel.settings.roadCaptions[0].endSeconds) // 20.0(現在のstartSecondsである20.0)に制限される
     }
+
+    @Test
+    fun testBatchQueueOperations() {
+        val viewModel = AppViewModel(null)
+        assertTrue(viewModel.batchQueue.isEmpty())
+        
+        // 1. Setup current state
+        viewModel.videoPath = "/path/to/video1.mp4"
+        viewModel.fitPath = "/path/to/fit1.fit"
+        viewModel.videoStartUtc = "2026-06-29T10:00:00Z"
+        viewModel.trimStartSeconds = 10.0
+        viewModel.trimEndSeconds = 50.0
+        viewModel.addSplitPoint(30.0)
+        viewModel.settings = viewModel.settings.copy(exportResolution = "720p")
+        
+        // 2. Add to queue
+        viewModel.addToBatchQueue()
+        assertEquals(1, viewModel.batchQueue.size)
+        val job = viewModel.batchQueue[0]
+        assertEquals("/path/to/video1.mp4", job.videoPath)
+        assertEquals("/path/to/fit1.fit", job.fitPath)
+        assertEquals("2026-06-29T10:00:00Z", job.videoStartUtc)
+        assertEquals(10.0, job.trimStartSeconds)
+        assertEquals(50.0, job.trimEndSeconds)
+        assertEquals(listOf(30.0), job.splitPoints)
+        assertEquals("720p", job.settings.exportResolution)
+        assertEquals(BatchJobStatus.WAITING, job.status)
+        
+        // 3. Add second job (after changing state)
+        viewModel.videoPath = "/path/to/video2.mp4"
+        viewModel.addToBatchQueue()
+        assertEquals(2, viewModel.batchQueue.size)
+        assertEquals("/path/to/video2.mp4", viewModel.batchQueue[1].videoPath)
+        
+        // 4. Remove job
+        val firstJobId = job.id
+        viewModel.removeFromBatchQueue(firstJobId)
+        assertEquals(1, viewModel.batchQueue.size)
+        assertEquals("/path/to/video2.mp4", viewModel.batchQueue[0].videoPath)
+        
+        // 5. Clear queue
+        viewModel.clearBatchQueue()
+        assertTrue(viewModel.batchQueue.isEmpty())
+    }
 }
 

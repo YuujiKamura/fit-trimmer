@@ -237,4 +237,55 @@ class AppViewModel(
     }
 
     var editingCaptionIndex by mutableStateOf<Int?>(null)
+
+    // Batch Job Queue
+    val batchQueue = mutableStateListOf<BatchJob>()
+    var isBatchRunning by mutableStateOf(false)
+    var batchStatusText by mutableStateOf("")
+
+    fun addToBatchQueue() {
+        if (videoPath.isNotEmpty()) {
+            val job = BatchJob(
+                videoPath = videoPath,
+                fitPath = fitPath,
+                videoStartUtc = videoStartUtc,
+                timeOffsetMillis = timeOffsetState.millis.toLong(),
+                trimStartSeconds = trimStartSeconds,
+                trimEndSeconds = trimEndSeconds,
+                splitPoints = splitPoints.toList(),
+                settings = settings.copy()
+            )
+            batchQueue.add(job)
+        }
+    }
+
+    fun removeFromBatchQueue(jobId: String) {
+        batchQueue.removeAll { it.id == jobId }
+    }
+
+    fun clearBatchQueue() {
+        batchQueue.clear()
+    }
 }
+
+enum class BatchJobStatus {
+    WAITING,
+    RUNNING,
+    COMPLETED,
+    FAILED
+}
+
+data class BatchJob(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val videoPath: String,
+    val fitPath: String,
+    val videoStartUtc: String,
+    val timeOffsetMillis: Long,
+    val trimStartSeconds: Double,
+    val trimEndSeconds: Double,
+    val splitPoints: List<Double>,
+    val settings: HudSettings,
+    var status: BatchJobStatus = BatchJobStatus.WAITING,
+    var progress: Float = 0.0f,
+    var errorMessage: String? = null
+)
