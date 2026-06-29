@@ -53,10 +53,11 @@ val gitVersion: String by lazy {
     } else {
         try {
             project.providers.exec {
+                workingDir = project.rootDir
                 commandLine("git", "describe", "--tags", "--abbrev=0")
             }.standardOutput.asText.get().trim().removePrefix("v")
         } catch (e: Exception) {
-            "1.7.1"
+            "1.9.9"
         }
     }
 }
