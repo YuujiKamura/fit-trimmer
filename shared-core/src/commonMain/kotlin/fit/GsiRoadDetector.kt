@@ -48,14 +48,38 @@ object GsiRoadDetector {
         return minDistSq
     }
 
-    fun findClosestRoad(lat: Double, lon: Double, geoJsonStr: String): GsiRoadInfo? {
+    fun getSegmentHeading(x1: Double, y1: Double, x2: Double, y2: Double): Double {
+        val dx = x2 - x1
+        val dy = y2 - y1
+        val rad = atan2(dy, dx)
+        val deg = rad * 180.0 / PI
+        return (450.0 - deg) % 360.0
+    }
+
+    private fun angleDiff(a1: Double, a2: Double): Double {
+        val diff = abs(a1 - a2)
+        return if (diff > 180.0) 360.0 - diff else diff
+    }
+
+    fun findClosestRoad(
+        lat: Double, 
+        lon: Double, 
+        geoJsonStr: String, 
+        carHeading: Double? = null,
+        maxDistanceMeters: Double = 15.0
+    ): GsiRoadInfo? {
         try {
             val json = Json { ignoreUnknownKeys = true }
             val element = json.parseToJsonElement(geoJsonStr).jsonObject
             val features = element["features"]?.jsonArray ?: return null
             
-            var closestFeature: JsonObject? = null
-            var minDistSq = Double.MAX_VALUE
+            var bestFeature: JsonObject? = null
+            var bestDistSq = Double.MAX_VALUE
+            var bestDistMeters = Double.MAX_VALUE
+
+            var fallbackFeature: JsonObject? = null
+            var fallbackDistSq = Double.MAX_VALUE
+            var fallbackDistMeters = Double.MAX_VALUE
 
             for (featValue in features) {
                 val feat = featValue.jsonObject
@@ -67,26 +91,62 @@ object GsiRoadDetector {
                         val c = it.jsonArray
                         Pair(c[0].jsonPrimitive.double, c[1].jsonPrimitive.double)
                     }
-                    val distSq = getDistancePointToLineStringSq(lon, lat, coordinates)
-                    if (distSq < minDistSq) {
-                        minDistSq = distSq
-                        closestFeature = feat
+                    
+                    var minDistSq = Double.MAX_VALUE
+                    var closestHeading = 0.0
+                    for (i in 0 until coordinates.size - 1) {
+                        val p1 = coordinates[i]
+                        val p2 = coordinates[i+1]
+                        val dSq = getDistancePointToSegmentSq(lon, lat, p1.first, p1.second, p2.first, p2.second)
+                        if (dSq < minDistSq) {
+                            minDistSq = dSq
+                            closestHeading = getSegmentHeading(p1.first, p1.second, p2.first, p2.second)
+                        }
+                    }
+                    val distMeters = sqrt(minDistSq) * 111000.0
+
+                    var headingMatches = true
+                    if (carHeading != null && carHeading >= 0.0) {
+                        val diff1 = angleDiff(carHeading, closestHeading)
+                        val diff2 = angleDiff(carHeading, (closestHeading + 180.0) % 360.0)
+                        val minDiff = minOf(diff1, diff2)
+                        if (minDiff > 45.0) {
+                            headingMatches = false
+                        }
+                    }
+
+                    val distanceMatches = distMeters <= maxDistanceMeters
+
+                    if (headingMatches && distanceMatches) {
+                        if (minDistSq < bestDistSq) {
+                            bestDistSq = minDistSq
+                            bestDistMeters = distMeters
+                            bestFeature = feat
+                        }
+                    }
+
+                    if (distMeters <= 50.0 && minDistSq < fallbackDistSq) {
+                        fallbackDistSq = minDistSq
+                        fallbackDistMeters = distMeters
+                        fallbackFeature = feat
                     }
                 }
             }
 
-            if (closestFeature != null) {
-                val props = closestFeature["properties"]?.jsonObject
+            val finalFeature = bestFeature ?: fallbackFeature
+            val finalDistMeters = if (bestFeature != null) bestDistMeters else fallbackDistMeters
+
+            if (finalFeature != null) {
+                val props = finalFeature["properties"]?.jsonObject
                 val rdCtg = props?.get("rdCtg")?.jsonPrimitive?.contentOrNull
                 val name = props?.get("name")?.jsonPrimitive?.contentOrNull
                 val comName = props?.get("comName")?.jsonPrimitive?.contentOrNull
                 
-                val distMeters = sqrt(minDistSq) * 111000.0
                 return GsiRoadInfo(
                     rdCtg = if (rdCtg.isNullOrEmpty()) null else rdCtg,
                     name = if (name.isNullOrEmpty()) null else name,
                     comName = if (comName.isNullOrEmpty()) null else comName,
-                    distanceMeters = distMeters
+                    distanceMeters = finalDistMeters
                 )
             }
         } catch (e: Exception) {

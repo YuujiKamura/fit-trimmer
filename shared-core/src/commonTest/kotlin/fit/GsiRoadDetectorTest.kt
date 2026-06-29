@@ -87,5 +87,61 @@ class GsiRoadDetectorTest {
         val result3 = GsiRoadDetector.findClosestRoad(lat, lon, apiErrorJson)
         kotlin.test.assertNull(result3, "Should return null when API returns an error response instead of GeoJSON")
     }
+
+    @Test
+    fun testFindClosestRoadFilteringByHeading() {
+        val dummyGeoJson = """
+        {
+          "type": "FeatureCollection",
+          "features": [
+            {
+              "type": "Feature",
+              "geometry": {
+                "type": "LineString",
+                "coordinates": [
+                  [130.770, 32.850],
+                  [130.780, 32.850]
+                ]
+              },
+              "properties": {
+                "rdCtg": "一般国道",
+                "name": "EastWestRoad"
+              }
+            },
+            {
+              "type": "Feature",
+              "geometry": {
+                "type": "LineString",
+                "coordinates": [
+                  [130.775, 32.845],
+                  [130.775, 32.855]
+                ]
+              },
+              "properties": {
+                "rdCtg": "一般国道",
+                "name": "NorthSouthRoad"
+              }
+            }
+          ]
+        }
+        """.trimIndent()
+
+        // Coordinate very close to the intersection.
+        // Both roads must be within 15 meters.
+        // Intersection is at (130.775, 32.850)
+        // dx = 0.00006 (approx 6.6m), dy = 0.00008 (approx 8.8m)
+        val lat = 32.84992
+        val lon = 130.77494
+
+        // 1. Heading = 90.0 (East) -> Should select EastWestRoad despite being slightly further away.
+        val infoEast = GsiRoadDetector.findClosestRoad(lat, lon, dummyGeoJson, carHeading = 90.0)
+        assertNotNull(infoEast)
+        assertEquals("EastWestRoad", infoEast.name)
+
+        // 2. Heading = 0.0 (North) -> Should select NorthSouthRoad.
+        val infoNorth = GsiRoadDetector.findClosestRoad(lat, lon, dummyGeoJson, carHeading = 0.0)
+        assertNotNull(infoNorth)
+        assertEquals("NorthSouthRoad", infoNorth.name)
+    }
 }
 
