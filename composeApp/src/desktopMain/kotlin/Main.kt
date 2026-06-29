@@ -513,16 +513,20 @@ fun startGui(args: Array<String>) = application {
         }
         
         // Startup silent update check (only if not encoding and not in development environment)
-        if (!isEncoding && !UpdateManager.isDevelopment()) {
-            scope.launch {
-                try {
-                    val latest = UpdateManager.fetchLatestRelease()
-                    if (latest != null && UpdateManager.isNewerVersion(APP_VERSION, latest.tagName)) {
-                        latestReleaseInfo = latest
-                        triggerUpdatePrompt()
+        if (!isEncoding) {
+            if (UpdateManager.isDevelopment()) {
+                println("=== UPDATE CHECK SKIPPED (DEVELOPMENT ENVIRONMENT DETECTED) ===")
+            } else {
+                scope.launch {
+                    try {
+                        val latest = UpdateManager.fetchLatestRelease()
+                        if (latest != null && UpdateManager.isNewerVersion(APP_VERSION, latest.tagName)) {
+                            latestReleaseInfo = latest
+                            triggerUpdatePrompt()
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
                     }
-                } catch (e: Exception) {
-                    e.printStackTrace()
                 }
             }
         }
