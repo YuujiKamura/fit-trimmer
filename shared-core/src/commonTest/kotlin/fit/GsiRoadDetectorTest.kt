@@ -142,6 +142,16 @@ class GsiRoadDetectorTest {
         val infoNorth = GsiRoadDetector.findClosestRoad(lat, lon, dummyGeoJson, carHeading = 0.0)
         assertNotNull(infoNorth)
         assertEquals("NorthSouthRoad", infoNorth.name)
+
+        // 3. Coordinate far away (e.g., dy = 0.0003, dx = 0.0003 -> both > 30 meters)
+        // Should return null (not fall back to 50m fallback)
+        val infoFar = GsiRoadDetector.findClosestRoad(32.8497, 130.7747, dummyGeoJson, carHeading = 90.0)
+        assertNull(infoFar, "Should return null when roads are too far away (no fallback)")
+
+        // 4. Heading mismatch too large (e.g., heading = 225.0 -> 135 degrees difference)
+        // Should return null (not fall back)
+        val infoWrongHeading = GsiRoadDetector.findClosestRoad(lat, lon, dummyGeoJson, carHeading = 225.0)
+        assertNull(infoWrongHeading, "Should return null when heading angle mismatch is too large (no fallback)")
     }
 }
 

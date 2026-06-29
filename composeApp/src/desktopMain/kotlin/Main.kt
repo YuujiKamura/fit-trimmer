@@ -54,6 +54,7 @@ import components.*
 import viewmodel.*
 import fit.APP_VERSION
 private const val PLAYBACK_PREVIEW_INTERVAL_MS = 250L
+private const val MAX_ROAD_SNAP_DISTANCE_METERS = 15.0
 @OptIn(ExperimentalTextApi::class)
 fun main(args: Array<String>) {
     Runtime.getRuntime().addShutdownHook(Thread {
@@ -126,6 +127,7 @@ fun main(args: Array<String>) {
         }
         return
     }
+
     if (args.contains("--test-e2e")) {
         runE2ETest(args)
         return
@@ -2724,7 +2726,7 @@ suspend fun queryRoadName(lat: Double, lon: Double, heading: Double? = null): St
                     .build()
                 val gsiResponse = client.send(gsiRequest, java.net.http.HttpResponse.BodyHandlers.ofString())
                 if (gsiResponse.statusCode() == 200) {
-                    val roadInfo = fit.GsiRoadDetector.findClosestRoad(lat, lon, gsiResponse.body(), carHeading = heading, maxDistanceMeters = 15.0)
+                    val roadInfo = fit.GsiRoadDetector.findClosestRoad(lat, lon, gsiResponse.body(), carHeading = heading, maxDistanceMeters = MAX_ROAD_SNAP_DISTANCE_METERS)
                     if (roadInfo != null && roadInfo.distanceMeters <= 50.0) {
                         rdCtg = roadInfo.rdCtg
                         gsiRoadName = roadInfo.name ?: roadInfo.comName

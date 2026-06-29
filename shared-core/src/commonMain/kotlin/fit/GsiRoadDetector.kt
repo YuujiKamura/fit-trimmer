@@ -77,10 +77,6 @@ object GsiRoadDetector {
             var bestDistSq = Double.MAX_VALUE
             var bestDistMeters = Double.MAX_VALUE
 
-            var fallbackFeature: JsonObject? = null
-            var fallbackDistSq = Double.MAX_VALUE
-            var fallbackDistMeters = Double.MAX_VALUE
-
             for (featValue in features) {
                 val feat = featValue.jsonObject
                 val geom = feat["geometry"]?.jsonObject ?: continue
@@ -124,20 +120,11 @@ object GsiRoadDetector {
                             bestFeature = feat
                         }
                     }
-
-                    if (distMeters <= 50.0 && minDistSq < fallbackDistSq) {
-                        fallbackDistSq = minDistSq
-                        fallbackDistMeters = distMeters
-                        fallbackFeature = feat
-                    }
                 }
             }
 
-            val finalFeature = bestFeature ?: fallbackFeature
-            val finalDistMeters = if (bestFeature != null) bestDistMeters else fallbackDistMeters
-
-            if (finalFeature != null) {
-                val props = finalFeature["properties"]?.jsonObject
+            if (bestFeature != null) {
+                val props = bestFeature["properties"]?.jsonObject
                 val rdCtg = props?.get("rdCtg")?.jsonPrimitive?.contentOrNull
                 val name = props?.get("name")?.jsonPrimitive?.contentOrNull
                 val comName = props?.get("comName")?.jsonPrimitive?.contentOrNull
@@ -146,7 +133,7 @@ object GsiRoadDetector {
                     rdCtg = if (rdCtg.isNullOrEmpty()) null else rdCtg,
                     name = if (name.isNullOrEmpty()) null else name,
                     comName = if (comName.isNullOrEmpty()) null else comName,
-                    distanceMeters = finalDistMeters
+                    distanceMeters = bestDistMeters
                 )
             }
         } catch (e: Exception) {
