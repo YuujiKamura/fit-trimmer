@@ -145,6 +145,11 @@ fun VideoPreviewArea(
 ) {
     var isPlaying by remember { mutableStateOf(false) }
     var lastVolume by remember { mutableStateOf(1f) }
+    var currentRenderTimeMs by remember { mutableStateOf(videoCurrentTimeMs) }
+
+    LaunchedEffect(videoCurrentTimeMs) {
+        currentRenderTimeMs = videoCurrentTimeMs
+    }
 
 
 
@@ -207,7 +212,9 @@ fun VideoPreviewArea(
                         }
                         lastSyncNanos = nowNanos
                     }
-                    onCurrentTimeChange(interpolatedTimeMs.coerceIn(0L, videoLengthMs))
+                    val finalTime = interpolatedTimeMs.coerceIn(0L, videoLengthMs)
+                    currentRenderTimeMs = finalTime
+                    onCurrentTimeChange(finalTime)
                 }
             }
         }
@@ -343,7 +350,7 @@ fun VideoPreviewArea(
         }
     }
 
-    val currentPointAndIndex = remember(videoCurrentTimeMs, telemetryPoints, adjustedStartUtc) {
+    val currentPointAndIndex = remember(currentRenderTimeMs, telemetryPoints, adjustedStartUtc) {
         if (telemetryPoints.isEmpty() || adjustedStartUtc.isEmpty()) null
         else {
             try {
@@ -398,9 +405,17 @@ fun VideoPreviewArea(
             }
 
             val density = androidx.compose.ui.platform.LocalDensity.current.density
-            Canvas(modifier = Modifier.fillMaxSize()) {
+            Canvas(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clickable {
+                        if (!isEncoding) {
+                            togglePlay()
+                        }
+                    }
+            ) {
                 val scale = size.width / 1920f
-                val currentSeconds = videoCurrentTimeMs.toFloat() / 1000f
+                val currentSeconds = currentRenderTimeMs.toFloat() / 1000f
                 val telemetryPoint = currentPoint ?: fit.FitParser.TelemetryPoint(
                     timestamp = 0.0, speed = 26.2, power = 175.0, cadence = 79.0, heartRate = 148.0, elevation = 63.2, grade = 4.0
                 )
