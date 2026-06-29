@@ -47,4 +47,20 @@ class TimelineMapperTest {
         // For full video, 50% must equal 15 minutes (900,000 ms)
         assertEquals(900000L, calculatedTimeMs)
     }
+
+    @Test
+    fun testTimelineSyncAtArbitrarySeekPosition() {
+        val fullVideoLengthMs = 1800000L // 30 minutes
+        
+        // Case 1: Unsafe buggy 30s crop. Must return false (invalid/unsafe)
+        val croppedProxyDurationMs = 30000L
+        val isCroppedValid = TimelineMapper.isProxyDurationValid(croppedProxyDurationMs, fullVideoLengthMs)
+        kotlin.test.assertFalse(isCroppedValid, "CRITICAL: Cropped proxy of 30s for a 30m video must be flagged as INVALID/UNSAFE.")
+
+        // Case 2: Safe full-length stream-copy. Must return true (valid/safe)
+        val fullLengthProxyDurationMs = 1800000L
+        val isFullLengthValid = TimelineMapper.isProxyDurationValid(fullLengthProxyDurationMs, fullVideoLengthMs)
+        kotlin.test.assertTrue(isFullLengthValid, "Full-length stream-copy proxy must be marked as VALID.")
+    }
 }
+

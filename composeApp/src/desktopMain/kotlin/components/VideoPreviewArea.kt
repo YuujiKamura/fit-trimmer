@@ -297,6 +297,15 @@ fun VideoPreviewArea(
                         delay(50)
                     }
                     if (playerState.hasMedia) {
+                        val durationMs = (playerState.metadata.duration ?: 0.0).toLong()
+                        val isProxy = targetVideoPath.contains("fit_trimmer_lrv_proxy_")
+                        if (isProxy && !fit.TimelineMapper.isProxyDurationValid(durationMs, videoLengthMs)) {
+                            println("❌ [CRITICAL] Loaded proxy duration ($durationMs ms) is unsafe relative to full video ($videoLengthMs ms). Reloading original file as fallback...")
+                            launch {
+                                playerState.openUri(videoPath)
+                            }
+                            return@launch
+                        }
                         println("DEBUG: Restoring playhead position to $savedTimeMs ms")
                         seekTo(savedTimeMs)
                     }
