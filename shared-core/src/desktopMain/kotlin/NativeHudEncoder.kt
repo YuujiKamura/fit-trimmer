@@ -140,12 +140,28 @@ fun findFfmpegPath(): String {
 }
 
 private fun getSegmentDuration(ffmpegPath: String, file: File): Double {
+    var process: Process? = null
     try {
         val pb = ProcessBuilder(ffmpegPath, "-i", file.absolutePath)
         pb.redirectErrorStream(true)
         val p = pb.start()
-        val output = p.inputStream.bufferedReader().readText()
-        p.waitFor()
+        process = p
+        
+        // Spawn a thread to read output to avoid blocking pipe buffer
+        var output = ""
+        val reader = Thread {
+            try {
+                output = p.inputStream.bufferedReader().readText()
+            } catch (e: Exception) {}
+        }
+        reader.start()
+        
+        val completed = p.waitFor(5000, java.util.concurrent.TimeUnit.MILLISECONDS)
+        if (!completed) {
+            println("⚠️ Timeout probing duration for: ${file.name}")
+            p.destroyForcibly()
+        }
+        try { reader.join(1000) } catch (e: Exception) {}
         
         val durRegex = Regex("""Duration:\s*(\d+):(\d+):(\d+)\.(\d+)""")
         val durMatch = durRegex.find(output)
@@ -159,6 +175,8 @@ private fun getSegmentDuration(ffmpegPath: String, file: File): Double {
         }
     } catch (e: Exception) {
         e.printStackTrace()
+    } finally {
+        process?.let { if (it.isAlive) try { it.destroyForcibly() } catch (e: Exception) {} }
     }
     return 60.0
 }
@@ -271,6 +289,7 @@ class NativeHudEncoder(
     }
 
     private fun testEncoder(ffmpegPath: String, encoder: String, hwaccel: String?): Boolean {
+        var process: Process? = null
         try {
             val args = mutableListOf<String>()
             args.add(ffmpegPath)
@@ -292,16 +311,36 @@ class NativeHudEncoder(
             val pb = ProcessBuilder(args)
             pb.redirectErrorStream(true)
             val p = pb.start()
-            val exitCode = p.waitFor()
-            return exitCode == 0
+            process = p
+            
+            // Spawn a thread to discard output to prevent buffer blocking
+            val reader = Thread {
+                try {
+                    p.inputStream.copyTo(java.io.OutputStream.nullOutputStream())
+                } catch (e: Exception) {}
+            }
+            reader.start()
+            
+            val completed = p.waitFor(3000, java.util.concurrent.TimeUnit.MILLISECONDS)
+            if (!completed) {
+                println("⚠️ Timeout testing encoder: $encoder")
+                p.destroyForcibly()
+                return false
+            }
+            try { reader.join(500) } catch (e: Exception) {}
+            
+            return p.exitValue() == 0
         } catch (e: Exception) {
             return false
+        } finally {
+            process?.let { if (it.isAlive) try { it.destroyForcibly() } catch (e: Exception) {} }
         }
     }
 
     private fun detectEncoderAndHardware(ffmpegPath: String, originalCodec: String): Pair<String?, String> {
+        val forceCpu = System.getProperty("FIT_TRIMMER_FORCE_CPU") == "true" || System.getenv("FIT_TRIMMER_FORCE_CPU") == "true"
         val useHevc = (originalCodec == "hevc")
-        if (useHevc) {
+        if (useHevc && !forceCpu) {
             // Test NVIDIA NVENC HEVC
             if (testEncoder(ffmpegPath, "hevc_nvenc", "auto")) {
                 return Pair("auto", "hevc_nvenc")
@@ -317,20 +356,25 @@ class NativeHudEncoder(
             // CPU fallback HEVC
             return Pair(null, "libx265")
         } else {
-            // Test NVIDIA NVENC H.264
-            if (testEncoder(ffmpegPath, "h264_nvenc", "auto")) {
-                return Pair("auto", "h264_nvenc")
-            }
-            // Test Intel QSV H.264
-            if (testEncoder(ffmpegPath, "h264_qsv", "auto")) {
-                return Pair("auto", "h264_qsv")
-            }
-            // Test AMD AMF H.264
-            if (testEncoder(ffmpegPath, "h264_amf", "auto")) {
-                return Pair("auto", "h264_amf")
+            if (!forceCpu) {
+                // Test NVIDIA NVENC H.264
+                if (testEncoder(ffmpegPath, "h264_nvenc", "auto")) {
+                    return Pair("auto", "h264_nvenc")
+                }
+                // Test Intel QSV H.264
+                if (testEncoder(ffmpegPath, "h264_qsv", "auto")) {
+                    return Pair("auto", "h264_qsv")
+                }
+                // Test AMD AMF H.264
+                if (testEncoder(ffmpegPath, "h264_amf", "auto")) {
+                    return Pair("auto", "h264_amf")
+                }
             }
             // CPU fallback H.264
-            return Pair(null, "libx264")
+            if (testEncoder(ffmpegPath, "libx264", null)) {
+                return Pair(null, "libx264")
+            }
+            return Pair(null, "libopenh264")
         }
     }
 
@@ -485,9 +529,43 @@ class NativeHudEncoder(
                 }
             }
             readerThread.start()
+
+            val cancelMonitorThread = kotlin.concurrent.thread {
+                while (process.isAlive) {
+                    if (cancelSupplier()) {
+                        process.destroy()
+                        try { process.destroyForcibly() } catch (e: Exception) {}
+                        break
+                    }
+                    try { Thread.sleep(100) } catch (e: Exception) { break }
+                }
+            }
             
-            val exitCode = process.waitFor()
-            readerThread.join(1000)
+            // Loop with timeout to allow cancel detection during process execution
+            var exitCode = -1
+            while (process.isAlive) {
+                if (cancelSupplier()) {
+                    process.destroy()
+                    try { process.destroyForcibly() } catch (e: Exception) {}
+                    break
+                }
+                if (process.waitFor(500, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+                    exitCode = process.exitValue()
+                    break
+                }
+            }
+            if (!process.isAlive) {
+                exitCode = process.exitValue()
+            }
+            
+            try { readerThread.interrupt() } catch (e: Exception) {}
+            try { readerThread.join(1000) } catch (e: Exception) {}
+            try { cancelMonitorThread.interrupt() } catch (e: Exception) {}
+            try { cancelMonitorThread.join(1000) } catch (e: Exception) {}
+
+            if (cancelSupplier()) {
+                throw Exception("Encoding was canceled by user.")
+            }
             
             if (exitCode == 0 && tempOutput.exists() && tempOutput.length() > 0L) {
                 val outFile = File(output)
@@ -524,8 +602,8 @@ class NativeHudEncoder(
         val (hwaccel, encoderName) = detectEncoderAndHardware(ffmpegPath, originalCodec)
         println("DEBUG: Auto-detected encoder: $encoderName, hwaccel: $hwaccel")
 
-        // Create deterministic job hash for crash recovery
-        val jobHash = kotlin.math.abs((fitPath + videoPath + startUtc + maxDurationSeconds + actualTrimStart + actualTrimEnd + config.hashCode()).hashCode()).toString()
+        // Create deterministic job hash for crash recovery (include resolution to avoid mismatched segment reuse)
+        val jobHash = kotlin.math.abs((fitPath + videoPath + startUtc + maxDurationSeconds + actualTrimStart + actualTrimEnd + videoWidth + videoHeight + config.hashCode()).hashCode()).toString()
         val jobDir = File(workDir, "job_$jobHash")
         if (!jobDir.exists()) jobDir.mkdirs()
         globalActiveJobDir = jobDir
@@ -602,17 +680,21 @@ class NativeHudEncoder(
                         while (pCut.isAlive) {
                             if (cancelSupplier()) {
                                 pCut.destroy()
+                                try { pCut.destroyForcibly() } catch (e: Exception) {}
                                 break
                             }
-                            Thread.sleep(100)
+                            try { Thread.sleep(100) } catch (e: Exception) { break }
                         }
                     }
                     
                     val exitCut = pCut.waitFor()
+                    try { cutLogThread.interrupt() } catch (e: Exception) {}
                     cutLogThread.join(1000)
+                    try { cutCancelMonitorThread.interrupt() } catch (e: Exception) {}
                     cutCancelMonitorThread.join(1000)
                     
                     if (cancelSupplier()) {
+                        try { tempTrimmedVideo.delete() } catch (e: Exception) {}
                         throw Exception("Encoding was canceled by user during cloud copy.")
                     }
                     
@@ -621,9 +703,11 @@ class NativeHudEncoder(
                         localVideoPath = tempTrimmedVideo.absolutePath
                         isLocalTrimmedVideo = true
                     } else {
+                        try { tempTrimmedVideo.delete() } catch (e: Exception) {}
                         println("❌ Failed to perform fast trim-copy (exit code $exitCut). Falling back to direct cloud stream.")
                     }
                 } catch (e: Exception) {
+                    try { tempTrimmedVideo.delete() } catch (e2: Exception) {}
                     println("❌ Error during cloud copy: ${e.message}. Falling back to direct cloud stream.")
                 }
             } else {
@@ -770,7 +854,14 @@ class NativeHudEncoder(
             if (pid != null) {
                 kotlin.concurrent.thread(start = true, isDaemon = true) {
                     try {
-                        ProcessBuilder("powershell", "-Command", "\$p = Get-Process -Id $pid -ErrorAction SilentlyContinue; if (\$p) { \$p.PriorityClass = 'High' }").start()
+                        val pbBoost = ProcessBuilder("powershell", "-Command", "\$p = Get-Process -Id $pid -ErrorAction SilentlyContinue; if (\$p) { \$p.PriorityClass = 'High' }")
+                        pbBoost.redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                        pbBoost.redirectError(ProcessBuilder.Redirect.DISCARD)
+                        val pBoost = pbBoost.start()
+                        pBoost.waitFor(5000, java.util.concurrent.TimeUnit.MILLISECONDS)
+                        if (pBoost.isAlive) {
+                            try { pBoost.destroyForcibly() } catch (e: Exception) {}
+                        }
                         println("DEBUG: Boosted ffmpeg process (PID=$pid) priority to High")
                     } catch (e: Exception) {
                         e.printStackTrace()
@@ -792,9 +883,14 @@ class NativeHudEncoder(
                 while (isEncodingActive.get() && process.isAlive) {
                     if (cancelSupplier()) {
                         process.destroy()
+                        try { process.destroyForcibly() } catch (e: Exception) {}
                         break
                     }
-                    Thread.sleep(100)
+                    try {
+                        Thread.sleep(100)
+                    } catch (e: InterruptedException) {
+                        break
+                    }
                 }
             }
             
@@ -815,15 +911,19 @@ class NativeHudEncoder(
             }
             
             var telemetryIdx = 0
+            var lastProcessedSecond = resumeSeconds
             try {
                 loop@ for (i in resumeSeconds until targetDurationSeconds) {
+                    lastProcessedSecond = i
                     if (cancelSupplier()) {
                         process.destroy()
+                        try { process.destroyForcibly() } catch (e: Exception) {}
                         break@loop
                     }
                     while (pauseSupplier()) {
                         if (cancelSupplier()) {
                             process.destroy()
+                            try { process.destroyForcibly() } catch (e: Exception) {}
                             break@loop
                         }
                         Thread.sleep(100)
@@ -843,16 +943,16 @@ class NativeHudEncoder(
                     
                     val g = img.createGraphics()
                     g.composite = AlphaComposite.Clear
-                    g.fillRect(0, 0, videoWidth, videoHeight)
+                    g.fillRect(0, 0, exportWidth, exportHeight)
                     g.composite = AlphaComposite.SrcOver
                     
                     val isValid = currentFitTs >= telemetry.first().timestamp && currentFitTs <= telemetry.last().timestamp
                     val scale = exportWidth.toFloat() / 1920f
-                    val canvas = DesktopHudCanvas(g, scale, videoWidth.toFloat() / scale, videoHeight.toFloat() / scale)
+                    val canvas = DesktopHudCanvas(g, scale, exportWidth.toFloat() / scale, exportHeight.toFloat() / scale)
                     if (customRenderer != null) {
-                        customRenderer.invoke(canvas, point, telemetry, pBuf, i.toFloat() / targetDurationSeconds)
+                        customRenderer.invoke(canvas, point, telemetry, pBuf, i.toFloat())
                     } else {
-                        renderer.renderFrame(canvas, point, telemetry, pBuf, i.toFloat() / targetDurationSeconds, isValid)
+                        renderer.renderFrame(canvas, point, telemetry, pBuf, i.toFloat(), isValid)
                     }
                     g.dispose()
                     
@@ -897,18 +997,41 @@ class NativeHudEncoder(
                 println("\n❌ Pipe Write Error: ${e.message}")
             } finally {
                 isEncodingActive.set(false)
-                out.close()
+                try { out.close() } catch (e: Exception) {}
+                
+                // Wait for the process to finish naturally first (especially if we finished loop normally)
+                if (process.isAlive) {
+                    process.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)
+                }
+                
+                // Ensure process is terminated forcibly if it's still alive after waiting
+                if (process.isAlive) {
+                    process.destroy()
+                    if (!process.waitFor(500, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+                        try { process.destroyForcibly() } catch (e: Exception) {}
+                    }
+                }
                 val exitCode = process.waitFor()
-                readerThread.join(1000)
-                cancelMonitorThread.join(1000)
-                cancelMonitorThread.join(1000)
+                
+                // Interrupt threads to avoid hanging on blocking IO/sleep
+                try { readerThread.interrupt() } catch (e: Exception) {}
+                try { readerThread.join(1000) } catch (e: Exception) {}
+                
+                try { cancelMonitorThread.interrupt() } catch (e: Exception) {}
+                try { cancelMonitorThread.join(1000) } catch (e: Exception) {}
                 
                 if (cancelSupplier()) {
                     throw Exception("Encoding was canceled by user.")
                 }
                 
                 if (exitCode != 0) {
-                    throw Exception("ffmpeg exited with error code $exitCode. See ffmpeg_log.txt for details.")
+                    val isNearEnd = (targetDurationSeconds - lastProcessedSecond) <= 3
+                    if (isNearEnd && !cancelSupplier()) {
+                        println("ℹ️ FFmpeg exited with code $exitCode near the end of video ($lastProcessedSecond/$targetDurationSeconds s). Treating as success (EOF reached).")
+                        resumeSeconds = targetDurationSeconds
+                    } else {
+                        throw Exception("ffmpeg exited with error code $exitCode. See ffmpeg_log.txt for details.")
+                    }
                 } else {
                     // Success!
                     resumeSeconds = targetDurationSeconds
@@ -993,9 +1116,18 @@ class NativeHudEncoder(
         } finally {
             try {
                 globalActiveJobDir?.let {
-                    if (it.exists()) {
-                        println("DEBUG: Cleaning up active job directory after failure/cancel: ${it.absolutePath}")
+                    val usableSpace = try { it.usableSpace } catch (e: Exception) { Long.MAX_VALUE }
+                    val isDiskFull = usableSpace < 100 * 1024 * 1024 // Less than 100MB free space
+                    
+                    if ((cancelSupplier() || isDiskFull) && it.exists()) {
+                        if (isDiskFull) {
+                            println("⚠️ Critical: Low disk space detected (<100MB). Forcibly cleaning up job folder to free space: ${it.absolutePath}")
+                        } else {
+                            println("DEBUG: Cleaning up active job directory after manual cancel: ${it.absolutePath}")
+                        }
                         it.deleteRecursively()
+                    } else {
+                        println("DEBUG: Preserving active job directory for resume/recovery: ${it.absolutePath}")
                     }
                 }
             } catch (e: Exception) {

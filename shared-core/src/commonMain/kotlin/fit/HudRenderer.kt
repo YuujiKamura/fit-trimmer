@@ -29,6 +29,11 @@ interface HudCanvas {
 }
 
 class HudRenderer(val config: HudConfig) {
+    // Cache fields for datetime formatting L1 cache to avoid massive allocations
+    private var lastTimestampSeconds = -1L
+    private var lastFormattedDateTime = "----- --:--:--"
+    private val systemTimeZone by lazy { TimeZone.currentSystemDefault() }
+
     // Cache fields for elevation points to avoid recalculation/reallocation every frame
     private var cachedOriginalPoints: List<FitParser.TelemetryPoint>? = null
     private var cachedCx: Float = 0f
@@ -277,12 +282,7 @@ class HudRenderer(val config: HudConfig) {
         }
 
         // Draw Road Caption overlay
-        val totalDuration = if (allPoints.isNotEmpty()) {
-            allPoints.last().timestamp - allPoints.first().timestamp
-        } else {
-            300.0
-        }
-        val currentSeconds = currentRatio * totalDuration
+        val currentSeconds = currentRatio.toDouble()
         val activeCaption = config.roadCaptions.find { 
             it.isEnabled && currentSeconds >= it.startSeconds && currentSeconds <= it.endSeconds 
         }
@@ -302,11 +302,6 @@ class HudRenderer(val config: HudConfig) {
                 "top_right" -> Pair(canvas.width - boxW - margin, margin)
                 "top_left" -> {
                     // Avoid overlapping with Date & Time overlay in top-left by placing it immediately to its right.
-                    val dtText = if (isValid) formatDateTime(telemetry.timestamp) else "----- --:--:--"
-                    val dtTextSize = 24f
-                    val dtTextWidth = canvas.getTextWidth(dtText, dtTextSize, bold = true)
-                    val dtPadX = 12f
-                    val dtBoxW = dtTextWidth + dtPadX * 2f
                     Pair(40f + dtBoxW + 20f, 40f)
                 }
                 "top_center" -> Pair(canvas.width / 2f - boxW / 2f, margin)
@@ -331,17 +326,23 @@ class HudRenderer(val config: HudConfig) {
     }
 
     private fun formatDateTime(timestamp: Double): String {
+        val epochSeconds = 631065600L + timestamp.toLong()
+        if (epochSeconds == lastTimestampSeconds) {
+            return lastFormattedDateTime
+        }
         return try {
-            val epochSeconds = 631065600L + timestamp.toLong()
             val instant = Instant.fromEpochSeconds(epochSeconds)
-            val localDateTime = instant.toLocalDateTime(TimeZone.currentSystemDefault())
+            val localDateTime = instant.toLocalDateTime(systemTimeZone)
             val year = localDateTime.year
             val month = localDateTime.monthNumber.toString().padStart(2, '0')
             val day = localDateTime.dayOfMonth.toString().padStart(2, '0')
             val hour = localDateTime.hour.toString().padStart(2, '0')
             val minute = localDateTime.minute.toString().padStart(2, '0')
             val second = localDateTime.second.toString().padStart(2, '0')
-            "$year-$month-$day $hour:$minute:$second"
+            val formatted = "$year-$month-$day $hour:$minute:$second"
+            lastTimestampSeconds = epochSeconds
+            lastFormattedDateTime = formatted
+            formatted
         } catch (e: Exception) {
             "----- --:--:--"
         }

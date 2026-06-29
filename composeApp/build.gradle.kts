@@ -7,11 +7,26 @@ plugins {
     kotlin("plugin.serialization")
 }
 
+val generateVersionKt = tasks.register("generateVersionKt") {
+    val outputDir = layout.buildDirectory.dir("generated/version/fit")
+    outputs.dir(outputDir)
+    
+    doLast {
+        val versionFile = outputDir.get().file("Version.kt").asFile
+        versionFile.parentFile.mkdirs()
+        versionFile.writeText("""
+            package fit
+            const val APP_VERSION = "v$gitVersion"
+        """.trimIndent())
+    }
+}
+
 kotlin {
     jvm("desktop")
     
     sourceSets {
         val desktopMain by getting {
+            kotlin.srcDir(generateVersionKt)
             dependencies {
                 implementation(compose.desktop.currentOs)
                 implementation(project(":shared-core"))
@@ -32,12 +47,18 @@ kotlin {
 }
 
 val gitVersion: String by lazy {
-    try {
-        project.providers.exec {
-            commandLine("git", "describe", "--tags", "--abbrev=0")
-        }.standardOutput.asText.get().trim().removePrefix("v")
-    } catch (e: Exception) {
-        "1.7.1"
+    val envVersion = System.getenv("APP_RELEASE_VERSION") ?: System.getProperty("APP_RELEASE_VERSION")
+    if (!envVersion.isNullOrBlank()) {
+        envVersion.removePrefix("v").trim()
+    } else {
+        try {
+            project.providers.exec {
+                workingDir = project.rootDir
+                commandLine("git", "describe", "--tags")
+            }.standardOutput.asText.get().trim().removePrefix("v")
+        } catch (e: Exception) {
+            "${project.version}-dev"
+        }
     }
 }
 
@@ -47,14 +68,13 @@ compose.desktop {
         nativeDistributions {
             targetFormats(org.jetbrains.compose.desktop.application.dsl.TargetFormat.Dmg, org.jetbrains.compose.desktop.application.dsl.TargetFormat.Msi, org.jetbrains.compose.desktop.application.dsl.TargetFormat.Deb)
             packageName = "FitTrimmer"
-            packageVersion = gitVersion
+            packageVersion = gitVersion.split("-")[0]
 
             windows {
                 menu = true
                 shortcut = true
                 upgradeUuid = "682f6e9f-7fd9-4be6-bb16-3e3da5cf21ab"
                 menuGroup = "FitTrimmer"
-                perUserInstall = true
             }
 
             // Include network and cryptography modules explicitly to prevent SSL handshake crashes in packaged runtime

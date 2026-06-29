@@ -50,13 +50,26 @@ import kotlin.math.roundToInt
 import utils.*
 import components.*
 import viewmodel.*
-
-const val APP_VERSION = "v1.8.6"
+import fit.APP_VERSION
 
 private const val PLAYBACK_PREVIEW_INTERVAL_MS = 250L
 
 @OptIn(ExperimentalTextApi::class)
 fun main(args: Array<String>) {
+    Runtime.getRuntime().addShutdownHook(Thread {
+        try {
+            fit.globalActiveJobDir?.let {
+                if (it.exists()) {
+                    it.deleteRecursively()
+                    println("🧹 JVM Shutdown Hook: Cleaned up active job directory: ${it.absolutePath}")
+                }
+            }
+        } catch (e: Exception) {}
+    })
+
+    // Clean up stale job folders older than 24h at application startup to prevent disk bloat
+    fit.PathResolver.cleanStaleJobs()
+
     System.setProperty("compose.interop.blending", "false")
     System.setProperty("sun.java2d.noddraw", "true")
     if (args.contains("--test-update")) {
@@ -243,6 +256,7 @@ fun startGui(args: Array<String>) = application {
     LaunchedEffect(hudConfig) {
         rendererProxy.updateConfig(hudConfig)
     }
+    
     var isCompiling by remember { mutableStateOf(false) }
     
     var lastClassModified by remember { mutableStateOf(0L) }
@@ -499,17 +513,21 @@ fun startGui(args: Array<String>) = application {
             }
         }
         
-        // Startup silent update check (only if not encoding)
+        // Startup silent update check (only if not encoding and not in development environment)
         if (!isEncoding) {
-            scope.launch {
-                try {
-                    val latest = UpdateManager.fetchLatestRelease()
-                    if (latest != null && UpdateManager.isNewerVersion(APP_VERSION, latest.tagName)) {
-                        latestReleaseInfo = latest
-                        triggerUpdatePrompt()
+            if (UpdateManager.isDevelopment()) {
+                println("=== UPDATE CHECK SKIPPED (DEVELOPMENT ENVIRONMENT DETECTED) ===")
+            } else {
+                scope.launch {
+                    try {
+                        val latest = UpdateManager.fetchLatestRelease()
+                        if (latest != null && UpdateManager.isNewerVersion(APP_VERSION, latest.tagName)) {
+                            latestReleaseInfo = latest
+                            triggerUpdatePrompt()
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
                     }
-                } catch (e: Exception) {
-                    e.printStackTrace()
                 }
             }
         }
@@ -987,35 +1005,47 @@ fun startGui(args: Array<String>) = application {
             taskbar?.isSupported(java.awt.Taskbar.Feature.PROGRESS_VALUE_WINDOW) == true
         }
 
-        LaunchedEffect(isEncoding, progress, isPaused, statusText) {
-            if (isEncoding) {
-                val actualTrimStart = trimStartSeconds.coerceIn(0.0, videoLengthMs / 1000.0)
-                val actualTrimEnd = if (trimEndSeconds <= 0.0 || trimEndSeconds > videoLengthMs / 1000.0) {
-                    videoLengthMs / 1000.0
+        // Derived video time depending on encoding state to prevent double recomposition
+        val effectiveVideoTimeMs by remember {
+            derivedStateOf {
+                if (isEncoding) {
+                    val actualTrimStart = trimStartSeconds.coerceIn(0.0, videoLengthMs / 1000.0)
+                    val actualTrimEnd = if (trimEndSeconds <= 0.0 || trimEndSeconds > videoLengthMs / 1000.0) {
+                        videoLengthMs / 1000.0
+                    } else {
+                        trimEndSeconds
+                    }
+                    val durationSec = actualTrimEnd - actualTrimStart
+                    ((actualTrimStart + progress * durationSec) * 1000).toLong()
                 } else {
-                    trimEndSeconds
+                    videoCurrentTimeMs
                 }
-                val durationSec = actualTrimEnd - actualTrimStart
-                val encodingCurrentMs = ((actualTrimStart + progress * durationSec) * 1000).toLong()
-                videoCurrentTimeMs = encodingCurrentMs
             }
+        }
 
+        var lastPercent by remember { mutableStateOf(-1) }
+        var lastState by remember { mutableStateOf<java.awt.Taskbar.State?>(null) }
+
+        LaunchedEffect(isEncoding, progress, isPaused, statusText) {
             if (taskbar != null && isProgressSupported) {
                 try {
-                    if (isEncoding) {
-                        if (isPaused) {
-                            taskbar.setWindowProgressState(window, java.awt.Taskbar.State.PAUSED)
-                            val percent = (progress * 100).toInt().coerceIn(0, 100)
-                            taskbar.setWindowProgressValue(window, percent)
-                        } else if (statusText.contains("Merging", ignoreCase = true)) {
-                            taskbar.setWindowProgressState(window, java.awt.Taskbar.State.INDETERMINATE)
-                        } else {
-                            taskbar.setWindowProgressState(window, java.awt.Taskbar.State.NORMAL)
-                            val percent = (progress * 100).toInt().coerceIn(0, 100)
-                            taskbar.setWindowProgressValue(window, percent)
+                    val targetState = when {
+                        !isEncoding -> java.awt.Taskbar.State.OFF
+                        isPaused -> java.awt.Taskbar.State.PAUSED
+                        statusText.contains("Merging", ignoreCase = true) -> java.awt.Taskbar.State.INDETERMINATE
+                        else -> java.awt.Taskbar.State.NORMAL
+                    }
+                    val targetPercent = if (isEncoding) (progress * 100).toInt().coerceIn(0, 100) else 0
+
+                    if (targetState != lastState) {
+                        taskbar.setWindowProgressState(window, targetState)
+                        lastState = targetState
+                    }
+                    if (targetState == java.awt.Taskbar.State.NORMAL || targetState == java.awt.Taskbar.State.PAUSED) {
+                        if (targetPercent != lastPercent) {
+                            taskbar.setWindowProgressValue(window, targetPercent)
+                            lastPercent = targetPercent
                         }
-                    } else {
-                        taskbar.setWindowProgressState(window, java.awt.Taskbar.State.OFF)
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()
@@ -1856,6 +1886,10 @@ fun startGui(args: Array<String>) = application {
                                   } else {
                                       Button(
                                           onClick = {
+                                              if (UpdateManager.isDevelopment()) {
+                                                  manualCheckFeedback = "開発環境のため更新は無効化されています"
+                                                  return@Button
+                                              }
                                               isCheckingUpdate = true
                                               manualCheckFeedback = null
                                               scope.launch {
@@ -1982,7 +2016,7 @@ fun startGui(args: Array<String>) = application {
                     TimeAlignmentCard(
                         state = timeOffsetState,
                         isEncoding = isEncoding,
-                        videoCurrentTimeMs = videoCurrentTimeMs,
+                        videoCurrentTimeMs = effectiveVideoTimeMs,
                         videoStartUtc = videoStartUtc,
                         onVideoStartUtcChange = { videoStartUtc = it },
                         videoPath = videoPath,
@@ -2027,7 +2061,7 @@ fun startGui(args: Array<String>) = application {
                         Spacer(Modifier.height(8.dp))
                         VideoSplitCard(
                             viewModel = viewModel,
-                            videoCurrentTimeMs = videoCurrentTimeMs,
+                            videoCurrentTimeMs = effectiveVideoTimeMs,
                             isEncoding = isEncoding
                         )
                     }
@@ -2393,7 +2427,7 @@ fun startGui(args: Array<String>) = application {
                             trimStartSeconds = trimStartSeconds,
                             trimEndSeconds = trimEndSeconds,
                             splitPoints = viewModel.splitPoints,
-                            videoCurrentTimeMs = videoCurrentTimeMs,
+                            videoCurrentTimeMs = effectiveVideoTimeMs,
                             onTrimStartChange = { if (!isEncoding) trimStartSeconds = it },
                             onTrimEndChange = { if (!isEncoding) trimEndSeconds = it },
                             onSeek = { timeMs ->
@@ -2406,8 +2440,15 @@ fun startGui(args: Array<String>) = application {
                             modifier = Modifier.fillMaxWidth().height(140.dp),
                             isEncoding = isEncoding
                         )
-
-                        Text("1920x1080 Overlay Preview", color = Color(0xFF1C1C1E), fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
+                        
+                        val previewLabel = when (settings.exportResolution) {
+                            "360p" -> "360p (640x360) Overlay Preview"
+                            "720p" -> "720p (1280x720) Overlay Preview"
+                            "1080p" -> "1080p (1920x1080) Overlay Preview"
+                            "2.7k" -> "2.7k (2704x1520) Overlay Preview"
+                            else -> "${settings.exportResolution} Overlay Preview"
+                        }
+                        Text(previewLabel, color = Color(0xFF1C1C1E), fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
                     }
                 }
             }
@@ -2440,7 +2481,8 @@ suspend fun fireEncode(
             val config = HudConfig(
                 valSize = s.valSize, tightness = s.tightness, spacing = s.spacing,
                 xOffset = s.xOffset, yOffset = s.yOffset, graphH = s.graphH, graphW = s.graphW,
-                captionPosition = s.captionPosition
+                captionPosition = s.captionPosition,
+                roadCaptions = s.roadCaptions
             )
             val proxy = DynamicRendererProxy(config)
             globalRendererProxy = proxy
@@ -2492,7 +2534,31 @@ suspend fun queryRoadName(lat: Double, lon: Double): String? {
             val client = java.net.http.HttpClient.newBuilder()
                 .connectTimeout(java.time.Duration.ofSeconds(5))
                 .build()
-            
+
+            // 1. Fetch GSI (国土地理院) vector tile for road category
+            var rdCtg: String? = null
+            var gsiRoadName: String? = null
+            try {
+                val (tileX, tileY) = fit.GsiRoadDetector.deg2tile(lat, lon, 16)
+                val gsiUrl = "https://cyberjapandata.gsi.go.jp/xyz/experimental_rdcl/16/$tileX/$tileY.geojson"
+                val gsiRequest = java.net.http.HttpRequest.newBuilder()
+                    .uri(java.net.URI.create(gsiUrl))
+                    .header("User-Agent", "FitTrimmerApp/1.0")
+                    .timeout(java.time.Duration.ofSeconds(5))
+                    .build()
+                val gsiResponse = client.send(gsiRequest, java.net.http.HttpResponse.BodyHandlers.ofString())
+                if (gsiResponse.statusCode() == 200) {
+                    val roadInfo = fit.GsiRoadDetector.findClosestRoad(lat, lon, gsiResponse.body())
+                    if (roadInfo != null && roadInfo.distanceMeters <= 50.0) {
+                        rdCtg = roadInfo.rdCtg
+                        gsiRoadName = roadInfo.name ?: roadInfo.comName
+                    }
+                }
+            } catch (e: Exception) {
+                println("⚠️ Failed to query GSI vector tile: ${e.message}")
+            }
+
+            // 2. Fetch OSM Nominatim for local area and road names
             val url = "https://nominatim.openstreetmap.org/reverse?lat=$lat&lon=$lon&format=json&accept-language=ja&addressdetails=1&extratags=1"
             val request = java.net.http.HttpRequest.newBuilder()
                 .uri(java.net.URI.create(url))
@@ -2510,7 +2576,14 @@ suspend fun queryRoadName(lat: Double, lon: Double): String? {
                 val village = extractJsonValue(body, "village")
                 val suburb = extractJsonValue(body, "suburb")
                 
-                return@withContext buildCaptionText(ref, road, city, town, village, suburb)
+                // If municipal road has no official name, reject snapped OSM road name
+                val finalRoadName = if (rdCtg == "市区町村道等" && gsiRoadName == null) {
+                    null
+                } else {
+                    gsiRoadName ?: road
+                }
+                
+                return@withContext fit.RoadNameBuilder.buildCaptionText(rdCtg, finalRoadName, ref, city, town, village, suburb)
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -2690,6 +2763,53 @@ suspend fun detectRoadSegments(
 
 object UpdateManager {
     private const val GITHUB_API_URL = "https://api.github.com/repos/YuujiKamura/fit-trimmer/releases/latest"
+
+    fun isDevelopment(): Boolean {
+        return try {
+            if (System.getProperty("idea.active") == "true") return true
+            val userDir = System.getProperty("user.dir").lowercase()
+            if (userDir.contains("fit-trimmer") || userDir.contains("build") || userDir.contains("out")) return true
+
+            val runningUri = UpdateManager::class.java.protectionDomain.codeSource.location.toURI()
+            val runningFile = File(runningUri)
+            val isDev = isDevelopmentPath(runningFile.absolutePath)
+            
+            try {
+                val logFile = File(System.getProperty("user.home"), "fit-trimmer-debug-env.txt")
+                logFile.writeText("""
+                    runningUri: ${runningUri}
+                    runningFile.absolutePath: ${runningFile.absolutePath}
+                    runningFile.isDirectory: ${runningFile.isDirectory}
+                    extension: ${runningFile.extension}
+                    isDevResult: ${isDev}
+                    idea.active: ${System.getProperty("idea.active")}
+                    sun.java.command: ${System.getProperty("sun.java.command")}
+                    os.name: ${System.getProperty("os.name")}
+                    user.dir: ${System.getProperty("user.dir")}
+                """.trimIndent())
+            } catch (e: Exception) {
+                // ignore
+            }
+
+            isDev
+        } catch (e: Exception) {
+            true
+        }
+    }
+
+    fun isDevelopmentPath(path: String): Boolean {
+        val lowerPath = path.lowercase()
+        if (lowerPath.contains("${File.separator}build${File.separator}") ||
+            lowerPath.contains("${File.separator}out${File.separator}") ||
+            lowerPath.contains("/build/") ||
+            lowerPath.contains("/out/") ||
+            lowerPath.contains("fit-trimmer")) {
+            return true
+        }
+        val file = File(path)
+        val extension = file.extension.lowercase()
+        return file.isDirectory || (extension != "jar" && extension != "exe")
+    }
 
     data class ReleaseInfo(
         val tagName: String,
@@ -2922,7 +3042,14 @@ fun runE2ETest(args: Array<String>) {
     println("🚀 Starting test encode with duration limit (3 seconds)...")
     kotlinx.coroutines.runBlocking {
         try {
-            val settings = HudSettings()
+            val testCaption = fit.RoadCaptionSegment(
+                id = "test-e2e-caption",
+                startSeconds = 0.0,
+                endSeconds = 3.0,
+                text = "E2E Test Route 101",
+                isEnabled = true
+            )
+            val settings = HudSettings(roadCaptions = listOf(testCaption))
             val encoder = NativeHudEncoder(settings,
                 onProgress = { prog, status ->
                     print("\rProgress: ${(prog * 100).toInt()}% - $status")

@@ -12,6 +12,7 @@ import androidx.compose.material.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -235,7 +236,7 @@ fun TelemetryTimelineGraph(
                     .fillMaxWidth()
                     .height(130.dp)
                     .clip(RoundedCornerShape(6.dp))
-                    .androidx.compose.ui.draw.alpha(if (isEncoding) 0.6f else 1f)
+                    .alpha(if (isEncoding) 0.6f else 1f)
                     .background(if (isEncoding) Color(0xFFE5E5EA).copy(alpha = 0.5f) else Color(0xFFF2F2F7))
                     .border(1.dp, Color(0xFFE5E5EA), RoundedCornerShape(6.dp))
                     .pointerInput(isEncoding) {
@@ -315,6 +316,7 @@ fun TelemetryTimelineGraph(
                         )
                     }
             ) {
+                // 1. Static Graph Background & Controls (Not depending on videoCurrentTimeMs)
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     val w = size.width
                     val h = size.height
@@ -539,20 +541,27 @@ fun TelemetryTimelineGraph(
                             )
                         }
                     }
+                }
 
-                    // 8. Draw Playhead (Blue)
-                    val xPlayhead = ((videoCurrentTimeMs / 1000.0 / videoDurationSec) * w).toFloat()
-                    drawLine(
-                        color = Color(0xFF007AFF),
-                        start = Offset(xPlayhead, 0f),
-                        end = Offset(xPlayhead, h),
-                        strokeWidth = 1.5.dp.toPx()
-                    )
-                    drawCircle(
-                        color = Color(0xFF007AFF),
-                        radius = 4.dp.toPx(),
-                        center = Offset(xPlayhead, 0f)
-                    )
+                // 2. Dynamic Playhead Canvas (Depends only on videoCurrentTimeMs)
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val w = size.width
+                    val h = size.height
+                    if (videoDurationSec > 0 && !sampledPoints.isEmpty()) {
+                        val xPlayhead = ((videoCurrentTimeMs / 1000.0 / videoDurationSec) * w).toFloat()
+                        // Draw Playhead (Blue)
+                        drawLine(
+                            color = Color(0xFF007AFF),
+                            start = Offset(xPlayhead, 0f),
+                            end = Offset(xPlayhead, h),
+                            strokeWidth = 1.5.dp.toPx()
+                        )
+                        drawCircle(
+                            color = Color(0xFF007AFF),
+                            radius = 4.dp.toPx(),
+                            center = Offset(xPlayhead, 0f)
+                        )
+                    }
                 }
             }
 
