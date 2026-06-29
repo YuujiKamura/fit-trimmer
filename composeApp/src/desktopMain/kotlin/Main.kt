@@ -512,8 +512,8 @@ fun startGui(args: Array<String>) = application {
             }
         }
         
-        // Startup silent update check (only if not encoding)
-        if (!isEncoding) {
+        // Startup silent update check (only if not encoding and not in development environment)
+        if (!isEncoding && !UpdateManager.isDevelopment()) {
             scope.launch {
                 try {
                     val latest = UpdateManager.fetchLatestRelease()
@@ -1881,6 +1881,10 @@ fun startGui(args: Array<String>) = application {
                                   } else {
                                       Button(
                                           onClick = {
+                                              if (UpdateManager.isDevelopment()) {
+                                                  manualCheckFeedback = "開発環境のため更新は無効化されています"
+                                                  return@Button
+                                              }
                                               isCheckingUpdate = true
                                               manualCheckFeedback = null
                                               scope.launch {
@@ -2723,6 +2727,17 @@ suspend fun detectRoadSegments(
 
 object UpdateManager {
     private const val GITHUB_API_URL = "https://api.github.com/repos/YuujiKamura/fit-trimmer/releases/latest"
+
+    fun isDevelopment(): Boolean {
+        return try {
+            val runningUri = UpdateManager::class.java.protectionDomain.codeSource.location.toURI()
+            val runningFile = File(runningUri)
+            val extension = runningFile.extension.lowercase()
+            runningFile.isDirectory || (extension != "jar" && extension != "exe")
+        } catch (e: Exception) {
+            true
+        }
+    }
 
     data class ReleaseInfo(
         val tagName: String,
