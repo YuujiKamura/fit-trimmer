@@ -2730,13 +2730,26 @@ object UpdateManager {
 
     fun isDevelopment(): Boolean {
         return try {
+            if (System.getProperty("idea.active") == "true") return true
             val runningUri = UpdateManager::class.java.protectionDomain.codeSource.location.toURI()
             val runningFile = File(runningUri)
-            val extension = runningFile.extension.lowercase()
-            runningFile.isDirectory || (extension != "jar" && extension != "exe")
+            isDevelopmentPath(runningFile.absolutePath)
         } catch (e: Exception) {
             true
         }
+    }
+
+    fun isDevelopmentPath(path: String): Boolean {
+        val lowerPath = path.lowercase()
+        if (lowerPath.contains("${File.separator}build${File.separator}") ||
+            lowerPath.contains("${File.separator}out${File.separator}") ||
+            lowerPath.contains("/build/") ||
+            lowerPath.contains("/out/")) {
+            return true
+        }
+        val file = File(path)
+        val extension = file.extension.lowercase()
+        return file.isDirectory || (extension != "jar" && extension != "exe")
     }
 
     data class ReleaseInfo(
