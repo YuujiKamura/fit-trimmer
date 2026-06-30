@@ -106,59 +106,6 @@ object HudEncodePipeline {
                     trimEndSeconds = pEnd
                 )
 
-                if (s.blurLicensePlates && !cancelSupplier()) {
-                    val endProg = if (totalDuration > 0.0) ((completedDuration + partDuration) / totalDuration).toFloat() else 1.0f
-                    onProgress(endProg, "[Part ${idx + 1}/${ranges.size}] Blurring license plates...")
-                    val blurredOutPath = partOutPath + ".blur.mp4"
-                    try {
-                        val isWindows = System.getProperty("os.name").lowercase().contains("win")
-                        val pythonCmd = if (isWindows) "python" else "python3"
-                        val scriptPath = File("scratch/blur_plates.py").absolutePath
-                        val pb = ProcessBuilder(
-                            pythonCmd,
-                            scriptPath,
-                            "--video", partOutPath,
-                            "--output", blurredOutPath
-                        )
-                        pb.redirectErrorStream(true)
-                        val process = pb.start()
-                        
-                        process.inputStream.bufferedReader().useLines { lines ->
-                            lines.forEach { line ->
-                                if (cancelSupplier()) {
-                                    process.destroy()
-                                    return@useLines
-                                }
-                                if (line.contains("PROGRESS:")) {
-                                    val percent = line.substringAfter("PROGRESS:").trim()
-                                    onProgress(endProg, "[Part ${idx + 1}/${ranges.size}] Blurring license plates: $percent")
-                                }
-                            }
-                        }
-                        
-                        val exitCode = process.waitFor()
-                        if (exitCode == 0 && !cancelSupplier()) {
-                            val outFile = File(partOutPath)
-                            val blurredFile = File(blurredOutPath)
-                            if (blurredFile.exists()) {
-                                Files.copy(blurredFile.toPath(), outFile.toPath(), StandardCopyOption.REPLACE_EXISTING)
-                                blurredFile.delete()
-                            }
-                        } else {
-                            val errFile = File(blurredOutPath)
-                            if (errFile.exists()) errFile.delete()
-                            if (!cancelSupplier()) {
-                                throw Exception("License plate blurring process failed with exit code $exitCode")
-                            }
-                        }
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                        val errFile = File(blurredOutPath)
-                        if (errFile.exists()) errFile.delete()
-                        throw Exception("Failed to apply license plate blur: ${e.message}", e)
-                    }
-                }
-
                 if (destFiles.isNotEmpty() && !cancelSupplier()) {
                     if (finalDestFile != null) {
                         val outFile = File(partOutPath)

@@ -6,6 +6,9 @@ import fit.FitParser
 import java.io.File
 import TimeAlignmentState
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.isActive
+import fit.PlateCacheManager
+import fit.VideoPlatesCache
 
 
 class AppViewModel(
@@ -64,71 +67,46 @@ class AppViewModel(
                 proxyProgress = 0f
                 proxyVideoPath = null
                 
-                plateCache = utils.PlateCacheManager.loadCache(value)
+                plateCache = fit.PlateCacheManager.loadCache(value)
             }
         }
 
     // License Plate Detection States
-    var plateCache by mutableStateOf<utils.VideoPlatesCache?>(
-        initialCache?.videoPath?.let { utils.PlateCacheManager.loadCache(it) }
+    var plateCache by mutableStateOf<fit.VideoPlatesCache?>(
+        initialCache?.videoPath?.let { fit.PlateCacheManager.loadCache(it) }
     )
     var isDetectingPlates by mutableStateOf(false)
     var plateDetectionProgress by mutableStateOf("")
     var plateDetectionError by mutableStateOf<String?>(null)
 
+    private var plateDetectionJob: kotlinx.coroutines.Job? = null
+
     fun runPlateDetection(coroutineScope: kotlinx.coroutines.CoroutineScope) {
         val path = videoPath
         if (path.isEmpty() || isDetectingPlates) return
-        
-        val platesFile = utils.PlateCacheManager.getPlatesFile(path) ?: return
         
         isDetectingPlates = true
         plateDetectionProgress = "0.0%"
         plateDetectionError = null
         
-        coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            val logBuffer = StringBuilder()
+        plateDetectionJob = coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
-                val isWindows = System.getProperty("os.name").lowercase().contains("win")
-                val pythonCmd = if (isWindows) "python" else "python3"
-                val scriptPath = File("scratch/blur_plates.py").absolutePath
-                val pb = ProcessBuilder(
-                    pythonCmd,
-                    scriptPath,
-                    "--video", path,
-                    "--output", platesFile.absolutePath,
-                    "--export-coords"
+                val cache = utils.PlateDetectionManager.runDetection(
+                    videoPath = path,
+                    onProgress = { progress ->
+                        plateDetectionProgress = String.format(java.util.Locale.US, "%.1f%%", progress)
+                    },
+                    onCancel = { !isActive }
                 )
-                pb.redirectErrorStream(true)
-                
-                val process = try {
-                    pb.start()
-                } catch (ioe: java.io.IOException) {
-                    plateDetectionError = utils.Localizer.get("plate_error_missing_python", settings.language)
-                    return@launch
-                }
-                
-                process.inputStream.bufferedReader().useLines { lines ->
-                    lines.forEach { line ->
-                        logBuffer.append(line).append("\n")
-                        if (line.contains("PROGRESS:")) {
-                            val percent = line.substringAfter("PROGRESS:").trim()
-                            plateDetectionProgress = percent
-                        }
-                    }
-                }
-                
-                val exitCode = process.waitFor()
-                if (exitCode == 0) {
-                    plateCache = utils.PlateCacheManager.loadCache(path)
+                if (cache != null) {
+                    plateCache = cache
                 } else {
-                    val logStr = logBuffer.toString()
-                    if (logStr.contains("ModuleNotFoundError") || logStr.contains("ImportError")) {
-                        plateDetectionError = utils.Localizer.get("plate_error_missing_packages", settings.language)
+                    if (isActive) {
+                        plateDetectionError = utils.Localizer.get("plate_error_unknown", settings.language)
+                        plateDetectionProgress = "Failed"
                     } else {
-                        plateDetectionError = utils.Localizer.get("plate_error_unknown", settings.language) + " (code $exitCode)"
+                        plateDetectionProgress = "Canceled"
                     }
-                    plateDetectionProgress = "Failed (exit $exitCode)"
                 }
             } catch (e: Exception) {
                 e.printStackTrace()

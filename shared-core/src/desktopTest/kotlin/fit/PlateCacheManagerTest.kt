@@ -1,4 +1,4 @@
-package utils
+package fit
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
