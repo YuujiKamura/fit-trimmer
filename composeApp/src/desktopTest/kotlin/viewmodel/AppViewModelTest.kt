@@ -408,6 +408,93 @@ class AppViewModelTest {
     }
 
     @Test
+    fun testFirstVideoPathSelectionClearsStaleRoadCaptionsWhenNoHistoryExists() {
+        val cleanHistory = {
+            val historyDir = java.io.File(System.getProperty("user.home"), ".fittrimmer_history")
+            if (historyDir.exists()) {
+                historyDir.deleteRecursively()
+            }
+        }
+        cleanHistory()
+
+        val initialCache = utils.GuiPathCache(
+            fitPath = "/path/to/activity.fit",
+            videoPath = "",
+            videoStartUtc = "",
+            settings = fit.HudSettings(
+                roadCaptions = listOf(
+                    fit.RoadCaptionSegment("stale-id", 10.0, 20.0, "Stale Route", true)
+                )
+            ),
+            trimStartSeconds = 12.0,
+            trimEndSeconds = 90.0,
+            splitPoints = listOf(30.0)
+        )
+        val viewModel = AppViewModel(initialCache)
+
+        viewModel.videoPath = "/path/to/new_video.mp4"
+
+        assertEquals(0.0, viewModel.trimStartSeconds)
+        assertEquals(0.0, viewModel.trimEndSeconds)
+        assertTrue(viewModel.splitPoints.isEmpty())
+        assertTrue(viewModel.settings.roadCaptions.isEmpty())
+
+        cleanHistory()
+    }
+
+    @Test
+    fun testFirstVideoPathSelectionRestoresRoadCaptionsFromHistory() {
+        val cleanHistory = {
+            val historyDir = java.io.File(System.getProperty("user.home"), ".fittrimmer_history")
+            if (historyDir.exists()) {
+                historyDir.deleteRecursively()
+            }
+        }
+        cleanHistory()
+
+        val returningVideoPath = "/path/to/returning_video.mp4"
+        utils.GuiCache.saveHistory(
+            returningVideoPath,
+            utils.GuiPathCache(
+                fitPath = "/path/to/activity.fit",
+                videoPath = returningVideoPath,
+                videoStartUtc = "2026-06-29T10:00:00Z",
+                settings = fit.HudSettings(
+                    roadCaptions = listOf(
+                        fit.RoadCaptionSegment("saved-id", 15.0, 25.0, "Saved Local Route", true)
+                    )
+                ),
+                trimStartSeconds = 15.0,
+                trimEndSeconds = 80.0,
+                splitPoints = listOf(40.0)
+            )
+        )
+
+        val viewModel = AppViewModel(
+            utils.GuiPathCache(
+                fitPath = "/path/to/activity.fit",
+                videoPath = "",
+                videoStartUtc = "",
+                settings = fit.HudSettings(
+                    roadCaptions = listOf(
+                        fit.RoadCaptionSegment("stale-id", 10.0, 20.0, "Stale Route", true)
+                    )
+                )
+            )
+        )
+
+        viewModel.videoPath = returningVideoPath
+
+        assertEquals(15.0, viewModel.trimStartSeconds)
+        assertEquals(80.0, viewModel.trimEndSeconds)
+        assertEquals(listOf(40.0), viewModel.splitPoints)
+        assertEquals(1, viewModel.settings.roadCaptions.size)
+        assertEquals("Saved Local Route", viewModel.settings.roadCaptions[0].text)
+
+        cleanHistory()
+    }
+
+    @Test
     fun testAppViewModelPreservesInitialCacheOnStart() {
         val initialSettings = fit.HudSettings(
             valSize = 75f,
