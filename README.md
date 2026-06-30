@@ -14,7 +14,7 @@
 
 動画上にスピード、ケイデンス、心拍数、パワー、斜度、獲得標高グラフなどのメーター情報（HUD: Heads-Up Display）を直接オーバーレイして動画を合成・出力できます。
 
-<img width="1042" height="694" alt="image" src="https://github.com/user-attachments/assets/1fbf4d3a-b130-4993-a472-6f61a4590cff" />
+<img width="933" height="661" alt="image" src="https://github.com/user-attachments/assets/262e6c73-4157-4f45-8bd5-33f983e46707" />
 
 ### 🌟 主な特徴
 - **動画分割・順次エンコード**: タイムライン上に複数の分割ポイントを設定し、動画を分割して順次エンコードできます。各パートの完了後に一時ファイルを自動クリーンアップするため、Cドライブの容量（テンポラリ領域）を大幅に節約できます。
