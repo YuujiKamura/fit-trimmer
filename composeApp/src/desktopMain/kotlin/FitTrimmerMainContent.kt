@@ -1469,11 +1469,29 @@ fun FitTrimmerMainContent(
                                                     fontWeight = FontWeight.Bold
                                                 )
                                                 if (!viewModel.isBatchRunning && job.status != BatchJobStatus.RUNNING) {
-                                                    IconButton(
-                                                        onClick = { viewModel.removeFromBatchQueue(job.id) },
-                                                        modifier = Modifier.size(16.dp)
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(16.dp)
+                                                            .clickable { viewModel.removeFromBatchQueue(job.id) },
+                                                        contentAlignment = Alignment.Center
                                                     ) {
-                                                        Text("❌", fontSize = 8.sp)
+                                                        Canvas(modifier = Modifier.size(8.dp)) {
+                                                            val strokeWidth = 1.5.dp.toPx()
+                                                            drawLine(
+                                                                color = Color(0xFFEF4444),
+                                                                start = Offset(0f, 0f),
+                                                                end = Offset(size.width, size.height),
+                                                                strokeWidth = strokeWidth,
+                                                                cap = androidx.compose.ui.graphics.StrokeCap.Round
+                                                            )
+                                                            drawLine(
+                                                                color = Color(0xFFEF4444),
+                                                                start = Offset(size.width, 0f),
+                                                                end = Offset(0f, size.height),
+                                                                strokeWidth = strokeWidth,
+                                                                cap = androidx.compose.ui.graphics.StrokeCap.Round
+                                                            )
+                                                        }
                                                     }
                                                 }
                                             }
