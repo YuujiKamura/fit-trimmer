@@ -546,6 +546,7 @@ suspend fun queryRoadName(lat: Double, lon: Double, heading: Double? = null, lan
                 val neighbourhood = extractJsonValue(body, "neighbourhood")
                 val state = extractJsonValue(body, "state") ?: extractJsonValue(body, "province")
                 val countryCode = extractJsonValue(body, "country_code")
+                val country = extractJsonValue(body, "country")
                 // If municipal road has no official name, reject snapped OSM road name
                 val finalRoadName = if (rdCtg == "市区町村道等" && gsiRoadName == null) {
                     null
@@ -563,7 +564,8 @@ suspend fun queryRoadName(lat: Double, lon: Double, heading: Double? = null, lan
                     county = county,
                     neighbourhood = neighbourhood,
                     countryCode = countryCode,
-                    state = state
+                    state = state,
+                    country = country
                 )
             }
         } catch (e: Exception) {

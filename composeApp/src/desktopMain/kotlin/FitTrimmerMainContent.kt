@@ -117,7 +117,8 @@ fun FitTrimmerMainContent(
             graphW = settings.graphW,
             captionPosition = settings.captionPosition,
             roadCaptions = settings.roadCaptions,
-            powerTrendSpanSeconds = settings.powerTrendSpanSeconds
+            powerTrendSpanSeconds = settings.powerTrendSpanSeconds,
+            useImperialUnits = settings.useImperialUnits
         )
     }
     var reloadTrigger by remember { mutableStateOf(0) }
@@ -2375,6 +2376,31 @@ fun FitTrimmerMainContent(
                                         }
                                     }
                                 }
+                            }
+                            Spacer(Modifier.height(4.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth().clickable(enabled = !isEncoding) {
+                                    settings = settings.copy(useImperialUnits = !settings.useImperialUnits)
+                                },
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Checkbox(
+                                    checked = settings.useImperialUnits,
+                                    onCheckedChange = { checked ->
+                                        if (!isEncoding) {
+                                            settings = settings.copy(useImperialUnits = checked)
+                                        }
+                                    },
+                                    enabled = !isEncoding,
+                                    colors = CheckboxDefaults.colors(checkedColor = Color(0xFF007AFF))
+                                )
+                                Text(
+                                    text = utils.Localizer.get("use_imperial_units", settings.language),
+                                    fontSize = 11.sp,
+                                    color = Color(0xFF1C1C1E),
+                                    fontWeight = FontWeight.Medium
+                                )
                             }
                             Spacer(Modifier.height(4.dp))
                             Text(utils.Localizer.get("power_trend_span", settings.language).uppercase(), color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 0.5.sp)

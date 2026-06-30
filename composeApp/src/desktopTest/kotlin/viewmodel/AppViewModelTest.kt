@@ -596,11 +596,29 @@ class AppViewModelTest {
     }
 
     @Test
+    fun testHudSettingsDefaultUseImperialUnitsIsFalse() {
+        val settings = HudSettings()
+        assertEquals(false, settings.useImperialUnits, "Default useImperialUnits should be false")
+        
+        val config = fit.HudConfig(
+            valSize = 50f, tightness = 0f, spacing = 10f,
+            xOffset = 0f, yOffset = 0f, graphH = 100f, graphW = 200f
+        )
+        assertEquals(false, config.useImperialUnits, "Default HudConfig useImperialUnits should be false")
+    }
+
+    @Test
     fun testLocalizerWithFallback() {
         val valueEn = utils.Localizer.get("app_title", java.util.Locale.ENGLISH)
         assertEquals("FIT Telemetry Trimmer", valueEn)
         
         val valueJa = utils.Localizer.get("app_title", java.util.Locale.JAPANESE)
         assertEquals("FIT テレメトリ トリマー", valueJa)
+        
+        val unitLabelEn = utils.Localizer.get("use_imperial_units", "en")
+        assertEquals("Use Imperial Units (mph, ft)", unitLabelEn)
+        
+        val unitLabelJa = utils.Localizer.get("use_imperial_units", "ja")
+        assertEquals("マイル・フィート表示 (Imperial Units)", unitLabelJa)
     }
 }

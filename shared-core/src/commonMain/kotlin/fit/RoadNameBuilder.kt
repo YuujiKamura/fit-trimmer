@@ -12,7 +12,8 @@ object RoadNameBuilder {
         county: String? = null,
         neighbourhood: String? = null,
         countryCode: String? = null,
-        state: String? = null
+        state: String? = null,
+        country: String? = null
     ): String? {
         val formatter = when (countryCode?.lowercase()) {
             "us" -> UsRoadCaptionFormatter()
@@ -30,7 +31,8 @@ object RoadNameBuilder {
             suburb = suburb,
             county = county,
             neighbourhood = neighbourhood,
-            state = state
+            state = state,
+            country = country
         )
     }
 }

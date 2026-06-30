@@ -16,7 +16,8 @@ data class HudConfig(
     val graphW: Float,
     val captionPosition: String = "top_center",
     val roadCaptions: List<RoadCaptionSegment> = emptyList(),
-    val powerTrendSpanSeconds: Int = 60
+    val powerTrendSpanSeconds: Int = 60,
+    val useImperialUnits: Boolean = false
 )
 
 interface HudCanvas {
@@ -103,8 +104,10 @@ class HudRenderer(val config: HudConfig) {
         }
 
         // 1. SPEED
-        val spdStr = if (isValid) formatOneDecimal(telemetry.speed) else "-"
-        drawCell("SPEED", spdStr, "km/h", "#3b82f6")
+        val speedVal = if (config.useImperialUnits) telemetry.speed * 0.621371 else telemetry.speed
+        val speedUnit = if (config.useImperialUnits) "mph" else "km/h"
+        val spdStr = if (isValid) formatOneDecimal(speedVal) else "-"
+        drawCell("SPEED", spdStr, speedUnit, "#3b82f6")
 
         // 2. CADENCE
         val cadStr = if (isValid) telemetry.cadence.roundToInt().toString() else "-"
@@ -310,12 +313,70 @@ class HudRenderer(val config: HudConfig) {
             // Draw start and end elevation text labels
             val startAlt = allPoints.first().elevation
             val endAlt = allPoints.last().elevation
-            val startText = "${startAlt.roundToInt()}m"
-            val endText = "${endAlt.roundToInt()}m"
+            val startText = if (config.useImperialUnits) {
+                "${(startAlt * 3.28084).roundToInt()}ft"
+            } else {
+                "${startAlt.roundToInt()}m"
+            }
+            val endText = if (config.useImperialUnits) {
+                "${(endAlt * 3.28084).roundToInt()}ft"
+            } else {
+                "${endAlt.roundToInt()}m"
+            }
             
             val graphLabelSize = 9f
             canvas.drawText(startText, startPt.first, startPt.second - 4f, graphLabelSize, "#ffffff", bold = true, anchor = "bottom-left")
             canvas.drawText(endText, endPt.first, endPt.second - 4f, graphLabelSize, "#ffffff", bold = true, anchor = "bottom-right")
+        }
+
+        // 8.5. Real-time Distance & Elapsed Time below Elevation Graph
+        if (isValid && allPoints.isNotEmpty()) {
+            val startPoint = allPoints.first()
+            val currentSeconds = currentRatio.toDouble()
+            
+            // 1. FIT Activity Total
+            val rawFitDist = maxOf(0.0, telemetry.distance - startPoint.distance)
+            val fitElapsedSeconds = maxOf(0.0, telemetry.timestamp - startPoint.timestamp).roundToInt()
+            
+            // 2. Video Trim Segment Total (Relative to video start)
+            val videoStartFitTimestamp = telemetry.timestamp - currentSeconds
+            val videoStartPoint = allPoints.minByOrNull { kotlin.math.abs(it.timestamp - videoStartFitTimestamp) } ?: startPoint
+            val rawVideoDist = maxOf(0.0, telemetry.distance - videoStartPoint.distance)
+            val videoElapsedSeconds = maxOf(0.0, currentSeconds).roundToInt()
+            
+            // Format Distance
+            val fitDistText: String
+            val videoDistText: String
+            if (config.useImperialUnits) {
+                fitDistText = "${formatOneDecimal(rawFitDist * 0.000621371)} mi"
+                videoDistText = "${formatOneDecimal(rawVideoDist * 0.000621371)} mi"
+            } else {
+                fitDistText = "${formatOneDecimal(rawFitDist / 1000.0)} km"
+                videoDistText = "${formatOneDecimal(rawVideoDist / 1000.0)} km"
+            }
+            
+            // Format Time Helper
+            fun formatTime(seconds: Int): String {
+                val hh = seconds / 3600
+                val mm = (seconds % 3600) / 60
+                val ss = seconds % 60
+                return if (hh > 0) {
+                    "${hh}:${mm.toString().padStart(2, '0')}:${ss.toString().padStart(2, '0')}"
+                } else {
+                    "${mm.toString().padStart(2, '0')}:${ss.toString().padStart(2, '0')}"
+                }
+            }
+            
+            val fitTimeText = formatTime(fitElapsedSeconds)
+            val videoTimeText = formatTime(videoElapsedSeconds)
+            
+            val infoSize = 10f
+            val line1 = "TRIP  DST: $fitDistText   TIME: $fitTimeText"
+            val line2 = "CLIP  DST: $videoDistText   TIME: $videoTimeText"
+            
+            // Draw immediately below the elevation graph box in two lines
+            canvas.drawText(line1, cx, eGy + graphH + 13f, infoSize, "#cbd5e1", bold = true)
+            canvas.drawText(line2, cx, eGy + graphH + 25f, infoSize, "#94a3b8", bold = true) // Slightly darker gray for video relative info to establish hierarchy
         }
 
         // Draw Road Caption overlay
