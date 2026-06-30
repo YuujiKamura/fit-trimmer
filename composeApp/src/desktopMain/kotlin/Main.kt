@@ -1460,19 +1460,19 @@ fun startGui(args: Array<String>) = application {
                         }
                     )
                     // 3. Primary encode actions
-                    if (!isEncoding) {
-                        Card(
-                            backgroundColor = Color.White,
-                            shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
-                            border = BorderStroke(1.dp, Color(0xFFE5E5EA)),
-                            elevation = 1.dp,
-                            modifier = Modifier.fillMaxWidth()
+                    Card(
+                        backgroundColor = Color.White,
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, Color(0xFFE5E5EA)),
+                        elevation = 1.dp,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            Column(
-                                modifier = Modifier.padding(12.dp),
-                                verticalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Text("エンコード", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 0.5.sp)
+                            Text("エンコード", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 0.5.sp)
+                            if (!isEncoding) {
                                 Text("現在の設定でHUD付き動画を書き出します。サンプルは短い確認用、バッチは後でまとめて処理する待ち行列です。", color = Color(0xFF636366), fontSize = 10.sp, lineHeight = 13.sp)
                                 Button(
                                     onClick = onNativeEncodeClick,
@@ -1517,6 +1517,44 @@ fun startGui(args: Array<String>) = application {
                                         shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
                                     ) {
                                         Text("バッチに追加", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            } else {
+                                if (statusText.contains("Merging", ignoreCase = true)) {
+                                    LinearProgressIndicator(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        color = Color(0xFF34C759),
+                                        backgroundColor = Color(0xFFE5E5EA)
+                                    )
+                                } else {
+                                    LinearProgressIndicator(
+                                        progress = progress,
+                                        modifier = Modifier.fillMaxWidth(),
+                                        color = if (isPaused) Color(0xFFFF9F0A) else Color(0xFF007AFF),
+                                        backgroundColor = Color(0xFFE5E5EA)
+                                    )
+                                }
+                                Text(if (isPaused) "PAUSED (Not enough space or paused manually)\n$statusText" else statusText, color = Color(0xFF1C1C1E), fontSize = 11.sp, lineHeight = 14.sp)
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Button(
+                                        onClick = { isPaused = !isPaused },
+                                        modifier = Modifier.weight(1f).height(32.dp),
+                                        enabled = !(!isPaused && !hasEnoughSpace),
+                                        colors = ButtonDefaults.buttonColors(
+                                            backgroundColor = if (isPaused) Color(0xFF34C759) else Color(0xFFFF9F0A),
+                                            disabledBackgroundColor = Color(0xFFE5E5EA)
+                                        ),
+                                        shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
+                                    ) {
+                                        Text(if (isPaused) "RESUME" else "PAUSE", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                    Button(
+                                        onClick = { isCanceled = true },
+                                        modifier = Modifier.weight(1f).height(32.dp),
+                                        colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFEF4444)),
+                                        shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
+                                    ) {
+                                        Text("CANCEL", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                     }
                                 }
                             }
@@ -2282,59 +2320,7 @@ fun startGui(args: Array<String>) = application {
                             }
                         }
                     }
-                    // 3. ENCODE Actions / Progress Monitor
-                    if (isEncoding) {
-                        Card(
-                            backgroundColor = Color.White,
-                            shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
-                            border = BorderStroke(1.dp, Color(0xFFE5E5EA)),
-                            elevation = 1.dp,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(12.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                if (statusText.contains("Merging", ignoreCase = true)) {
-                                    LinearProgressIndicator(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        color = Color(0xFF34C759),
-                                        backgroundColor = Color(0xFFE5E5EA)
-                                    )
-                                } else {
-                                    LinearProgressIndicator(
-                                        progress = progress,
-                                        modifier = Modifier.fillMaxWidth(),
-                                        color = if (isPaused) Color(0xFFFF9F0A) else Color(0xFF007AFF),
-                                        backgroundColor = Color(0xFFE5E5EA)
-                                    )
-                                }
-                                Text(if (isPaused) "PAUSED (Not enough space or paused manually)\n$statusText" else statusText, color = Color(0xFF1C1C1E), fontSize = 12.sp)
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Button(
-                                        onClick = { isPaused = !isPaused },
-                                        modifier = Modifier.weight(1f).height(36.dp),
-                                        enabled = !(!isPaused && !hasEnoughSpace),
-                                        colors = ButtonDefaults.buttonColors(
-                                            backgroundColor = if (isPaused) Color(0xFF34C759) else Color(0xFFFF9F0A),
-                                            disabledBackgroundColor = Color(0xFFE5E5EA)
-                                        ),
-                                        shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
-                                    ) {
-                                        Text(if (isPaused) "RESUME" else "PAUSE", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                                    }
-                                    Button(
-                                        onClick = { isCanceled = true },
-                                        modifier = Modifier.weight(1f).height(36.dp),
-                                        colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFE02424)),
-                                        shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
-                                    ) {
-                                        Text("CANCEL", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                                    }
-                                }
-                            }
-                        }
-                    }
+
                     val batchQueue = viewModel.batchQueue
                     if (batchQueue.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(8.dp))
