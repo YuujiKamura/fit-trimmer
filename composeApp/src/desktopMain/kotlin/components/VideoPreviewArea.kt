@@ -146,7 +146,7 @@ fun VideoPreviewArea(
     onPreviewQualityModeChange: (String) -> Unit = {},
     isFullscreen: Boolean = false,
     onFullscreenToggle: (() -> Unit)? = null,
-    plateCache: utils.VideoPlatesCache? = null
+    plateCache: fit.VideoPlatesCache? = null
 ) {
     var isPlaying by remember { mutableStateOf(false) }
     var lastVolume by remember { mutableStateOf(1f) }
@@ -662,7 +662,7 @@ fun VideoPreviewArea(
                             val timeMs = currentRenderTimeMs
                             val record = plateCache.findClosestRecord(timeMs)
                             
-                            if (record != null && kotlin.math.abs(record.timeMs - timeMs) < 150) {
+                            if (record != null && kotlin.math.abs(record.timeMs - timeMs) < 1500) {
                                 for (box in record.boxes) {
                                     val x1 = box.x1 * scaleX
                                     val y1 = box.y1 * scaleY

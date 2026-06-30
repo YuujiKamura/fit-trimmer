@@ -642,6 +642,12 @@ class NativeHudEncoder(
         )
         println("DEBUG: NativeHudEncoder.encode config=$config, videoWidth=$videoWidth, videoHeight=$videoHeight")
         val renderer = HudRenderer(config)
+        val plateCache = if (settings.blurLicensePlates) {
+            PlateCacheManager.loadCache(videoPath)
+        } else null
+        if (plateCache != null) {
+            println("DEBUG: Loaded ${plateCache.records.size} plate records for rendering.")
+        }
         
         val (hwaccel, encoderName) = detectEncoderAndHardware(ffmpegPath, originalCodec)
         println("DEBUG: Auto-detected encoder: $encoderName, hwaccel: $hwaccel")
@@ -997,6 +1003,32 @@ class NativeHudEncoder(
                     g.composite = AlphaComposite.SrcOver
                     
                     val isValid = currentFitTs >= telemetry.first().timestamp && currentFitTs <= telemetry.last().timestamp
+                    
+                    if (settings.blurLicensePlates && plateCache != null) {
+                        val timeMs = (currentSec * 1000.0).toLong()
+                        val record = plateCache.findClosestRecord(timeMs)
+                        if (record != null && kotlin.math.abs(record.timeMs - timeMs) < 1500) {
+                            val scaleX = exportWidth.toFloat() / videoWidth.toFloat()
+                            val scaleY = exportHeight.toFloat() / videoHeight.toFloat()
+                            
+                            for (box in record.boxes) {
+                                val x1 = (box.x1 * scaleX).toInt()
+                                val y1 = (box.y1 * scaleY).toInt()
+                                val x2 = (box.x2 * scaleX).toInt()
+                                val y2 = (box.y2 * scaleY).toInt()
+                                val w = x2 - x1
+                                val h = y2 - y1
+                                
+                                if (w > 0 && h > 0) {
+                                    g.color = java.awt.Color(0x1C, 0x1C, 0x1E)
+                                    g.fillRect(x1, y1, w, h)
+                                    g.color = java.awt.Color(0xE5, 0xE5, 0xEA)
+                                    g.drawRect(x1, y1, w, h)
+                                }
+                            }
+                        }
+                    }
+
                     val scale = exportWidth.toFloat() / 1920f
                     val canvas = DesktopHudCanvas(g, scale, exportWidth.toFloat() / scale, exportHeight.toFloat() / scale)
                     if (customRenderer != null) {
