@@ -38,7 +38,7 @@ fun WindowsVideoPlayerSurface(
             Canvas(
                 modifier = Modifier
                     .fillMaxHeight()
-                    .aspectRatio(playerState.aspectRatio),
+                    .aspectRatio(playerState.videoAspectRatio),
             ) {
                 // Reference ticks to register redraw dependency
                 val t = ticks

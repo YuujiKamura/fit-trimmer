@@ -173,7 +173,7 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
         get() = _duration
 
     // Aspect ratio property
-    internal val aspectRatio: Float
+    val videoAspectRatio: Float
         get() = if (videoWidth > 0 && videoHeight > 0)
             videoWidth.toFloat() / videoHeight.toFloat()
         else 16f / 9f
