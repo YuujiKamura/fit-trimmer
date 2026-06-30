@@ -5,6 +5,7 @@ import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
 import java.awt.Graphics2D
 import java.awt.Image
+import java.awt.RenderingHints
 import java.awt.image.BufferedImage
 import java.nio.FloatBuffer
 import fit.PlateBox
@@ -39,25 +40,23 @@ class PlateDetector private constructor() : AutoCloseable {
 
         val resized = resizeImage(image, 640, 640)
         
+        val rgbArray = IntArray(640 * 640)
+        resized.getRGB(0, 0, 640, 640, rgbArray, 0, 640)
+        
         val inputData = FloatArray(1 * 3 * 640 * 640)
-        var idx = 0
-        for (c in 0 until 3) {
-            for (y in 0 until 640) {
-                for (x in 0 until 640) {
-                    val rgb = resized.getRGB(x, y)
-                    val r = ((rgb shr 16) and 0xFF) / 255.0f
-                    val g = ((rgb shr 8) and 0xFF) / 255.0f
-                    val b = (rgb and 0xFF) / 255.0f
-                    
-                    val pixelVal = when (c) {
-                        0 -> r
-                        1 -> g
-                        2 -> b
-                        else -> 0.0f
-                    }
-                    inputData[idx++] = pixelVal
-                }
-            }
+        val rOffset = 0
+        val gOffset = 640 * 640
+        val bOffset = 2 * 640 * 640
+        
+        for (i in 0 until 640 * 640) {
+            val rgb = rgbArray[i]
+            val r = ((rgb shr 16) and 0xFF) / 255.0f
+            val g = ((rgb shr 8) and 0xFF) / 255.0f
+            val b = (rgb and 0xFF) / 255.0f
+            
+            inputData[rOffset + i] = r
+            inputData[gOffset + i] = g
+            inputData[bOffset + i] = b
         }
 
         val inputBuffer = FloatBuffer.wrap(inputData)
@@ -102,9 +101,27 @@ class PlateDetector private constructor() : AutoCloseable {
     }
 
     private fun resizeImage(originalImage: BufferedImage, targetWidth: Int, targetHeight: Int): BufferedImage {
-        val resultingImage = BufferedImage(targetWidth, targetHeight, BufferedImage.TYPE_INT_RGB)
+        var currentImg = originalImage
+        var w = originalImage.width
+        var h = originalImage.height
+        
+        // Stepwise half-downscaling (mimicking mipmaps) to prevent aliasing artifacts
+        while (w > targetWidth * 2 || h > targetHeight * 2) {
+            w = (w / 2).coerceAtLeast(targetWidth)
+            h = (h / 2).coerceAtLeast(targetHeight)
+            val nextImg = BufferedImage(w, h, BufferedImage.TYPE_3BYTE_BGR)
+            val g = nextImg.createGraphics()
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
+            g.drawImage(currentImg, 0, 0, w, h, null)
+            g.dispose()
+            currentImg = nextImg
+        }
+        
+        // Final resize to target size
+        val resultingImage = BufferedImage(targetWidth, targetHeight, BufferedImage.TYPE_3BYTE_BGR)
         val g: Graphics2D = resultingImage.createGraphics()
-        g.drawImage(originalImage.getScaledInstance(targetWidth, targetHeight, Image.SCALE_SMOOTH), 0, 0, null)
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC)
+        g.drawImage(currentImg, 0, 0, targetWidth, targetHeight, null)
         g.dispose()
         return resultingImage
     }

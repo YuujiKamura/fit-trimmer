@@ -80,7 +80,7 @@ object PlateDetectionManager {
             "-i", videoPath,
             "-vf", "fps=$detectionFps,scale=$scanWidth:$scanHeight:out_range=full",
             "-f", "rawvideo",
-            "-pix_fmt", "rgb24",
+            "-pix_fmt", "bgr24", // Use bgr24 for fast native image buffer copy
             "-vcodec", "rawvideo",
             "pipe:1"
         )
@@ -108,18 +108,9 @@ object PlateDetectionManager {
  
                 val timeMs = (frameIndex * 1000.0 / detectionFps).toLong()
  
-                val img = BufferedImage(scanWidth, scanHeight, BufferedImage.TYPE_INT_RGB)
-                var offset = 0
-                for (y in 0 until scanHeight) {
-                    for (x in 0 until scanWidth) {
-                        val r = buffer[offset].toInt() and 0xFF
-                        val g = buffer[offset + 1].toInt() and 0xFF
-                        val b = buffer[offset + 2].toInt() and 0xFF
-                        val rgb = (r shl 16) or (g shl 8) or b
-                        img.setRGB(x, y, rgb)
-                        offset += 3
-                    }
-                }
+                val img = BufferedImage(scanWidth, scanHeight, BufferedImage.TYPE_3BYTE_BGR)
+                val imgData = (img.raster.dataBuffer as java.awt.image.DataBufferByte).data
+                System.arraycopy(buffer, 0, imgData, 0, frameBytes)
 
                 val boxes = detector.detect(img)
                 if (boxes.isNotEmpty()) {
