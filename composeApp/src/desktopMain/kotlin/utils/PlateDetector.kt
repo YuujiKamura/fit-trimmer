@@ -18,7 +18,14 @@ class PlateDetector private constructor() : AutoCloseable {
         val modelStream = PlateDetector::class.java.getResourceAsStream("/yolov8n_plate.onnx")
             ?: throw IllegalStateException("Model yolov8n_plate.onnx not found in resources")
         val modelBytes = modelStream.use { it.readBytes() }
-        session = env.createSession(modelBytes)
+        
+        val opts = OrtSession.SessionOptions()
+        val cores = Runtime.getRuntime().availableProcessors().coerceAtLeast(1)
+        val threads = (cores / 2).coerceIn(2, 4) // Target 2 to 4 threads for optimal hardware throughput
+        opts.setIntraOpNumThreads(threads)
+        opts.setInterOpNumThreads(threads)
+        
+        session = env.createSession(modelBytes, opts)
     }
 
     companion object {
