@@ -145,7 +145,8 @@ fun VideoPreviewArea(
     previewQualityMode: String = "original",
     onPreviewQualityModeChange: (String) -> Unit = {},
     isFullscreen: Boolean = false,
-    onFullscreenToggle: (() -> Unit)? = null
+    onFullscreenToggle: (() -> Unit)? = null,
+    plateCache: utils.VideoPlatesCache? = null
 ) {
     var isPlaying by remember { mutableStateOf(false) }
     var lastVolume by remember { mutableStateOf(1f) }
@@ -648,6 +649,48 @@ fun VideoPreviewArea(
                     ) {
                         val scale = size.width / 1920f
                         val currentSeconds = currentRenderTimeMs.toFloat() / 1000f
+
+                        // License plate mask overlay
+                        if (settings.blurLicensePlates && plateCache != null) {
+                            val wState = playerState as? WindowsVideoPlayerState
+                            val videoW = wState?.videoWidth?.takeIf { it > 0 } ?: 1920
+                            val videoH = wState?.videoHeight?.takeIf { it > 0 } ?: 1080
+                            
+                            val scaleX = size.width / videoW.toFloat()
+                            val scaleY = size.height / videoH.toFloat()
+                            
+                            val timeMs = currentRenderTimeMs
+                            val record = plateCache.records.minByOrNull { kotlin.math.abs(it.timeMs - timeMs) }
+                            
+                            if (record != null && kotlin.math.abs(record.timeMs - timeMs) < 150) {
+                                for (box in record.boxes) {
+                                    val x1 = box.x1 * scaleX
+                                    val y1 = box.y1 * scaleY
+                                    val x2 = box.x2 * scaleX
+                                    val y2 = box.y2 * scaleY
+                                    
+                                    val w = x2 - x1
+                                    val h = y2 - y1
+                                    
+                                    if (w > 0 && h > 0) {
+                                        // Draw a solid dark-gray privacy block
+                                        drawRect(
+                                            color = Color(0xFF1C1C1E),
+                                            topLeft = Offset(x1, y1),
+                                            size = Size(w, h)
+                                        )
+                                        // Draw border
+                                        drawRect(
+                                            color = Color(0xFFE5E5EA),
+                                            topLeft = Offset(x1, y1),
+                                            size = Size(w, h),
+                                            style = Stroke(width = 1f)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
                         val telemetryPoint = currentPoint ?: fit.FitParser.TelemetryPoint(
                             timestamp = 0.0, speed = 26.2, power = 175.0, cadence = 79.0, heartRate = 148.0, elevation = 63.2, grade = 4.0
                         )

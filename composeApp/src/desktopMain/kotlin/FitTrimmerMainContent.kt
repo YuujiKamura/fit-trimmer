@@ -2430,6 +2430,44 @@ fun FitTrimmerMainContent(
                                     fontWeight = FontWeight.Medium
                                 )
                             }
+                            Row(
+                                modifier = Modifier.fillMaxWidth().clickable(enabled = !isEncoding) {
+                                    if (!isEncoding) {
+                                        viewModel.onBlurLicensePlatesChanged(!settings.blurLicensePlates, scope)
+                                    }
+                                },
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Checkbox(
+                                    checked = settings.blurLicensePlates,
+                                    onCheckedChange = { checked ->
+                                        if (!isEncoding) {
+                                            viewModel.onBlurLicensePlatesChanged(checked, scope)
+                                        }
+                                    },
+                                    enabled = !isEncoding,
+                                    colors = CheckboxDefaults.colors(checkedColor = Color(0xFF007AFF))
+                                )
+                                Text(
+                                    text = utils.Localizer.get("blur_license_plates", settings.language),
+                                    fontSize = 11.sp,
+                                    color = Color(0xFF1C1C1E),
+                                    fontWeight = FontWeight.Medium
+                                )
+                                if (viewModel.isDetectingPlates) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(12.dp),
+                                        strokeWidth = 1.5.dp,
+                                        color = Color(0xFF007AFF)
+                                    )
+                                    Text(
+                                        text = viewModel.plateDetectionProgress,
+                                        fontSize = 10.sp,
+                                        color = Color.Gray
+                                    )
+                                }
+                            }
                             Spacer(Modifier.height(4.dp))
                             Text(utils.Localizer.get("power_trend_span", settings.language).uppercase(), color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 0.5.sp)
                             Row(
@@ -2532,7 +2570,8 @@ fun FitTrimmerMainContent(
                                 previewQualityMode = previewQualityMode,
                                 onPreviewQualityModeChange = { previewQualityMode = it },
                                 isFullscreen = isPreviewFullscreen,
-                                onFullscreenToggle = { viewModel.isPreviewFullscreen = !viewModel.isPreviewFullscreen }
+                                onFullscreenToggle = { viewModel.isPreviewFullscreen = !viewModel.isPreviewFullscreen },
+                                plateCache = viewModel.plateCache
                             )
                         } else {
                             val actualTrimStart = trimStartSeconds.coerceIn(0.0, videoLengthMs / 1000.0)

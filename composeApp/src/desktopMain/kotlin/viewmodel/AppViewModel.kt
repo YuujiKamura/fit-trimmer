@@ -5,6 +5,8 @@ import fit.HudSettings
 import fit.FitParser
 import java.io.File
 import TimeAlignmentState
+import kotlinx.coroutines.launch
+
 
 class AppViewModel(
     initialCache: utils.GuiPathCache?
@@ -61,8 +63,73 @@ class AppViewModel(
                 isGeneratingProxy = false
                 proxyProgress = 0f
                 proxyVideoPath = null
+                
+                plateCache = utils.PlateCacheManager.loadCache(value)
             }
         }
+
+    // License Plate Detection States
+    var plateCache by mutableStateOf<utils.VideoPlatesCache?>(
+        initialCache?.videoPath?.let { utils.PlateCacheManager.loadCache(it) }
+    )
+    var isDetectingPlates by mutableStateOf(false)
+    var plateDetectionProgress by mutableStateOf("")
+
+    fun runPlateDetection(coroutineScope: kotlinx.coroutines.CoroutineScope) {
+        val path = videoPath
+        if (path.isEmpty() || isDetectingPlates) return
+        
+        val platesFile = utils.PlateCacheManager.getPlatesFile(path) ?: return
+        
+        isDetectingPlates = true
+        plateDetectionProgress = "0.0%"
+        
+        coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val isWindows = System.getProperty("os.name").lowercase().contains("win")
+                val pythonCmd = if (isWindows) "python" else "python3"
+                val scriptPath = File("scratch/blur_plates.py").absolutePath
+                val pb = ProcessBuilder(
+                    pythonCmd,
+                    scriptPath,
+                    "--video", path,
+                    "--output", platesFile.absolutePath,
+                    "--export-coords"
+                )
+                pb.redirectErrorStream(true)
+                val process = pb.start()
+                
+                process.inputStream.bufferedReader().useLines { lines ->
+                    lines.forEach { line ->
+                        if (line.contains("PROGRESS:")) {
+                            val percent = line.substringAfter("PROGRESS:").trim()
+                            plateDetectionProgress = percent
+                        }
+                    }
+                }
+                
+                val exitCode = process.waitFor()
+                if (exitCode == 0) {
+                    plateCache = utils.PlateCacheManager.loadCache(path)
+                } else {
+                    plateDetectionProgress = "Failed (exit $exitCode)"
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                plateDetectionProgress = "Error: ${e.message}"
+            } finally {
+                isDetectingPlates = false
+            }
+        }
+    }
+
+    fun onBlurLicensePlatesChanged(enabled: Boolean, coroutineScope: kotlinx.coroutines.CoroutineScope) {
+        settings = settings.copy(blurLicensePlates = enabled)
+        if (enabled && plateCache == null && videoPath.isNotEmpty()) {
+            runPlateDetection(coroutineScope)
+        }
+    }
+
 
     var outputDir by mutableStateOf(System.getProperty("user.home") + File.separator + "Downloads")
     var videoStartUtc by mutableStateOf(initialCache?.videoStartUtc ?: "")

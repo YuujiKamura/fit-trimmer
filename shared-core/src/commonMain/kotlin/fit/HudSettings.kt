@@ -26,5 +26,6 @@ data class HudSettings(
     val powerTrendSpanSeconds: Int = 60,
     val language: String = "",
     val useImperialUnits: Boolean = false,
-    val enableRoadDetection: Boolean = true
+    val enableRoadDetection: Boolean = true,
+    val blurLicensePlates: Boolean = false
 )

@@ -11,6 +11,7 @@ __pycache__/
 local.properties
 *.mp4
 *.wasm
+*.pt
 tmp_hud/
 
 # Root-level Wasm build outputs
