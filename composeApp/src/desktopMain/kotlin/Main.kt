@@ -13,7 +13,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -49,9 +48,6 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlin.math.roundToInt
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.PointerEventType
-import androidx.compose.ui.input.pointer.onPointerEvent
-import androidx.compose.ui.zIndex
 import androidx.compose.foundation.gestures.detectDragGestures
 // VLC dependency removed
 import utils.*
@@ -3746,9 +3742,6 @@ fun TimeAlignmentCard(
                         lineHeight = 13.sp
                     )
                 }
-                InlineHelpTooltip(
-                    "動画の再生位置とFIT/GPSログ上の時刻を合わせる設定です。HUDが先に進んで見える場合はマイナス、HUDが遅れて見える場合はプラスへ調整します。"
-                )
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -3820,9 +3813,6 @@ fun TimeAlignmentCard(
                     Text("振動データで自動合わせ", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 11.sp)
                     Text("動画の揺れとFIT側の加速度が取れる場合だけ使います。", color = Color(0xFF636366), fontSize = 9.sp)
                 }
-                InlineHelpTooltip(
-                    "IMUはカメラやセンサーが記録する加速度・回転などの揺れデータです。動画ファイル内の揺れとFIT/GPSログ側の動きを比較し、HUDの時刻ずれを自動推定します。データがない動画では使えません。"
-                )
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -3853,49 +3843,6 @@ fun TimeAlignmentCard(
                         Text("自動で時刻を合わせる", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
                 }
-            }
-        }
-    }
-}
-
-@Composable
-@OptIn(ExperimentalComposeUiApi::class)
-fun InlineHelpTooltip(text: String) {
-    var isHovered by remember { mutableStateOf(false) }
-    Box(
-        modifier = Modifier
-            .height(18.dp)
-            .zIndex(20f)
-            .onPointerEvent(PointerEventType.Enter) { isHovered = true }
-            .onPointerEvent(PointerEventType.Exit) { isHovered = false },
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            "説明",
-            color = Color(0xFF007AFF),
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier
-                .background(Color.Transparent)
-                .padding(horizontal = 2.dp)
-        )
-        if (isHovered) {
-            Surface(
-                color = Color(0xF21C1C1E),
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp),
-                elevation = 6.dp,
-                modifier = Modifier
-                    .widthIn(min = 220.dp, max = 260.dp)
-                    .offset(x = (-244).dp, y = 24.dp)
-                    .zIndex(30f)
-            ) {
-                Text(
-                    text,
-                    color = Color.White,
-                    fontSize = 10.sp,
-                    lineHeight = 14.sp,
-                    modifier = Modifier.padding(10.dp)
-                )
             }
         }
     }
