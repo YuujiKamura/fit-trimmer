@@ -377,13 +377,38 @@ fun VideoPreviewArea(
                 val currentUtc = startTime.toEpochMilli() / 1000.0 + elapsedSeconds
                 val currentFitTs = currentUtc - fitEpoch
                 
-                // Binary search for timestamp to achieve O(log N) performance instead of O(N)
                 var idx = telemetryPoints.binarySearch { it.timestamp.compareTo(currentFitTs) }
-                if (idx < 0) {
-                    idx = -idx - 1
+                val (lerpedPoint, targetIdx) = if (idx >= 0) {
+                    Pair(telemetryPoints[idx], idx)
+                } else {
+                    val insertIdx = -idx - 1
+                    if (insertIdx <= 0) {
+                        Pair(telemetryPoints.first(), 0)
+                    } else if (insertIdx >= telemetryPoints.size) {
+                        Pair(telemetryPoints.last(), telemetryPoints.size - 1)
+                    } else {
+                        val p0 = telemetryPoints[insertIdx - 1]
+                        val p1 = telemetryPoints[insertIdx]
+                        val t0 = p0.timestamp
+                        val t1 = p1.timestamp
+                        val alpha = if (t1 - t0 > 0) (currentFitTs - t0) / (t1 - t0) else 0.0
+                        val lerp = { a: Double, b: Double -> a + (b - a) * alpha }
+
+                        val p = fit.FitParser.TelemetryPoint(
+                            timestamp = currentFitTs,
+                            speed = lerp(p0.speed, p1.speed),
+                            power = lerp(p0.power, p1.power),
+                            cadence = lerp(p0.cadence, p1.cadence),
+                            heartRate = lerp(p0.heartRate, p1.heartRate),
+                            elevation = lerp(p0.elevation, p1.elevation),
+                            grade = lerp(p0.grade, p1.grade),
+                            lat = lerp(p0.lat, p1.lat),
+                            lon = lerp(p0.lon, p1.lon)
+                        )
+                        Pair(p, insertIdx - 1)
+                    }
                 }
-                val targetIdx = idx.coerceIn(telemetryPoints.indices)
-                Pair(telemetryPoints[targetIdx], targetIdx)
+                Pair(lerpedPoint, targetIdx)
             } catch (e: Exception) {
                 e.printStackTrace()
                 null
