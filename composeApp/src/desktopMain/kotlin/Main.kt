@@ -183,7 +183,9 @@ fun startGui(args: Array<String>) = application {
     val viewModel = remember { AppViewModel(initialCache) }
     var composeWindow: java.awt.Window? by remember { mutableStateOf(null) }
     Window(
-        onCloseRequest = ::exitApplication,
+        onCloseRequest = {
+            System.exit(0)
+        },
         title = "HUD エンコーダー",
         state = windowState
     ) {
