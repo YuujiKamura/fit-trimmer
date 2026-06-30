@@ -13,6 +13,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -48,6 +49,9 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlin.math.roundToInt
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.onPointerEvent
+import androidx.compose.ui.zIndex
 import androidx.compose.foundation.gestures.detectDragGestures
 // VLC dependency removed
 import utils.*
@@ -1422,9 +1426,6 @@ fun startGui(args: Array<String>) = application {
                     TimeAlignmentCard(
                         state = timeOffsetState,
                         isEncoding = isEncoding,
-                        videoCurrentTimeMs = effectiveVideoTimeMs,
-                        videoStartUtc = videoStartUtc,
-                        onVideoStartUtcChange = { videoStartUtc = it },
                         videoPath = videoPath,
                         telemetryPoints = telemetryPoints,
                         isAligning = viewModel.isAligningTelemetry,
@@ -3714,9 +3715,6 @@ fun runCli(args: Array<String>) {
 @Composable
 fun TimeAlignmentCard(
     state: TimeAlignmentState,
-    videoCurrentTimeMs: Long,
-    videoStartUtc: String,
-    onVideoStartUtcChange: (String) -> Unit,
     videoPath: String,
     telemetryPoints: List<FitParser.TelemetryPoint>,
     isAligning: Boolean,
@@ -3734,13 +3732,30 @@ fun TimeAlignmentCard(
             modifier = Modifier.padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text("TIME ALIGNMENT (Time Offset)", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 0.5.sp)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Offset:", color = Color(0xFF636366), fontSize = 10.sp)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("HUDと動画の時刻合わせ", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    Text(
+                        "映像に対して速度・地図・路線テロップが早い/遅いときに調整します。",
+                        color = Color(0xFF636366),
+                        fontSize = 10.sp,
+                        lineHeight = 13.sp
+                    )
+                }
+                InlineHelpTooltip(
+                    "動画の再生位置とFIT/GPSログ上の時刻を合わせる設定です。HUDが先に進んで見える場合はマイナス、HUDが遅れて見える場合はプラスへ調整します。"
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("HUD表示オフセット", color = Color(0xFF636366), fontSize = 10.sp)
                 Text(
                     "${if (state.seconds >= 0) "+" else ""}${String.format("%.1f", state.seconds)} s",
                     color = Color(0xFF007AFF),
@@ -3769,7 +3784,7 @@ fun TimeAlignmentCard(
                 val specs = listOf(
                     "-1s" to -1000,
                     "-0.1s" to -100,
-                    "Reset" to 0,
+                    "0" to 0,
                     "+0.1s" to 100,
                     "+1s" to 1000
                 )
@@ -3788,8 +3803,27 @@ fun TimeAlignmentCard(
                     }
                 }
             }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("マイナス: HUDを戻す", color = Color(0xFF8E8E93), fontSize = 9.sp)
+                Text("プラス: HUDを進める", color = Color(0xFF8E8E93), fontSize = 9.sp)
+            }
             Divider(color = Color(0xFFE5E5EA))
-            Text("AUTO IMU ALIGNMENT", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 0.5.sp)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("振動データで自動合わせ", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                    Text("動画の揺れとFIT側の加速度が取れる場合だけ使います。", color = Color(0xFF636366), fontSize = 9.sp)
+                }
+                InlineHelpTooltip(
+                    "IMUはカメラやセンサーが記録する加速度・回転などの揺れデータです。動画ファイル内の揺れとFIT/GPSログ側の動きを比較し、HUDの時刻ずれを自動推定します。データがない動画では使えません。"
+                )
+            }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -3814,99 +3848,55 @@ fun TimeAlignmentCard(
                             strokeWidth = 2.dp
                         )
                         Spacer(Modifier.width(8.dp))
-                        Text("Aligning with IMU...", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text("自動調整中...", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     } else {
-                        Text("IMU Sync (Auto)", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text("自動で時刻を合わせる", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
-            Divider(color = Color(0xFFE5E5EA))
-            Text("SYNC WITH CYCLING COMPUTER TIME", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 0.5.sp)
-            var inputTimeText by remember { mutableStateOf("") }
-            var isError by remember { mutableStateOf(false) }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically
+        }
+    }
+}
+
+@Composable
+@OptIn(ExperimentalComposeUiApi::class)
+fun InlineHelpTooltip(text: String) {
+    var isHovered by remember { mutableStateOf(false) }
+    Box(
+        modifier = Modifier
+            .size(18.dp)
+            .zIndex(20f)
+            .onPointerEvent(PointerEventType.Enter) { isHovered = true }
+            .onPointerEvent(PointerEventType.Exit) { isHovered = false },
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .size(16.dp)
+                .clip(androidx.compose.foundation.shape.CircleShape)
+                .background(Color(0xFFF2F2F7))
+                .border(1.dp, Color(0xFFC7C7CC), androidx.compose.foundation.shape.CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Text("?", color = Color(0xFF636366), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+        }
+        if (isHovered) {
+            Surface(
+                color = Color(0xF21C1C1E),
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp),
+                elevation = 6.dp,
+                modifier = Modifier
+                    .widthIn(min = 220.dp, max = 260.dp)
+                    .offset(x = (-244).dp, y = 24.dp)
+                    .zIndex(30f)
             ) {
-                OutlinedTextField(
-                    value = inputTimeText,
-                    onValueChange = { 
-                        inputTimeText = it 
-                        isError = false
-                    },
-                    label = { Text("Display Time (HH:mm:ss)", color = Color(0xFF636366), fontSize = 10.sp) },
-                    placeholder = { Text("16:20:30", color = Color(0xFFC7C7CC), fontSize = 11.sp) },
-                    modifier = Modifier.weight(1f).height(50.dp),
-                    textStyle = TextStyle(color = Color(0xFF1C1C1E), fontSize = 11.sp),
-                    singleLine = true,
-                    isError = isError,
-                    colors = TextFieldDefaults.outlinedTextFieldColors(
-                        backgroundColor = Color(0xFFF2F2F7),
-                        focusedBorderColor = Color(0xFF007AFF),
-                        unfocusedBorderColor = Color(0xFFD1D1D6),
-                        textColor = Color(0xFF1C1C1E)
-                    )
+                Text(
+                    text,
+                    color = Color.White,
+                    fontSize = 10.sp,
+                    lineHeight = 14.sp,
+                    modifier = Modifier.padding(10.dp)
                 )
-                Button(
-                    onClick = {
-                        val cleanInput = inputTimeText.trim()
-                        val parts = cleanInput.split(Regex("[:\\s\\-\\.]"))
-                        val parsedTime = if (parts.size == 3) {
-                            val h = parts[0].toIntOrNull()
-                            val m = parts[1].toIntOrNull()
-                            val s = parts[2].toIntOrNull()
-                            if (h != null && m != null && s != null && h in 0..23 && m in 0..59 && s in 0..59) {
-                                Triple(h, m, s)
-                            } else null
-                        } else if (cleanInput.length == 6) {
-                            val h = cleanInput.substring(0, 2).toIntOrNull()
-                            val m = cleanInput.substring(2, 4).toIntOrNull()
-                            val s = cleanInput.substring(4, 6).toIntOrNull()
-                            if (h != null && m != null && s != null && h in 0..23 && m in 0..59 && s in 0..59) {
-                                Triple(h, m, s)
-                            } else null
-                        } else null
-                        if (parsedTime != null) {
-                            val (h, m, s) = parsedTime
-                            try {
-                                val baseInstant = if (videoStartUtc.isNotEmpty()) {
-                                    java.time.Instant.parse(videoStartUtc)
-                                } else {
-                                    java.time.Instant.now()
-                                }
-                                val zoneId = java.time.ZoneId.systemDefault()
-                                val zonedDateTime = java.time.ZonedDateTime.ofInstant(baseInstant, zoneId)
-                                    .withHour(h)
-                                    .withMinute(m)
-                                    .withSecond(s)
-                                    .withNano(0)
-                                val frameInstant = zonedDateTime.toInstant()
-                                val newStartInstant = frameInstant.minusMillis(videoCurrentTimeMs)
-                                onVideoStartUtcChange(newStartInstant.toString())
-                                state.update(0) // Reset manual offset slider
-                                inputTimeText = ""
-                                isError = false
-                            } catch (e: Exception) {
-                                e.printStackTrace()
-                                isError = true
-                            }
-                        } else {
-                            isError = true
-                        }
-                    },
-                    modifier = Modifier.height(50.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        backgroundColor = Color(0xFF007AFF),
-                        contentColor = Color.White
-                    ),
-                    shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
-                ) {
-                    Text("Sync", fontSize = 11.sp)
-                }
-            }
-            if (isError) {
-                Text("Invalid format. Use HH:mm:ss (e.g. 16:20:30)", color = Color(0xFFFF3B30), fontSize = 9.sp)
             }
         }
     }
