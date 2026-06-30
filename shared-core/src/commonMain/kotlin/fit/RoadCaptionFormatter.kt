@@ -11,7 +11,8 @@ interface RoadCaptionFormatter {
         suburb: String?,
         county: String?,
         neighbourhood: String?,
-        state: String?
+        state: String?,
+        country: String?
     ): String?
 }
 
@@ -26,7 +27,8 @@ class JpRoadCaptionFormatter : RoadCaptionFormatter {
         suburb: String?,
         county: String?,
         neighbourhood: String?,
-        state: String?
+        state: String?,
+        country: String?
     ): String? {
         val normalizedRoadName = roadName ?: ""
         val normalizedRef = ref ?: ""
@@ -142,28 +144,38 @@ class UsRoadCaptionFormatter : RoadCaptionFormatter {
         suburb: String?,
         county: String?,
         neighbourhood: String?,
-        state: String?
+        state: String?,
+        country: String?
     ): String? {
         val normalizedRoadName = roadName ?: ""
         val normalizedRef = ref ?: ""
         
+        // Safety: If there is no clear Route Ref number (e.g. US-101, I-5),
+        // we treat the local road name as uncertain to avoid incorrect/noisy snapping.
+        // We only show the road name if it is confirmed by a route reference number.
         var mainRoad = ""
-        if (normalizedRef.isNotEmpty() && normalizedRoadName.isNotEmpty()) {
-            mainRoad = "$normalizedRef $normalizedRoadName"
-        } else {
-            mainRoad = normalizedRoadName.ifEmpty { normalizedRef }
+        if (normalizedRef.isNotEmpty()) {
+            if (normalizedRoadName.isNotEmpty()) {
+                mainRoad = "$normalizedRef $normalizedRoadName"
+            } else {
+                mainRoad = normalizedRef
+            }
         }
         
-        if (mainRoad.isEmpty()) return null
-        
         val parts = mutableListOf<String>()
-        city?.let { parts.add(it) }
+        val localCity = city ?: town ?: village ?: ""
+        if (localCity.isNotEmpty()) parts.add(localCity)
         state?.let { parts.add(it) }
+        val resolvedCountry = country ?: "USA"
+        parts.add(resolvedCountry)
         
         val areaText = parts.filter { it.isNotEmpty() }.joinToString(", ")
-        val areaSuffix = if (areaText.isNotEmpty()) " ($areaText)" else ""
         
-        return "$mainRoad$areaSuffix"
+        return if (mainRoad.isNotEmpty()) {
+            "$mainRoad ($areaText)"
+        } else {
+            areaText // Fallback to just "City, State, Country" if the local road name is uncertain
+        }
     }
 }
 
@@ -178,18 +190,35 @@ class FallbackRoadCaptionFormatter : RoadCaptionFormatter {
         suburb: String?,
         county: String?,
         neighbourhood: String?,
-        state: String?
+        state: String?,
+        country: String?
     ): String? {
-        val road = roadName ?: ref ?: ""
-        if (road.isEmpty()) return null
+        val normalizedRoadName = roadName ?: ""
+        val normalizedRef = ref ?: ""
+        
+        // Safety: Only display the road name if it is a major roadway verified by a ref number (e.g. A7, D906).
+        // Otherwise, omit the uncertain road name to prevent false snapping info, showing only the region and country.
+        var mainRoad = ""
+        if (normalizedRef.isNotEmpty()) {
+            if (normalizedRoadName.isNotEmpty()) {
+                mainRoad = "$normalizedRef $normalizedRoadName"
+            } else {
+                mainRoad = normalizedRef
+            }
+        }
         
         val parts = mutableListOf<String>()
-        city?.let { parts.add(it) }
+        val localCity = city ?: town ?: village ?: ""
+        if (localCity.isNotEmpty()) parts.add(localCity)
         state?.let { parts.add(it) }
+        country?.let { parts.add(it) }
         
         val areaText = parts.filter { it.isNotEmpty() }.joinToString(", ")
-        val areaSuffix = if (areaText.isNotEmpty()) " ($areaText)" else ""
         
-        return "$road$areaSuffix"
+        return if (mainRoad.isNotEmpty()) {
+            if (areaText.isNotEmpty()) "$mainRoad ($areaText)" else mainRoad
+        } else {
+            areaText.ifEmpty { null } // Fallback to just "City, State, Country" if road is uncertain
+        }
     }
 }

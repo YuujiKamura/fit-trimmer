@@ -216,9 +216,30 @@ class RoadNameBuilderTest {
             county = null,
             neighbourhood = null,
             countryCode = "us",
-            state = "California"
+            state = "California",
+            country = "USA"
         )
-        assertEquals("US 101 El Camino Real (San Jose, California)", result)
+        assertEquals("US 101 El Camino Real (San Jose, California, USA)", result)
+    }
+
+    @Test
+    fun testBuildCaptionTextUsUncertainRoadWithoutRef() {
+        // Without a route ref (e.g. US 101), the local road name is uncertain and omitted
+        val result = RoadNameBuilder.buildCaptionText(
+            rdCtg = null,
+            roadName = "Smith Street",
+            ref = null,
+            city = "San Jose",
+            town = null,
+            village = null,
+            suburb = null,
+            county = null,
+            neighbourhood = null,
+            countryCode = "us",
+            state = "California",
+            country = "USA"
+        )
+        assertEquals("San Jose, California, USA", result)
     }
 
     @Test
@@ -234,9 +255,30 @@ class RoadNameBuilderTest {
             county = null,
             neighbourhood = null,
             countryCode = "fr",
-            state = "Île-de-France"
+            state = "Île-de-France",
+            country = "France"
         )
-        assertEquals("Champs-Élysées (Paris, Île-de-France)", result)
+        assertEquals("N12 Champs-Élysées (Paris, Île-de-France, France)", result)
+    }
+
+    @Test
+    fun testBuildCaptionTextFallbackUncertainRoadWithoutRef() {
+        // Without a route ref, fallback formatter omits the uncertain road name
+        val result = RoadNameBuilder.buildCaptionText(
+            rdCtg = null,
+            roadName = "Rue de Rivoli",
+            ref = null,
+            city = "Paris",
+            town = null,
+            village = null,
+            suburb = null,
+            county = null,
+            neighbourhood = null,
+            countryCode = "fr",
+            state = "Île-de-France",
+            country = "France"
+        )
+        assertEquals("Paris, Île-de-France, France", result)
     }
 
     @Test
