@@ -181,6 +181,45 @@ private fun getSegmentDuration(ffmpegPath: String, file: File): Double {
     return 60.0
 }
 
+fun findTelemetryLerp(telemetry: List<fit.FitParser.TelemetryPoint>, targetFitTs: Double): fit.FitParser.TelemetryPoint {
+    if (telemetry.isEmpty()) return fit.FitParser.TelemetryPoint(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+    if (targetFitTs <= telemetry.first().timestamp) return telemetry.first()
+    if (targetFitTs >= telemetry.last().timestamp) return telemetry.last()
+
+    var low = 0
+    var high = telemetry.size - 1
+    while (low < high) {
+        val mid = (low + high + 1) ushr 1
+        if (telemetry[mid].timestamp <= targetFitTs) {
+            low = mid
+        } else {
+            high = mid - 1
+        }
+    }
+
+    val p0 = telemetry[low]
+    if (low >= telemetry.size - 1) return p0
+
+    val p1 = telemetry[low + 1]
+    val t0 = p0.timestamp
+    val t1 = p1.timestamp
+    val alpha = if (t1 - t0 > 0) (targetFitTs - t0) / (t1 - t0) else 0.0
+
+    val lerp = { a: Double, b: Double -> a + (b - a) * alpha }
+
+    return fit.FitParser.TelemetryPoint(
+        timestamp = targetFitTs,
+        speed = lerp(p0.speed, p1.speed),
+        power = lerp(p0.power, p1.power),
+        cadence = lerp(p0.cadence, p1.cadence),
+        heartRate = lerp(p0.heartRate, p1.heartRate),
+        elevation = lerp(p0.elevation, p1.elevation),
+        grade = lerp(p0.grade, p1.grade),
+        lat = lerp(p0.lat, p1.lat),
+        lon = lerp(p0.lon, p1.lon)
+    )
+}
+
 class NativeHudEncoder(
     val settings: HudSettings, 
     val onProgress: (Float, String) -> Unit = { _, _ -> },
@@ -783,7 +822,7 @@ class NativeHudEncoder(
             pbArgs.add("-video_size")
             pbArgs.add("${exportWidth}x${exportHeight}")
             pbArgs.add("-framerate")
-            pbArgs.add("1")
+            pbArgs.add(videoFps)
             pbArgs.add("-i")
             pbArgs.add("pipe:0") // raw frames
             
@@ -911,10 +950,14 @@ class NativeHudEncoder(
             }
             
             var telemetryIdx = 0
-            var lastProcessedSecond = resumeSeconds
+            val fpsDouble = videoFps.toDoubleOrNull() ?: 30.0
+            val totalFrames = (targetDurationSeconds * fpsDouble).toInt()
+            val resumeFrames = (resumeSeconds * fpsDouble).toInt()
+            var lastPowerSec = resumeSeconds - 1
+            var lastProcessedFrame = resumeFrames
             try {
-                loop@ for (i in resumeSeconds until targetDurationSeconds) {
-                    lastProcessedSecond = i
+                loop@ for (f in resumeFrames until totalFrames) {
+                    lastProcessedFrame = f
                     if (cancelSupplier()) {
                         process.destroy()
                         try { process.destroyForcibly() } catch (e: Exception) {}
@@ -930,16 +973,18 @@ class NativeHudEncoder(
                     }
                     
                     val loopStart = System.currentTimeMillis()
-                    val currentUtc = startTimeAdjusted.plusSeconds(i.toLong()).epochSecond
-                    val currentFitTs = currentUtc - fitEpoch
+                    val currentSec = f / fpsDouble
+                    val currentUtcSeconds = startTimeAdjusted.epochSecond + currentSec
+                    val currentFitTs = currentUtcSeconds - fitEpoch
                     
-                    while (telemetryIdx < telemetry.size - 1 && telemetry[telemetryIdx].timestamp < currentFitTs) {
-                        telemetryIdx++
+                    val point = findTelemetryLerp(telemetry, currentFitTs)
+                    
+                    val currentSecInt = currentSec.toInt()
+                    if (currentSecInt > lastPowerSec) {
+                        pBuf.add(point.power)
+                        if (pBuf.size > 30) pBuf.removeAt(0)
+                        lastPowerSec = currentSecInt
                     }
-                    val point = telemetry.getOrNull(telemetryIdx) ?: telemetry.last()
-                    
-                    pBuf.add(point.power)
-                    if (pBuf.size > 30) pBuf.removeAt(0)
                     
                     val g = img.createGraphics()
                     g.composite = AlphaComposite.Clear
@@ -950,9 +995,9 @@ class NativeHudEncoder(
                     val scale = exportWidth.toFloat() / 1920f
                     val canvas = DesktopHudCanvas(g, scale, exportWidth.toFloat() / scale, exportHeight.toFloat() / scale)
                     if (customRenderer != null) {
-                        customRenderer.invoke(canvas, point, telemetry, pBuf, i.toFloat())
+                        customRenderer.invoke(canvas, point, telemetry, pBuf, currentSec.toFloat())
                     } else {
-                        renderer.renderFrame(canvas, point, telemetry, pBuf, i.toFloat(), isValid)
+                        renderer.renderFrame(canvas, point, telemetry, pBuf, currentSec.toFloat(), isValid)
                     }
                     g.dispose()
                     
@@ -963,22 +1008,22 @@ class NativeHudEncoder(
                     val loopEnd = System.currentTimeMillis()
                     val elapsedLoop = loopEnd - loopStart
                     frameTimes.add(elapsedLoop)
-                    if (frameTimes.size > 8) frameTimes.removeAt(0)
+                    if (frameTimes.size > 24) frameTimes.removeAt(0)
                     
                     val avgFrameTime = frameTimes.average()
                     val currentFps = if (avgFrameTime > 0) 1000.0 / avgFrameTime else 0.0
                     
-                    val remainingFrames = targetDurationSeconds - i
+                    val remainingFrames = totalFrames - f
                     val remainingSecondsETA = if (currentFps > 0) (remainingFrames / currentFps).toInt() else 0
                     
-                    val processedStr = formatDuration(i)
+                    val processedStr = formatDuration(currentSec.toInt())
                     val totalStr = formatDuration(targetDurationSeconds)
                     val remainingStr = formatDuration(remainingSecondsETA)
-                    val progressRatio = i.toFloat() / targetDurationSeconds
+                    val progressRatio = f.toFloat() / totalFrames
                     val progressPercent = (progressRatio * 100).toInt()
                     
                     val fpsStr = "%.1f fps".format(currentFps)
-                    val speedStr = "%.1fx".format(currentFps)
+                    val speedStr = "%.1fx".format(currentFps / fpsDouble)
                     
                     val statusText = "Encoding: $progressPercent% | $processedStr / $totalStr | Speed: $fpsStr ($speedStr) | ETA: $remainingStr"
                     onProgress(progressRatio, statusText)
@@ -1025,9 +1070,10 @@ class NativeHudEncoder(
                 }
                 
                 if (exitCode != 0) {
-                    val isNearEnd = (targetDurationSeconds - lastProcessedSecond) <= 3
+                    val lastProcessedSec = lastProcessedFrame / fpsDouble
+                    val isNearEnd = (targetDurationSeconds - lastProcessedSec) <= 3.0
                     if (isNearEnd && !cancelSupplier()) {
-                        println("ℹ️ FFmpeg exited with code $exitCode near the end of video ($lastProcessedSecond/$targetDurationSeconds s). Treating as success (EOF reached).")
+                        println("ℹ️ FFmpeg exited with code $exitCode near the end of video (${lastProcessedSec.toInt()}/$targetDurationSeconds s). Treating as success (EOF reached).")
                         resumeSeconds = targetDurationSeconds
                     } else {
                         throw Exception("ffmpeg exited with error code $exitCode. See ffmpeg_log.txt for details.")

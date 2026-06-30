@@ -94,16 +94,27 @@ fun EncodingProgressArea(
                 modifier = Modifier.weight(1f).height(6.dp),
                 color = Color(0xFF007AFF),
                 backgroundColor = Color(0xFFE5E5EA)
-              )
+            )
 
-              Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(8.dp))
 
-              Button(
-                  onClick = onCancel,
-                  colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFEF4444))
-              ) {
-                  Text("⏹ CANCEL", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
-              }
+            Button(
+                onClick = onCancel,
+                colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFEF4444))
+            ) {
+                Text("⏹ CANCEL", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+            }
+        }
+
+        if (statusText.isNotEmpty()) {
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = statusText,
+                color = Color(0xFF8E8E93),
+                fontSize = 11.sp,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                textAlign = TextAlign.Start
+            )
         }
     }
 }
