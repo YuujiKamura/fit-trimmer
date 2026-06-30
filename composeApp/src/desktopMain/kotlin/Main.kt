@@ -271,6 +271,7 @@ fun startGui(args: Array<String>) = application {
     var moveOutputToSource by viewModel::moveOutputToSource
     var showLivePreview by viewModel::showLivePreview
     var previewQualityMode by viewModel::previewQualityMode
+    var autoDetectRoadCaptionsOnEncode by viewModel::autoDetectRoadCaptionsOnEncode
     var telemetryPoints by viewModel::telemetryPoints
     var videoLengthMs by viewModel::videoLengthMs
     var lastPreviewRequestId by viewModel::lastPreviewRequestId
@@ -631,7 +632,7 @@ fun startGui(args: Array<String>) = application {
         }
     }
     // Save path cache when modified.
-    LaunchedEffect(fitPath, videoPath, videoStartUtc, timeOffsetState.millis, settings, moveOutputToSource, showLivePreview, previewQualityMode, windowState.position, windowState.size, viewModel.splitPoints) {
+    LaunchedEffect(fitPath, videoPath, videoStartUtc, timeOffsetState.millis, settings, moveOutputToSource, showLivePreview, previewQualityMode, autoDetectRoadCaptionsOnEncode, windowState.position, windowState.size, viewModel.splitPoints) {
         if (isLoaded) {
             kotlinx.coroutines.delay(500)
             if (GuiCache.shouldDeferSaveUntilVideoStartIsLoaded(videoPath, videoStartUtc)) {
@@ -656,6 +657,7 @@ fun startGui(args: Array<String>) = application {
                         moveOutputToSource = moveOutputToSource,
                         showLivePreview = showLivePreview,
                         previewQualityMode = previewQualityMode,
+                        autoDetectRoadCaptionsOnEncode = autoDetectRoadCaptionsOnEncode,
                         trimStartSeconds = trimStartSeconds,
                         trimEndSeconds = trimEndSeconds,
                         splitPoints = viewModel.splitPoints,
@@ -750,6 +752,28 @@ fun startGui(args: Array<String>) = application {
             }
         }
     }
+
+    suspend fun prepareSettingsForEncode(baseSettings: HudSettings): HudSettings {
+        if (!autoDetectRoadCaptionsOnEncode) return baseSettings
+        val clearedSettings = baseSettings.copy(roadCaptions = emptyList())
+        settings = clearedSettings
+        statusText = "路線名テロップをクリアして再検出中..."
+        val durationSec = videoLengthMs / 1000.0
+        val detected = detectRoadSegments(
+            points = telemetryPoints,
+            videoStartUtc = adjustedStartUtc.ifEmpty { videoStartUtc },
+            timeOffsetMillis = timeOffsetState.millis.toLong(),
+            videoDurationSeconds = durationSec,
+            onProgress = { progressText ->
+                statusText = progressText
+            }
+        )
+        val updatedSettings = clearedSettings.copy(roadCaptions = detected)
+        settings = updatedSettings
+        statusText = "路線名テロップを ${detected.size} 件アサインしました"
+        return updatedSettings
+    }
+
     val cp = remember {
         ControlPlane(
             onCommand = { cmd ->
@@ -780,7 +804,8 @@ fun startGui(args: Array<String>) = application {
                                         viewModel.encodingSegmentStart = trimStartSeconds
                                         viewModel.encodingSegmentEnd = if (trimEndSeconds <= 0.0) videoLengthMs / 1000.0 else trimEndSeconds
                                         try {
-                                            fireEncode(settings, fitPath, videoPath, outputDir, videoStartUtc,
+                                            val encodeSettings = prepareSettingsForEncode(settings)
+                                            fireEncode(encodeSettings, fitPath, videoPath, outputDir, videoStartUtc,
                                                 onProgress = { prog, status ->
                                                     progress = prog
                                                     statusText = status
@@ -1008,7 +1033,7 @@ fun startGui(args: Array<String>) = application {
                             ),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                    val onNativeEncodeClick = remember(settings, fitPath, videoPath, videoStartUtc, adjustedStartUtc, isVideoInFitRange, outputDir, moveOutputToSource, showLivePreview, viewModel.splitPoints) {
+                    val onNativeEncodeClick = remember(settings, fitPath, videoPath, videoStartUtc, adjustedStartUtc, isVideoInFitRange, outputDir, moveOutputToSource, showLivePreview, autoDetectRoadCaptionsOnEncode, telemetryPoints, videoLengthMs, timeOffsetState.millis, viewModel.splitPoints) {
                         {
                             val targetVideoPath = videoPath
                             var proceed = true
@@ -1116,6 +1141,7 @@ fun startGui(args: Array<String>) = application {
                                     isPaused = false
                                     isCanceled = false
                                     try {
+                                        val encodeSettings = prepareSettingsForEncode(settings)
                                         val totalDuration = ranges.sumOf { it.second - it.first }
                                         var completedDuration = 0.0
                                         var hasCloudSyncMsg = false
@@ -1131,7 +1157,7 @@ fun startGui(args: Array<String>) = application {
                                             }
                                             viewModel.encodingSegmentStart = pStart
                                             viewModel.encodingSegmentEnd = pEnd
-                                            val partOutPath = fireEncode(settings, fitPath, videoPath, outputDir, adjustedStartUtc,
+                                            val partOutPath = fireEncode(encodeSettings, fitPath, videoPath, outputDir, adjustedStartUtc,
                                                 onProgress = { prog, status ->
                                                     val segmentProgress = prog.toDouble()
                                                     val overallProg = if (totalDuration > 0.0) {
@@ -1214,7 +1240,7 @@ fun startGui(args: Array<String>) = application {
                             Unit
                         }
                     }
-                    val onSampleEncodeClick = remember(settings, fitPath, videoPath, videoStartUtc, adjustedStartUtc, isVideoInFitRange, outputDir, moveOutputToSource, showLivePreview) {
+                    val onSampleEncodeClick = remember(settings, fitPath, videoPath, videoStartUtc, adjustedStartUtc, isVideoInFitRange, outputDir, moveOutputToSource, showLivePreview, autoDetectRoadCaptionsOnEncode, telemetryPoints, videoLengthMs, timeOffsetState.millis) {
                         {
                             val targetVideoPath = videoPath
                             var proceed = true
@@ -1240,7 +1266,8 @@ fun startGui(args: Array<String>) = application {
                                     viewModel.encodingSegmentStart = trimStartSeconds
                                     viewModel.encodingSegmentEnd = trimStartSeconds + 5.0
                                     try {
-                                        val outPath = fireEncode(settings, fitPath, videoPath, outputDir, adjustedStartUtc,
+                                        val encodeSettings = prepareSettingsForEncode(settings)
+                                        val outPath = fireEncode(encodeSettings, fitPath, videoPath, outputDir, adjustedStartUtc,
                                             onProgress = { prog, status ->
                                                 progress = prog
                                                 statusText = status
@@ -1545,8 +1572,31 @@ fun startGui(args: Array<String>) = application {
                                           Text("ROUTE CAPTIONS (路線名テロップ)", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp)
                                           Text("動画上に道路の路線名を焼き込みます", color = Color(0xFF636366), fontSize = 8.sp)
                                       }
-                                  }
-                                  if (isDetectingRoads) {
+                                   }
+                                   Row(
+                                       modifier = Modifier
+                                           .fillMaxWidth()
+                                           .background(Color.White, shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                                           .border(0.5.dp, Color(0xFFE5E5EA), shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                                           .padding(horizontal = 8.dp, vertical = 6.dp),
+                                       horizontalArrangement = Arrangement.SpaceBetween,
+                                       verticalAlignment = Alignment.CenterVertically
+                                   ) {
+                                       Column(modifier = Modifier.weight(1f)) {
+                                           Text("エンコード前に自動再検出", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 9.sp)
+                                           Text("既存テロップをクリアしてGPSから再アサインします", color = Color(0xFF636366), fontSize = 8.sp)
+                                       }
+                                       Switch(
+                                           checked = autoDetectRoadCaptionsOnEncode,
+                                           onCheckedChange = { autoDetectRoadCaptionsOnEncode = it },
+                                           enabled = !isEncoding,
+                                           colors = SwitchDefaults.colors(
+                                               checkedThumbColor = Color.White,
+                                               checkedTrackColor = Color(0xFF007AFF)
+                                           )
+                                       )
+                                   }
+                                   if (isDetectingRoads) {
                                       Column(
                                           modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                                           verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -2445,6 +2495,7 @@ fun startGui(args: Array<String>) = application {
                                                         // 2. Overwrite target settings and synchronization offsets
                                                         settings = loadedCache.settings
                                                         previewQualityMode = loadedCache.previewQualityMode
+                                                        autoDetectRoadCaptionsOnEncode = loadedCache.autoDetectRoadCaptionsOnEncode
                                                         loadedCache.timeOffsetMillis?.let {
                                                             timeOffsetState.update(it)
                                                         }
@@ -2482,6 +2533,7 @@ fun startGui(args: Array<String>) = application {
                                                     timeOffsetMillis = timeOffsetState.millis,
                                                     settings = settings,
                                                     previewQualityMode = previewQualityMode,
+                                                    autoDetectRoadCaptionsOnEncode = autoDetectRoadCaptionsOnEncode,
                                                     trimStartSeconds = trimStartSeconds,
                                                     trimEndSeconds = trimEndSeconds,
                                                     splitPoints = viewModel.splitPoints.toList()
@@ -2656,6 +2708,19 @@ fun startGui(args: Array<String>) = application {
     }
 }
 var globalRendererProxy: fit.DynamicRendererProxy? = null
+
+suspend fun loadTelemetryPointsForRoadDetection(fitPath: String): List<FitParser.TelemetryPoint> = withContext(Dispatchers.IO) {
+    if (fitPath.isEmpty()) return@withContext emptyList()
+    try {
+        val parser = FitParser(File(fitPath).readBytes())
+        parser.parse()
+        parser.getTelemetry()
+    } catch (e: Exception) {
+        e.printStackTrace()
+        emptyList()
+    }
+}
+
 suspend fun runBatchJobs(
     viewModel: AppViewModel,
     outputDir: String,
@@ -2680,6 +2745,25 @@ suspend fun runBatchJobs(
             job.progress = 0f
             onProgressUpdate()
             viewModel.batchStatusText = "[${jobIdx + 1}/${jobs.size}] ${File(job.videoPath).name} を処理中..."
+            var encodeSettings = job.settings
+            if (job.autoDetectRoadCaptionsOnEncode) {
+                viewModel.batchStatusText = "[${jobIdx + 1}/${jobs.size}] 路線名テロップをクリアして再検出中..."
+                encodeSettings = encodeSettings.copy(roadCaptions = emptyList())
+                val points = loadTelemetryPointsForRoadDetection(job.fitPath)
+                val videoDurationSeconds = (getVideoDuration(job.videoPath)?.toDouble()?.div(1000.0) ?: job.trimEndSeconds)
+                    .coerceAtLeast(job.trimEndSeconds)
+                val detected = detectRoadSegments(
+                    points = points,
+                    videoStartUtc = job.videoStartUtc,
+                    timeOffsetMillis = job.timeOffsetMillis,
+                    videoDurationSeconds = videoDurationSeconds,
+                    onProgress = { progressText ->
+                        viewModel.batchStatusText = "[${jobIdx + 1}/${jobs.size}] $progressText"
+                    }
+                )
+                encodeSettings = encodeSettings.copy(roadCaptions = detected)
+                viewModel.batchStatusText = "[${jobIdx + 1}/${jobs.size}] 路線名テロップを ${detected.size} 件アサインしました"
+            }
             val totalSec = job.trimEndSeconds - job.trimStartSeconds
             val ranges = mutableListOf<Pair<Double, Double>>()
             val activeSplits = job.splitPoints.filter { it > job.trimStartSeconds && it < job.trimEndSeconds }.sorted()
@@ -2694,7 +2778,7 @@ suspend fun runBatchJobs(
                 val videoFile = File(job.videoPath)
                 val baseName = videoFile.name.replace(".mp4", "", ignoreCase = true).replace(".mov", "", ignoreCase = true)
                 val partSuffix = if (idx >= 0 && ranges.size > 1) "_part${idx + 1}" else ""
-                val resSuffix = when (job.settings.exportResolution) {
+                val resSuffix = when (encodeSettings.exportResolution) {
                     "1080p" -> "_1080p"
                     "2.7k" -> "_2.7k"
                     else -> "_orig"
@@ -2722,7 +2806,7 @@ suspend fun runBatchJobs(
                     viewModel.encodingSegmentStart = pStart
                     viewModel.encodingSegmentEnd = pEnd
                     val partOutPath = fireEncode(
-                        s = job.settings,
+                        s = encodeSettings,
                         fit = job.fitPath,
                         video = job.videoPath,
                         outDir = outputDir,

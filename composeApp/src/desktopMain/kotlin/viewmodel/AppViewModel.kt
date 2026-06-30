@@ -36,6 +36,7 @@ class AppViewModel(
                         moveOutputToSource = moveOutputToSource,
                         showLivePreview = showLivePreview,
                         previewQualityMode = previewQualityMode,
+                        autoDetectRoadCaptionsOnEncode = autoDetectRoadCaptionsOnEncode,
                         trimStartSeconds = trimStartSeconds,
                         trimEndSeconds = trimEndSeconds,
                         splitPoints = splitPoints
@@ -149,6 +150,7 @@ class AppViewModel(
     var moveOutputToSource by mutableStateOf(initialCache?.moveOutputToSource ?: false)
     var showLivePreview by mutableStateOf(initialCache?.showLivePreview ?: true)
     var previewQualityMode by mutableStateOf(initialCache?.previewQualityMode ?: "original")
+    var autoDetectRoadCaptionsOnEncode by mutableStateOf(initialCache?.autoDetectRoadCaptionsOnEncode ?: false)
 
     // Telemetry and video metadata
     var telemetryPoints by mutableStateOf<List<FitParser.TelemetryPoint>>(emptyList())
@@ -284,7 +286,8 @@ class AppViewModel(
                 trimStartSeconds = trimStartSeconds,
                 trimEndSeconds = trimEndSeconds,
                 splitPoints = splitPoints.toList(),
-                settings = settings.copy()
+                settings = settings.copy(),
+                autoDetectRoadCaptionsOnEncode = autoDetectRoadCaptionsOnEncode
             )
             batchQueue.add(job)
         }
@@ -318,6 +321,7 @@ data class BatchJob(
     val trimEndSeconds: Double,
     val splitPoints: List<Double>,
     val settings: HudSettings,
+    val autoDetectRoadCaptionsOnEncode: Boolean = false,
     var status: BatchJobStatus = BatchJobStatus.WAITING,
     var progress: Float = 0.0f,
     var errorMessage: String? = null
