@@ -25,5 +25,6 @@ data class HudSettings(
     val roadCaptions: List<RoadCaptionSegment> = emptyList(),
     val powerTrendSpanSeconds: Int = 60,
     val language: String = "",
-    val useImperialUnits: Boolean = false
+    val useImperialUnits: Boolean = false,
+    val enableRoadDetection: Boolean = true
 )

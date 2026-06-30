@@ -27,6 +27,7 @@ class AppViewModelTest {
         assertEquals(0.0, viewModel.trimStartSeconds)
         assertEquals(0.0, viewModel.trimEndSeconds)
         assertTrue(viewModel.splitPoints.isEmpty())
+        assertTrue(viewModel.settings.enableRoadDetection)
     }
 
     @Test
@@ -59,6 +60,7 @@ class AppViewModelTest {
         assertFalse(viewModel.showLivePreview)
         assertEquals("original", viewModel.previewQualityMode)
         assertFalse(viewModel.autoDetectRoadCaptionsOnEncode)
+        assertTrue(viewModel.settings.enableRoadDetection)
     }
 
     @Test
@@ -605,6 +607,12 @@ class AppViewModelTest {
             xOffset = 0f, yOffset = 0f, graphH = 100f, graphW = 200f
         )
         assertEquals(false, config.useImperialUnits, "Default HudConfig useImperialUnits should be false")
+    }
+
+    @Test
+    fun testHudSettingsDefaultEnableRoadDetectionIsTrue() {
+        val settings = HudSettings()
+        assertTrue(settings.enableRoadDetection, "Default enableRoadDetection should be true")
     }
 
     @Test
