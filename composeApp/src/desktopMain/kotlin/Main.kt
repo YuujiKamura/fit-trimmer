@@ -1,4 +1,4 @@
-﻿import io.github.kdroidfilter.composemediaplayer.rememberVideoPlayerState
+import io.github.kdroidfilter.composemediaplayer.rememberVideoPlayerState
 import io.github.kdroidfilter.composemediaplayer.VideoPlayerSurface
 import io.github.vinceglb.filekit.PlatformFile
 import androidx.compose.foundation.Canvas
@@ -359,6 +359,7 @@ suspend fun prepareRoadCaptionSettingsForEncode(
         videoStartUtc = context.videoStartUtc,
         timeOffsetMillis = context.timeOffsetMillis,
         videoDurationSeconds = context.videoDurationSeconds,
+        language = baseSettings.language,
         onProgress = onStatus
     )
     val updatedSettings = clearedSettings.copy(roadCaptions = detected)
@@ -496,7 +497,7 @@ suspend fun runBatchJobs(
     }
 }
 
-suspend fun queryRoadName(lat: Double, lon: Double, heading: Double? = null): String? {
+suspend fun queryRoadName(lat: Double, lon: Double, heading: Double? = null, language: String = ""): String? {
     return withContext(Dispatchers.IO) {
         try {
             val client = java.net.http.HttpClient.newBuilder()
@@ -525,7 +526,8 @@ suspend fun queryRoadName(lat: Double, lon: Double, heading: Double? = null): St
                 println("⚠️ Failed to query GSI vector tile: ${e.message}")
             }
             // 2. Fetch OSM Nominatim for local area and road names
-            val url = "https://nominatim.openstreetmap.org/reverse?lat=$lat&lon=$lon&format=json&accept-language=ja&addressdetails=1&extratags=1"
+            val langParam = if (language.isEmpty()) "ja" else language
+            val url = "https://nominatim.openstreetmap.org/reverse?lat=$lat&lon=$lon&format=json&accept-language=$langParam&addressdetails=1&extratags=1"
             val request = java.net.http.HttpRequest.newBuilder()
                 .uri(java.net.URI.create(url))
                 .header("User-Agent", "FitTrimmerApp/1.0 (yuuji@kamura.jp)")
@@ -624,6 +626,7 @@ suspend fun detectRoadSegments(
     videoStartUtc: String,
     timeOffsetMillis: Long,
     videoDurationSeconds: Double,
+    language: String = "",
     onProgress: (String) -> Unit
 ): List<RoadCaptionSegment> {
     if (points.isEmpty() || videoStartUtc.isEmpty()) return emptyList()
@@ -724,7 +727,7 @@ suspend fun detectRoadSegments(
         // Safe rate limiting (1s wait) only for active queries
         kotlinx.coroutines.delay(1000)
         val headingVal = headings.getOrNull(currentOffset.toInt()) ?: -1.0
-        val roadName = queryRoadName(point.lat, point.lon, if (headingVal >= 0.0) headingVal else null)
+        val roadName = queryRoadName(point.lat, point.lon, if (headingVal >= 0.0) headingVal else null, language = language)
         if (roadName != null && roadName.isNotEmpty()) {
             if (currentRoadName == null) {
                 currentRoadName = roadName
