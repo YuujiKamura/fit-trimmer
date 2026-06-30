@@ -200,7 +200,8 @@ class FitParser(private val bytes: ByteArray) {
         var grade: Double,
         val lat: Double = 0.0,
         val lon: Double = 0.0,
-        val distance: Double = 0.0
+        val distance: Double = 0.0,
+        val elapsedSeconds: Int = 0
     )
 
     fun getTelemetry(): List<TelemetryPoint> {
@@ -257,6 +258,32 @@ class FitParser(private val bytes: ByteArray) {
             }
         }
         
+        // Pre-compute elapsed seconds and relative cumulative distance
+        if (list.isNotEmpty()) {
+            val startTs = list.first().timestamp
+            val startDist = list.first().distance
+            val hasDistance = list.any { it.distance > 0.0 }
+            
+            var accumulatedDist = 0.0
+            val precomputed = list.mapIndexed { idx, pt ->
+                val elapsed = (pt.timestamp - startTs).toInt()
+                val dist = if (hasDistance) {
+                    maxOf(0.0, pt.distance - startDist)
+                } else {
+                    if (idx > 0) {
+                        val prev = list[idx - 1]
+                        val dt = pt.timestamp - prev.timestamp
+                        if (dt in 0.0..5.0) {
+                            val avgSpeedMps = ((pt.speed + prev.speed) / 2.0) / 3.6
+                            accumulatedDist += avgSpeedMps * dt
+                        }
+                    }
+                    accumulatedDist
+                }
+                pt.copy(distance = dist, elapsedSeconds = elapsed)
+            }
+            return precomputed
+        }
         return list
     }
 
