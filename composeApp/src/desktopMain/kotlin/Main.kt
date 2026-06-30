@@ -685,6 +685,14 @@ suspend fun detectRoadSegments(
     for (s in 1..numSecs) {
         val currentHeading = headings[s]
         if (currentHeading < 0.0) continue
+        
+        // Speed guard: If moving too slow (< 5 km/h), GPS noise can cause fake turn detections.
+        val targetFitTime = startFitTime + s
+        val currentPoint = rangePoints.minByOrNull { kotlin.math.abs(it.timestamp - targetFitTime) }
+        val speedKmh = currentPoint?.speed ?: 0.0
+        if (speedKmh < 5.0) {
+            continue
+        }
         if (baseHeading < 0.0) {
             baseHeading = currentHeading
             continue
