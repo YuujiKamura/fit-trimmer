@@ -15,7 +15,8 @@ data class HudConfig(
     val graphH: Float,
     val graphW: Float,
     val captionPosition: String = "top_center",
-    val roadCaptions: List<RoadCaptionSegment> = emptyList()
+    val roadCaptions: List<RoadCaptionSegment> = emptyList(),
+    val powerTrendSpanSeconds: Int = 30
 )
 
 interface HudCanvas {
@@ -123,11 +124,11 @@ class HudRenderer(val config: HudConfig) {
         drawCell("W/KG", wkgStr, "w/kg", "#2dd4bf")
 
         // 6. POWER TREND (Bar graph)
-        canvas.drawText("POWER TREND (30s, 1s)", cx, cy, labelSize, "#e5e7eb", bold = true)
+        canvas.drawText("POWER TREND (${config.powerTrendSpanSeconds}s, 1s)", cx, cy, labelSize, "#e5e7eb", bold = true)
         val pGy = cy + labelSize + 4f
         
         if (isValid && pBuf.isNotEmpty()) {
-            val maxPoints = 30f
+            val maxPoints = config.powerTrendSpanSeconds.toFloat()
             val bw = graphW / maxPoints
             var maxPVal = 250.0
             for (v in pBuf) {
