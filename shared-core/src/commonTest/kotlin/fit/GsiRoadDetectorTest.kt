@@ -57,7 +57,7 @@ class GsiRoadDetectorTest {
         """.trimIndent()
 
         // 熊本菊陽線の線分上に近い座標
-        val lat = 32.854
+        val lat = 32.8545
         val lon = 130.779
         val info = GsiRoadDetector.findClosestRoad(lat, lon, dummyGeoJson)
         

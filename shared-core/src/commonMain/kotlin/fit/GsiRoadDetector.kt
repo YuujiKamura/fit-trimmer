@@ -106,7 +106,7 @@ object GsiRoadDetector {
                         val diff1 = angleDiff(carHeading, closestHeading)
                         val diff2 = angleDiff(carHeading, (closestHeading + 180.0) % 360.0)
                         val minDiff = minOf(diff1, diff2)
-                        if (minDiff > 45.0) {
+                        if (minDiff >= 45.0) {
                             headingMatches = false
                         }
                     }
