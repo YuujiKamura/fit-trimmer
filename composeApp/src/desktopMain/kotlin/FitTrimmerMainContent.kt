@@ -1808,7 +1808,8 @@ fun FitTrimmerMainContent(
                                                               videoStartUtc = adjustedStartUtc.ifEmpty { videoStartUtc },
                                                               timeOffsetMillis = timeOffsetState.millis.toLong(),
                                                               videoDurationSeconds = durationSec,
-                                                              onProgress = { progressText ->
+                                                               language = settings.language,
+                                                               onProgress = { progressText ->
                                                                   roadDetectionStatus = progressText
                                                               }
                                                           )
@@ -1890,7 +1891,7 @@ fun FitTrimmerMainContent(
                                                                }
                                                            }
                                                       }
-                                                      Spacer(Modifier.width(2.dp))
+                                                       Spacer(Modifier.width(2.dp))
                                                       IconButton(
                                                           onClick = {
                                                               val updated = captions.filterIndexed { idx, _ -> idx != index }
@@ -1937,7 +1938,8 @@ fun FitTrimmerMainContent(
                                                                   videoStartUtc = adjustedStartUtc.ifEmpty { videoStartUtc },
                                                                   timeOffsetMillis = timeOffsetState.millis.toLong(),
                                                                   videoDurationSeconds = durationSec,
-                                                                  onProgress = { progressText ->
+                                                               language = settings.language,
+                                                               onProgress = { progressText ->
                                                                       roadDetectionStatus = progressText
                                                                   }
                                                               )
@@ -2676,3 +2678,5 @@ fun FitTrimmerMainContent(
             }
         }
 }
+
+
