@@ -21,6 +21,7 @@ import org.jetbrains.skia.*
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.locks.ReentrantReadWriteLock
 import kotlin.concurrent.read
 import kotlin.concurrent.write
@@ -197,6 +198,7 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
     // Synchronization
     private val mediaOperationMutex = Mutex()
     private val isResizing = AtomicBoolean(false)
+    private val suppressResizeUntilNanos = AtomicLong(0L)
     private var videoJob: Job? = null
     private var posterJob: Job? = null
     private var resizeJob: Job? = null
@@ -290,6 +292,7 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
         posterJob?.cancel()
         audioLevelsJob?.cancel()
         resizeJob?.cancel()
+        isResizing.set(false)
 
         // Ensure the frame channel is emptied
         runBlocking { clearFrameChannel() }
@@ -317,6 +320,16 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
         }
     }
 
+    private fun suppressResizeFor(durationMs: Long) {
+        val now = System.nanoTime()
+        val target = now + durationMs * 1_000_000L
+        while (true) {
+            val current = suppressResizeUntilNanos.get()
+            if (current >= target) return
+            if (suppressResizeUntilNanos.compareAndSet(current, target)) return
+        }
+    }
+
 
     /**
      * Opens a media file or URL for playback
@@ -325,6 +338,7 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
      */
     override fun openUri(uri: String) {
         lastUri = uri
+        suppressResizeFor(500)
 
         if (!isInitialized || videoPlayerInstance == null) {
             setError("Player is not initialized.")
@@ -745,6 +759,7 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
      * Pauses playback if currently playing
      */
     override fun pause() {
+        suppressResizeFor(300)
         executeMediaOperation(
             operation = "pause",
             precondition = _isPlaying
@@ -758,6 +773,7 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
      * This will close the media file but keep the player instance
      */
     override fun stop() {
+        suppressResizeFor(600)
         executeMediaOperation(
             operation = "stop"
         ) {
@@ -779,6 +795,7 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
     }
 
     override fun seekTo(value: Float) {
+        suppressResizeFor(250)
         executeMediaOperation(
             operation = "seek",
             precondition = _hasMedia && videoPlayerInstance != null
@@ -828,6 +845,8 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
      * Temporarily pauses frame processing to avoid artifacts during resize
      */
     fun onResized() {
+        if (!isInitialized || !_hasMedia) return
+        if (System.nanoTime() < suppressResizeUntilNanos.get()) return
         isResizing.set(true)
         scope.launch {
             try {
