@@ -492,6 +492,59 @@ class FitParserTest {
         }
         assertTrue(thrown, "Should throw IllegalArgumentException or IllegalStateException when parsing truncated/corrupted FIT data")
     }
+
+    @Test
+    fun testParseRealFitFile() {
+        val file = java.io.File("F:\\Insta360\\fit\\Afternoon_Ride_鞠智城跡.fit")
+        if (!file.exists()) {
+            println("Skipping testParseRealFitFile because file does not exist on this machine: ${file.absolutePath}")
+            return
+        }
+        val bytes = file.readBytes()
+        val parser = FitParser(bytes)
+        parser.parse()
+        val telemetry = parser.getTelemetry()
+        println("Loaded real FIT file: ${file.absolutePath}")
+        println("Total parsed telemetry points: ${telemetry.size}")
+        
+        // Assert basic telemetry structure
+        assertTrue(telemetry.isNotEmpty(), "Telemetry should not be empty")
+        
+        // Check distance data
+        val hasDistanceData = telemetry.any { it.distance > 0.0 }
+        println("FIT file has distance data: $hasDistanceData")
+        
+        if (hasDistanceData) {
+            val startDist = telemetry.first().distance
+            val endDist = telemetry.last().distance
+            println("Start distance: $startDist m, End distance: $endDist m")
+            assertTrue(endDist >= startDist, "End distance should be greater than or equal to start distance")
+        }
+        
+        // Let's test fallback distance accumulation on this real data
+        val startPoint = telemetry.first()
+        val lastPoint = telemetry.last()
+        
+        // 1. Accumulate using speed
+        var accumulatedDist = 0.0
+        for (i in 1 until telemetry.size) {
+            val dt = telemetry[i].timestamp - telemetry[i-1].timestamp
+            if (dt in 0.0..5.0) {
+                val avgSpeedMps = ((telemetry[i].speed + telemetry[i-1].speed) / 2.0) / 3.6
+                accumulatedDist += avgSpeedMps * dt
+            }
+        }
+        println("Accumulated distance from speed: $accumulatedDist meters")
+        
+        if (hasDistanceData) {
+            val actualDiff = lastPoint.distance - startPoint.distance
+            println("Actual distance diff: $actualDiff meters")
+            // The accumulated speed distance and actual distance should be extremely close (usually within 5-10% depending on FIT precision)
+            val percentageDiff = kotlin.math.abs(accumulatedDist - actualDiff) / actualDiff
+            println("Percentage difference: ${percentageDiff * 100.0}%")
+            assertTrue(percentageDiff < 0.2, "Accumulated speed distance is too far from actual FIT distance ($accumulatedDist vs $actualDiff)")
+        }
+    }
 }
 
 
