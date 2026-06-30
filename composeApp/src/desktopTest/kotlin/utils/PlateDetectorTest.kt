@@ -154,6 +154,36 @@ class PlateDetectorTest {
         return dest
     }
 
+    @Test
+    fun testWholeVideoPreScanPipeline() = kotlinx.coroutines.runBlocking {
+        val videoPath = "H:\\\u30DE\u30A4\u30C9\u30E9\u30A4\u30D6\\Insta360\\20260614\\VID_20260614_163204_003.mp4"
+        val videoFile = File(videoPath)
+        if (!videoFile.exists()) {
+            println("Skipping whole video test: Video file not found on GDrive.")
+            return@runBlocking
+        }
+
+        var progressCalled = false
+        var frameCount = 0
+        
+        // Run pre-scan via PlateDetectionManager
+        // Cancel early after 30 frames to keep the test fast
+        PlateDetectionManager.runDetection(
+            videoPath = videoPath,
+            onProgress = { progress ->
+                progressCalled = true
+                println("Scan progress: $progress%")
+            },
+            onCancel = {
+                frameCount++
+                frameCount > 30
+            }
+        )
+
+        assertTrue(progressCalled, "Progress callback should have been triggered during scan")
+        println("Successfully verified pre-scan pipeline execution and progress updates.")
+    }
+
     private class SGObserver : java.awt.image.ImageObserver {
         override fun imageUpdate(img: java.awt.Image?, infoflags: Int, x: Int, y: Int, width: Int, height: Int): Boolean {
             return false

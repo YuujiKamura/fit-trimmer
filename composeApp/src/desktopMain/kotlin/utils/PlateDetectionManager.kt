@@ -56,14 +56,29 @@ object PlateDetectionManager {
             videoFps = fpsMatch.groupValues[1].toDouble()
         }
 
-        // To speed up detection without losing tracking accuracy, we decimate frames to 10 fps
+        // To speed up detection without losing tracking accuracy, we decimate frames to 10 fps.
+        // We also scale down high-res video (like 4K) to maximum 1080p (long edge 1920) to prevent
+        // license plates from vanishing during YOLOv8 640x640 downscaling, and to boost speed by 4x.
         val detectionFps = 10.0
-        val frameBytes = videoWidth * videoHeight * 3 // RGB24
+        val maxDim = 1920
+        var scanWidth = videoWidth
+        var scanHeight = videoHeight
+        if (scanWidth > maxDim || scanHeight > maxDim) {
+            if (scanWidth > scanHeight) {
+                scanHeight = (scanHeight * maxDim.toDouble() / scanWidth.toDouble()).toInt()
+                scanWidth = maxDim
+            } else {
+                scanWidth = (scanWidth * maxDim.toDouble() / scanHeight.toDouble()).toInt()
+                scanHeight = maxDim
+            }
+        }
+        
+        val frameBytes = scanWidth * scanHeight * 3 // RGB24
         
         val pb = ProcessBuilder(
             ffmpegPath,
             "-i", videoPath,
-            "-vf", "fps=$detectionFps,scale=$videoWidth:$videoHeight",
+            "-vf", "fps=$detectionFps,scale=$scanWidth:$scanHeight:out_range=full",
             "-f", "rawvideo",
             "-pix_fmt", "rgb24",
             "-vcodec", "rawvideo",
@@ -71,16 +86,16 @@ object PlateDetectionManager {
         )
         pb.redirectErrorStream(false)
         val process = pb.start()
-
+ 
         val records = mutableListOf<PlateRecord>()
         val detector = PlateDetector.getInstance()
         
         val stream = BufferedInputStream(process.inputStream, 1024 * 1024)
         val buffer = ByteArray(frameBytes)
-
+ 
         val totalFrames = (durationSec * detectionFps).toLong()
         var frameIndex = 0L
-
+ 
         try {
             while (!onCancel()) {
                 var bytesRead = 0
@@ -90,13 +105,13 @@ object PlateDetectionManager {
                     bytesRead += read
                 }
                 if (bytesRead < frameBytes) break // EOF
-
+ 
                 val timeMs = (frameIndex * 1000.0 / detectionFps).toLong()
-
-                val img = BufferedImage(videoWidth, videoHeight, BufferedImage.TYPE_INT_RGB)
+ 
+                val img = BufferedImage(scanWidth, scanHeight, BufferedImage.TYPE_INT_RGB)
                 var offset = 0
-                for (y in 0 until videoHeight) {
-                    for (x in 0 until videoWidth) {
+                for (y in 0 until scanHeight) {
+                    for (x in 0 until scanWidth) {
                         val r = buffer[offset].toInt() and 0xFF
                         val g = buffer[offset + 1].toInt() and 0xFF
                         val b = buffer[offset + 2].toInt() and 0xFF
