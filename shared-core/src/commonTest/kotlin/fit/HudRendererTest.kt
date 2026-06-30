@@ -207,17 +207,14 @@ class HudRendererTest {
             isValid = true
         )
         
-        val tripLine = canvas.drawnTexts.find { it.contains("全体走行距離:") }
-        val clipLine = canvas.drawnTexts.find { it.contains("区間走行距離:") }
+        val clipLine = canvas.drawnTexts.find { it.contains("距離:") }
+        val tripLine = canvas.drawnTexts.find { it.contains("全体") }
         
-        assertTrue(tripLine != null, "HUD should display '全体走行距離:' (got ${canvas.drawnTexts})")
-        assertTrue(clipLine != null, "HUD should display '区間走行距離:' (got ${canvas.drawnTexts})")
+        assertTrue(clipLine != null, "HUD should display '距離:' line (got ${canvas.drawnTexts})")
+        assertTrue(tripLine == null, "HUD should NOT display overall '全体' line (got ${canvas.drawnTexts})")
         
-        assertTrue(tripLine.contains("全体経過時間:"), "HUD should display '全体経過時間:' (got '$tripLine')")
-        assertTrue(clipLine.contains("区間経過時間:"), "HUD should display '区間経過時間:' (got '$clipLine')")
-        
-        assertTrue(tripLine.contains("2.50 km"), "Overall distance should show 2 decimal places: 2.50 km (got '$tripLine')")
-        assertTrue(clipLine.contains("1.50 km"), "Clip distance should show 2 decimal places: 1.50 km (got '$clipLine')")
+        assertTrue(clipLine.contains("距離: 1.50 km"), "Clip distance should be 1.50 km (got '$clipLine')")
+        assertTrue(clipLine.contains("時間: 01:40"), "Clip time should be 01:40 (got '$clipLine')")
         
         assertTrue(canvas.drawnTexts.contains("スピード"), "HUD should localize SPEED to Japanese")
         assertTrue(canvas.drawnTexts.contains("標高"), "HUD should localize ELEVATION to Japanese")
@@ -252,14 +249,14 @@ class HudRendererTest {
             isValid = true
         )
         
-        val tripLine = canvas.drawnTexts.find { it.contains("Total Distance:") }
-        val clipLine = canvas.drawnTexts.find { it.contains("Split Distance:") }
+        val clipLine = canvas.drawnTexts.find { it.contains("Distance:") }
+        val tripLine = canvas.drawnTexts.find { it.contains("Total") }
         
-        assertTrue(tripLine != null, "HUD should display 'Total Distance:' (got ${canvas.drawnTexts})")
-        assertTrue(clipLine != null, "HUD should display 'Split Distance:' (got ${canvas.drawnTexts})")
+        assertTrue(clipLine != null, "HUD should display 'Distance:' line (got ${canvas.drawnTexts})")
+        assertTrue(tripLine == null, "HUD should NOT display overall 'Total' line (got ${canvas.drawnTexts})")
         
-        assertTrue(tripLine.contains("Total Elapsed:"), "HUD should display 'Total Elapsed:' (got '$tripLine')")
-        assertTrue(clipLine.contains("Split Elapsed:"), "HUD should display 'Split Elapsed:' (got '$clipLine')")
+        assertTrue(clipLine.contains("Distance: 1.50 km"), "Clip distance should be 1.50 km (got '$clipLine')")
+        assertTrue(clipLine.contains("Time: 01:40"), "Clip time should be 01:40 (got '$clipLine')")
         
         assertTrue(canvas.drawnTexts.contains("SPEED"), "HUD should keep SPEED in English")
         assertTrue(canvas.drawnTexts.contains("ELEVATION"), "HUD should keep ELEVATION in English")

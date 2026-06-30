@@ -373,20 +373,14 @@ class HudRenderer(val config: HudConfig) {
             
             val infoSize = 16f
             val isJa = config.language.lowercase().let { it == "ja" || it.startsWith("ja-") }
-            val line1 = if (isJa) {
-                "全体走行距離: $fitDistText   全体経過時間: $fitTimeText"
+            val line = if (isJa) {
+                "距離: $videoDistText   時間: $videoTimeText"
             } else {
-                "Total Distance: $fitDistText   Total Elapsed: $fitTimeText"
-            }
-            val line2 = if (isJa) {
-                "区間走行距離: $videoDistText   区間経過時間: $videoTimeText"
-            } else {
-                "Split Distance: $videoDistText   Split Elapsed: $videoTimeText"
+                "Distance: $videoDistText   Time: $videoTimeText"
             }
             
-            // Draw immediately below the elevation graph box in two lines
-            canvas.drawText(line1, cx, eGy + graphH + 16f, infoSize, "#ffffff", bold = true)
-            canvas.drawText(line2, cx, eGy + graphH + 34f, infoSize, "#ffffff", bold = true)
+            // Draw immediately below the elevation graph box in a single line
+            canvas.drawText(line, cx, eGy + graphH + 16f, infoSize, "#ffffff", bold = true)
         }
 
         // Draw Road Caption overlay
