@@ -182,6 +182,8 @@ fun VideoPreviewArea(
 
     val seekTo = { timeMs: Long ->
         val target = timeMs.coerceIn(0L, videoLengthMs)
+        currentRenderTimeMs = target
+        onCurrentTimeChange(target)
         val ratio = if (videoLengthMs > 0) target.toFloat() / videoLengthMs.toFloat() else 0f
         playerState.seekTo(ratio * 1000f)
     }
