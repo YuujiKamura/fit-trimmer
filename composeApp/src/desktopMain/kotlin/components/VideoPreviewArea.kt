@@ -660,7 +660,7 @@ fun VideoPreviewArea(
                             val scaleY = size.height / videoH.toFloat()
                             
                             val timeMs = currentRenderTimeMs
-                            val record = plateCache.records.minByOrNull { kotlin.math.abs(it.timeMs - timeMs) }
+                            val record = plateCache.findClosestRecord(timeMs)
                             
                             if (record != null && kotlin.math.abs(record.timeMs - timeMs) < 150) {
                                 for (box in record.boxes) {

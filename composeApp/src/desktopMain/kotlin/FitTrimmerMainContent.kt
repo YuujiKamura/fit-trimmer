@@ -2468,6 +2468,14 @@ fun FitTrimmerMainContent(
                                     )
                                 }
                             }
+                            viewModel.plateDetectionError?.let { err ->
+                                Text(
+                                    text = err,
+                                    fontSize = 9.sp,
+                                    color = Color(0xFFFF3B30),
+                                    modifier = Modifier.padding(start = 24.dp, top = 2.dp, bottom = 4.dp)
+                                )
+                            }
                             Spacer(Modifier.height(4.dp))
                             Text(utils.Localizer.get("power_trend_span", settings.language).uppercase(), color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 0.5.sp)
                             Row(
