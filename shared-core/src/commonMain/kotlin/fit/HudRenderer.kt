@@ -334,44 +334,15 @@ class HudRenderer(val config: HudConfig) {
             val startPoint = allPoints.first()
             val currentSeconds = currentRatio.toDouble()
             
-            // 1. Check if FIT file has valid distance data
-            val hasDistanceData = allPoints.any { it.distance > 0.0 }
+            // 1. TRIP (FIT Activity Total) - Directly read pre-computed fields
+            val rawFitDist = telemetry.distance
+            val fitElapsedSeconds = telemetry.elapsedSeconds
             
-            val rawFitDist: Double
-            val rawVideoDist: Double
-            val fitElapsedSeconds = maxOf(0.0, telemetry.timestamp - startPoint.timestamp).roundToInt()
+            // 2. CLIP (Video Trim Segment Total) - Calculate relative to video start
+            val videoStartFitTimestamp = telemetry.timestamp - currentSeconds
+            val videoStartPoint = allPoints.minByOrNull { kotlin.math.abs(it.timestamp - videoStartFitTimestamp) } ?: startPoint
+            val rawVideoDist = maxOf(0.0, telemetry.distance - videoStartPoint.distance)
             val videoElapsedSeconds = maxOf(0.0, currentSeconds).roundToInt()
-            
-            if (hasDistanceData) {
-                rawFitDist = maxOf(0.0, telemetry.distance - startPoint.distance)
-                val videoStartFitTimestamp = telemetry.timestamp - currentSeconds
-                val videoStartPoint = allPoints.minByOrNull { kotlin.math.abs(it.timestamp - videoStartFitTimestamp) } ?: startPoint
-                rawVideoDist = maxOf(0.0, telemetry.distance - videoStartPoint.distance)
-            } else {
-                // Fallback: Accumulate distance from speed (km/h)
-                val passedPoints = allPoints.filter { it.timestamp <= telemetry.timestamp }
-                var accumulatedFitDist = 0.0
-                for (i in 1 until passedPoints.size) {
-                    val dt = passedPoints[i].timestamp - passedPoints[i-1].timestamp
-                    if (dt in 0.0..5.0) {
-                        val avgSpeedMps = ((passedPoints[i].speed + passedPoints[i-1].speed) / 2.0) / 3.6
-                        accumulatedFitDist += avgSpeedMps * dt
-                    }
-                }
-                rawFitDist = accumulatedFitDist
-                
-                val videoStartFitTimestamp = telemetry.timestamp - currentSeconds
-                val videoPassedPoints = passedPoints.filter { it.timestamp >= videoStartFitTimestamp }
-                var accumulatedVideoDist = 0.0
-                for (i in 1 until videoPassedPoints.size) {
-                    val dt = videoPassedPoints[i].timestamp - videoPassedPoints[i-1].timestamp
-                    if (dt in 0.0..5.0) {
-                        val avgSpeedMps = ((videoPassedPoints[i].speed + videoPassedPoints[i-1].speed) / 2.0) / 3.6
-                        accumulatedVideoDist += avgSpeedMps * dt
-                    }
-                }
-                rawVideoDist = accumulatedVideoDist
-            }
             
             // Format Distance
             val fitDistText: String
