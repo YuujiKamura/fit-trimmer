@@ -3864,22 +3864,21 @@ fun InlineHelpTooltip(text: String) {
     var isHovered by remember { mutableStateOf(false) }
     Box(
         modifier = Modifier
-            .size(18.dp)
+            .height(18.dp)
             .zIndex(20f)
             .onPointerEvent(PointerEventType.Enter) { isHovered = true }
             .onPointerEvent(PointerEventType.Exit) { isHovered = false },
         contentAlignment = Alignment.Center
     ) {
-        Box(
+        Text(
+            "説明",
+            color = Color(0xFF007AFF),
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
             modifier = Modifier
-                .size(16.dp)
-                .clip(androidx.compose.foundation.shape.CircleShape)
-                .background(Color(0xFFF2F2F7))
-                .border(1.dp, Color(0xFFC7C7CC), androidx.compose.foundation.shape.CircleShape),
-            contentAlignment = Alignment.Center
-        ) {
-            Text("?", color = Color(0xFF636366), fontSize = 11.sp, fontWeight = FontWeight.Bold)
-        }
+                .background(Color.Transparent)
+                .padding(horizontal = 2.dp)
+        )
         if (isHovered) {
             Surface(
                 color = Color(0xF21C1C1E),
