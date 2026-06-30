@@ -754,24 +754,22 @@ fun startGui(args: Array<String>) = application {
     }
 
     suspend fun prepareSettingsForEncode(baseSettings: HudSettings): HudSettings {
-        if (!autoDetectRoadCaptionsOnEncode) return baseSettings
-        val clearedSettings = baseSettings.copy(roadCaptions = emptyList())
-        settings = clearedSettings
-        statusText = "路線名テロップをクリアして再検出中..."
-        val durationSec = videoLengthMs / 1000.0
-        val detected = detectRoadSegments(
-            points = telemetryPoints,
-            videoStartUtc = adjustedStartUtc.ifEmpty { videoStartUtc },
-            timeOffsetMillis = timeOffsetState.millis.toLong(),
-            videoDurationSeconds = durationSec,
-            onProgress = { progressText ->
+        return prepareRoadCaptionSettingsForEncode(
+            baseSettings = baseSettings,
+            autoDetectRoadCaptionsOnEncode = autoDetectRoadCaptionsOnEncode,
+            context = RoadCaptionDetectionContext(
+                points = telemetryPoints,
+                videoStartUtc = adjustedStartUtc.ifEmpty { videoStartUtc },
+                timeOffsetMillis = timeOffsetState.millis.toLong(),
+                videoDurationSeconds = videoLengthMs / 1000.0
+            ),
+            onStatus = { progressText ->
                 statusText = progressText
+            },
+            onSettingsPrepared = { preparedSettings ->
+                settings = preparedSettings
             }
         )
-        val updatedSettings = clearedSettings.copy(roadCaptions = detected)
-        settings = updatedSettings
-        statusText = "路線名テロップを ${detected.size} 件アサインしました"
-        return updatedSettings
     }
 
     val cp = remember {
@@ -1050,32 +1048,16 @@ fun startGui(args: Array<String>) = application {
                                 }
                             }
                             val ranges = viewModel.getSplitRanges()
+                            val initialPlan = buildEncodePlan(
+                                settings = settings,
+                                videoPath = targetVideoPath,
+                                outputDir = outputDir,
+                                moveOutputToSource = moveOutputToSource,
+                                ranges = ranges
+                            )
                             val destFiles = mutableListOf<File>()
-                            // 1. Determine all standard target output files
-                            val targetDestFiles = mutableListOf<File>()
-                            val resSuffix = when (settings.exportResolution) {
-                                "1080p" -> "_1080p"
-                                "2.7k" -> "_2.7k"
-                                else -> "_orig"
-                            }
-                            for (idx in ranges.indices) {
-                                val partSuffix = if (ranges.size > 1) "_part${idx + 1}" else ""
-                                val videoFile = File(targetVideoPath)
-                                val baseName = videoFile.name.replace(".mp4", "", ignoreCase = true).replace(".mov", "", ignoreCase = true)
-                                val suffix = baseName + partSuffix + "_KMP_HUD" + resSuffix + ".mp4"
-                                val file = if (moveOutputToSource) {
-                                    val sourceDir = videoFile.parentFile
-                                    if (sourceDir != null && sourceDir.exists()) {
-                                        File(sourceDir, suffix)
-                                    } else {
-                                        File(outputDir, suffix)
-                                    }
-                                } else {
-                                    File(outputDir, suffix)
-                                }
-                                targetDestFiles.add(file)
-                            }
-                            // 2. Check for existing outputs
+                            val targetDestFiles = initialPlan.segments.map { it.finalOutputFile }
+                            // Check for existing outputs
                             val existingOutputs = targetDestFiles.filter { it.exists() && it.length() > 0L }
                             var shouldResume = false
                             if (existingOutputs.isNotEmpty()) {
@@ -1142,12 +1124,21 @@ fun startGui(args: Array<String>) = application {
                                     isCanceled = false
                                     try {
                                         val encodeSettings = prepareSettingsForEncode(settings)
-                                        val totalDuration = ranges.sumOf { it.second - it.first }
+                                        val encodePlan = buildEncodePlan(
+                                            settings = encodeSettings,
+                                            videoPath = targetVideoPath,
+                                            outputDir = outputDir,
+                                            moveOutputToSource = moveOutputToSource,
+                                            ranges = ranges
+                                        )
+                                        val totalDuration = encodePlan.totalDurationSeconds
                                         var completedDuration = 0.0
                                         var hasCloudSyncMsg = false
-                                        for (idx in ranges.indices) {
+                                        for (segment in encodePlan.segments) {
                                             if (isCanceled) break
-                                            val (pStart, pEnd) = ranges[idx]
+                                            val idx = segment.index
+                                            val pStart = segment.startSeconds
+                                            val pEnd = segment.endSeconds
                                             val partDuration = pEnd - pStart
                                             val finalOutFile = destFiles.getOrNull(idx)
                                             if (shouldResume && finalOutFile != null && finalOutFile.exists() && finalOutFile.length() > 0L) {
@@ -1178,7 +1169,7 @@ fun startGui(args: Array<String>) = application {
                                                 cancelSupplier = { isCanceled },
                                                 showLivePreviewSupplier = { showLivePreview },
                                                 partIndex = idx,
-                                                numParts = ranges.size
+                                                numParts = encodePlan.segments.size
                                             )
                                             if (destFiles.isNotEmpty() && !isCanceled) {
                                                 val finalDestFile = destFiles.getOrNull(idx)
@@ -1267,6 +1258,14 @@ fun startGui(args: Array<String>) = application {
                                     viewModel.encodingSegmentEnd = trimStartSeconds + 5.0
                                     try {
                                         val encodeSettings = prepareSettingsForEncode(settings)
+                                        val samplePlan = buildEncodePlan(
+                                            settings = encodeSettings,
+                                            videoPath = targetVideoPath,
+                                            outputDir = outputDir,
+                                            moveOutputToSource = moveOutputToSource,
+                                            ranges = listOf(Pair(trimStartSeconds, trimStartSeconds + 5.0)),
+                                            isSample = true
+                                        )
                                         val outPath = fireEncode(encodeSettings, fitPath, videoPath, outputDir, adjustedStartUtc,
                                             onProgress = { prog, status ->
                                                 progress = prog
@@ -1285,17 +1284,14 @@ fun startGui(args: Array<String>) = application {
                                             cancelSupplier = { isCanceled },
                                             showLivePreviewSupplier = { showLivePreview }
                                         )
-                                        if (moveOutputToSource && !isCanceled) {
-                                            val sourceDir = File(targetVideoPath).parentFile
+                                        if (!isCanceled) {
                                             val outFile = File(outPath)
-                                            if (sourceDir != null && sourceDir.exists()) {
-                                                val destFile = File(sourceDir, outFile.name)
-                                                if (outFile.absolutePath != destFile.absolutePath) {
-                                                    statusText = "Moving file to source directory..."
-                                                    withContext(Dispatchers.IO) {
-                                                        java.nio.file.Files.copy(outFile.toPath(), destFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
-                                                        outFile.delete()
-                                                    }
+                                            val destFile = samplePlan.segments.first().finalOutputFile
+                                            if (outFile.absolutePath != destFile.absolutePath) {
+                                                statusText = "Moving file to destination..."
+                                                withContext(Dispatchers.IO) {
+                                                    java.nio.file.Files.copy(outFile.toPath(), destFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                                                    outFile.delete()
                                                 }
                                             }
                                         }
@@ -2615,14 +2611,18 @@ fun startGui(args: Array<String>) = application {
                                 modifier = Modifier.weight(1f).fillMaxWidth()
                             )
                             Spacer(Modifier.height(8.dp))
-                            val baseName = File(videoPath).name.replace(".mp4", "", ignoreCase = true).replace(".mov", "", ignoreCase = true)
                             val totalParts = viewModel.getSplitRanges().size
-                            val partSuffix = if (totalParts > 1) "_part*" else ""
-                            val suffix = if (isSampleEncoding) "${partSuffix}_TEST_HUD.mp4" else "${partSuffix}_KMP_HUD.mp4"
-                            val output = File(outputDir, baseName + suffix).absolutePath
+                            val outputFileName = buildEncodeOutputFileName(
+                                settings = settings,
+                                videoPath = videoPath,
+                                partIndex = if (totalParts > 1) 0 else -1,
+                                numParts = totalParts,
+                                isSample = isSampleEncoding
+                            ).replace("_part1_", "_part*_")
+                            val output = File(outputDir, outputFileName).absolutePath
                             val destInfo = if (moveOutputToSource) {
                                 val sourceDir = File(videoPath).parentFile
-                                val finalDest = if (sourceDir != null) File(sourceDir, baseName + suffix).absolutePath else output
+                                val finalDest = if (sourceDir != null) File(sourceDir, outputFileName).absolutePath else output
                                 "$output\n(Will be moved to: $finalDest)"
                             } else {
                                 output
@@ -2709,6 +2709,128 @@ fun startGui(args: Array<String>) = application {
 }
 var globalRendererProxy: fit.DynamicRendererProxy? = null
 
+data class EncodeSegmentPlan(
+    val index: Int,
+    val startSeconds: Double,
+    val endSeconds: Double,
+    val finalOutputFile: File
+)
+
+data class EncodePlan(
+    val settings: HudSettings,
+    val segments: List<EncodeSegmentPlan>
+) {
+    val totalDurationSeconds: Double
+        get() = segments.sumOf { it.endSeconds - it.startSeconds }
+}
+
+data class RoadCaptionDetectionContext(
+    val points: List<FitParser.TelemetryPoint>,
+    val videoStartUtc: String,
+    val timeOffsetMillis: Long,
+    val videoDurationSeconds: Double
+)
+
+fun buildEncodeRanges(
+    trimStartSeconds: Double,
+    trimEndSeconds: Double,
+    splitPoints: List<Double>
+): List<Pair<Double, Double>> {
+    val activeSplits = splitPoints.filter { it > trimStartSeconds && it < trimEndSeconds }.sorted()
+    val ranges = mutableListOf<Pair<Double, Double>>()
+    var currentStart = trimStartSeconds
+    for (split in activeSplits) {
+        ranges.add(Pair(currentStart, split))
+        currentStart = split
+    }
+    ranges.add(Pair(currentStart, trimEndSeconds))
+    return ranges
+}
+
+fun buildEncodeOutputFileName(
+    settings: HudSettings,
+    videoPath: String,
+    partIndex: Int = -1,
+    numParts: Int = 1,
+    isSample: Boolean = false
+): String {
+    val videoFile = File(videoPath)
+    val baseName = videoFile.name.replace(".mp4", "", ignoreCase = true).replace(".mov", "", ignoreCase = true)
+    val partSuffix = if (!isSample && partIndex >= 0 && numParts > 1) "_part${partIndex + 1}" else ""
+    val resSuffix = when (settings.exportResolution) {
+        "1080p" -> "_1080p"
+        "2.7k" -> "_2.7k"
+        else -> "_orig"
+    }
+    val suffix = if (isSample) {
+        "${partSuffix}_TEST_HUD.mp4"
+    } else {
+        "${partSuffix}_KMP_HUD${resSuffix}.mp4"
+    }
+    return baseName + suffix
+}
+
+fun buildEncodePlan(
+    settings: HudSettings,
+    videoPath: String,
+    outputDir: String,
+    moveOutputToSource: Boolean,
+    ranges: List<Pair<Double, Double>>,
+    isSample: Boolean = false
+): EncodePlan {
+    val videoFile = File(videoPath)
+    val segments = ranges.mapIndexed { idx, (start, end) ->
+        val outputFileName = buildEncodeOutputFileName(
+            settings = settings,
+            videoPath = videoPath,
+            partIndex = idx,
+            numParts = ranges.size,
+            isSample = isSample
+        )
+        val finalOutputFile = if (moveOutputToSource) {
+            val parent = videoFile.parentFile
+            if (parent != null && parent.exists() && parent.canWrite()) {
+                File(parent, outputFileName)
+            } else {
+                File(outputDir, outputFileName)
+            }
+        } else {
+            File(outputDir, outputFileName)
+        }
+        EncodeSegmentPlan(
+            index = idx,
+            startSeconds = start,
+            endSeconds = end,
+            finalOutputFile = finalOutputFile
+        )
+    }
+    return EncodePlan(settings = settings, segments = segments)
+}
+
+suspend fun prepareRoadCaptionSettingsForEncode(
+    baseSettings: HudSettings,
+    autoDetectRoadCaptionsOnEncode: Boolean,
+    context: RoadCaptionDetectionContext,
+    onStatus: (String) -> Unit,
+    onSettingsPrepared: (HudSettings) -> Unit = {}
+): HudSettings {
+    if (!autoDetectRoadCaptionsOnEncode) return baseSettings
+    val clearedSettings = baseSettings.copy(roadCaptions = emptyList())
+    onSettingsPrepared(clearedSettings)
+    onStatus("路線名テロップをクリアして再検出中...")
+    val detected = detectRoadSegments(
+        points = context.points,
+        videoStartUtc = context.videoStartUtc,
+        timeOffsetMillis = context.timeOffsetMillis,
+        videoDurationSeconds = context.videoDurationSeconds,
+        onProgress = onStatus
+    )
+    val updatedSettings = clearedSettings.copy(roadCaptions = detected)
+    onSettingsPrepared(updatedSettings)
+    onStatus("路線名テロップを ${detected.size} 件アサインしました")
+    return updatedSettings
+}
+
 suspend fun loadTelemetryPointsForRoadDetection(fitPath: String): List<FitParser.TelemetryPoint> = withContext(Dispatchers.IO) {
     if (fitPath.isEmpty()) return@withContext emptyList()
     try {
@@ -2745,63 +2867,49 @@ suspend fun runBatchJobs(
             job.progress = 0f
             onProgressUpdate()
             viewModel.batchStatusText = "[${jobIdx + 1}/${jobs.size}] ${File(job.videoPath).name} を処理中..."
-            var encodeSettings = job.settings
-            if (job.autoDetectRoadCaptionsOnEncode) {
-                viewModel.batchStatusText = "[${jobIdx + 1}/${jobs.size}] 路線名テロップをクリアして再検出中..."
-                encodeSettings = encodeSettings.copy(roadCaptions = emptyList())
+            val detectionContext = if (job.autoDetectRoadCaptionsOnEncode) {
                 val points = loadTelemetryPointsForRoadDetection(job.fitPath)
                 val videoDurationSeconds = (getVideoDuration(job.videoPath)?.toDouble()?.div(1000.0) ?: job.trimEndSeconds)
                     .coerceAtLeast(job.trimEndSeconds)
-                val detected = detectRoadSegments(
+                RoadCaptionDetectionContext(
                     points = points,
                     videoStartUtc = job.videoStartUtc,
                     timeOffsetMillis = job.timeOffsetMillis,
-                    videoDurationSeconds = videoDurationSeconds,
-                    onProgress = { progressText ->
-                        viewModel.batchStatusText = "[${jobIdx + 1}/${jobs.size}] $progressText"
-                    }
+                    videoDurationSeconds = videoDurationSeconds
                 )
-                encodeSettings = encodeSettings.copy(roadCaptions = detected)
-                viewModel.batchStatusText = "[${jobIdx + 1}/${jobs.size}] 路線名テロップを ${detected.size} 件アサインしました"
+            } else {
+                RoadCaptionDetectionContext(
+                    points = emptyList(),
+                    videoStartUtc = job.videoStartUtc,
+                    timeOffsetMillis = job.timeOffsetMillis,
+                    videoDurationSeconds = job.trimEndSeconds
+                )
             }
-            val totalSec = job.trimEndSeconds - job.trimStartSeconds
-            val ranges = mutableListOf<Pair<Double, Double>>()
-            val activeSplits = job.splitPoints.filter { it > job.trimStartSeconds && it < job.trimEndSeconds }.sorted()
-            var currentStart = job.trimStartSeconds
-            for (split in activeSplits) {
-                ranges.add(Pair(currentStart, split))
-                currentStart = split
-            }
-            ranges.add(Pair(currentStart, job.trimEndSeconds))
-            val destFiles = mutableListOf<File>()
-            for (idx in ranges.indices) {
-                val videoFile = File(job.videoPath)
-                val baseName = videoFile.name.replace(".mp4", "", ignoreCase = true).replace(".mov", "", ignoreCase = true)
-                val partSuffix = if (idx >= 0 && ranges.size > 1) "_part${idx + 1}" else ""
-                val resSuffix = when (encodeSettings.exportResolution) {
-                    "1080p" -> "_1080p"
-                    "2.7k" -> "_2.7k"
-                    else -> "_orig"
+            val encodeSettings = prepareRoadCaptionSettingsForEncode(
+                baseSettings = job.settings,
+                autoDetectRoadCaptionsOnEncode = job.autoDetectRoadCaptionsOnEncode,
+                context = detectionContext,
+                onStatus = { progressText ->
+                    viewModel.batchStatusText = "[${jobIdx + 1}/${jobs.size}] $progressText"
                 }
-                val suffix = "${partSuffix}_KMP_HUD${resSuffix}.mp4"
-                val targetDestFile = if (moveOutputToSource) {
-                    val parent = videoFile.parentFile
-                    if (parent != null && parent.exists() && parent.canWrite()) {
-                        File(parent, baseName + suffix)
-                    } else {
-                        File(outputDir, baseName + suffix)
-                    }
-                } else {
-                    File(outputDir, baseName + suffix)
-                }
-                destFiles.add(targetDestFile)
-            }
+            )
+            val ranges = buildEncodeRanges(job.trimStartSeconds, job.trimEndSeconds, job.splitPoints)
+            val encodePlan = buildEncodePlan(
+                settings = encodeSettings,
+                videoPath = job.videoPath,
+                outputDir = outputDir,
+                moveOutputToSource = moveOutputToSource,
+                ranges = ranges
+            )
+            val destFiles = encodePlan.segments.map { it.finalOutputFile }
             try {
-                val totalDuration = ranges.sumOf { it.second - it.first }
+                val totalDuration = encodePlan.totalDurationSeconds
                 var completedDuration = 0.0
-                for (idx in ranges.indices) {
+                for (segment in encodePlan.segments) {
                     if (viewModel.isCanceled) break
-                    val (pStart, pEnd) = ranges[idx]
+                    val idx = segment.index
+                    val pStart = segment.startSeconds
+                    val pEnd = segment.endSeconds
                     val partDuration = pEnd - pStart
                     viewModel.encodingSegmentStart = pStart
                     viewModel.encodingSegmentEnd = pEnd
@@ -2833,7 +2941,7 @@ suspend fun runBatchJobs(
                         cancelSupplier = { viewModel.isCanceled },
                         showLivePreviewSupplier = { showLivePreview },
                         partIndex = idx,
-                        numParts = ranges.size
+                        numParts = encodePlan.segments.size
                     )
                     if (destFiles.isNotEmpty() && !viewModel.isCanceled) {
                         val finalDestFile = destFiles.getOrNull(idx)
@@ -2915,20 +3023,16 @@ suspend fun fireEncode(
                 },
                 showLivePreviewSupplier = showLivePreviewSupplier
             )
-            val videoFile = File(video)
-            val baseName = videoFile.name.replace(".mp4", "", ignoreCase = true).replace(".mov", "", ignoreCase = true)
-            val partSuffix = if (partIndex >= 0 && numParts > 1) "_part${partIndex + 1}" else ""
-            val resSuffix = when (s.exportResolution) {
-                "1080p" -> "_1080p"
-                "2.7k" -> "_2.7k"
-                else -> "_orig"
-            }
-            val suffix = if (maxDurationSeconds > 0) {
-                "${partSuffix}_TEST_HUD.mp4"
-            } else {
-                "${partSuffix}_KMP_HUD${resSuffix}.mp4"
-            }
-            val output = File(outDir, baseName + suffix).absolutePath
+            val output = File(
+                outDir,
+                buildEncodeOutputFileName(
+                    settings = s,
+                    videoPath = video,
+                    partIndex = partIndex,
+                    numParts = numParts,
+                    isSample = maxDurationSeconds > 0
+                )
+            ).absolutePath
             encoder.encode(fit, video, output, startUtc, 
                 maxDurationSeconds = maxDurationSeconds,
                 trimStartSeconds = trimStartSeconds,
