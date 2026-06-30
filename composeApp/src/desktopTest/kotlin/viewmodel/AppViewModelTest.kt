@@ -588,4 +588,19 @@ class AppViewModelTest {
         )
         assertEquals(60, config.powerTrendSpanSeconds, "Default HudConfig power trend span should be 60 seconds (1 minute)")
     }
+
+    @Test
+    fun testHudSettingsDefaultLanguageIsEmpty() {
+        val settings = HudSettings()
+        assertEquals("", settings.language, "Default language should be empty string (meaning unset)")
+    }
+
+    @Test
+    fun testLocalizerWithFallback() {
+        val valueEn = utils.Localizer.get("app_title", java.util.Locale.ENGLISH)
+        assertEquals("FIT Telemetry Trimmer", valueEn)
+        
+        val valueJa = utils.Localizer.get("app_title", java.util.Locale.JAPANESE)
+        assertEquals("FIT テレメトリ トリマー", valueJa)
+    }
 }
