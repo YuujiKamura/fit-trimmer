@@ -23,6 +23,7 @@ class AppViewModelTest {
         // videoStartUtc is empty when no cache exists (populated by getVideoStartUtc() after load)
         assertEquals("", viewModel.videoStartUtc)
         assertEquals("original", viewModel.previewQualityMode)
+        assertFalse(viewModel.autoDetectRoadCaptionsOnEncode)
         assertEquals(0.0, viewModel.trimStartSeconds)
         assertEquals(0.0, viewModel.trimEndSeconds)
         assertTrue(viewModel.splitPoints.isEmpty())
@@ -57,6 +58,7 @@ class AppViewModelTest {
         assertTrue(viewModel.moveOutputToSource)
         assertFalse(viewModel.showLivePreview)
         assertEquals("original", viewModel.previewQualityMode)
+        assertFalse(viewModel.autoDetectRoadCaptionsOnEncode)
     }
 
     @Test
@@ -70,6 +72,19 @@ class AppViewModelTest {
         )
         val viewModel = AppViewModel(cache)
         assertEquals("auto", viewModel.previewQualityMode)
+    }
+
+    @Test
+    fun testAutoDetectRoadCaptionsOnEncodeRestoredFromCache() {
+        val cache = GuiPathCache(
+            fitPath = "/path/to/fit",
+            videoPath = "/path/to/video",
+            videoStartUtc = "2026-06-29T10:00:00Z",
+            settings = HudSettings(),
+            autoDetectRoadCaptionsOnEncode = true
+        )
+        val viewModel = AppViewModel(cache)
+        assertTrue(viewModel.autoDetectRoadCaptionsOnEncode)
     }
 
     @Test
@@ -336,6 +351,7 @@ class AppViewModelTest {
         viewModel.trimEndSeconds = 50.0
         viewModel.addSplitPoint(30.0)
         viewModel.settings = viewModel.settings.copy(exportResolution = "720p")
+        viewModel.autoDetectRoadCaptionsOnEncode = true
         
         // 2. Add to queue
         viewModel.addToBatchQueue()
@@ -348,6 +364,7 @@ class AppViewModelTest {
         assertEquals(50.0, job.trimEndSeconds)
         assertEquals(listOf(30.0), job.splitPoints)
         assertEquals("720p", job.settings.exportResolution)
+        assertTrue(job.autoDetectRoadCaptionsOnEncode)
         assertEquals(BatchJobStatus.WAITING, job.status)
         
         // 3. Add second job (after changing state)

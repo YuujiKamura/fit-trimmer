@@ -17,6 +17,7 @@ data class GuiPathCache(
     val moveOutputToSource: Boolean = false,
     val showLivePreview: Boolean = true,
     val previewQualityMode: String = "original",
+    val autoDetectRoadCaptionsOnEncode: Boolean = false,
     val trimStartSeconds: Double? = null,
     val trimEndSeconds: Double? = null,
     val splitPoints: List<Double>? = null,
