@@ -44,4 +44,26 @@ class PlateCacheManagerTest {
         assertEquals(r2, cache.findClosestRecord(220)) // closer to 200
         assertEquals(r3, cache.findClosestRecord(280)) // closer to 300
     }
+
+    @Test
+    fun testShouldBlurAtWithThresholds() {
+        val box = PlateBox(10, 10, 50, 50)
+        val r1 = PlateRecord(1000, listOf(box))
+        val cache = VideoPlatesCache("test.mp4", listOf(r1))
+
+        // Case 1: Blur is enabled, time difference is within 1500ms
+        // e.g., targetTimeMs = 2000 (diff = 1000ms < 1500ms) -> Should return the box
+        val result1 = cache.shouldBlurAt(2000, isBlurEnabled = true)
+        assertEquals(1, result1.size)
+        assertEquals(box, result1.first())
+
+        // Case 2: Blur is enabled, but time difference exceeds 1500ms
+        // e.g., targetTimeMs = 2600 (diff = 1600ms > 1500ms) -> Should return empty
+        val result2 = cache.shouldBlurAt(2600, isBlurEnabled = true)
+        assertEquals(0, result2.size)
+
+        // Case 3: Blur is disabled, even with exact time match -> Should return empty (toggled OFF behavior)
+        val result3 = cache.shouldBlurAt(1000, isBlurEnabled = false)
+        assertEquals(0, result3.size)
+    }
 }

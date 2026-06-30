@@ -31,6 +31,13 @@ import kotlinx.coroutines.delay
 import java.io.File
 import fit.*
 import utils.*
+import androidx.compose.ui.semantics.SemanticsPropertyKey
+import androidx.compose.ui.semantics.SemanticsPropertyReceiver
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.platform.testTag
+
+val BlurredRectsKey = SemanticsPropertyKey<List<PlateBox>>("BlurredRects")
+var SemanticsPropertyReceiver.blurredRects by BlurredRectsKey
 
 class ComposeHudCanvas(
     private val drawScope: androidx.compose.ui.graphics.drawscope.DrawScope,
@@ -646,12 +653,17 @@ fun VideoPreviewArea(
                                     togglePlay()
                                 }
                             }
+                            .testTag("VideoPreviewAreaCanvas")
+                            .semantics {
+                                blurredRects = plateCache?.shouldBlurAt(currentRenderTimeMs, settings.blurLicensePlates) ?: emptyList()
+                            }
                     ) {
                         val scale = size.width / 1920f
                         val currentSeconds = currentRenderTimeMs.toFloat() / 1000f
 
                         // License plate mask overlay
-                        if (settings.blurLicensePlates && plateCache != null) {
+                        val blurBoxes = plateCache?.shouldBlurAt(currentRenderTimeMs, settings.blurLicensePlates) ?: emptyList()
+                        if (blurBoxes.isNotEmpty()) {
                             val wState = playerState as? WindowsVideoPlayerState
                             val videoW = wState?.videoWidth?.takeIf { it > 0 } ?: 1920
                             val videoH = wState?.videoHeight?.takeIf { it > 0 } ?: 1080
@@ -659,34 +671,29 @@ fun VideoPreviewArea(
                             val scaleX = size.width / videoW.toFloat()
                             val scaleY = size.height / videoH.toFloat()
                             
-                            val timeMs = currentRenderTimeMs
-                            val record = plateCache.findClosestRecord(timeMs)
-                            
-                            if (record != null && kotlin.math.abs(record.timeMs - timeMs) < 1500) {
-                                for (box in record.boxes) {
-                                    val x1 = box.x1 * scaleX
-                                    val y1 = box.y1 * scaleY
-                                    val x2 = box.x2 * scaleX
-                                    val y2 = box.y2 * scaleY
-                                    
-                                    val w = x2 - x1
-                                    val h = y2 - y1
-                                    
-                                    if (w > 0 && h > 0) {
-                                        // Draw a solid dark-gray privacy block
-                                        drawRect(
-                                            color = Color(0xFF1C1C1E),
-                                            topLeft = Offset(x1, y1),
-                                            size = Size(w, h)
-                                        )
-                                        // Draw border
-                                        drawRect(
-                                            color = Color(0xFFE5E5EA),
-                                            topLeft = Offset(x1, y1),
-                                            size = Size(w, h),
-                                            style = Stroke(width = 1f)
-                                        )
-                                    }
+                            for (box in blurBoxes) {
+                                val x1 = box.x1 * scaleX
+                                val y1 = box.y1 * scaleY
+                                val x2 = box.x2 * scaleX
+                                val y2 = box.y2 * scaleY
+                                
+                                val w = x2 - x1
+                                val h = y2 - y1
+                                
+                                if (w > 0 && h > 0) {
+                                    // Draw a solid dark-gray privacy block
+                                    drawRect(
+                                        color = Color(0xFF1C1C1E),
+                                        topLeft = Offset(x1, y1),
+                                        size = Size(w, h)
+                                    )
+                                    // Draw border
+                                    drawRect(
+                                        color = Color(0xFFE5E5EA),
+                                        topLeft = Offset(x1, y1),
+                                        size = Size(w, h),
+                                        style = Stroke(width = 1f)
+                                    )
                                 }
                             }
                         }
