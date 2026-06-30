@@ -373,7 +373,7 @@ fun VideoPreviewArea(
             try {
                 val startTime = java.time.Instant.parse(adjustedStartUtc)
                 val fitEpoch = java.time.Instant.parse("1989-12-31T00:00:00Z").epochSecond
-                val elapsedSeconds = videoCurrentTimeMs / 1000.0
+                val elapsedSeconds = currentRenderTimeMs / 1000.0
                 val currentUtc = startTime.toEpochMilli() / 1000.0 + elapsedSeconds
                 val currentFitTs = currentUtc - fitEpoch
                 
