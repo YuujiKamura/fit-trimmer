@@ -2403,6 +2403,32 @@ fun FitTrimmerMainContent(
                                     fontWeight = FontWeight.Medium
                                 )
                             }
+                            Row(
+                                modifier = Modifier.fillMaxWidth().clickable(enabled = !isEncoding) {
+                                    if (!isEncoding) {
+                                        settings = settings.copy(enableRoadDetection = !settings.enableRoadDetection)
+                                    }
+                                },
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Checkbox(
+                                    checked = settings.enableRoadDetection,
+                                    onCheckedChange = { checked ->
+                                        if (!isEncoding) {
+                                            settings = settings.copy(enableRoadDetection = checked)
+                                        }
+                                    },
+                                    enabled = !isEncoding,
+                                    colors = CheckboxDefaults.colors(checkedColor = Color(0xFF007AFF))
+                                )
+                                Text(
+                                    text = utils.Localizer.get("enable_road_detection", settings.language),
+                                    fontSize = 11.sp,
+                                    color = Color(0xFF1C1C1E),
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
                             Spacer(Modifier.height(4.dp))
                             Text(utils.Localizer.get("power_trend_span", settings.language).uppercase(), color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 0.5.sp)
                             Row(

@@ -360,6 +360,7 @@ suspend fun prepareRoadCaptionSettingsForEncode(
         timeOffsetMillis = context.timeOffsetMillis,
         videoDurationSeconds = context.videoDurationSeconds,
         language = baseSettings.language,
+        enableRoadDetection = baseSettings.enableRoadDetection,
         onProgress = onStatus
     )
     val updatedSettings = clearedSettings.copy(roadCaptions = detected)
@@ -629,8 +630,10 @@ suspend fun detectRoadSegments(
     timeOffsetMillis: Long,
     videoDurationSeconds: Double,
     language: String = "",
+    enableRoadDetection: Boolean = true,
     onProgress: (String) -> Unit
 ): List<RoadCaptionSegment> {
+    if (!enableRoadDetection) return emptyList()
     if (points.isEmpty() || videoStartUtc.isEmpty()) return emptyList()
     val fitEpoch = java.time.Instant.parse("1989-12-31T00:00:00Z").epochSecond
     val videoStartInstant = try {
