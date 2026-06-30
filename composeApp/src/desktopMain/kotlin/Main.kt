@@ -1341,7 +1341,7 @@ fun startGui(args: Array<String>) = application {
                             }
                         }
                     }
-                    // 1. ENCODER SETUP Card
+                    // 1. Source file selection
                     Card(
                         backgroundColor = Color.White,
                         shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
@@ -1353,12 +1353,12 @@ fun startGui(args: Array<String>) = application {
                             modifier = Modifier.padding(12.dp),
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Text("ENCODER SETUP", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 0.5.sp)
+                            Text("ソースファイル", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 0.5.sp)
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 OutlinedTextField(
                                     value = fitPath,
                                     onValueChange = { fitPath = it },
-                                    label = { Text("FIT File Path", color = Color(0xFF636366), fontSize = 10.sp) },
+                                    label = { Text("FIT / GPSログ", color = Color(0xFF636366), fontSize = 10.sp) },
                                     modifier = Modifier.weight(1f),
                                     textStyle = TextStyle(color = Color(0xFF1C1C1E), fontSize = 11.sp),
                                     singleLine = true,
@@ -1373,7 +1373,7 @@ fun startGui(args: Array<String>) = application {
                                 )
                                 Button(
                                     onClick = {
-                                        val path = pickFile("Select FIT File", listOf("*.fit"))
+                                        val path = pickFile("ソースファイルの選択 - FIT / GPSログ", listOf("*.fit"))
                                         if (path != null) fitPath = path
                                     },
                                     enabled = !isEncoding,
@@ -1383,13 +1383,13 @@ fun startGui(args: Array<String>) = application {
                                         disabledBackgroundColor = Color(0xFFF2F2F7)
                                     ),
                                     shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
-                                ) { Text("...", color = Color(0xFF1C1C1E), fontSize = 11.sp) }
+                                ) { Text("選択", color = Color(0xFF1C1C1E), fontSize = 11.sp, fontWeight = FontWeight.Bold) }
                             }
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 OutlinedTextField(
                                     value = videoPath,
                                     onValueChange = { videoPath = it },
-                                    label = { Text("MP4 File Path", color = Color(0xFF636366), fontSize = 10.sp) },
+                                    label = { Text("動画ファイル", color = Color(0xFF636366), fontSize = 10.sp) },
                                     modifier = Modifier.weight(1f),
                                     textStyle = TextStyle(color = Color(0xFF1C1C1E), fontSize = 11.sp),
                                     singleLine = true,
@@ -1404,7 +1404,7 @@ fun startGui(args: Array<String>) = application {
                                 )
                                 Button(
                                     onClick = {
-                                        val path = pickFile("Select MP4 File", listOf("*.mp4", "*.mov"))
+                                        val path = pickFile("ソースファイルの選択 - 動画ファイル", listOf("*.mp4", "*.mov"))
                                         if (path != null) videoPath = path
                                     },
                                     enabled = !isEncoding,
@@ -1414,13 +1414,125 @@ fun startGui(args: Array<String>) = application {
                                         disabledBackgroundColor = Color(0xFFF2F2F7)
                                     ),
                                     shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
-                                ) { Text("...", color = Color(0xFF1C1C1E), fontSize = 11.sp) }
+                                ) { Text("選択", color = Color(0xFF1C1C1E), fontSize = 11.sp, fontWeight = FontWeight.Bold) }
                             }
+                        }
+                    }
+                    // 2. Timeline alignment
+                    TimeAlignmentCard(
+                        state = timeOffsetState,
+                        isEncoding = isEncoding,
+                        videoCurrentTimeMs = effectiveVideoTimeMs,
+                        videoStartUtc = videoStartUtc,
+                        onVideoStartUtcChange = { videoStartUtc = it },
+                        videoPath = videoPath,
+                        telemetryPoints = telemetryPoints,
+                        isAligning = viewModel.isAligningTelemetry,
+                        onAlignTelemetryClick = {
+                            scope.launch {
+                                viewModel.isAligningTelemetry = true
+                                try {
+                                    val originalInstant = try { java.time.Instant.parse(videoStartUtc) } catch(e: Exception) { null }
+                                    val alignedUtc = TelemetryAligner.alignVideoWithTelemetry(videoPath, telemetryPoints, videoStartUtc)
+                                    if (alignedUtc != null) {
+                                        val alignedInstant = try { java.time.Instant.parse(alignedUtc) } catch(e: Exception) { null }
+                                        if (originalInstant != null && alignedInstant != null) {
+                                            val diffMs = alignedInstant.toEpochMilli() - originalInstant.toEpochMilli()
+                                            val diffSec = diffMs / 1000.0
+                                            statusText = "IMU Sync: Adjusted offset by %.3f seconds".format(java.util.Locale.US, diffSec)
+                                            timeOffsetState.update(diffMs.toInt())
+                                        } else {
+                                            statusText = "IMU Sync Successful"
+                                        }
+                                    } else {
+                                        statusText = "IMU Sync failed (no correlation found)"
+                                    }
+                                } finally {
+                                    viewModel.isAligningTelemetry = false
+                                }
+                            }
+                        }
+                    )
+                    // 3. Primary encode actions
+                    if (!isEncoding) {
+                        Card(
+                            backgroundColor = Color.White,
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, Color(0xFFE5E5EA)),
+                            elevation = 1.dp,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text("エンコード", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 0.5.sp)
+                                Button(
+                                    onClick = onNativeEncodeClick,
+                                    modifier = Modifier.fillMaxWidth().height(40.dp),
+                                    enabled = hasEnoughSpace && fitPath.isNotEmpty() && videoPath.isNotEmpty(),
+                                    colors = ButtonDefaults.buttonColors(
+                                        backgroundColor = if (hasEnoughSpace) Color(0xFF007AFF) else Color(0xFFD1D1D6),
+                                        disabledBackgroundColor = Color(0xFFE5E5EA)
+                                    ),
+                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                                ) {
+                                    Text(if (hasEnoughSpace) "エンコード開始" else "ディスク容量不足", color = if (hasEnoughSpace) Color.White else Color(0xFF8E8E93), fontWeight = FontWeight.Bold)
+                                }
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                                    val isSampleEnabled = hasEnoughSpaceForSample && fitPath.isNotEmpty() && videoPath.isNotEmpty()
+                                    OutlinedButton(
+                                        onClick = onSampleEncodeClick,
+                                        modifier = Modifier.weight(1f).height(36.dp),
+                                        enabled = isSampleEnabled,
+                                        colors = ButtonDefaults.outlinedButtonColors(
+                                            contentColor = Color(0xFF007AFF),
+                                            disabledContentColor = Color(0xFF8E8E93)
+                                        ),
+                                        border = BorderStroke(1.5.dp, if (isSampleEnabled) Color(0xFF007AFF) else Color(0xFFE5E5EA)),
+                                        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                                    ) {
+                                        Text("5秒サンプル", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                    val isQueueEnabled = fitPath.isNotEmpty() && videoPath.isNotEmpty()
+                                    OutlinedButton(
+                                        onClick = {
+                                            viewModel.addToBatchQueue()
+                                            statusText = "ジョブをキューに追加しました"
+                                        },
+                                        modifier = Modifier.weight(1f).height(36.dp),
+                                        enabled = isQueueEnabled,
+                                        colors = ButtonDefaults.outlinedButtonColors(
+                                            contentColor = Color(0xFF34C759),
+                                            disabledContentColor = Color(0xFF8E8E93)
+                                        ),
+                                        border = BorderStroke(1.5.dp, if (isQueueEnabled) Color(0xFF34C759) else Color(0xFFE5E5EA)),
+                                        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                                    ) {
+                                        Text("バッチに追加", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    // 4. Output and less frequently changed options
+                    Card(
+                        backgroundColor = Color.White,
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, Color(0xFFE5E5EA)),
+                        elevation = 1.dp,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Text("出力設定", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 0.5.sp)
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 OutlinedTextField(
                                     value = outputDir,
                                     onValueChange = { outputDir = it },
-                                    label = { Text("Output Directory", color = Color(0xFF636366), fontSize = 10.sp) },
+                                    label = { Text("出力先フォルダ", color = Color(0xFF636366), fontSize = 10.sp) },
                                     modifier = Modifier.weight(1f),
                                     textStyle = TextStyle(color = Color(0xFF1C1C1E), fontSize = 11.sp),
                                     singleLine = true,
@@ -1435,7 +1547,7 @@ fun startGui(args: Array<String>) = application {
                                 )
                                 Button(
                                     onClick = {
-                                        val path = pickFolder("Select Output Directory")
+                                        val path = pickFolder("出力先フォルダの選択")
                                         if (path != null) outputDir = path
                                     },
                                     enabled = !isEncoding,
@@ -1445,7 +1557,7 @@ fun startGui(args: Array<String>) = application {
                                         disabledBackgroundColor = Color(0xFFF2F2F7)
                                     ),
                                     shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
-                                ) { Text("...", color = Color(0xFF1C1C1E), fontSize = 11.sp) }
+                                ) { Text("選択", color = Color(0xFF1C1C1E), fontSize = 11.sp, fontWeight = FontWeight.Bold) }
                             }
                               Row(
                                   modifier = Modifier
@@ -1456,10 +1568,10 @@ fun startGui(args: Array<String>) = application {
                                       .padding(horizontal = 10.dp, vertical = 8.dp),
                                   horizontalArrangement = Arrangement.SpaceBetween,
                                   verticalAlignment = Alignment.CenterVertically
-                              ) {
-                                  Column(modifier = Modifier.weight(1f)) {
-                                      Text("Move Output to Source", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Medium, fontSize = 11.sp)
-                                      Text("Saves finished video in the original folder", color = Color(0xFF636366), fontSize = 9.sp)
+                               ) {
+                                   Column(modifier = Modifier.weight(1f)) {
+                                       Text("元動画フォルダへ保存", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Medium, fontSize = 11.sp)
+                                       Text("完成した動画を元ファイルと同じフォルダへ移動します", color = Color(0xFF636366), fontSize = 9.sp)
                                   }
                                   Switch(
                                       checked = moveOutputToSource,
@@ -1487,10 +1599,10 @@ fun startGui(args: Array<String>) = application {
                                       .padding(horizontal = 10.dp, vertical = 8.dp),
                                   horizontalArrangement = Arrangement.SpaceBetween,
                                   verticalAlignment = Alignment.CenterVertically
-                              ) {
-                                  Column(modifier = Modifier.weight(1f)) {
-                                      Text("Show Live Preview", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Medium, fontSize = 11.sp)
-                                      Text("Disable for slightly faster encoding", color = Color(0xFF636366), fontSize = 9.sp)
+                               ) {
+                                   Column(modifier = Modifier.weight(1f)) {
+                                       Text("ライブプレビュー", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Medium, fontSize = 11.sp)
+                                       Text("オフにするとエンコードが少し軽くなります", color = Color(0xFF636366), fontSize = 9.sp)
                                   }
                                   Switch(
                                       checked = showLivePreview,
@@ -1518,9 +1630,9 @@ fun startGui(args: Array<String>) = application {
                                       .padding(horizontal = 10.dp, vertical = 8.dp),
                                   verticalArrangement = Arrangement.spacedBy(6.dp)
                               ) {
-                                  Column {
-                                      Text("Output Resolution", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Medium, fontSize = 11.sp)
-                                      Text("Downscales resolution to save space & speed up", color = Color(0xFF636366), fontSize = 9.sp)
+                                   Column {
+                                       Text("出力解像度", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Medium, fontSize = 11.sp)
+                                       Text("容量と処理時間を抑える場合は解像度を下げます", color = Color(0xFF636366), fontSize = 9.sp)
                                   }
                                   Row(
                                       modifier = Modifier.fillMaxWidth().height(28.dp),
@@ -1795,6 +1907,7 @@ fun startGui(args: Array<String>) = application {
                                   }
                               }
                               Spacer(modifier = Modifier.height(6.dp))
+                              Text("その他", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 0.5.sp)
                               // Software Update Section
                               Column(
                                   modifier = Modifier
@@ -1952,41 +2065,6 @@ fun startGui(args: Array<String>) = application {
                               }
                         }
                     }
-                    // TIME ALIGNMENT Card
-                    TimeAlignmentCard(
-                        state = timeOffsetState,
-                        isEncoding = isEncoding,
-                        videoCurrentTimeMs = effectiveVideoTimeMs,
-                        videoStartUtc = videoStartUtc,
-                        onVideoStartUtcChange = { videoStartUtc = it },
-                        videoPath = videoPath,
-                        telemetryPoints = telemetryPoints,
-                        isAligning = viewModel.isAligningTelemetry,
-                        onAlignTelemetryClick = {
-                            scope.launch {
-                                viewModel.isAligningTelemetry = true
-                                try {
-                                    val originalInstant = try { java.time.Instant.parse(videoStartUtc) } catch(e: Exception) { null }
-                                    val alignedUtc = TelemetryAligner.alignVideoWithTelemetry(videoPath, telemetryPoints, videoStartUtc)
-                                    if (alignedUtc != null) {
-                                        val alignedInstant = try { java.time.Instant.parse(alignedUtc) } catch(e: Exception) { null }
-                                        if (originalInstant != null && alignedInstant != null) {
-                                            val diffMs = alignedInstant.toEpochMilli() - originalInstant.toEpochMilli()
-                                            val diffSec = diffMs / 1000.0
-                                            statusText = "IMU Sync: Adjusted offset by %.3f seconds".format(java.util.Locale.US, diffSec)
-                                            timeOffsetState.update(diffMs.toInt())
-                                        } else {
-                                            statusText = "IMU Sync Successful"
-                                        }
-                                    } else {
-                                        statusText = "IMU Sync failed (no correlation found)"
-                                    }
-                                } finally {
-                                    viewModel.isAligningTelemetry = false
-                                }
-                            }
-                        }
-                    )
                     // VIDEO TRIM RANGE Card
                     if (videoLengthMs > 0) {
                         VideoTrimCard(
@@ -2172,52 +2250,6 @@ fun startGui(args: Array<String>) = application {
                                     }
                                 }
                             }
-                        }
-                    } else {
-                        Button(
-                            onClick = onNativeEncodeClick,
-                            modifier = Modifier.fillMaxWidth().height(44.dp),
-                            enabled = hasEnoughSpace && fitPath.isNotEmpty() && videoPath.isNotEmpty(),
-                            colors = ButtonDefaults.buttonColors(
-                                backgroundColor = if (hasEnoughSpace) Color(0xFF007AFF) else Color(0xFFD1D1D6),
-                                disabledBackgroundColor = Color(0xFFE5E5EA)
-                            ),
-                            shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
-                        ) {
-                            Text(if (hasEnoughSpace) "RUN NATIVE ENCODE" else "INSUFFICIENT DISK SPACE", color = if (hasEnoughSpace) Color.White else Color(0xFF8E8E93), fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
-                        }
-                        Spacer(modifier = Modifier.height(4.dp))
-                        val isSampleEnabled = hasEnoughSpaceForSample && fitPath.isNotEmpty() && videoPath.isNotEmpty()
-                        OutlinedButton(
-                            onClick = onSampleEncodeClick,
-                            modifier = Modifier.fillMaxWidth().height(44.dp),
-                            enabled = isSampleEnabled,
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                contentColor = Color(0xFF007AFF),
-                                disabledContentColor = Color(0xFF8E8E93)
-                            ),
-                            border = BorderStroke(1.5.dp, if (isSampleEnabled) Color(0xFF007AFF) else Color(0xFFE5E5EA)),
-                            shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
-                        ) {
-                            Text("RUN 5s SAMPLE", fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
-                        }
-                        Spacer(modifier = Modifier.height(4.dp))
-                        val isQueueEnabled = fitPath.isNotEmpty() && videoPath.isNotEmpty()
-                        OutlinedButton(
-                            onClick = {
-                                viewModel.addToBatchQueue()
-                                statusText = "ジョブをキューに追加しました"
-                            },
-                            modifier = Modifier.fillMaxWidth().height(44.dp),
-                            enabled = isQueueEnabled,
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                contentColor = Color(0xFF34C759),
-                                disabledContentColor = Color(0xFF8E8E93)
-                            ),
-                            border = BorderStroke(1.5.dp, if (isQueueEnabled) Color(0xFF34C759) else Color(0xFFE5E5EA)),
-                            shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
-                        ) {
-                            Text("ADD TO BATCH QUEUE", fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
                         }
                     }
                     val batchQueue = viewModel.batchQueue
