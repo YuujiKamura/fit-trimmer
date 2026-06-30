@@ -104,6 +104,7 @@ fun FitTrimmerMainContent(
     val playerState = rememberVideoPlayerState()
     var composeWindow: java.awt.Window? by remember { mutableStateOf(null) }
     var ignoreNextStartUtcClear by remember { mutableStateOf(false) }
+    var showLanguageSetupDialog by remember { mutableStateOf(settings.language.isEmpty()) }
     // Dynamic Hud Proxy & Hot Reload State
     val hudConfig = remember(settings) {
         fit.HudConfig(
@@ -2323,7 +2324,7 @@ fun FitTrimmerMainContent(
                             modifier = Modifier.padding(12.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Text("HUD LAYOUT CONFIG", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 0.5.sp)
+                            Text(utils.Localizer.get("hud_layout_config", settings.language).uppercase(), color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 0.5.sp)
                             ControlSlider("VAL SIZE", settings.valSize, 10f, 150f, enabled = !isEncoding) { settings = settings.copy(valSize = it) }
                             ControlSlider("TIGHTNESS", settings.tightness, -10f, 40f, enabled = !isEncoding) { settings = settings.copy(tightness = it) }
                             ControlSlider("SPACING", settings.spacing, 0f, 100f, enabled = !isEncoding) { settings = settings.copy(spacing = it) }
@@ -2332,7 +2333,49 @@ fun FitTrimmerMainContent(
                             ControlSlider("GRAPH H", settings.graphH, 20f, 300f, enabled = !isEncoding) { settings = settings.copy(graphH = it) }
                             ControlSlider("GRAPH W", settings.graphW, 50f, 800f, enabled = !isEncoding) { settings = settings.copy(graphW = it) }
                             Spacer(Modifier.height(4.dp))
-                            Text("POWER TREND SPAN", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 0.5.sp)
+                            Text(utils.Localizer.get("language", settings.language).uppercase(), color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 0.5.sp)
+                            var langDropdownExpanded by remember { mutableStateOf(false) }
+                            Box(modifier = Modifier.fillMaxWidth()) {
+                                val currentLang = utils.Localizer.supportedLanguages.find { it.code == settings.language } ?: utils.Localizer.supportedLanguages.first()
+                                OutlinedButton(
+                                    onClick = { if (!isEncoding) langDropdownExpanded = true },
+                                    modifier = Modifier.fillMaxWidth().height(36.dp),
+                                    border = BorderStroke(1.dp, Color(0xFFE5E5EA)),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF1C1C1E))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("${currentLang.localName} (${currentLang.englishName})", fontSize = 11.sp)
+                                        Text("▼", fontSize = 8.sp, color = Color.Gray)
+                                    }
+                                }
+                                DropdownMenu(
+                                    expanded = langDropdownExpanded,
+                                    onDismissRequest = { langDropdownExpanded = false }
+                                ) {
+                                    utils.Localizer.supportedLanguages.forEach { lang ->
+                                        DropdownMenuItem(
+                                            onClick = {
+                                                settings = settings.copy(language = lang.code)
+                                                langDropdownExpanded = false
+                                            }
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.width(200.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Text(lang.localName, fontSize = 12.sp, color = Color(0xFF1C1C1E))
+                                                Text(lang.englishName, fontSize = 10.sp, color = Color.Gray)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.height(4.dp))
+                            Text(utils.Localizer.get("power_trend_span", settings.language).uppercase(), color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 0.5.sp)
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                                 modifier = Modifier.fillMaxWidth()
@@ -2363,7 +2406,7 @@ fun FitTrimmerMainContent(
                                 }
                             }
                             Spacer(Modifier.height(4.dp))
-                            Text("ROAD CAPTION POSITION", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 0.5.sp)
+                            Text(utils.Localizer.get("road_caption_position", settings.language).uppercase(), color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 0.5.sp)
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 modifier = Modifier.fillMaxWidth()
@@ -2559,6 +2602,77 @@ fun FitTrimmerMainContent(
                         videoCurrentTimeMs = targetMs
                     }
                 )
+            }
+            
+            if (showLanguageSetupDialog) {
+                Box(
+                    modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Card(
+                        modifier = Modifier.width(420.dp).padding(16.dp),
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+                        elevation = 8.dp
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            Text(
+                                text = utils.Localizer.get("app_title", "en"),
+                                style = MaterialTheme.typography.h6,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF007AFF)
+                            )
+                            Text(
+                                text = utils.Localizer.get("welcome_message", "en"),
+                                fontSize = 13.sp,
+                                color = Color.Gray,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                            
+                            var selectedLangCode by remember { mutableStateOf("en") }
+                            
+                            Box(modifier = Modifier.height(200.dp).border(1.dp, Color(0xFFE5E5EA), androidx.compose.foundation.shape.RoundedCornerShape(8.dp)).padding(4.dp)) {
+                                val scrollState = rememberScrollState()
+                                Column(
+                                    modifier = Modifier.verticalScroll(scrollState).padding(end = 12.dp)
+                                ) {
+                                    utils.Localizer.supportedLanguages.forEach { lang ->
+                                        val isSelected = selectedLangCode == lang.code
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable { selectedLangCode = lang.code }
+                                                .background(if (isSelected) Color(0xFFE5F1FF) else Color.Transparent)
+                                                .padding(vertical = 8.dp, horizontal = 12.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text(lang.localName, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal, color = Color(0xFF1C1C1E))
+                                            Text(lang.englishName, fontSize = 11.sp, color = Color.Gray)
+                                        }
+                                    }
+                                }
+                                VerticalScrollbar(
+                                    modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+                                    adapter = rememberScrollbarAdapter(scrollState)
+                                )
+                            }
+                            
+                            Button(
+                                onClick = {
+                                    settings = settings.copy(language = selectedLangCode)
+                                    showLanguageSetupDialog = false
+                                },
+                                modifier = Modifier.fillMaxWidth().height(40.dp),
+                                colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF007AFF), contentColor = Color.White)
+                            ) {
+                                Text(utils.Localizer.get("confirm", selectedLangCode))
+                            }
+                        }
+                    }
+                }
             }
         }
 }
