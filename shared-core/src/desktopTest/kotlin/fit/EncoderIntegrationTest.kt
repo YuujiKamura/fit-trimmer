@@ -3,6 +3,7 @@ package fit
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertTrue
+import kotlin.test.assertEquals
 import crc.Crc16
 
 class EncoderIntegrationTest {
@@ -480,6 +481,50 @@ class EncoderIntegrationTest {
         try { inputFit.delete() } catch (e: Exception) {}
         try { dummyMp4.delete() } catch (e: Exception) {}
         try { tempDir.deleteRecursively() } catch (e: Exception) {}
+    }
+
+    @Test
+    fun testFindTelemetryLerpInterpolation() {
+        val p0 = fit.FitParser.TelemetryPoint(
+            timestamp = 100.0,
+            speed = 10.0,
+            power = 100.0,
+            cadence = 80.0,
+            heartRate = 120.0,
+            elevation = 50.0,
+            grade = 2.0,
+            lat = 35.0,
+            lon = 135.0,
+            distance = 100.0,
+            elapsedSeconds = 10
+        )
+        val p1 = fit.FitParser.TelemetryPoint(
+            timestamp = 200.0,
+            speed = 20.0,
+            power = 200.0,
+            cadence = 90.0,
+            heartRate = 140.0,
+            elevation = 60.0,
+            grade = 4.0,
+            lat = 36.0,
+            lon = 136.0,
+            distance = 300.0,
+            elapsedSeconds = 30
+        )
+        val telemetry = listOf(p0, p1)
+        val lerped = findTelemetryLerp(telemetry, 150.0)
+
+        assertEquals(150.0, lerped.timestamp, 0.001)
+        assertEquals(15.0, lerped.speed, 0.001)
+        assertEquals(150.0, lerped.power, 0.001)
+        assertEquals(85.0, lerped.cadence, 0.001)
+        assertEquals(130.0, lerped.heartRate, 0.001)
+        assertEquals(55.0, lerped.elevation, 0.001)
+        assertEquals(3.0, lerped.grade, 0.001)
+        assertEquals(35.5, lerped.lat, 0.001)
+        assertEquals(135.5, lerped.lon, 0.001)
+        assertEquals(200.0, lerped.distance, 0.001)
+        assertEquals(20, lerped.elapsedSeconds)
     }
 }
 

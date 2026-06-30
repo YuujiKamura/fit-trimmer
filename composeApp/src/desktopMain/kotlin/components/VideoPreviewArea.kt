@@ -403,7 +403,9 @@ fun VideoPreviewArea(
                             elevation = lerp(p0.elevation, p1.elevation),
                             grade = lerp(p0.grade, p1.grade),
                             lat = lerp(p0.lat, p1.lat),
-                            lon = lerp(p0.lon, p1.lon)
+                            lon = lerp(p0.lon, p1.lon),
+                            distance = lerp(p0.distance, p1.distance),
+                            elapsedSeconds = lerp(p0.elapsedSeconds.toDouble(), p1.elapsedSeconds.toDouble()).toInt()
                         )
                         Pair(p, insertIdx - 1)
                     }

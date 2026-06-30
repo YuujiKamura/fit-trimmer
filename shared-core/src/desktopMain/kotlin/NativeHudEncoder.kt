@@ -217,7 +217,8 @@ fun findTelemetryLerp(telemetry: List<fit.FitParser.TelemetryPoint>, targetFitTs
         grade = lerp(p0.grade, p1.grade),
         lat = lerp(p0.lat, p1.lat),
         lon = lerp(p0.lon, p1.lon),
-        distance = lerp(p0.distance, p1.distance)
+        distance = lerp(p0.distance, p1.distance),
+        elapsedSeconds = lerp(p0.elapsedSeconds.toDouble(), p1.elapsedSeconds.toDouble()).toInt()
     )
 }
 
