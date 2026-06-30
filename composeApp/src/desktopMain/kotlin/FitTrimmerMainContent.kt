@@ -115,7 +115,8 @@ fun FitTrimmerMainContent(
             graphH = settings.graphH,
             graphW = settings.graphW,
             captionPosition = settings.captionPosition,
-            roadCaptions = settings.roadCaptions
+            roadCaptions = settings.roadCaptions,
+            powerTrendSpanSeconds = settings.powerTrendSpanSeconds
         )
     }
     var reloadTrigger by remember { mutableStateOf(0) }
@@ -2330,6 +2331,30 @@ fun FitTrimmerMainContent(
                             ControlSlider("Y OFFSET", settings.yOffset, 0f, 500f, enabled = !isEncoding) { settings = settings.copy(yOffset = it) }
                             ControlSlider("GRAPH H", settings.graphH, 20f, 300f, enabled = !isEncoding) { settings = settings.copy(graphH = it) }
                             ControlSlider("GRAPH W", settings.graphW, 50f, 800f, enabled = !isEncoding) { settings = settings.copy(graphW = it) }
+                            Spacer(Modifier.height(4.dp))
+                            Text("POWER TREND SPAN", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 0.5.sp)
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                val spans = listOf(30, 60, 90, 120)
+                                spans.forEach { sec ->
+                                    val isSelected = settings.powerTrendSpanSeconds == sec
+                                    OutlinedButton(
+                                        onClick = { settings = settings.copy(powerTrendSpanSeconds = sec) },
+                                        enabled = !isEncoding,
+                                        modifier = Modifier.weight(1f).height(28.dp),
+                                        colors = ButtonDefaults.outlinedButtonColors(
+                                            backgroundColor = if (isSelected) Color(0xFF007AFF) else Color.White,
+                                            contentColor = if (isSelected) Color.White else Color(0xFF1C1C1E)
+                                        ),
+                                        border = BorderStroke(1.dp, if (isSelected) Color(0xFF007AFF) else Color(0xFFE5E5EA)),
+                                        contentPadding = PaddingValues(0.dp)
+                                    ) {
+                                        Text("${sec}s", fontSize = 10.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
+                                    }
+                                }
+                            }
                             Spacer(Modifier.height(4.dp))
                             Text("ROAD CAPTION POSITION", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 0.5.sp)
                             Row(

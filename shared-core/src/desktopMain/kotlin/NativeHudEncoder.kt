@@ -633,7 +633,8 @@ class NativeHudEncoder(
             valSize = settings.valSize, tightness = settings.tightness, spacing = settings.spacing,
             xOffset = settings.xOffset, yOffset = settings.yOffset, graphH = settings.graphH, graphW = settings.graphW,
             captionPosition = settings.captionPosition,
-            roadCaptions = settings.roadCaptions
+            roadCaptions = settings.roadCaptions,
+            powerTrendSpanSeconds = settings.powerTrendSpanSeconds
         )
         println("DEBUG: NativeHudEncoder.encode config=$config, videoWidth=$videoWidth, videoHeight=$videoHeight")
         val renderer = HudRenderer(config)
@@ -940,7 +941,7 @@ class NativeHudEncoder(
             
             // Pre-fill power buffer for context if we're not at the start
             if (resumeSeconds > 0) {
-                val prefillStart = maxOf(0, resumeSeconds - 30)
+                val prefillStart = maxOf(0, resumeSeconds - settings.powerTrendSpanSeconds)
                 for (preSec in prefillStart until resumeSeconds) {
                     val preUtc = startTimeAdjusted.plusSeconds(preSec.toLong()).epochSecond
                     val preFitTs = preUtc - fitEpoch
@@ -982,7 +983,7 @@ class NativeHudEncoder(
                     val currentSecInt = currentSec.toInt()
                     if (currentSecInt > lastPowerSec) {
                         pBuf.add(point.power)
-                        if (pBuf.size > 30) pBuf.removeAt(0)
+                        if (pBuf.size > settings.powerTrendSpanSeconds) pBuf.removeAt(0)
                         lastPowerSec = currentSecInt
                     }
                     

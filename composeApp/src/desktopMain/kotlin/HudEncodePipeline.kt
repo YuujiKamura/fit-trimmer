@@ -35,7 +35,8 @@ object HudEncodePipeline {
                 valSize = s.valSize, tightness = s.tightness, spacing = s.spacing,
                 xOffset = s.xOffset, yOffset = s.yOffset, graphH = s.graphH, graphW = s.graphW,
                 captionPosition = s.captionPosition,
-                roadCaptions = s.roadCaptions
+                roadCaptions = s.roadCaptions,
+                powerTrendSpanSeconds = s.powerTrendSpanSeconds
             )
             val proxy = DynamicRendererProxy(config)
             globalRendererProxy = proxy

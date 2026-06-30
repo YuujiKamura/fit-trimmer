@@ -419,11 +419,11 @@ fun VideoPreviewArea(
     val currentPoint = currentPointAndIndex?.first
     val currentPointIdx = currentPointAndIndex?.second
 
-    val currentTrendPoints = remember(currentPoint, currentPointIdx, telemetryPoints) {
+    val currentTrendPoints = remember(currentPoint, currentPointIdx, telemetryPoints, settings.powerTrendSpanSeconds) {
         if (currentPoint == null || telemetryPoints.isEmpty() || currentPointIdx == null) emptyList<Double>()
         else {
             val idx = currentPointIdx
-            val startIdx = maxOf(0, idx - 30)
+            val startIdx = maxOf(0, idx - settings.powerTrendSpanSeconds)
             telemetryPoints.subList(startIdx, idx + 1).map { it.power }
         }
     }
