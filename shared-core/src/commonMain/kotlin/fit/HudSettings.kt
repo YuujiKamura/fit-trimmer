@@ -23,5 +23,5 @@ data class HudSettings(
     val exportResolution: String = "2.7k",
     val captionPosition: String = "top_center",
     val roadCaptions: List<RoadCaptionSegment> = emptyList(),
-    val powerTrendSpanSeconds: Int = 180
+    val powerTrendSpanSeconds: Int = 60
 )

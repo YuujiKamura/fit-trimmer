@@ -576,4 +576,16 @@ class AppViewModelTest {
         // videoStartUtc はキャッシュから初期値として復元される（HUD の即時表示のため）
         assertEquals("2026-06-29T10:20:40Z", viewModel.videoStartUtc)
     }
+
+    @Test
+    fun testHudSettingsDefaultPowerTrendSpanIs60Seconds() {
+        val settings = HudSettings()
+        assertEquals(60, settings.powerTrendSpanSeconds, "Default power trend span should be 60 seconds (1 minute)")
+        
+        val config = fit.HudConfig(
+            valSize = 50f, tightness = 0f, spacing = 10f,
+            xOffset = 0f, yOffset = 0f, graphH = 100f, graphW = 200f
+        )
+        assertEquals(60, config.powerTrendSpanSeconds, "Default HudConfig power trend span should be 60 seconds (1 minute)")
+    }
 }

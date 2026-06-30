@@ -16,7 +16,7 @@ data class HudConfig(
     val graphW: Float,
     val captionPosition: String = "top_center",
     val roadCaptions: List<RoadCaptionSegment> = emptyList(),
-    val powerTrendSpanSeconds: Int = 180
+    val powerTrendSpanSeconds: Int = 60
 )
 
 interface HudCanvas {
