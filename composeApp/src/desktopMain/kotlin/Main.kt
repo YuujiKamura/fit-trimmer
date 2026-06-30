@@ -1354,6 +1354,7 @@ fun startGui(args: Array<String>) = application {
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             Text("ソースファイル", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 0.5.sp)
+                            Text("GPSログと動画を選び、同じ走行範囲を指しているか確認します。", color = Color(0xFF636366), fontSize = 10.sp, lineHeight = 13.sp)
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 OutlinedTextField(
                                     value = fitPath,
@@ -1416,6 +1417,14 @@ fun startGui(args: Array<String>) = application {
                                     shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
                                 ) { Text("選択", color = Color(0xFF1C1C1E), fontSize = 11.sp, fontWeight = FontWeight.Bold) }
                             }
+                            SourceRangeSummary(
+                                fitStartInstant = fitStartInstant,
+                                fitEndInstant = fitEndInstant,
+                                videoStartInstant = videoStartInstant,
+                                videoEndInstant = videoEndInstant,
+                                isVideoInFitRange = isVideoInFitRange,
+                                isHudBurned = isHudBurned
+                            )
                         }
                     }
                     // 2. Timeline alignment
@@ -1464,6 +1473,7 @@ fun startGui(args: Array<String>) = application {
                                 verticalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 Text("エンコード", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 0.5.sp)
+                                Text("現在の設定でHUD付き動画を書き出します。サンプルは短い確認用、バッチは後でまとめて処理する待ち行列です。", color = Color(0xFF636366), fontSize = 10.sp, lineHeight = 13.sp)
                                 Button(
                                     onClick = onNativeEncodeClick,
                                     modifier = Modifier.fillMaxWidth().height(40.dp),
@@ -1525,6 +1535,7 @@ fun startGui(args: Array<String>) = application {
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             Text("出力設定", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 0.5.sp)
+                            Text("書き出し先、画質、路線テロップ、動画の切り出し方を設定します。", color = Color(0xFF636366), fontSize = 10.sp, lineHeight = 13.sp)
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 OutlinedTextField(
                                     value = outputDir,
@@ -1567,8 +1578,8 @@ fun startGui(args: Array<String>) = application {
                                   verticalAlignment = Alignment.CenterVertically
                                ) {
                                    Column(modifier = Modifier.weight(1f)) {
-                                       Text("元動画フォルダへ保存", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Medium, fontSize = 11.sp)
-                                       Text("完成した動画を元ファイルと同じフォルダへ移動します", color = Color(0xFF636366), fontSize = 9.sp)
+                                       Text("元動画フォルダへ書き戻す", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Medium, fontSize = 11.sp)
+                                       Text("ローカルでエンコード後、Google Drive等の元フォルダへ完成動画を移動します", color = Color(0xFF636366), fontSize = 9.sp)
                                   }
                                   Switch(
                                       checked = moveOutputToSource,
@@ -1659,6 +1670,35 @@ fun startGui(args: Array<String>) = application {
                                   }
                               }
                               Spacer(modifier = Modifier.height(6.dp))
+                              if (videoLengthMs > 0) {
+                                  Column(
+                                      modifier = Modifier
+                                          .fillMaxWidth()
+                                          .background(Color(0xFFF2F2F7), shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                                          .border(1.dp, Color(0xFFE5E5EA), shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                                          .padding(horizontal = 10.dp, vertical = 8.dp),
+                                      verticalArrangement = Arrangement.spacedBy(8.dp)
+                                  ) {
+                                      Column {
+                                          Text("詳細な書き出し範囲", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                                          Text("動画の一部だけを書き出したり、複数ファイルに分割したりします。", color = Color(0xFF636366), fontSize = 8.sp)
+                                      }
+                                      VideoTrimCard(
+                                          videoLengthMs = videoLengthMs,
+                                          trimStartSeconds = trimStartSeconds,
+                                          trimEndSeconds = trimEndSeconds,
+                                          onTrimStartChange = { trimStartSeconds = it },
+                                          onTrimEndChange = { trimEndSeconds = it },
+                                          isEncoding = isEncoding
+                                      )
+                                      VideoSplitCard(
+                                          viewModel = viewModel,
+                                          videoCurrentTimeMs = effectiveVideoTimeMs,
+                                          isEncoding = isEncoding
+                                      )
+                                  }
+                                  Spacer(modifier = Modifier.height(6.dp))
+                              }
                               // Route Captions / Road Captions Settings
                               Column(
                                   modifier = Modifier
@@ -1988,96 +2028,7 @@ fun startGui(args: Array<String>) = application {
                                       }
                                   }
                               }
-                               // Display FIT start/end timestamp and warning if video range is out of bounds
-                              if (fitStartInstant != null && fitEndInstant != null) {
-                                  val fitStartStr = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
-                                      .withZone(java.time.ZoneId.systemDefault()).format(fitStartInstant)
-                                  val fitEndStr = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
-                                      .withZone(java.time.ZoneId.systemDefault()).format(fitEndInstant)
-                                  Divider(color = Color(0xFFE5E5EA), modifier = Modifier.padding(vertical = 4.dp))
-                                  Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                      Text("FIT TIMELINE", color = Color(0xFF636366), fontWeight = FontWeight.Bold, fontSize = 9.sp)
-                                      Text("$fitStartStr  ~\n$fitEndStr", color = Color(0xFF1C1C1E), fontSize = 11.sp)
-                                  }
-                                   val vStart = videoStartInstant
-                                   val vEnd = videoEndInstant
-                                   if (vStart != null && vEnd != null) {
-                                       val videoStartStr = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
-                                           .withZone(java.time.ZoneId.systemDefault()).format(vStart)
-                                       val videoEndStr = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
-                                           .withZone(java.time.ZoneId.systemDefault()).format(vEnd)
-                                       Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                           Text("VIDEO TIMELINE", color = Color(0xFF636366), fontWeight = FontWeight.Bold, fontSize = 9.sp)
-                                           Text("$videoStartStr  ~\n$videoEndStr", color = Color(0xFF1C1C1E), fontSize = 11.sp)
-                                       }
-                                      val trimStartInstant = vStart.plusMillis((trimStartSeconds * 1000).toLong())
-                                      val trimEndInstant = vStart.plusMillis((trimEndSeconds * 1000).toLong())
-                                      val trimStartStr = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
-                                          .withZone(java.time.ZoneId.systemDefault()).format(trimStartInstant)
-                                      val trimEndStr = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
-                                          .withZone(java.time.ZoneId.systemDefault()).format(trimEndInstant)
-                                      Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                          Text("TRIMMED TIMELINE", color = Color(0xFF2E7D32), fontWeight = FontWeight.Bold, fontSize = 9.sp)
-                                          Text("$trimStartStr  ~\n$trimEndStr", color = Color(0xFF1C1C1E), fontSize = 11.sp)
-                                      }
-                                      Spacer(modifier = Modifier.height(2.dp))
-                                      if (isVideoInFitRange) {
-                                          Row(
-                                              verticalAlignment = Alignment.CenterVertically,
-                                              horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                              modifier = Modifier
-                                                  .fillMaxWidth()
-                                                  .background(Color(0xFFE2F6E9), shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
-                                                  .padding(horizontal = 8.dp, vertical = 6.dp)
-                                          ) {
-                                              Text("✓ VIDEO WITHIN FIT RANGE", color = Color(0xFF1E7E34), fontWeight = FontWeight.Bold, fontSize = 10.sp)
-                                          }
-                                      } else {
-                                          Row(
-                                              verticalAlignment = Alignment.CenterVertically,
-                                              horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                              modifier = Modifier
-                                                  .fillMaxWidth()
-                                                  .background(Color(0xFFFDE8E8), shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
-                                                  .border(BorderStroke(1.dp, Color(0xFFE02424)), shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
-                                                  .padding(horizontal = 8.dp, vertical = 6.dp)
-                                          ) {
-                                              Text("⚠️ VIDEO OUTSIDE FIT RANGE", color = Color(0xFFE02424), fontWeight = FontWeight.Bold, fontSize = 10.sp)
-                                          }
-                                      }
-                                      if (isHudBurned) {
-                                          Row(
-                                              verticalAlignment = Alignment.CenterVertically,
-                                              horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                              modifier = Modifier
-                                                  .fillMaxWidth()
-                                                  .background(Color(0xFFFEF3C7), shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
-                                                  .border(BorderStroke(1.dp, Color(0xFFD97706)), shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
-                                                  .padding(horizontal = 8.dp, vertical = 6.dp)
-                                          ) {
-                                              Text("⚠️ HUD ALREADY BURNED (焼き込み済み)", color = Color(0xFFB45309), fontWeight = FontWeight.Bold, fontSize = 10.sp)
-                                          }
-                                      }
-                                  }
-                              }
                         }
-                    }
-                    // VIDEO TRIM RANGE Card
-                    if (videoLengthMs > 0) {
-                        VideoTrimCard(
-                            videoLengthMs = videoLengthMs,
-                            trimStartSeconds = trimStartSeconds,
-                            trimEndSeconds = trimEndSeconds,
-                            onTrimStartChange = { trimStartSeconds = it },
-                            onTrimEndChange = { trimEndSeconds = it },
-                            isEncoding = isEncoding
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        VideoSplitCard(
-                            viewModel = viewModel,
-                            videoCurrentTimeMs = effectiveVideoTimeMs,
-                            isEncoding = isEncoding
-                        )
                     }
                     // C-DRIVE SPACE MONITOR Card
                     Card(
@@ -3708,6 +3659,89 @@ fun runCli(args: Array<String>) {
         }
     }
 }
+
+@Composable
+fun SourceRangeSummary(
+    fitStartInstant: java.time.Instant?,
+    fitEndInstant: java.time.Instant?,
+    videoStartInstant: java.time.Instant?,
+    videoEndInstant: java.time.Instant?,
+    isVideoInFitRange: Boolean,
+    isHudBurned: Boolean
+) {
+    if (fitStartInstant == null || fitEndInstant == null) return
+
+    val formatter = remember {
+        java.time.format.DateTimeFormatter.ofPattern("MM/dd HH:mm")
+            .withZone(java.time.ZoneId.systemDefault())
+    }
+    val fitStartStr = formatter.format(fitStartInstant)
+    val fitEndStr = formatter.format(fitEndInstant)
+    val videoRangeText = if (videoStartInstant != null && videoEndInstant != null) {
+        "${formatter.format(videoStartInstant)} - ${formatter.format(videoEndInstant)}"
+    } else {
+        "動画の開始時刻を読み込み中"
+    }
+    val bgColor = when {
+        videoStartInstant == null || videoEndInstant == null -> Color(0xFFE5E5EA)
+        isVideoInFitRange -> Color(0xFFE2F6E9)
+        else -> Color(0xFFFDE8E8)
+    }
+    val textColor = when {
+        videoStartInstant == null || videoEndInstant == null -> Color(0xFF636366)
+        isVideoInFitRange -> Color(0xFF1E7E34)
+        else -> Color(0xFFE02424)
+    }
+    val statusText = when {
+        videoStartInstant == null || videoEndInstant == null -> "確認中"
+        isVideoInFitRange -> "範囲OK"
+        else -> "範囲外"
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFFF2F2F7), shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+            .border(1.dp, Color(0xFFE5E5EA), shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Text("ソース範囲の照合", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("FIT: $fitStartStr - $fitEndStr", color = Color(0xFF1C1C1E), fontSize = 9.sp, maxLines = 1)
+                Text("動画: $videoRangeText", color = Color(0xFF1C1C1E), fontSize = 9.sp, maxLines = 1)
+            }
+            Text(
+                text = statusText,
+                color = textColor,
+                fontWeight = FontWeight.Bold,
+                fontSize = 9.sp,
+                modifier = Modifier
+                    .background(bgColor, shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+            )
+        }
+        if (isHudBurned) {
+            Text(
+                "警告: この動画はHUD焼き込み済みの可能性があります",
+                color = Color(0xFFB45309),
+                fontWeight = FontWeight.Bold,
+                fontSize = 10.sp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFFFEF3C7), shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                    .border(1.dp, Color(0xFFD97706), shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                    .padding(horizontal = 8.dp, vertical = 6.dp)
+            )
+        }
+    }
+}
+
 @Composable
 fun TimeAlignmentCard(
     state: TimeAlignmentState,
@@ -3859,61 +3893,53 @@ fun VideoTrimCard(
 ) {
     val totalSec = videoLengthMs / 1000.0
     val range = trimStartSeconds.toFloat()..trimEndSeconds.toFloat()
-    Card(
-        backgroundColor = Color.White,
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
-        border = BorderStroke(1.dp, Color(0xFFE5E5EA)),
-        elevation = 1.dp,
-        modifier = Modifier.fillMaxWidth()
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+        Text("書き出す範囲", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("VIDEO TRIM RANGE", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 0.5.sp)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text("Start:", color = Color(0xFF636366), fontSize = 9.sp)
-                    Text(utils.formatTime((trimStartSeconds * 1000).toLong()), color = Color(0xFF1C1C1E), fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                }
-                Column(horizontalAlignment = Alignment.End) {
-                    Text("End:", color = Color(0xFF636366), fontSize = 9.sp)
-                    Text(utils.formatTime((trimEndSeconds * 1000).toLong()), color = Color(0xFF1C1C1E), fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                }
+            Column {
+                Text("開始", color = Color(0xFF636366), fontSize = 9.sp)
+                Text(utils.formatTime((trimStartSeconds * 1000).toLong()), color = Color(0xFF1C1C1E), fontSize = 11.sp, fontWeight = FontWeight.Bold)
             }
-            RangeSlider(
-                value = range,
-                onValueChange = { r ->
-                    onTrimStartChange(r.start.toDouble())
-                    onTrimEndChange(r.endInclusive.toDouble())
-                },
-                enabled = !isEncoding,
-                valueRange = 0f..totalSec.toFloat(),
-                modifier = Modifier.height(20.dp),
-                colors = SliderDefaults.colors(
-                    thumbColor = Color(0xFF007AFF),
-                    activeTrackColor = Color(0xFF007AFF),
-                    inactiveTrackColor = Color(0xFFE5E5EA)
-                )
+            Column(horizontalAlignment = Alignment.End) {
+                Text("終了", color = Color(0xFF636366), fontSize = 9.sp)
+                Text(utils.formatTime((trimEndSeconds * 1000).toLong()), color = Color(0xFF1C1C1E), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+        RangeSlider(
+            value = range,
+            onValueChange = { r ->
+                onTrimStartChange(r.start.toDouble())
+                onTrimEndChange(r.endInclusive.toDouble())
+            },
+            enabled = !isEncoding,
+            valueRange = 0f..totalSec.toFloat(),
+            modifier = Modifier.height(20.dp),
+            colors = SliderDefaults.colors(
+                thumbColor = Color(0xFF007AFF),
+                activeTrackColor = Color(0xFF007AFF),
+                inactiveTrackColor = Color(0xFFE5E5EA)
             )
-            val durationSec = trimEndSeconds - trimStartSeconds
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("Trim Duration:", color = Color(0xFF636366), fontSize = 9.sp)
-                Text(
-                    utils.formatTime((durationSec * 1000).toLong()) + " (${String.format("%.1f", durationSec)}s)",
-                    color = Color(0xFF2E7D32),
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
+        )
+        val durationSec = trimEndSeconds - trimStartSeconds
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("書き出し時間", color = Color(0xFF636366), fontSize = 9.sp)
+            Text(
+                utils.formatTime((durationSec * 1000).toLong()) + " (${String.format("%.1f", durationSec)}s)",
+                color = Color(0xFF2E7D32),
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold
+            )
         }
     }
 }
@@ -3925,83 +3951,75 @@ fun VideoSplitCard(
 ) {
     val splitPoints = viewModel.splitPoints
     val ranges = viewModel.getSplitRanges()
-    Card(
-        backgroundColor = Color.White,
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
-        border = BorderStroke(1.dp, Color(0xFFE5E5EA)),
-        elevation = 1.dp,
-        modifier = Modifier.fillMaxWidth()
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+        Text("分割ポイント", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp)
+        val playheadSec = videoCurrentTimeMs / 1000.0
+        val canAdd = !isEncoding && playheadSec > viewModel.trimStartSeconds && playheadSec < viewModel.trimEndSeconds && playheadSec !in splitPoints
+        Button(
+            onClick = { viewModel.addSplitPoint(playheadSec) },
+            enabled = canAdd,
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(
+                backgroundColor = Color(0xFF007AFF),
+                contentColor = Color.White
+            )
         ) {
-            Text("VIDEO SPLIT POINTS", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 0.5.sp)
-            val playheadSec = videoCurrentTimeMs / 1000.0
-            val canAdd = !isEncoding && playheadSec > viewModel.trimStartSeconds && playheadSec < viewModel.trimEndSeconds && playheadSec !in splitPoints
-            Button(
-                onClick = { viewModel.addSplitPoint(playheadSec) },
-                enabled = canAdd,
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(
-                    backgroundColor = Color(0xFF007AFF),
-                    contentColor = Color.White
-                )
-            ) {
-                Text("Add Split at Playhead (${utils.formatTime(videoCurrentTimeMs)})", fontSize = 10.sp)
-            }
-            if (splitPoints.isNotEmpty()) {
-                Text("Current Splits:", color = Color(0xFF636366), fontSize = 9.sp)
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    splitPoints.forEach { splitSec ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+            Text("現在位置で分割 (${utils.formatTime(videoCurrentTimeMs)})", fontSize = 10.sp)
+        }
+        if (splitPoints.isNotEmpty()) {
+            Text("設定済みの分割ポイント", color = Color(0xFF636366), fontSize = 9.sp)
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                splitPoints.forEach { splitSec ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = utils.formatTime((splitSec * 1000).toLong()),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF1C1C1E)
+                        )
+                        Button(
+                            onClick = { viewModel.removeSplitPoint(splitSec) },
+                            enabled = !isEncoding,
+                            colors = ButtonDefaults.buttonColors(
+                                backgroundColor = Color(0xFFFF3B30),
+                                contentColor = Color.White
+                            ),
+                            modifier = Modifier.height(24.dp).padding(0.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
                         ) {
-                            Text(
-                                text = utils.formatTime((splitSec * 1000).toLong()),
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF1C1C1E)
-                            )
-                            Button(
-                                onClick = { viewModel.removeSplitPoint(splitSec) },
-                                enabled = !isEncoding,
-                                colors = ButtonDefaults.buttonColors(
-                                    backgroundColor = Color(0xFFFF3B30),
-                                    contentColor = Color.White
-                                ),
-                                modifier = Modifier.height(24.dp).padding(0.dp),
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
-                            ) {
-                                Text("Remove", fontSize = 9.sp)
-                            }
+                            Text("削除", fontSize = 9.sp)
                         }
                     }
                 }
-                Button(
-                    onClick = { viewModel.clearSplitPoints() },
-                    enabled = !isEncoding,
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(
-                        backgroundColor = Color(0xFFFF3B30),
-                        contentColor = Color.White
-                    )
-                ) {
-                    Text("Clear All Splits", fontSize = 10.sp)
-                }
-            } else {
-                Text("No split points set.", color = Color(0xFF8E8E93), fontSize = 10.sp)
             }
-            Divider(color = Color(0xFFE5E5EA))
-            Text(
-                text = "${ranges.size} video parts will be encoded.",
-                color = Color(0xFF2E7D32),
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold
-            )
+            Button(
+                onClick = { viewModel.clearSplitPoints() },
+                enabled = !isEncoding,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    backgroundColor = Color(0xFFFF3B30),
+                    contentColor = Color.White
+                )
+            ) {
+                Text("分割をすべてクリア", fontSize = 10.sp)
+            }
+        } else {
+            Text("分割ポイントは未設定です。", color = Color(0xFF8E8E93), fontSize = 10.sp)
         }
+        Divider(color = Color(0xFFE5E5EA))
+        Text(
+            text = "${ranges.size}本の動画として書き出します。",
+            color = Color(0xFF2E7D32),
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold
+        )
     }
 }
 @Composable
