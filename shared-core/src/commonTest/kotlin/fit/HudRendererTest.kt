@@ -177,5 +177,43 @@ class HudRendererTest {
         // isValid = false の場合、各値はハイフンであること
         assertTrue(canvas.drawnTexts.contains("-"), "Invalid state should display '-' for values")
     }
+
+    @Test
+    fun testHudDistanceAndTimeLabelsAndFormatting() {
+        val config = HudConfig(
+            valSize = 40f, tightness = 1f, spacing = 20f,
+            xOffset = 40f, yOffset = 100f, graphH = 60f, graphW = 300f
+        )
+        val renderer = HudRenderer(config)
+        
+        val startPoint = FitParser.TelemetryPoint(
+            timestamp = 1000.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 50.0, grade = 2.0,
+            distance = 1000.0, elapsedSeconds = 10
+        )
+        val currentPoint = FitParser.TelemetryPoint(
+            timestamp = 1100.0, speed = 12.0, power = 110.0, cadence = 82.0, heartRate = 122.0, elevation = 52.0, grade = 2.2,
+            distance = 2500.5, elapsedSeconds = 110
+        )
+        val allPoints = listOf(startPoint, currentPoint)
+        
+        val canvas = TestHudCanvas()
+        renderer.renderFrame(
+            canvas,
+            currentPoint,
+            allPoints,
+            emptyList(),
+            100.0f,
+            isValid = true
+        )
+        
+        val tripLine = canvas.drawnTexts.find { it.contains("全体距離:") }
+        val clipLine = canvas.drawnTexts.find { it.contains("動画距離:") }
+        
+        assertTrue(tripLine != null, "HUD should display '全体距離:' (got ${canvas.drawnTexts})")
+        assertTrue(clipLine != null, "HUD should display '動画距離:' (got ${canvas.drawnTexts})")
+        
+        assertTrue(tripLine.contains("2.50 km"), "Overall distance should show 2 decimal places: 2.50 km (got '$tripLine')")
+        assertTrue(clipLine.contains("1.50 km"), "Clip distance should show 2 decimal places: 1.50 km (got '$clipLine')")
+    }
 }
 
