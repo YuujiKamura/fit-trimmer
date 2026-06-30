@@ -293,169 +293,195 @@ object TelemetryAligner {
             val vVib = interpolate(vGrid, relTimes, accDiffs)
             
             val firstFileImuOffset = getFirstFileImuOffset(videoPath)
-
-            // 2. Prepare telemetry points
-            val fitTs = DoubleArray(telemetryPoints.size) { telemetryPoints[it].timestamp.toDouble() }
-            val fitSpeed = DoubleArray(telemetryPoints.size) { telemetryPoints[it].speed.toDouble() }
-            
-            val startTs = fitTs.first()
-            val endTs = fitTs.last()
-            val fitGridSize = (endTs - startTs).toInt() + 1
-            val fitGrid = DoubleArray(fitGridSize) { startTs + it }
-            val fitSpeedGrid = interpolate(fitGrid, fitTs, fitSpeed)
-
-            // Auto-pause gap correction: set interpolated speed to 0.0 during gaps > 2.0 seconds
-            for (i in 0 until fitTs.size - 1) {
-                val ts1 = fitTs[i]
-                val ts2 = fitTs[i + 1]
-                if (ts2 - ts1 > 2.0) {
-                    val idxStart = Math.ceil(ts1 - startTs).toInt()
-                    val idxEnd = Math.floor(ts2 - startTs).toInt()
-                    for (idx in idxStart..idxEnd) {
-                        if (idx in fitSpeedGrid.indices) {
-                            fitSpeedGrid[idx] = 0.0
-                        }
-                    }
-                }
-            }
-
-            val corr: DoubleArray
-
-            if (method == "binary") {
-                val vSig = gaussianFilter1D(vVib, 3.0)
-                
-                // 10th percentile
-                val sortedVSig = vSig.sorted()
-                val pct10Idx = (sortedVSig.size * 0.10).toInt()
-                val pct10 = sortedVSig[Math.max(0, Math.min(sortedVSig.size - 1, pct10Idx))]
-                val vThresh = Math.max(20.0, pct10 * 1.5)
-                
-                val vMov = DoubleArray(vSig.size) { if (vSig[it] > vThresh) 1.0 else 0.0 }
-                val fitMov = DoubleArray(fitSpeedGrid.size) { if (fitSpeedGrid[it] > 2.0) 1.0 else 0.0 }
-
-                val fitSigSmooth = gaussianFilter1D(fitMov, 3.0)
-                val vSigSmooth = gaussianFilter1D(vMov, 3.0)
-
-                // Calculate Pearson's Local Normalized Cross-Correlation (NCC)
-                val outSize = fitSigSmooth.size - vSigSmooth.size + 1
-                if (outSize <= 0) {
-                    corr = DoubleArray(0)
-                } else {
-                    corr = DoubleArray(outSize)
-                    val m = vSigSmooth.size
-                    val meanV = vSigSmooth.average()
-                    val varV = vSigSmooth.map { (it - meanV) * (it - meanV) }.average()
-                    val stdV = Math.sqrt(varV)
-
-                    if (stdV > 1e-6) {
-                        for (i in corr.indices) {
-                            var sumA = 0.0
-                            var sumA2 = 0.0
-                            for (j in 0 until m) {
-                                val valA = fitSigSmooth[i + j]
-                                sumA += valA
-                                sumA2 += valA * valA
-                            }
-                            val meanA = sumA / m
-                            val varA = (sumA2 / m) - (meanA * meanA)
-                            val stdA = Math.sqrt(Math.max(0.0, varA))
-
-                            if (stdA > 1e-6) {
-                                var sumCov = 0.0
-                                for (j in 0 until m) {
-                                    sumCov += (fitSigSmooth[i + j] - meanA) * (vSigSmooth[j] - meanV)
-                                }
-                                corr[i] = sumCov / (m * stdA * stdV)
-                            } else {
-                                corr[i] = 0.0
-                            }
-                        }
-                    }
-                }
-            } else {
-                // Acceleration Method
-                val fitAcc = DoubleArray(fitSpeedGrid.size)
-                for (i in 0 until fitSpeedGrid.size - 1) {
-                    fitAcc[i] = Math.abs(fitSpeedGrid[i + 1] - fitSpeedGrid[i])
-                }
-                fitAcc[fitSpeedGrid.size - 1] = 0.0
-
-                val vSig = gaussianFilter1D(vVib, 3.0)
-                val vAcc = DoubleArray(vSig.size)
-                for (i in 0 until vSig.size - 1) {
-                    vAcc[i] = Math.abs(vSig[i + 1] - vSig[i])
-                }
-                vAcc[vSig.size - 1] = 0.0
-
-                val fitSigSmooth = gaussianFilter1D(fitAcc, 3.0)
-                val vSigSmooth = gaussianFilter1D(vAcc, 3.0)
-
-                val fitSigNorm = normalize(fitSigSmooth)
-                val vSigNorm = normalize(vSigSmooth)
-                corr = correlateValid(fitSigNorm, vSigNorm)
-            }
-
-            if (corr.isEmpty()) {
-                println("ERROR: Video is longer than ride telemetry. Cannot align.")
-                return@withContext null
-            }
-
-            // Find best offset
-            var approxStartTs = Double.NaN
-            if (approxStartUtc.isNotEmpty()) {
-                try {
-                    val instant = Instant.parse(approxStartUtc)
-                    approxStartTs = (instant.toEpochMilli() / 1000.0) - 631065600.0
-                } catch (e: Exception) {
-                    println("DEBUG: Failed to parse approxStartUtc: ${e.message}")
-                }
-            }
-
-            var bestIdx = -1
-            var maxCorr = Double.NEGATIVE_INFINITY
-
-            if (!approxStartTs.isNaN()) {
-                val window = windowSeconds
-                val minTs = approxStartTs - window
-                val maxTs = approxStartTs + window
-                for (i in corr.indices) {
-                    val ts = fitGrid[i]
-                    if (ts in minTs..maxTs) {
-                        if (corr[i] > maxCorr) {
-                            maxCorr = corr[i]
-                            bestIdx = i
-                        }
-                    }
-                }
-            }
-
-            if (bestIdx == -1) {
-                // global fallback
-                for (i in corr.indices) {
-                    if (corr[i] > maxCorr) {
-                        maxCorr = corr[i]
-                        bestIdx = i
-                    }
-                }
-            }
-
-            val videoStartTs = fitGrid[bestIdx]
-            val trueFileStartTs = videoStartTs - firstFileImuOffset
-
-            // Convert Garmin epoch back to Unix and generate UTC ISO-8601
-            val unixSec = (trueFileStartTs + 631065600.0).toLong()
-            val unixNano = ((trueFileStartTs + 631065600.0 - unixSec) * 1_000_000_000).toLong()
-            val instant = Instant.ofEpochSecond(unixSec, unixNano)
-            
-            val utcStr = instant.toString()
-            println("DEBUG: Native auto alignment success. Video start: $utcStr, correlation score: $maxCorr")
-            return@withContext utcStr
-
+            return@withContext alignVibWithTelemetryCore(
+                vVib = vVib,
+                telemetryPoints = telemetryPoints,
+                approxStartUtc = approxStartUtc,
+                method = method,
+                windowSeconds = windowSeconds,
+                firstFileImuOffset = firstFileImuOffset
+            )
         } catch (e: Exception) {
             println("ERROR: Exception during native auto alignment: ${e.message}")
             e.printStackTrace()
         }
         
         return@withContext null
+    }
+
+    /**
+     * Core alignment logic working directly on resampled vibration arrays,
+     * allowing file-less testing.
+     */
+    fun alignVibWithTelemetryCore(
+        vVib: DoubleArray,
+        telemetryPoints: List<FitParser.TelemetryPoint>,
+        approxStartUtc: String,
+        method: String,
+        windowSeconds: Double,
+        firstFileImuOffset: Double
+    ): String? {
+        if (telemetryPoints.isEmpty() || vVib.isEmpty()) return null
+
+        // 2. Prepare telemetry points
+        val fitTs = DoubleArray(telemetryPoints.size) { telemetryPoints[it].timestamp.toDouble() }
+        val fitSpeed = DoubleArray(telemetryPoints.size) { telemetryPoints[it].speed.toDouble() }
+        
+        val startTs = fitTs.first()
+        val endTs = fitTs.last()
+        val fitGridSize = (endTs - startTs).toInt() + 1
+        val fitGrid = DoubleArray(fitGridSize) { startTs + it }
+        val fitSpeedGrid = interpolate(fitGrid, fitTs, fitSpeed)
+
+        // Auto-pause gap correction: set interpolated speed to 0.0 during gaps > 2.0 seconds
+        for (i in 0 until fitTs.size - 1) {
+            val ts1 = fitTs[i]
+            val ts2 = fitTs[i + 1]
+            if (ts2 - ts1 > 2.0) {
+                val idxStart = Math.ceil(ts1 - startTs).toInt()
+                val idxEnd = Math.floor(ts2 - startTs).toInt()
+                for (idx in idxStart..idxEnd) {
+                    if (idx in fitSpeedGrid.indices) {
+                        fitSpeedGrid[idx] = 0.0
+                    }
+                }
+            }
+        }
+
+        val corr: DoubleArray
+
+        if (method == "binary") {
+            val vSig = gaussianFilter1D(vVib, 3.0)
+            
+            // 10th percentile
+            val sortedVSig = vSig.sorted()
+            val pct10Idx = (sortedVSig.size * 0.10).toInt()
+            val pct10 = sortedVSig[Math.max(0, Math.min(sortedVSig.size - 1, pct10Idx))]
+            val vThresh = Math.max(20.0, pct10 * 1.5)
+            
+            val vMov = DoubleArray(vSig.size) { if (vSig[it] > vThresh) 1.0 else 0.0 }
+            val fitMov = DoubleArray(fitSpeedGrid.size) { if (fitSpeedGrid[it] > 2.0) 1.0 else 0.0 }
+
+            val fitSigSmooth = gaussianFilter1D(fitMov, 3.0)
+            val vSigSmooth = gaussianFilter1D(vMov, 3.0)
+
+            // Calculate Pearson's Local Normalized Cross-Correlation (NCC)
+            val outSize = fitSigSmooth.size - vSigSmooth.size + 1
+            if (outSize <= 0) {
+                corr = DoubleArray(0)
+            } else {
+                corr = DoubleArray(outSize)
+                val m = vSigSmooth.size
+                val meanV = vSigSmooth.average()
+                val varV = vSigSmooth.map { (it - meanV) * (it - meanV) }.average()
+                val stdV = Math.sqrt(varV)
+
+                if (stdV > 1e-6) {
+                    for (i in corr.indices) {
+                        var sumA = 0.0
+                        var sumA2 = 0.0
+                        for (j in 0 until m) {
+                            val valA = fitSigSmooth[i + j]
+                            sumA += valA
+                            sumA2 += valA * valA
+                        }
+                        val meanA = sumA / m
+                        val varA = (sumA2 / m) - (meanA * meanA)
+                        val stdA = Math.sqrt(Math.max(0.0, varA))
+
+                        if (stdA > 1e-6) {
+                            var sumCov = 0.0
+                            for (j in 0 until m) {
+                                sumCov += (fitSigSmooth[i + j] - meanA) * (vSigSmooth[j] - meanV)
+                            }
+                            corr[i] = sumCov / (m * stdA * stdV)
+                        } else {
+                            corr[i] = 0.0
+                        }
+                    }
+                }
+            }
+        } else {
+            // Acceleration Method
+            val fitAcc = DoubleArray(fitSpeedGrid.size)
+            for (i in 0 until fitSpeedGrid.size - 1) {
+                fitAcc[i] = Math.abs(fitSpeedGrid[i + 1] - fitSpeedGrid[i])
+            }
+            fitAcc[fitSpeedGrid.size - 1] = 0.0
+
+            val vSig = gaussianFilter1D(vVib, 3.0)
+            val vAcc = DoubleArray(vSig.size)
+            for (i in 0 until vSig.size - 1) {
+                vAcc[i] = Math.abs(vSig[i + 1] - vSig[i])
+            }
+            vAcc[vSig.size - 1] = 0.0
+
+            val fitSigSmooth = gaussianFilter1D(fitAcc, 3.0)
+            val vSigSmooth = gaussianFilter1D(vAcc, 3.0)
+
+            val fitSigNorm = normalize(fitSigSmooth)
+            val vSigNorm = normalize(vSigSmooth)
+            corr = correlateValid(fitSigNorm, vSigNorm)
+        }
+
+        if (corr.isEmpty()) {
+            println("ERROR: Video is longer than ride telemetry. Cannot align.")
+            return null
+        }
+
+        // Find best offset
+        var approxStartTs = Double.NaN
+        if (approxStartUtc.isNotEmpty()) {
+            try {
+                val instant = Instant.parse(approxStartUtc)
+                approxStartTs = (instant.toEpochMilli() / 1000.0) - 631065600.0
+            } catch (e: Exception) {
+                println("DEBUG: Failed to parse approxStartUtc: ${e.message}")
+            }
+        }
+
+        var bestIdx = -1
+        var maxCorr = Double.NEGATIVE_INFINITY
+
+        if (!approxStartTs.isNaN()) {
+            val window = windowSeconds
+            val minTs = approxStartTs - window
+            val maxTs = approxStartTs + window
+            for (i in corr.indices) {
+                val ts = fitGrid[i]
+                if (ts in minTs..maxTs) {
+                    if (corr[i] > maxCorr) {
+                        maxCorr = corr[i]
+                        bestIdx = i
+                    }
+                }
+            }
+        }
+
+        // CRITICAL BUG FIX: Only fallback to global search when NO approxStartUtc is provided.
+        // If approxStartUtc is provided, we must strictly respect the window to avoid alignment jumps of -600s
+        if (bestIdx == -1 && approxStartTs.isNaN()) {
+            // global fallback
+            for (i in corr.indices) {
+                if (corr[i] > maxCorr) {
+                    maxCorr = corr[i]
+                    bestIdx = i
+                }
+            }
+        }
+
+        if (bestIdx == -1) {
+            return null
+        }
+
+        val videoStartTs = fitGrid[bestIdx]
+        val trueFileStartTs = videoStartTs - firstFileImuOffset
+
+        // Convert Garmin epoch back to Unix and generate UTC ISO-8601
+        val unixSec = (trueFileStartTs + 631065600.0).toLong()
+        val unixNano = ((trueFileStartTs + 631065600.0 - unixSec) * 1_000_000_000).toLong()
+        val instant = Instant.ofEpochSecond(unixSec, unixNano)
+        
+        return instant.toString()
     }
 }
