@@ -384,20 +384,46 @@ trimBtn.onclick = async () => {
 
 // --- HUD Preview & Editor ---
 
-function findTelemetryAt(target) {
+/**
+ * 前後2点を線形補間してテレメトリ値を返す（滑らかプレビュー用）
+ * @param {number} target - FITエポック秒
+ * @returns {{speed, power, cadence, heartRate, elevation, grade}|null}
+ */
+function findTelemetryLerp(target) {
     if (!fitTelemetryData) return null;
     const size = 7;
-    let low = 0, high = fitTelemetryData.length / size - 1, closest = 0, minDiff = Infinity;
-    while (low <= high) {
-        let mid = (low + high) >> 1;
-        let ts = fitTelemetryData[mid * size];
-        let diff = Math.abs(ts - target);
-        if (diff < minDiff) { minDiff = diff; closest = mid; }
-        if (ts < target) low = mid + 1;
-        else if (ts > target) high = mid - 1;
-        else return getTelObj(mid);
+    const count = fitTelemetryData.length / size;
+    if (count === 0) return null;
+
+    // バイナリサーチで target の直前インデックスを探す
+    let low = 0, high = count - 1;
+    while (low < high) {
+        const mid = (low + high + 1) >> 1;
+        if (fitTelemetryData[mid * size] <= target) low = mid;
+        else high = mid - 1;
     }
-    return getTelObj(closest);
+
+    const i0 = low;
+    const t0 = fitTelemetryData[i0 * size];
+
+    // target が範囲外（先頭より前 or 末尾より後）
+    if (target <= t0 || i0 >= count - 1) return getTelObj(i0);
+
+    const i1 = i0 + 1;
+    const t1 = fitTelemetryData[i1 * size];
+    const alpha = (t1 - t0) > 0 ? (target - t0) / (t1 - t0) : 0;
+
+    // 各フィールドを lerp
+    const lerp = (a, b) => a + (b - a) * alpha;
+    const o0 = i0 * size, o1 = i1 * size;
+    return {
+        speed:     lerp(fitTelemetryData[o0+1], fitTelemetryData[o1+1]),
+        power:     lerp(fitTelemetryData[o0+2], fitTelemetryData[o1+2]),
+        cadence:   lerp(fitTelemetryData[o0+3], fitTelemetryData[o1+3]),
+        heartRate: lerp(fitTelemetryData[o0+4], fitTelemetryData[o1+4]),
+        elevation: lerp(fitTelemetryData[o0+5], fitTelemetryData[o1+5]),
+        grade:     lerp(fitTelemetryData[o0+6], fitTelemetryData[o1+6]),
+    };
 }
 
 function getTelObj(idx) {
@@ -412,16 +438,30 @@ function getTelObj(idx) {
 function updateHudPreview() {
     if (!activeVideo || !fitTelemetryData) return;
     const target = (activeVideo.unixTimestamp - 631065600) + previewVideo.currentTime + syncOffset;
-    const tel = findTelemetryAt(target);
+    const tel = findTelemetryLerp(target);  // lerp版に変更
     if (!tel) return;
-    document.getElementById('hud-val-speed').textContent = tel.speed.toFixed(1) + " km/h";
-    document.getElementById('hud-val-power').textContent = Math.round(tel.power) + " W";
-    document.getElementById('hud-val-cadence').textContent = Math.round(tel.cadence) + " rpm";
+    document.getElementById('hud-val-speed').textContent     = tel.speed.toFixed(1) + " km/h";
+    document.getElementById('hud-val-power').textContent     = Math.round(tel.power) + " W";
+    document.getElementById('hud-val-cadence').textContent   = Math.round(tel.cadence) + " rpm";
     document.getElementById('hud-val-heartrate').textContent = Math.round(tel.heartRate) + " bpm";
     document.getElementById('hud-val-elevation').textContent = tel.elevation.toFixed(1) + "m (" + (tel.grade>=0?"+":"") + tel.grade.toFixed(1) + "%)";
 }
 
-previewVideo.ontimeupdate = updateHudPreview;
+// rAFループ: ontimeupdateより高精度（~16ms更新）
+let _hudRafId = null;
+function _hudRafLoop() {
+    if (!previewVideo.paused && !previewVideo.ended) {
+        updateHudPreview();
+    }
+    _hudRafId = requestAnimationFrame(_hudRafLoop);
+}
+
+previewVideo.onplay  = () => { if (!_hudRafId) _hudRafId = requestAnimationFrame(_hudRafLoop); };
+previewVideo.onpause = () => { cancelAnimationFrame(_hudRafId); _hudRafId = null; updateHudPreview(); };
+previewVideo.onended = () => { cancelAnimationFrame(_hudRafId); _hudRafId = null; };
+previewVideo.onseeked = () => updateHudPreview(); // シーク後は即更新
+
+// offset スライダー変更時も即反映
 offsetSlider.oninput = () => {
     syncOffset = parseFloat(offsetSlider.value);
     offsetValBadge.textContent = (syncOffset>=0?"+":"")+syncOffset.toFixed(1)+"s";
