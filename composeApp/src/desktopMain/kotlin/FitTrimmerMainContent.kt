@@ -1377,6 +1377,156 @@ fun FitTrimmerMainContent(
                                     }
                                 }
                             }
+                            val batchQueue = viewModel.batchQueue
+                            if (batchQueue.isNotEmpty()) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Divider(color = Color(0xFFE5E5EA))
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "BATCH JOB QUEUE (${batchQueue.size})",
+                                        color = Color(0xFF1C1C1E),
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp,
+                                        letterSpacing = 0.5.sp
+                                    )
+                                    if (!viewModel.isBatchRunning) {
+                                        Text(
+                                            text = "CLEAR ALL",
+                                            color = Color(0xFFE02424),
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 10.sp,
+                                            modifier = Modifier.clickable { viewModel.clearBatchQueue() }
+                                        )
+                                    }
+                                }
+                                Column(
+                                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    batchQueue.forEach { job ->
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .background(Color(0xFFF2F2F7), shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = File(job.videoPath).name,
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color(0xFF1C1C1E)
+                                                )
+                                                Text(
+                                                    text = "Trim: %.1fs - %.1fs".format(job.trimStartSeconds, job.trimEndSeconds),
+                                                    fontSize = 8.sp,
+                                                    color = Color(0xFF636366)
+                                                )
+                                                if (job.status == BatchJobStatus.RUNNING) {
+                                                    LinearProgressIndicator(
+                                                        progress = job.progress,
+                                                        modifier = Modifier.fillMaxWidth().height(4.dp).padding(top = 2.dp),
+                                                        color = Color(0xFF007AFF)
+                                                    )
+                                                }
+                                                if (job.status == BatchJobStatus.FAILED && !job.errorMessage.isNullOrEmpty()) {
+                                                    Text(
+                                                        text = "Error: ${job.errorMessage}",
+                                                        fontSize = 8.sp,
+                                                        color = Color(0xFFE02424),
+                                                        fontWeight = FontWeight.SemiBold
+                                                    )
+                                                }
+                                            }
+                                            Spacer(Modifier.width(8.dp))
+                                            val statusLabel = when (job.status) {
+                                                BatchJobStatus.WAITING -> "待機中"
+                                                BatchJobStatus.RUNNING -> "処理中"
+                                                BatchJobStatus.COMPLETED -> "完了"
+                                                BatchJobStatus.FAILED -> "失敗"
+                                            }
+                                            val statusColor = when (job.status) {
+                                                BatchJobStatus.WAITING -> Color(0xFF8E8E93)
+                                                BatchJobStatus.RUNNING -> Color(0xFF007AFF)
+                                                BatchJobStatus.COMPLETED -> Color(0xFF34C759)
+                                                BatchJobStatus.FAILED -> Color(0xFFE02424)
+                                            }
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                Text(
+                                                    text = statusLabel,
+                                                    color = statusColor,
+                                                    fontSize = 8.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                                if (!viewModel.isBatchRunning && job.status != BatchJobStatus.RUNNING) {
+                                                    IconButton(
+                                                        onClick = { viewModel.removeFromBatchQueue(job.id) },
+                                                        modifier = Modifier.size(16.dp)
+                                                    ) {
+                                                        Text("❌", fontSize = 8.sp)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                if (viewModel.isBatchRunning) {
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth().background(Color(0xFFFEF3C7)).padding(8.dp),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Text(
+                                            text = viewModel.batchStatusText,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFFD97706)
+                                        )
+                                        Button(
+                                            onClick = { isCanceled = true },
+                                            modifier = Modifier.fillMaxWidth().height(28.dp),
+                                            colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFE02424))
+                                        ) {
+                                            Text("CANCEL BATCH", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                } else {
+                                    val canStartBatch = batchQueue.any { it.status == BatchJobStatus.WAITING || it.status == BatchJobStatus.FAILED }
+                                    Button(
+                                        onClick = {
+                                            scope.launch {
+                                                batchQueue.forEach {
+                                                    if (it.status == BatchJobStatus.FAILED || it.status == BatchJobStatus.COMPLETED) {
+                                                        it.status = BatchJobStatus.WAITING
+                                                        it.progress = 0f
+                                                    }
+                                                }
+                                                runBatchJobs(
+                                                    viewModel = viewModel,
+                                                    outputDir = outputDir,
+                                                    moveOutputToSource = moveOutputToSource,
+                                                    showLivePreview = showLivePreview,
+                                                    onProgressUpdate = {}
+                                                )
+                                            }
+                                        },
+                                        enabled = canStartBatch,
+                                        modifier = Modifier.fillMaxWidth().height(36.dp),
+                                        colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF34C759))
+                                    ) {
+                                        Text("START BATCH ENCODE", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
                         }
                     }
                     // 4. Output and less frequently changed options
@@ -2210,7 +2360,7 @@ fun FitTrimmerMainContent(
                     contentAlignment = Alignment.Center
                 ) {
                     Column(
-                        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+                        modifier = Modifier.fillMaxSize(),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(if (isPreviewFullscreen) 0.dp else 8.dp)
                     ) {
@@ -2228,7 +2378,7 @@ fun FitTrimmerMainContent(
                                 playerState = playerState,
                                 videoCurrentTimeMs = videoCurrentTimeMs,
                                 onCurrentTimeChange = { videoCurrentTimeMs = it },
-                                modifier = if (isPreviewFullscreen) Modifier.fillMaxSize() else Modifier.height(420.dp).fillMaxWidth(),
+                                modifier = if (isPreviewFullscreen) Modifier.fillMaxSize() else Modifier.weight(1f).fillMaxWidth(),
                                 isEncoding = false,
                                 previewQualityMode = previewQualityMode,
                                 onPreviewQualityModeChange = { previewQualityMode = it },
@@ -2264,172 +2414,9 @@ fun FitTrimmerMainContent(
                                         isCanceled = true
                                     }
                                 },
-                                modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp)
+                                modifier = Modifier.weight(1f).fillMaxWidth()
                             )
-                        }
-
-                        val batchQueue = viewModel.batchQueue
-                        if (batchQueue.isNotEmpty()) {
-                            Card(
-                                backgroundColor = Color.White,
-                                shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
-                                border = BorderStroke(1.dp, Color(0xFFE5E5EA)),
-                                elevation = 1.dp,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(12.dp),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = "BATCH JOB QUEUE (${batchQueue.size})",
-                                            color = Color(0xFF1C1C1E),
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 12.sp,
-                                            letterSpacing = 0.5.sp
-                                        )
-                                        if (!viewModel.isBatchRunning) {
-                                            Text(
-                                                text = "CLEAR ALL",
-                                                color = Color(0xFFE02424),
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 10.sp,
-                                                modifier = Modifier.clickable { viewModel.clearBatchQueue() }
-                                            )
-                                        }
-                                    }
-                                    Column(
-                                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        batchQueue.forEach { job ->
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .background(Color(0xFFF2F2F7), shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
-                                                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Column(modifier = Modifier.weight(1f)) {
-                                                    Text(
-                                                        text = File(job.videoPath).name,
-                                                        fontSize = 10.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = Color(0xFF1C1C1E)
-                                                    )
-                                                    Text(
-                                                        text = "Trim: %.1fs - %.1fs".format(job.trimStartSeconds, job.trimEndSeconds),
-                                                        fontSize = 8.sp,
-                                                        color = Color(0xFF636366)
-                                                    )
-                                                    if (job.status == BatchJobStatus.RUNNING) {
-                                                        LinearProgressIndicator(
-                                                            progress = job.progress,
-                                                            modifier = Modifier.fillMaxWidth().height(4.dp).padding(top = 2.dp),
-                                                            color = Color(0xFF007AFF)
-                                                        )
-                                                    }
-                                                    if (job.status == BatchJobStatus.FAILED && !job.errorMessage.isNullOrEmpty()) {
-                                                        Text(
-                                                            text = "Error: ${job.errorMessage}",
-                                                            fontSize = 8.sp,
-                                                            color = Color(0xFFE02424),
-                                                            fontWeight = FontWeight.SemiBold
-                                                        )
-                                                    }
-                                                }
-                                                Spacer(Modifier.width(8.dp))
-                                                val statusLabel = when (job.status) {
-                                                    BatchJobStatus.WAITING -> "待機中"
-                                                    BatchJobStatus.RUNNING -> "処理中"
-                                                    BatchJobStatus.COMPLETED -> "完了"
-                                                    BatchJobStatus.FAILED -> "失敗"
-                                                }
-                                                val statusColor = when (job.status) {
-                                                    BatchJobStatus.WAITING -> Color(0xFF8E8E93)
-                                                    BatchJobStatus.RUNNING -> Color(0xFF007AFF)
-                                                    BatchJobStatus.COMPLETED -> Color(0xFF34C759)
-                                                    BatchJobStatus.FAILED -> Color(0xFFE02424)
-                                                }
-                                                Row(
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                                ) {
-                                                    Text(
-                                                        text = statusLabel,
-                                                        color = statusColor,
-                                                        fontSize = 8.sp,
-                                                        fontWeight = FontWeight.Bold
-                                                    )
-                                                    if (!viewModel.isBatchRunning && job.status != BatchJobStatus.RUNNING) {
-                                                        IconButton(
-                                                            onClick = { viewModel.removeFromBatchQueue(job.id) },
-                                                            modifier = Modifier.size(16.dp)
-                                                        ) {
-                                                            Text("❌", fontSize = 8.sp)
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                    if (viewModel.isBatchRunning) {
-                                        Column(
-                                            modifier = Modifier.fillMaxWidth().background(Color(0xFFFEF3C7)).padding(8.dp),
-                                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                                        ) {
-                                            Text(
-                                                text = viewModel.batchStatusText,
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color(0xFFD97706)
-                                            )
-                                            Button(
-                                                onClick = { isCanceled = true },
-                                                modifier = Modifier.fillMaxWidth().height(28.dp),
-                                                colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFE02424))
-                                            ) {
-                                                Text("CANCEL BATCH", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                            }
-                                        }
-                                    } else {
-                                        val canStartBatch = batchQueue.any { it.status == BatchJobStatus.WAITING || it.status == BatchJobStatus.FAILED }
-                                        Button(
-                                            onClick = {
-                                                scope.launch {
-                                                    batchQueue.forEach {
-                                                        if (it.status == BatchJobStatus.FAILED || it.status == BatchJobStatus.COMPLETED) {
-                                                            it.status = BatchJobStatus.WAITING
-                                                            it.progress = 0f
-                                                        }
-                                                    }
-                                                    runBatchJobs(
-                                                        viewModel = viewModel,
-                                                        outputDir = outputDir,
-                                                        moveOutputToSource = moveOutputToSource,
-                                                        showLivePreview = showLivePreview,
-                                                        onProgressUpdate = {}
-                                                    )
-                                                }
-                                            },
-                                            enabled = canStartBatch,
-                                            modifier = Modifier.fillMaxWidth().height(36.dp),
-                                            colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF34C759))
-                                        ) {
-                                            Text("START BATCH ENCODE", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        if (isEncoding && !viewModel.isBatchRunning) {
+                            Spacer(Modifier.height(8.dp))
                             val totalParts = viewModel.getSplitRanges().size
                             val outputFileName = buildEncodeOutputFileName(
                                 settings = settings,
