@@ -182,7 +182,8 @@ class HudRendererTest {
     fun testHudDistanceAndTimeLabelsAndFormatting() {
         val config = HudConfig(
             valSize = 40f, tightness = 1f, spacing = 20f,
-            xOffset = 40f, yOffset = 100f, graphH = 60f, graphW = 300f
+            xOffset = 40f, yOffset = 100f, graphH = 60f, graphW = 300f,
+            language = "ja"
         )
         val renderer = HudRenderer(config)
         
@@ -217,6 +218,51 @@ class HudRendererTest {
         
         assertTrue(tripLine.contains("2.50 km"), "Overall distance should show 2 decimal places: 2.50 km (got '$tripLine')")
         assertTrue(clipLine.contains("1.50 km"), "Clip distance should show 2 decimal places: 1.50 km (got '$clipLine')")
+        
+        assertTrue(canvas.drawnTexts.contains("スピード"), "HUD should localize SPEED to Japanese")
+        assertTrue(canvas.drawnTexts.contains("標高"), "HUD should localize ELEVATION to Japanese")
+    }
+
+    @Test
+    fun testHudLocalizationEnglishFallback() {
+        val config = HudConfig(
+            valSize = 40f, tightness = 1f, spacing = 20f,
+            xOffset = 40f, yOffset = 100f, graphH = 60f, graphW = 300f,
+            language = "en"
+        )
+        val renderer = HudRenderer(config)
+        
+        val startPoint = FitParser.TelemetryPoint(
+            timestamp = 1000.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 50.0, grade = 2.0,
+            distance = 1000.0, elapsedSeconds = 10
+        )
+        val currentPoint = FitParser.TelemetryPoint(
+            timestamp = 1100.0, speed = 12.0, power = 110.0, cadence = 82.0, heartRate = 122.0, elevation = 52.0, grade = 2.2,
+            distance = 2500.5, elapsedSeconds = 110
+        )
+        val allPoints = listOf(startPoint, currentPoint)
+        
+        val canvas = TestHudCanvas()
+        renderer.renderFrame(
+            canvas,
+            currentPoint,
+            allPoints,
+            emptyList(),
+            100.0f,
+            isValid = true
+        )
+        
+        val tripLine = canvas.drawnTexts.find { it.contains("Total Distance:") }
+        val clipLine = canvas.drawnTexts.find { it.contains("Split Distance:") }
+        
+        assertTrue(tripLine != null, "HUD should display 'Total Distance:' (got ${canvas.drawnTexts})")
+        assertTrue(clipLine != null, "HUD should display 'Split Distance:' (got ${canvas.drawnTexts})")
+        
+        assertTrue(tripLine.contains("Total Elapsed:"), "HUD should display 'Total Elapsed:' (got '$tripLine')")
+        assertTrue(clipLine.contains("Split Elapsed:"), "HUD should display 'Split Elapsed:' (got '$clipLine')")
+        
+        assertTrue(canvas.drawnTexts.contains("SPEED"), "HUD should keep SPEED in English")
+        assertTrue(canvas.drawnTexts.contains("ELEVATION"), "HUD should keep ELEVATION in English")
     }
 }
 

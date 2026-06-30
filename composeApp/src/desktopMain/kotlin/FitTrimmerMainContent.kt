@@ -119,7 +119,8 @@ fun FitTrimmerMainContent(
             captionPosition = settings.captionPosition,
             roadCaptions = settings.roadCaptions,
             powerTrendSpanSeconds = settings.powerTrendSpanSeconds,
-            useImperialUnits = settings.useImperialUnits
+            useImperialUnits = settings.useImperialUnits,
+            language = settings.language
         )
     }
     var reloadTrigger by remember { mutableStateOf(0) }
