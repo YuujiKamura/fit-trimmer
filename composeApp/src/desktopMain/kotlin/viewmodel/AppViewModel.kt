@@ -74,6 +74,7 @@ class AppViewModel(
     )
     var isDetectingPlates by mutableStateOf(false)
     var plateDetectionProgress by mutableStateOf("")
+    var plateDetectionError by mutableStateOf<String?>(null)
 
     fun runPlateDetection(coroutineScope: kotlinx.coroutines.CoroutineScope) {
         val path = videoPath
@@ -83,8 +84,10 @@ class AppViewModel(
         
         isDetectingPlates = true
         plateDetectionProgress = "0.0%"
+        plateDetectionError = null
         
         coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val logBuffer = StringBuilder()
             try {
                 val isWindows = System.getProperty("os.name").lowercase().contains("win")
                 val pythonCmd = if (isWindows) "python" else "python3"
@@ -97,10 +100,17 @@ class AppViewModel(
                     "--export-coords"
                 )
                 pb.redirectErrorStream(true)
-                val process = pb.start()
+                
+                val process = try {
+                    pb.start()
+                } catch (ioe: java.io.IOException) {
+                    plateDetectionError = utils.Localizer.get("plate_error_missing_python", settings.language)
+                    return@launch
+                }
                 
                 process.inputStream.bufferedReader().useLines { lines ->
                     lines.forEach { line ->
+                        logBuffer.append(line).append("\n")
                         if (line.contains("PROGRESS:")) {
                             val percent = line.substringAfter("PROGRESS:").trim()
                             plateDetectionProgress = percent
@@ -112,10 +122,17 @@ class AppViewModel(
                 if (exitCode == 0) {
                     plateCache = utils.PlateCacheManager.loadCache(path)
                 } else {
+                    val logStr = logBuffer.toString()
+                    if (logStr.contains("ModuleNotFoundError") || logStr.contains("ImportError")) {
+                        plateDetectionError = utils.Localizer.get("plate_error_missing_packages", settings.language)
+                    } else {
+                        plateDetectionError = utils.Localizer.get("plate_error_unknown", settings.language) + " (code $exitCode)"
+                    }
                     plateDetectionProgress = "Failed (exit $exitCode)"
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
+                plateDetectionError = e.message ?: "Unknown error"
                 plateDetectionProgress = "Error: ${e.message}"
             } finally {
                 isDetectingPlates = false
