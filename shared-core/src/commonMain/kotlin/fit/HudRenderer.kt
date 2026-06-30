@@ -17,7 +17,8 @@ data class HudConfig(
     val captionPosition: String = "top_center",
     val roadCaptions: List<RoadCaptionSegment> = emptyList(),
     val powerTrendSpanSeconds: Int = 60,
-    val useImperialUnits: Boolean = false
+    val useImperialUnits: Boolean = false,
+    val language: String = ""
 )
 
 interface HudCanvas {
@@ -107,19 +108,19 @@ class HudRenderer(val config: HudConfig) {
         val speedVal = if (config.useImperialUnits) telemetry.speed * 0.621371 else telemetry.speed
         val speedUnit = if (config.useImperialUnits) "mph" else "km/h"
         val spdStr = if (isValid) formatOneDecimal(speedVal) else "-"
-        drawCell("SPEED", spdStr, speedUnit, "#3b82f6")
+        drawCell(getLabel("SPEED"), spdStr, speedUnit, "#3b82f6")
 
         // 2. CADENCE
         val cadStr = if (isValid) telemetry.cadence.roundToInt().toString() else "-"
-        drawCell("CADENCE", cadStr, "rpm", "#a78bfa")
+        drawCell(getLabel("CADENCE"), cadStr, "rpm", "#a78bfa")
 
         // 3. HEART RATE
         val hrStr = if (isValid) telemetry.heartRate.roundToInt().toString() else "-"
-        drawCell("HEART RATE", hrStr, "bpm", "#ef4444")
+        drawCell(getLabel("HEART RATE"), hrStr, "bpm", "#ef4444")
 
         // 4. POWER
         val pwrStr = if (isValid) telemetry.power.roundToInt().toString() else "-"
-        drawCell("POWER", pwrStr, "W", "#10b981")
+        drawCell(getLabel("POWER"), pwrStr, "W", "#10b981")
 
         // 5. W/KG
         val wkgVal = telemetry.power / 83.3
@@ -134,7 +135,7 @@ class HudRenderer(val config: HudConfig) {
         } else {
             "${config.powerTrendSpanSeconds}s"
         }
-        canvas.drawText("POWER TREND ($spanText, 1s)", cx, cy, labelSize, "#e5e7eb", bold = true)
+        canvas.drawText("${getLabel("POWER TREND")} ($spanText, 1s)", cx, cy, labelSize, "#e5e7eb", bold = true)
         val pGy = cy + labelSize + 4f
         
         if (isValid && pBuf.isNotEmpty()) {
@@ -189,10 +190,10 @@ class HudRenderer(val config: HudConfig) {
 
         // 7. GRADE
         val grdStr = if (isValid) formatGrade(telemetry.grade) else "-"
-        drawCell("GRADE", grdStr, "%", "#fbbf24")
+        drawCell(getLabel("GRADE"), grdStr, "%", "#fbbf24")
 
         // 8. ELEVATION (Line graph with terrain and pin)
-        canvas.drawText("ELEVATION", cx, cy, labelSize, "#e5e7eb", bold = true)
+        canvas.drawText(getLabel("ELEVATION"), cx, cy, labelSize, "#e5e7eb", bold = true)
         val eGy = cy + labelSize + 4f
         
         if (allPoints.size > 1) {
@@ -371,8 +372,17 @@ class HudRenderer(val config: HudConfig) {
             val videoTimeText = formatTime(videoElapsedSeconds)
             
             val infoSize = 16f
-            val line1 = "全体走行距離: $fitDistText   全体経過時間: $fitTimeText"
-            val line2 = "区間走行距離: $videoDistText   区間経過時間: $videoTimeText"
+            val isJa = config.language.lowercase().let { it == "ja" || it.startsWith("ja-") }
+            val line1 = if (isJa) {
+                "全体走行距離: $fitDistText   全体経過時間: $fitTimeText"
+            } else {
+                "Total Distance: $fitDistText   Total Elapsed: $fitTimeText"
+            }
+            val line2 = if (isJa) {
+                "区間走行距離: $videoDistText   区間経過時間: $videoTimeText"
+            } else {
+                "Split Distance: $videoDistText   Split Elapsed: $videoTimeText"
+            }
             
             // Draw immediately below the elevation graph box in two lines
             canvas.drawText(line1, cx, eGy + graphH + 16f, infoSize, "#ffffff", bold = true)
@@ -453,6 +463,21 @@ class HudRenderer(val config: HudConfig) {
             formatted
         } catch (e: Exception) {
             "----- --:--:--"
+        }
+    }
+
+    private fun getLabel(key: String): String {
+        val lang = config.language.lowercase()
+        val isJa = lang == "ja" || lang.startsWith("ja-" )
+        return when (key) {
+            "SPEED" -> if (isJa) "スピード" else "SPEED"
+            "CADENCE" -> if (isJa) "ケイデンス" else "CADENCE"
+            "HEART RATE" -> if (isJa) "心拍数" else "HEART RATE"
+            "POWER" -> if (isJa) "パワー" else "POWER"
+            "GRADE" -> if (isJa) "斜度" else "GRADE"
+            "ELEVATION" -> if (isJa) "標高" else "ELEVATION"
+            "POWER TREND" -> if (isJa) "パワートレンド" else "POWER TREND"
+            else -> key
         }
     }
 }

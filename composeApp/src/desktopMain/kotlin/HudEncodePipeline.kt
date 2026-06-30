@@ -36,7 +36,9 @@ object HudEncodePipeline {
                 xOffset = s.xOffset, yOffset = s.yOffset, graphH = s.graphH, graphW = s.graphW,
                 captionPosition = s.captionPosition,
                 roadCaptions = s.roadCaptions,
-                powerTrendSpanSeconds = s.powerTrendSpanSeconds
+                powerTrendSpanSeconds = s.powerTrendSpanSeconds,
+                useImperialUnits = s.useImperialUnits,
+                language = s.language
             )
             val proxy = DynamicRendererProxy(config)
             globalRendererProxy = proxy
