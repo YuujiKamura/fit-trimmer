@@ -2334,11 +2334,18 @@ fun FitTrimmerMainContent(
                             Spacer(Modifier.height(4.dp))
                             Text("POWER TREND SPAN", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 0.5.sp)
                             Row(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                val spans = listOf(30, 60, 90, 120)
-                                spans.forEach { sec ->
+                                val spans = listOf(
+                                    30 to "30s",
+                                    60 to "1m",
+                                    180 to "3m",
+                                    300 to "5m",
+                                    600 to "10m",
+                                    1200 to "20m"
+                                )
+                                spans.forEach { (sec, label) ->
                                     val isSelected = settings.powerTrendSpanSeconds == sec
                                     OutlinedButton(
                                         onClick = { settings = settings.copy(powerTrendSpanSeconds = sec) },
@@ -2351,7 +2358,7 @@ fun FitTrimmerMainContent(
                                         border = BorderStroke(1.dp, if (isSelected) Color(0xFF007AFF) else Color(0xFFE5E5EA)),
                                         contentPadding = PaddingValues(0.dp)
                                     ) {
-                                        Text("${sec}s", fontSize = 10.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
+                                        Text(label, fontSize = 9.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
                                     }
                                 }
                             }
