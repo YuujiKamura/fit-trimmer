@@ -371,8 +371,8 @@ class HudRenderer(val config: HudConfig) {
             val videoTimeText = formatTime(videoElapsedSeconds)
             
             val infoSize = 16f
-            val line1 = "全体距離: $fitDistText   全体時間: $fitTimeText"
-            val line2 = "動画距離: $videoDistText   動画時間: $videoTimeText"
+            val line1 = "全体走行距離: $fitDistText   全体経過時間: $fitTimeText"
+            val line2 = "区間走行距離: $videoDistText   区間経過時間: $videoTimeText"
             
             // Draw immediately below the elevation graph box in two lines
             canvas.drawText(line1, cx, eGy + graphH + 16f, infoSize, "#ffffff", bold = true)

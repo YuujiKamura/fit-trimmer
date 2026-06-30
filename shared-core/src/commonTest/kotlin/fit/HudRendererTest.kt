@@ -206,11 +206,14 @@ class HudRendererTest {
             isValid = true
         )
         
-        val tripLine = canvas.drawnTexts.find { it.contains("全体距離:") }
-        val clipLine = canvas.drawnTexts.find { it.contains("動画距離:") }
+        val tripLine = canvas.drawnTexts.find { it.contains("全体走行距離:") }
+        val clipLine = canvas.drawnTexts.find { it.contains("区間走行距離:") }
         
-        assertTrue(tripLine != null, "HUD should display '全体距離:' (got ${canvas.drawnTexts})")
-        assertTrue(clipLine != null, "HUD should display '動画距離:' (got ${canvas.drawnTexts})")
+        assertTrue(tripLine != null, "HUD should display '全体走行距離:' (got ${canvas.drawnTexts})")
+        assertTrue(clipLine != null, "HUD should display '区間走行距離:' (got ${canvas.drawnTexts})")
+        
+        assertTrue(tripLine.contains("全体経過時間:"), "HUD should display '全体経過時間:' (got '$tripLine')")
+        assertTrue(clipLine.contains("区間経過時間:"), "HUD should display '区間経過時間:' (got '$clipLine')")
         
         assertTrue(tripLine.contains("2.50 km"), "Overall distance should show 2 decimal places: 2.50 km (got '$tripLine')")
         assertTrue(clipLine.contains("1.50 km"), "Clip distance should show 2 decimal places: 1.50 km (got '$clipLine')")
