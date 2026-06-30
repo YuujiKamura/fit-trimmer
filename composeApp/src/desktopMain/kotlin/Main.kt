@@ -1943,25 +1943,37 @@ fun startGui(args: Array<String>) = application {
                                       }
                                   }
                               }
-                              Spacer(modifier = Modifier.height(6.dp))
-                              Text("その他", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 0.5.sp)
-                              // Software Update Section
-                              Column(
-                                  modifier = Modifier
-                                      .fillMaxWidth()
-                                      .background(Color(0xFFF2F2F7), shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
-                                      .border(1.dp, Color(0xFFE5E5EA), shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
-                                      .padding(horizontal = 10.dp, vertical = 8.dp),
-                                  verticalArrangement = Arrangement.spacedBy(6.dp)
-                              ) {
+                        }
+                    }
+                    Card(
+                        backgroundColor = Color.White,
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, Color(0xFFE5E5EA)),
+                        elevation = 1.dp,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Text("その他", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 0.5.sp)
+                            Text("更新確認、設定ファイル、アプリが自動保存する作業状態を扱います。", color = Color(0xFF636366), fontSize = 10.sp, lineHeight = 13.sp)
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(Color(0xFFF2F2F7), shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                                    .border(1.dp, Color(0xFFE5E5EA), shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
                                   Row(
                                       modifier = Modifier.fillMaxWidth(),
                                       horizontalArrangement = Arrangement.SpaceBetween,
                                       verticalAlignment = Alignment.CenterVertically
                                   ) {
                                       Column {
-                                          Text("SOFTWARE UPDATE", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp)
-                                          Text("現在のバージョン: $APP_VERSION", color = Color(0xFF636366), fontSize = 8.sp)
+                                          Text("ソフトウェア更新", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                                          Text("新しいリリースがあるか確認します。現在: $APP_VERSION", color = Color(0xFF636366), fontSize = 8.sp)
                                       }
                                   }
                                   if (isCheckingUpdate) {
@@ -2021,13 +2033,136 @@ fun startGui(args: Array<String>) = application {
                                           modifier = Modifier.fillMaxWidth().height(24.dp),
                                           enabled = !isEncoding
                                       ) {
-                                          Text("🔄 更新プログラムの確認", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                          Text("更新を確認", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                       }
                                       manualCheckFeedback?.let { feedback ->
                                           Text(feedback, fontSize = 9.sp, color = if (feedback.contains("エラー") || feedback.contains("失敗")) Color.Red else Color(0xFF34C759))
                                       }
                                   }
-                              }
+                            }
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(Color(0xFFF2F2F7), shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                                    .border(1.dp, Color(0xFFE5E5EA), shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Column {
+                                    Text("設定ファイル", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                                    Text("HUD配置、同期、トリム、分割、選択中のソースをJSONで読み書きします。", color = Color(0xFF636366), fontSize = 8.sp)
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Button(
+                                        onClick = {
+                                            val path = pickFile("設定JSONを読み込む", listOf("*.json"))
+                                            if (path != null) {
+                                                scope.launch {
+                                                    try {
+                                                        val jsonStr = File(path).readText(Charsets.UTF_8)
+                                                        val jsonParser = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+                                                        try {
+                                                            val loadedCache = jsonParser.decodeFromString<utils.GuiPathCache>(jsonStr)
+                                                            var pathChanged = false
+                                                            if (loadedCache.videoPath.isNotEmpty() && loadedCache.videoPath != videoPath && File(loadedCache.videoPath).exists()) {
+                                                                videoPath = loadedCache.videoPath
+                                                                pathChanged = true
+                                                            }
+                                                            if (loadedCache.fitPath.isNotEmpty() && loadedCache.fitPath != fitPath && File(loadedCache.fitPath).exists()) {
+                                                                fitPath = loadedCache.fitPath
+                                                                pathChanged = true
+                                                            }
+                                                            if (pathChanged) {
+                                                                var timeoutCount = 0
+                                                                while (timeoutCount < 80) {
+                                                                    val isVideoReady = videoPath.isEmpty() || (videoStartUtc.isNotEmpty() && videoLengthMs > 0L)
+                                                                    val isFitReady = fitPath.isEmpty() || telemetryPoints.isNotEmpty()
+                                                                    if (isVideoReady && isFitReady) break
+                                                                    kotlinx.coroutines.delay(100)
+                                                                    timeoutCount++
+                                                                }
+                                                                kotlinx.coroutines.delay(200)
+                                                            }
+                                                            settings = loadedCache.settings
+                                                            moveOutputToSource = loadedCache.moveOutputToSource
+                                                            showLivePreview = loadedCache.showLivePreview
+                                                            previewQualityMode = loadedCache.previewQualityMode
+                                                            autoDetectRoadCaptionsOnEncode = loadedCache.autoDetectRoadCaptionsOnEncode
+                                                            loadedCache.timeOffsetMillis?.let { timeOffsetState.update(it) }
+                                                            loadedCache.trimStartSeconds?.let { trimStartSeconds = it }
+                                                            loadedCache.trimEndSeconds?.let { trimEndSeconds = it }
+                                                            loadedCache.splitPoints?.let { viewModel.splitPoints = it }
+                                                            statusText = "設定ファイル（同期範囲・パス込）を読み込みました"
+                                                        } catch (e: Exception) {
+                                                            val loadedSettings = jsonParser.decodeFromString<fit.HudSettings>(jsonStr)
+                                                            settings = loadedSettings
+                                                            statusText = "HUD設定ファイルを読み込みました"
+                                                        }
+                                                    } catch (e: Exception) {
+                                                        statusText = "読み込みエラー: ${e.message}"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        modifier = Modifier.weight(1f).height(30.dp),
+                                        colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFE5E5EA)),
+                                        contentPadding = PaddingValues(0.dp),
+                                        enabled = !isEncoding
+                                    ) {
+                                        Text("読み込み", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                    Button(
+                                        onClick = {
+                                            val path = saveFile("設定JSONを書き出す", "fit_trimmer_settings.json")
+                                            if (path != null) {
+                                                try {
+                                                    val cacheToSave = utils.GuiPathCache(
+                                                        fitPath = fitPath,
+                                                        videoPath = videoPath,
+                                                        videoStartUtc = adjustedStartUtc,
+                                                        timeOffsetMillis = timeOffsetState.millis,
+                                                        settings = settings,
+                                                        moveOutputToSource = moveOutputToSource,
+                                                        showLivePreview = showLivePreview,
+                                                        previewQualityMode = previewQualityMode,
+                                                        autoDetectRoadCaptionsOnEncode = autoDetectRoadCaptionsOnEncode,
+                                                        trimStartSeconds = trimStartSeconds,
+                                                        trimEndSeconds = trimEndSeconds,
+                                                        splitPoints = viewModel.splitPoints.toList()
+                                                    )
+                                                    val jsonStr = kotlinx.serialization.json.Json.encodeToString(cacheToSave)
+                                                    File(path).writeText(jsonStr, Charsets.UTF_8)
+                                                    statusText = "設定ファイルを書き出しました"
+                                                } catch (e: Exception) {
+                                                    statusText = "保存エラー: ${e.message}"
+                                                }
+                                            }
+                                        },
+                                        modifier = Modifier.weight(1f).height(30.dp),
+                                        colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFE5E5EA)),
+                                        contentPadding = PaddingValues(0.dp),
+                                        enabled = !isEncoding
+                                    ) {
+                                        Text("書き出し", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(Color(0xFFF2F2F7), shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                                    .border(1.dp, Color(0xFFE5E5EA), shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text("自動保存と履歴", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                                Text("現在の作業状態はユーザーフォルダの .fittrimmer_gui_cache.json に自動保存されます。", color = Color(0xFF636366), fontSize = 8.sp, lineHeight = 11.sp)
+                                Text("動画を切り替えると、動画ごとのトリム・分割・テロップ等を .fittrimmer_history に保存/復元します。", color = Color(0xFF636366), fontSize = 8.sp, lineHeight = 11.sp)
+                                Text("動画開始時刻はキャッシュを信用せず、動画ファイルから読み直します。", color = Color(0xFF636366), fontSize = 8.sp, lineHeight = 11.sp)
+                            }
                         }
                     }
                     // C-DRIVE SPACE MONITOR Card
@@ -2413,123 +2548,6 @@ fun startGui(args: Array<String>) = application {
                                 }
                             }
                         }
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Card(
-                        backgroundColor = Color.White,
-                        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
-                        border = BorderStroke(1.dp, Color(0xFFE5E5EA)),
-                        elevation = 1.dp,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text("SETTINGS IMPORT / EXPORT", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 0.5.sp)
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Button(
-                                    onClick = {
-                                        val path = pickFile("Load Settings JSON", listOf("*.json"))
-                                        if (path != null) {
-                                            scope.launch {
-                                                try {
-                                                    val jsonStr = File(path).readText(Charsets.UTF_8)
-                                                    val jsonParser = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
-                                                    try {
-                                                        val loadedCache = jsonParser.decodeFromString<utils.GuiPathCache>(jsonStr)
-                                                        
-                                                        // 1. Restore file paths first to trigger background parsing
-                                                        var pathChanged = false
-                                                        if (loadedCache.videoPath.isNotEmpty() && loadedCache.videoPath != videoPath && File(loadedCache.videoPath).exists()) {
-                                                            videoPath = loadedCache.videoPath
-                                                            pathChanged = true
-                                                        }
-                                                        if (loadedCache.fitPath.isNotEmpty() && loadedCache.fitPath != fitPath && File(loadedCache.fitPath).exists()) {
-                                                            fitPath = loadedCache.fitPath
-                                                            pathChanged = true
-                                                        }
-                                                        
-                                                        // Wait for metadata (videoLengthMs, videoStartUtc) and telemetryPoints to be resolved in background LaunchedEffects
-                                                        if (pathChanged) {
-                                                            var timeoutCount = 0
-                                                            while (timeoutCount < 80) { // Max 8 seconds (80 * 100ms)
-                                                                val isVideoReady = videoPath.isEmpty() || (videoStartUtc.isNotEmpty() && videoLengthMs > 0L)
-                                                                val isFitReady = fitPath.isEmpty() || telemetryPoints.isNotEmpty()
-                                                                if (isVideoReady && isFitReady) {
-                                                                    break
-                                                                }
-                                                                kotlinx.coroutines.delay(100)
-                                                                timeoutCount++
-                                                            }
-                                                            // Extra padding delay to let LaunchedEffects finish writing their state
-                                                            kotlinx.coroutines.delay(200)
-                                                        }
-                                                        
-                                                        // 2. Overwrite target settings and synchronization offsets
-                                                        settings = loadedCache.settings
-                                                        previewQualityMode = loadedCache.previewQualityMode
-                                                        autoDetectRoadCaptionsOnEncode = loadedCache.autoDetectRoadCaptionsOnEncode
-                                                        loadedCache.timeOffsetMillis?.let {
-                                                            timeOffsetState.update(it)
-                                                        }
-                                                        loadedCache.trimStartSeconds?.let { trimStartSeconds = it }
-                                                        loadedCache.trimEndSeconds?.let { trimEndSeconds = it }
-                                                        loadedCache.splitPoints?.let {
-                                                            viewModel.splitPoints = it
-                                                        }
-                                                        statusText = "設定ファイル（同期範囲・パス込）を読み込みました"
-                                                    } catch (e: Exception) {
-                                                        val loadedSettings = jsonParser.decodeFromString<fit.HudSettings>(jsonStr)
-                                                        settings = loadedSettings
-                                                        statusText = "設定ファイルを読み込みました"
-                                                    }
-                                                } catch (e: Exception) {
-                                                    statusText = "読み込みエラー: ${e.message}"
-                                                }
-                                            }
-                                        }
-                                    },
-                                    modifier = Modifier.weight(1f).height(36.dp),
-                                    colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFE5E5EA))
-                                ) {
-                                    Text("LOAD JSON", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                }
-                                Button(
-                                    onClick = {
-                                        val path = saveFile("Save Settings JSON", "fit_trimmer_settings.json")
-                                        if (path != null) {
-                                            try {
-                                                val cacheToSave = utils.GuiPathCache(
-                                                    fitPath = fitPath,
-                                                    videoPath = videoPath,
-                                                    videoStartUtc = adjustedStartUtc,
-                                                    timeOffsetMillis = timeOffsetState.millis,
-                                                    settings = settings,
-                                                    previewQualityMode = previewQualityMode,
-                                                    autoDetectRoadCaptionsOnEncode = autoDetectRoadCaptionsOnEncode,
-                                                    trimStartSeconds = trimStartSeconds,
-                                                    trimEndSeconds = trimEndSeconds,
-                                                    splitPoints = viewModel.splitPoints.toList()
-                                                )
-                                                val jsonStr = kotlinx.serialization.json.Json.encodeToString(cacheToSave)
-                                                File(path).writeText(jsonStr, Charsets.UTF_8)
-                                                statusText = "設定ファイルを保存しました"
-                                            } catch (e: Exception) {
-                                                statusText = "保存エラー: ${e.message}"
-                                            }
-                                        }
-                                    },
-                                    modifier = Modifier.weight(1f).height(36.dp),
-                                    colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFE5E5EA))
-                                ) {
-                                    Text("SAVE JSON", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
-                    }
                     }
                     }
                     if (showSidebar) {
