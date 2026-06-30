@@ -799,11 +799,28 @@ fun startGui(args: Array<String>) = application {
                                         isEncoding = true
                                         isPaused = false
                                         isCanceled = false
-                                        viewModel.encodingSegmentStart = trimStartSeconds
-                                        viewModel.encodingSegmentEnd = if (trimEndSeconds <= 0.0) videoLengthMs / 1000.0 else trimEndSeconds
                                         try {
                                             val encodeSettings = prepareSettingsForEncode(settings)
-                                            fireEncode(encodeSettings, fitPath, videoPath, outputDir, videoStartUtc,
+                                            val ranges = viewModel.getSplitRanges()
+                                            val encodePlan = buildEncodePlan(
+                                                settings = encodeSettings,
+                                                videoPath = videoPath,
+                                                outputDir = outputDir,
+                                                moveOutputToSource = moveOutputToSource,
+                                                ranges = ranges
+                                            )
+                                            val destFiles = encodePlan.segments.map { it.finalOutputFile }
+                                            val resultMsg = HudEncodePipeline.execute(
+                                                s = encodeSettings,
+                                                fitPath = fitPath,
+                                                videoPath = videoPath,
+                                                outputDir = outputDir,
+                                                videoStartUtc = adjustedStartUtc,
+                                                ranges = ranges,
+                                                destFiles = destFiles,
+                                                isSample = false,
+                                                shouldResume = false,
+                                                moveOutputToSource = moveOutputToSource,
                                                 onProgress = { prog, status ->
                                                     progress = prog
                                                     statusText = status
@@ -814,13 +831,15 @@ fun startGui(args: Array<String>) = application {
                                                         encodingPreviewImage = bitmap
                                                     }
                                                 },
-                                                trimStartSeconds = trimStartSeconds,
-                                                trimEndSeconds = trimEndSeconds,
                                                 pauseSupplier = { isPaused },
                                                 cancelSupplier = { isCanceled },
-                                                showLivePreviewSupplier = { showLivePreview }
+                                                showLivePreviewSupplier = { showLivePreview },
+                                                onSegmentStart = { pStart, pEnd ->
+                                                    viewModel.encodingSegmentStart = pStart
+                                                    viewModel.encodingSegmentEnd = pEnd
+                                                }
                                             )
-                                            statusText = "✨ Finished Successfully!"
+                                            statusText = resultMsg
                                             if (args.contains("--auto-sample")) {
                                                 println("TEST_NOTIFICATION_SUCCESS: Encoding Finished Successfully!")
                                             } else {
@@ -830,7 +849,7 @@ fun startGui(args: Array<String>) = application {
                                                 )
                                             }
                                         } catch (e: Exception) {
-                                            // Error string is set inside fireEncode's onProgress callback
+                                            statusText = "❌ Error: ${e.message ?: "Unknown error"}"
                                             if (args.contains("--auto-sample")) {
                                                 println("TEST_NOTIFICATION_ERROR: Encoding Failed: ${e.message}")
                                             } else {
@@ -1124,83 +1143,36 @@ fun startGui(args: Array<String>) = application {
                                     isCanceled = false
                                     try {
                                         val encodeSettings = prepareSettingsForEncode(settings)
-                                        val encodePlan = buildEncodePlan(
-                                            settings = encodeSettings,
+                                        val resultMsg = HudEncodePipeline.execute(
+                                            s = encodeSettings,
+                                            fitPath = fitPath,
                                             videoPath = targetVideoPath,
                                             outputDir = outputDir,
+                                            videoStartUtc = adjustedStartUtc,
+                                            ranges = ranges,
+                                            destFiles = destFiles,
+                                            isSample = false,
+                                            shouldResume = shouldResume,
                                             moveOutputToSource = moveOutputToSource,
-                                            ranges = ranges
-                                        )
-                                        val totalDuration = encodePlan.totalDurationSeconds
-                                        var completedDuration = 0.0
-                                        var hasCloudSyncMsg = false
-                                        for (segment in encodePlan.segments) {
-                                            if (isCanceled) break
-                                            val idx = segment.index
-                                            val pStart = segment.startSeconds
-                                            val pEnd = segment.endSeconds
-                                            val partDuration = pEnd - pStart
-                                            val finalOutFile = destFiles.getOrNull(idx)
-                                            if (shouldResume && finalOutFile != null && finalOutFile.exists() && finalOutFile.length() > 0L) {
-                                                println("DEBUG: Segment ${idx + 1} already finished. Skipping. File: ${finalOutFile.absolutePath}")
-                                                completedDuration += partDuration
-                                                continue
-                                            }
-                                            viewModel.encodingSegmentStart = pStart
-                                            viewModel.encodingSegmentEnd = pEnd
-                                            val partOutPath = fireEncode(encodeSettings, fitPath, videoPath, outputDir, adjustedStartUtc,
-                                                onProgress = { prog, status ->
-                                                    val segmentProgress = prog.toDouble()
-                                                    val overallProg = if (totalDuration > 0.0) {
-                                                        (completedDuration + segmentProgress * partDuration) / totalDuration
-                                                    } else 0.0
-                                                    progress = overallProg.toFloat()
-                                                    statusText = "[Part ${idx + 1}/${ranges.size}] $status"
-                                                },
-                                                onFrame = { bufferedImg ->
-                                                    val bitmap = bufferedImg.toComposeImageBitmap()
-                                                    javax.swing.SwingUtilities.invokeLater {
-                                                        encodingPreviewImage = bitmap
-                                                    }
-                                                },
-                                                trimStartSeconds = pStart,
-                                                trimEndSeconds = pEnd,
-                                                pauseSupplier = { isPaused },
-                                                cancelSupplier = { isCanceled },
-                                                showLivePreviewSupplier = { showLivePreview },
-                                                partIndex = idx,
-                                                numParts = encodePlan.segments.size
-                                            )
-                                            if (destFiles.isNotEmpty() && !isCanceled) {
-                                                val finalDestFile = destFiles.getOrNull(idx)
-                                                if (finalDestFile != null) {
-                                                    val outFile = File(partOutPath)
-                                                    if (outFile.absolutePath != finalDestFile.absolutePath) {
-                                                        statusText = "[Part ${idx + 1}/${ranges.size}] Moving file to destination..."
-                                                        withContext(Dispatchers.IO) {
-                                                            java.nio.file.Files.copy(outFile.toPath(), finalDestFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
-                                                            outFile.delete()
-                                                        }
-                                                    }
-                                                    if (moveOutputToSource) {
-                                                        val normalized = targetVideoPath.replace("\\", "/").lowercase()
-                                                        if (normalized.contains("google drive") || 
-                                                            normalized.contains("マイドライブ") || 
-                                                            normalized.contains("my drive") ||
-                                                            normalized.startsWith("g:/") || 
-                                                            normalized.startsWith("h:/")) {
-                                                            hasCloudSyncMsg = true
-                                                        }
-                                                    }
+                                            onProgress = { prog, status ->
+                                                progress = prog
+                                                statusText = status
+                                            },
+                                            onFrame = { bufferedImg ->
+                                                val bitmap = bufferedImg.toComposeImageBitmap()
+                                                javax.swing.SwingUtilities.invokeLater {
+                                                    encodingPreviewImage = bitmap
                                                 }
+                                            },
+                                            pauseSupplier = { isPaused },
+                                            cancelSupplier = { isCanceled },
+                                            showLivePreviewSupplier = { showLivePreview },
+                                            onSegmentStart = { pStart, pEnd ->
+                                                viewModel.encodingSegmentStart = pStart
+                                                viewModel.encodingSegmentEnd = pEnd
                                             }
-                                            completedDuration += partDuration
-                                        }
-                                        if (hasCloudSyncMsg) {
-                                            statusText = "✨ Copied to Cloud. Drive Desktop is syncing in background (Check system tray)."
-                                        } else {
-                                            statusText = if (isCanceled) "Encoding Canceled" else "✨ Finished Successfully!"
-                                        }
+                                        )
+                                        statusText = resultMsg
                                         if (!isCanceled) {
                                             if (args.contains("--auto-sample")) {
                                                 println("TEST_NOTIFICATION_SUCCESS: Encoding Finished Successfully!")
@@ -1212,6 +1184,7 @@ fun startGui(args: Array<String>) = application {
                                             }
                                         }
                                     } catch (e: Exception) {
+                                        statusText = "❌ Error: ${e.message ?: "Unknown error"}"
                                         if (args.contains("--auto-sample")) {
                                             println("TEST_NOTIFICATION_ERROR: Encoding Failed: ${e.message}")
                                         } else {
@@ -1254,8 +1227,6 @@ fun startGui(args: Array<String>) = application {
                                     isEncoding = true
                                     isPaused = false
                                     isCanceled = false
-                                    viewModel.encodingSegmentStart = trimStartSeconds
-                                    viewModel.encodingSegmentEnd = trimStartSeconds + 5.0
                                     try {
                                         val encodeSettings = prepareSettingsForEncode(settings)
                                         val samplePlan = buildEncodePlan(
@@ -1266,7 +1237,18 @@ fun startGui(args: Array<String>) = application {
                                             ranges = listOf(Pair(trimStartSeconds, trimStartSeconds + 5.0)),
                                             isSample = true
                                         )
-                                        val outPath = fireEncode(encodeSettings, fitPath, videoPath, outputDir, adjustedStartUtc,
+                                        val destFile = samplePlan.segments.first().finalOutputFile
+                                        val resultMsg = HudEncodePipeline.execute(
+                                            s = encodeSettings,
+                                            fitPath = fitPath,
+                                            videoPath = targetVideoPath,
+                                            outputDir = outputDir,
+                                            videoStartUtc = adjustedStartUtc,
+                                            ranges = listOf(Pair(trimStartSeconds, trimStartSeconds + 5.0)),
+                                            destFiles = listOf(destFile),
+                                            isSample = true,
+                                            shouldResume = false,
+                                            moveOutputToSource = moveOutputToSource,
                                             onProgress = { prog, status ->
                                                 progress = prog
                                                 statusText = status
@@ -1277,25 +1259,15 @@ fun startGui(args: Array<String>) = application {
                                                     encodingPreviewImage = bitmap
                                                 }
                                             },
-                                            maxDurationSeconds = 5,
-                                            trimStartSeconds = trimStartSeconds,
-                                            trimEndSeconds = trimEndSeconds,
                                             pauseSupplier = { isPaused },
                                             cancelSupplier = { isCanceled },
-                                            showLivePreviewSupplier = { showLivePreview }
-                                        )
-                                        if (!isCanceled) {
-                                            val outFile = File(outPath)
-                                            val destFile = samplePlan.segments.first().finalOutputFile
-                                            if (outFile.absolutePath != destFile.absolutePath) {
-                                                statusText = "Moving file to destination..."
-                                                withContext(Dispatchers.IO) {
-                                                    java.nio.file.Files.copy(outFile.toPath(), destFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
-                                                    outFile.delete()
-                                                }
+                                            showLivePreviewSupplier = { showLivePreview },
+                                            onSegmentStart = { pStart, pEnd ->
+                                                viewModel.encodingSegmentStart = pStart
+                                                viewModel.encodingSegmentEnd = pEnd
                                             }
-                                        }
-                                        statusText = if (isCanceled) "Encoding Canceled" else "✨ Sample Finished Successfully!"
+                                        )
+                                        statusText = resultMsg
                                         if (!isCanceled) {
                                             if (args.contains("--auto-sample")) {
                                                 println("TEST_NOTIFICATION_SUCCESS: Sample Encoding Finished Successfully!")
@@ -1307,7 +1279,7 @@ fun startGui(args: Array<String>) = application {
                                             }
                                         }
                                     } catch (e: Exception) {
-                                        // Handled and displayed in statusText
+                                        statusText = "❌ Error: ${e.message ?: "Unknown error"}"
                                         if (args.contains("--auto-sample")) {
                                             println("TEST_NOTIFICATION_ERROR: Sample Encoding Failed: ${e.message}")
                                         } else {
@@ -2917,71 +2889,48 @@ suspend fun runBatchJobs(
             )
             val destFiles = encodePlan.segments.map { it.finalOutputFile }
             try {
-                val totalDuration = encodePlan.totalDurationSeconds
-                var completedDuration = 0.0
-                for (segment in encodePlan.segments) {
-                    if (viewModel.isCanceled) break
-                    val idx = segment.index
-                    val pStart = segment.startSeconds
-                    val pEnd = segment.endSeconds
-                    val partDuration = pEnd - pStart
-                    viewModel.encodingSegmentStart = pStart
-                    viewModel.encodingSegmentEnd = pEnd
-                    val partOutPath = fireEncode(
-                        s = encodeSettings,
-                        fit = job.fitPath,
-                        video = job.videoPath,
-                        outDir = outputDir,
-                        startUtc = job.videoStartUtc,
-                        onProgress = { prog, status ->
-                            val segmentProgress = prog.toDouble()
-                            val overallProg = if (totalDuration > 0.0) {
-                                (completedDuration + segmentProgress * partDuration) / totalDuration
-                            } else 0.0
-                            job.progress = overallProg.toFloat()
-                            viewModel.progress = job.progress
-                            viewModel.statusText = "[Part ${idx + 1}/${ranges.size}] $status"
-                            onProgressUpdate()
-                        },
-                        onFrame = { bufferedImg ->
-                            val bitmap = bufferedImg.toComposeImageBitmap()
-                            javax.swing.SwingUtilities.invokeLater {
-                                viewModel.encodingPreviewImage = bitmap
-                            }
-                        },
-                        trimStartSeconds = pStart,
-                        trimEndSeconds = pEnd,
-                        pauseSupplier = { viewModel.isPaused },
-                        cancelSupplier = { viewModel.isCanceled },
-                        showLivePreviewSupplier = { showLivePreview },
-                        partIndex = idx,
-                        numParts = encodePlan.segments.size
-                    )
-                    if (destFiles.isNotEmpty() && !viewModel.isCanceled) {
-                        val finalDestFile = destFiles.getOrNull(idx)
-                        if (finalDestFile != null) {
-                            val outFile = File(partOutPath)
-                            if (outFile.absolutePath != finalDestFile.absolutePath) {
-                                withContext(Dispatchers.IO) {
-                                    java.nio.file.Files.copy(outFile.toPath(), finalDestFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
-                                    outFile.delete()
-                                }
-                            }
+                val resultMsg = HudEncodePipeline.execute(
+                    s = encodeSettings,
+                    fitPath = job.fitPath,
+                    videoPath = job.videoPath,
+                    outputDir = outputDir,
+                    videoStartUtc = job.videoStartUtc,
+                    ranges = ranges,
+                    destFiles = destFiles,
+                    isSample = false,
+                    shouldResume = false,
+                    moveOutputToSource = moveOutputToSource,
+                    onProgress = { prog, status ->
+                        job.progress = prog
+                        viewModel.progress = prog
+                        viewModel.statusText = status
+                        onProgressUpdate()
+                    },
+                    onFrame = { bufferedImg ->
+                        val bitmap = bufferedImg.toComposeImageBitmap()
+                        javax.swing.SwingUtilities.invokeLater {
+                            viewModel.encodingPreviewImage = bitmap
                         }
+                    },
+                    pauseSupplier = { viewModel.isPaused },
+                    cancelSupplier = { viewModel.isCanceled },
+                    showLivePreviewSupplier = { showLivePreview },
+                    onSegmentStart = { pStart, pEnd ->
+                        viewModel.encodingSegmentStart = pStart
+                        viewModel.encodingSegmentEnd = pEnd
                     }
-                    completedDuration += partDuration
-                }
+                )
+                job.status = BatchJobStatus.COMPLETED
+                job.progress = 1.0f
+            } catch (e: Exception) {
                 if (viewModel.isCanceled) {
                     job.status = BatchJobStatus.WAITING
                     job.progress = 0f
                 } else {
-                    job.status = BatchJobStatus.COMPLETED
-                    job.progress = 1.0f
+                    job.status = BatchJobStatus.FAILED
+                    job.errorMessage = e.message ?: "Unknown error"
+                    e.printStackTrace()
                 }
-            } catch (e: Exception) {
-                job.status = BatchJobStatus.FAILED
-                job.errorMessage = e.message ?: "Unknown error"
-                e.printStackTrace()
             }
             onProgressUpdate()
         }
@@ -2996,70 +2945,7 @@ suspend fun runBatchJobs(
         viewModel.encodingSegmentEnd = null
     }
 }
-suspend fun fireEncode(
-    s: HudSettings, 
-    fit: String, 
-    video: String, 
-    outDir: String,
-    startUtc: String, 
-    onProgress: (Float, String) -> Unit,
-    onFrame: (java.awt.image.BufferedImage) -> Unit,
-    maxDurationSeconds: Int = -1,
-    trimStartSeconds: Double = 0.0,
-    trimEndSeconds: Double = -1.0,
-    pauseSupplier: () -> Boolean = { false },
-    cancelSupplier: () -> Boolean = { false },
-    showLivePreviewSupplier: () -> Boolean = { true },
-    partIndex: Int = -1,
-    numParts: Int = 1
-): String {
-    println("DEBUG: fireEncode called with HudSettings: $s")
-    return withContext(Dispatchers.IO) {
-        try {
-            val config = HudConfig(
-                valSize = s.valSize, tightness = s.tightness, spacing = s.spacing,
-                xOffset = s.xOffset, yOffset = s.yOffset, graphH = s.graphH, graphW = s.graphW,
-                captionPosition = s.captionPosition,
-                roadCaptions = s.roadCaptions
-            )
-            val proxy = DynamicRendererProxy(config)
-            globalRendererProxy = proxy
-            val encoder = NativeHudEncoder(s, 
-                onProgress = { prog, status ->
-                    println("PROGRESS: $status")
-                    onProgress(prog, status)
-                }, 
-                onFrameRendered = onFrame,
-                pauseSupplier = pauseSupplier,
-                cancelSupplier = cancelSupplier,
-                customRenderer = { canvas, point, allPoints, pBuf, progressRatio ->
-                    proxy.renderFrame(canvas, point, allPoints, pBuf, progressRatio)
-                },
-                showLivePreviewSupplier = showLivePreviewSupplier
-            )
-            val output = File(
-                outDir,
-                buildEncodeOutputFileName(
-                    settings = s,
-                    videoPath = video,
-                    partIndex = partIndex,
-                    numParts = numParts,
-                    isSample = maxDurationSeconds > 0
-                )
-            ).absolutePath
-            encoder.encode(fit, video, output, startUtc, 
-                maxDurationSeconds = maxDurationSeconds,
-                trimStartSeconds = trimStartSeconds,
-                trimEndSeconds = trimEndSeconds
-            )
-            output
-        } catch (e: Exception) {
-            e.printStackTrace()
-            onProgress(0f, "❌ Error: ${e.message ?: "Unknown error"}")
-            throw e
-        }
-    }
-}
+
 suspend fun queryRoadName(lat: Double, lon: Double, heading: Double? = null): String? {
     return withContext(Dispatchers.IO) {
         try {
