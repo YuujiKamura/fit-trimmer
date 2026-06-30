@@ -2761,6 +2761,81 @@ fun FitTrimmerMainContent(
                                     }
                                     Button(
                                         onClick = {
+                                            setupStep = 3 // Move to storage policy consent
+                                        },
+                                        modifier = Modifier.weight(2f).height(40.dp),
+                                        colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF007AFF), contentColor = Color.White)
+                                    ) {
+                                        Text(
+                                            text = utils.Localizer.get("confirm", tempSelectedLanguage),
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    } else if (setupStep == 3) {
+                        // Step 3: Local Storage & Data Processing Policy Consent
+                        Card(
+                            modifier = Modifier.width(480.dp).padding(16.dp),
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+                            elevation = 8.dp
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(24.dp),
+                                horizontalAlignment = Alignment.Start,
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Text(
+                                    text = utils.Localizer.get("storage_policy_title", tempSelectedLanguage),
+                                    style = MaterialTheme.typography.h6,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF007AFF),
+                                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                                )
+                                Text(
+                                    text = utils.Localizer.get("storage_policy_message", tempSelectedLanguage),
+                                    fontSize = 12.sp,
+                                    color = Color(0xFF1C1C1E)
+                                )
+                                Divider(color = Color(0xFFE5E5EA))
+                                Column(
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.padding(vertical = 4.dp)
+                                ) {
+                                    Text(
+                                        text = utils.Localizer.get("storage_policy_item_trim", tempSelectedLanguage),
+                                        fontSize = 11.sp,
+                                        color = Color.Gray
+                                    )
+                                    Text(
+                                        text = utils.Localizer.get("storage_policy_item_cache", tempSelectedLanguage),
+                                        fontSize = 11.sp,
+                                        color = Color.Gray
+                                    )
+                                    Text(
+                                        text = utils.Localizer.get("storage_policy_item_offline", tempSelectedLanguage),
+                                        fontSize = 11.sp,
+                                        color = Color.Gray
+                                    )
+                                }
+                                Divider(color = Color(0xFFE5E5EA))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    OutlinedButton(
+                                        onClick = {
+                                            setupStep = 2 // Go back
+                                        },
+                                        modifier = Modifier.weight(1f).height(40.dp),
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF1C1C1E))
+                                    ) {
+                                        Text("Back", fontSize = 12.sp)
+                                    }
+                                    Button(
+                                        onClick = {
                                             settings = settings.copy(language = tempSelectedLanguage)
                                             setupStep = 0 // Finished setup
                                         },
