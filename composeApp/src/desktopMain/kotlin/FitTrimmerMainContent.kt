@@ -104,7 +104,8 @@ fun FitTrimmerMainContent(
     val playerState = rememberVideoPlayerState()
     var composeWindow: java.awt.Window? by remember { mutableStateOf(null) }
     var ignoreNextStartUtcClear by remember { mutableStateOf(false) }
-    var showLanguageSetupDialog by remember { mutableStateOf(settings.language.isEmpty()) }
+    var setupStep by remember { mutableStateOf(if (settings.language.isEmpty()) 1 else 0) }
+    var tempSelectedLanguage by remember { mutableStateOf("en") }
     // Dynamic Hud Proxy & Hot Reload State
     val hudConfig = remember(settings) {
         fit.HudConfig(
@@ -2632,71 +2633,147 @@ fun FitTrimmerMainContent(
                 )
             }
             
-            if (showLanguageSetupDialog) {
+            if (setupStep > 0) {
                 Box(
                     modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Card(
-                        modifier = Modifier.width(420.dp).padding(16.dp),
-                        shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
-                        elevation = 8.dp
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(24.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                    if (setupStep == 1) {
+                        // Step 1: Language Selection
+                        Card(
+                            modifier = Modifier.width(420.dp).padding(16.dp),
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+                            elevation = 8.dp
                         ) {
-                            Text(
-                                text = utils.Localizer.get("app_title", "en"),
-                                style = MaterialTheme.typography.h6,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF007AFF)
-                            )
-                            Text(
-                                text = utils.Localizer.get("welcome_message", "en"),
-                                fontSize = 13.sp,
-                                color = Color.Gray,
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                            )
-                            
-                            var selectedLangCode by remember { mutableStateOf("en") }
-                            
-                            Box(modifier = Modifier.height(200.dp).border(1.dp, Color(0xFFE5E5EA), androidx.compose.foundation.shape.RoundedCornerShape(8.dp)).padding(4.dp)) {
-                                val scrollState = rememberScrollState()
-                                Column(
-                                    modifier = Modifier.verticalScroll(scrollState).padding(end = 12.dp)
-                                ) {
-                                    utils.Localizer.supportedLanguages.forEach { lang ->
-                                        val isSelected = selectedLangCode == lang.code
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .clickable { selectedLangCode = lang.code }
-                                                .background(if (isSelected) Color(0xFFE5F1FF) else Color.Transparent)
-                                                .padding(vertical = 8.dp, horizontal = 12.dp),
-                                            horizontalArrangement = Arrangement.SpaceBetween
-                                        ) {
-                                            Text(lang.localName, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal, color = Color(0xFF1C1C1E))
-                                            Text(lang.englishName, fontSize = 11.sp, color = Color.Gray)
+                            Column(
+                                modifier = Modifier.padding(24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(16.dp)
+                            ) {
+                                Text(
+                                    text = "FIT Telemetry Trimmer",
+                                    style = MaterialTheme.typography.h6,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF007AFF)
+                                )
+                                Text(
+                                    text = "Please select your language.",
+                                    fontSize = 13.sp,
+                                    color = Color.Gray,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
+                                
+                                Box(modifier = Modifier.height(200.dp).border(1.dp, Color(0xFFE5E5EA), androidx.compose.foundation.shape.RoundedCornerShape(8.dp)).padding(4.dp)) {
+                                    val scrollState = rememberScrollState()
+                                    Column(
+                                        modifier = Modifier.verticalScroll(scrollState).padding(end = 12.dp)
+                                    ) {
+                                        utils.Localizer.supportedLanguages.forEach { lang ->
+                                            val isSelected = tempSelectedLanguage == lang.code
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .clickable { tempSelectedLanguage = lang.code }
+                                                    .background(if (isSelected) Color(0xFFE5F1FF) else Color.Transparent)
+                                                    .padding(vertical = 8.dp, horizontal = 12.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Text(lang.localName, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal, color = Color(0xFF1C1C1E))
+                                                Text(lang.englishName, fontSize = 11.sp, color = Color.Gray)
+                                            }
                                         }
                                     }
+                                    VerticalScrollbar(
+                                        modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+                                        adapter = rememberScrollbarAdapter(scrollState)
+                                    )
                                 }
-                                VerticalScrollbar(
-                                    modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
-                                    adapter = rememberScrollbarAdapter(scrollState)
-                                )
+                                
+                                Button(
+                                    onClick = {
+                                        setupStep = 2 // Move to privacy consent
+                                    },
+                                    modifier = Modifier.fillMaxWidth().height(40.dp),
+                                    colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF007AFF), contentColor = Color.White)
+                                ) {
+                                    Text(utils.Localizer.get("confirm", tempSelectedLanguage))
+                                }
                             }
-                            
-                            Button(
-                                onClick = {
-                                    settings = settings.copy(language = selectedLangCode)
-                                    showLanguageSetupDialog = false
-                                },
-                                modifier = Modifier.fillMaxWidth().height(40.dp),
-                                colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF007AFF), contentColor = Color.White)
+                        }
+                    } else if (setupStep == 2) {
+                        // Step 2: Privacy Policy Consent
+                        Card(
+                            modifier = Modifier.width(480.dp).padding(16.dp),
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+                            elevation = 8.dp
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(24.dp),
+                                horizontalAlignment = Alignment.Start,
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                Text(utils.Localizer.get("confirm", selectedLangCode))
+                                Text(
+                                    text = utils.Localizer.get("privacy_title", tempSelectedLanguage),
+                                    style = MaterialTheme.typography.h6,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF007AFF),
+                                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                                )
+                                Text(
+                                    text = utils.Localizer.get("privacy_message", tempSelectedLanguage),
+                                    fontSize = 12.sp,
+                                    color = Color(0xFF1C1C1E)
+                                )
+                                Divider(color = Color(0xFFE5E5EA))
+                                Column(
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.padding(vertical = 4.dp)
+                                ) {
+                                    Text(
+                                        text = utils.Localizer.get("privacy_item_osm", tempSelectedLanguage),
+                                        fontSize = 11.sp,
+                                        color = Color.Gray
+                                    )
+                                    Text(
+                                        text = utils.Localizer.get("privacy_item_gsi", tempSelectedLanguage),
+                                        fontSize = 11.sp,
+                                        color = Color.Gray
+                                    )
+                                    Text(
+                                        text = utils.Localizer.get("privacy_item_github", tempSelectedLanguage),
+                                        fontSize = 11.sp,
+                                        color = Color.Gray
+                                    )
+                                }
+                                Divider(color = Color(0xFFE5E5EA))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    OutlinedButton(
+                                        onClick = {
+                                            setupStep = 1 // Go back
+                                        },
+                                        modifier = Modifier.weight(1f).height(40.dp),
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF1C1C1E))
+                                    ) {
+                                        Text("Back", fontSize = 12.sp)
+                                    }
+                                    Button(
+                                        onClick = {
+                                            settings = settings.copy(language = tempSelectedLanguage)
+                                            setupStep = 0 // Finished setup
+                                        },
+                                        modifier = Modifier.weight(2f).height(40.dp),
+                                        colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF007AFF), contentColor = Color.White)
+                                    ) {
+                                        Text(
+                                            text = utils.Localizer.get("privacy_agree", tempSelectedLanguage),
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
