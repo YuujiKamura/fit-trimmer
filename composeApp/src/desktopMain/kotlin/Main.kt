@@ -1472,7 +1472,8 @@ fun startGui(args: Array<String>) = application {
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Text("エンコード", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 0.5.sp)
-                            if (!isEncoding) {
+                            val isActiveEncoding = isEncoding || viewModel.isBatchRunning
+                            if (!isActiveEncoding) {
                                 Text("現在の設定でHUD付き動画を書き出します。サンプルは短い確認用、バッチは後でまとめて処理する待ち行列です。", color = Color(0xFF636366), fontSize = 10.sp, lineHeight = 13.sp)
                                 Button(
                                     onClick = onNativeEncodeClick,
@@ -1520,7 +1521,11 @@ fun startGui(args: Array<String>) = application {
                                     }
                                 }
                             } else {
-                                if (statusText.contains("Merging", ignoreCase = true)) {
+                                val currentStatusText = if (viewModel.isBatchRunning) viewModel.statusText else statusText
+                                val currentProgress = if (viewModel.isBatchRunning) viewModel.progress else progress
+                                val currentPaused = if (viewModel.isBatchRunning) viewModel.isPaused else isPaused
+
+                                if (currentStatusText.contains("Merging", ignoreCase = true)) {
                                     LinearProgressIndicator(
                                         modifier = Modifier.fillMaxWidth(),
                                         color = Color(0xFF34C759),
@@ -1528,28 +1533,40 @@ fun startGui(args: Array<String>) = application {
                                     )
                                 } else {
                                     LinearProgressIndicator(
-                                        progress = progress,
+                                        progress = currentProgress,
                                         modifier = Modifier.fillMaxWidth(),
-                                        color = if (isPaused) Color(0xFFFF9F0A) else Color(0xFF007AFF),
+                                        color = if (currentPaused) Color(0xFFFF9F0A) else Color(0xFF007AFF),
                                         backgroundColor = Color(0xFFE5E5EA)
                                     )
                                 }
-                                Text(if (isPaused) "PAUSED (Not enough space or paused manually)\n$statusText" else statusText, color = Color(0xFF1C1C1E), fontSize = 11.sp, lineHeight = 14.sp)
+                                Text(if (currentPaused) "PAUSED (Not enough space or paused manually)\n$currentStatusText" else currentStatusText, color = Color(0xFF1C1C1E), fontSize = 11.sp, lineHeight = 14.sp)
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Button(
-                                        onClick = { isPaused = !isPaused },
+                                        onClick = {
+                                            if (viewModel.isBatchRunning) {
+                                                viewModel.isPaused = !viewModel.isPaused
+                                            } else {
+                                                isPaused = !isPaused
+                                            }
+                                        },
                                         modifier = Modifier.weight(1f).height(32.dp),
-                                        enabled = !(!isPaused && !hasEnoughSpace),
+                                        enabled = !(!currentPaused && !hasEnoughSpace),
                                         colors = ButtonDefaults.buttonColors(
-                                            backgroundColor = if (isPaused) Color(0xFF34C759) else Color(0xFFFF9F0A),
+                                            backgroundColor = if (currentPaused) Color(0xFF34C759) else Color(0xFFFF9F0A),
                                             disabledBackgroundColor = Color(0xFFE5E5EA)
                                         ),
                                         shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
                                     ) {
-                                        Text(if (isPaused) "RESUME" else "PAUSE", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                        Text(if (currentPaused) "RESUME" else "PAUSE", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                     }
                                     Button(
-                                        onClick = { isCanceled = true },
+                                        onClick = {
+                                            if (viewModel.isBatchRunning) {
+                                                viewModel.isCanceled = true
+                                            } else {
+                                                isCanceled = true
+                                            }
+                                        },
                                         modifier = Modifier.weight(1f).height(32.dp),
                                         colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFEF4444)),
                                         shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
@@ -2555,7 +2572,8 @@ fun startGui(args: Array<String>) = application {
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(if (isPreviewFullscreen) 0.dp else 8.dp)
                     ) {
-                        if (!isEncoding) {
+                        val isActiveEncoding = isEncoding || viewModel.isBatchRunning
+                        if (!isActiveEncoding) {
                             VideoPreviewArea(
                                 videoPath = videoPath,
                                 videoLengthMs = videoLengthMs,
@@ -2569,7 +2587,7 @@ fun startGui(args: Array<String>) = application {
                                 videoCurrentTimeMs = videoCurrentTimeMs,
                                 onCurrentTimeChange = { videoCurrentTimeMs = it },
                                 modifier = if (isPreviewFullscreen) Modifier.fillMaxSize() else Modifier.weight(1f).fillMaxWidth(),
-                                isEncoding = isEncoding,
+                                isEncoding = false,
                                 previewQualityMode = previewQualityMode,
                                 onPreviewQualityModeChange = { previewQualityMode = it },
                                 isFullscreen = isPreviewFullscreen,
@@ -2584,14 +2602,26 @@ fun startGui(args: Array<String>) = application {
                             }
                             val trimmedDurationMs = ((actualTrimEnd - actualTrimStart) * 1000).toLong().coerceAtLeast(1000L)
                             EncodingProgressArea(
-                                progress = progress,
-                                statusText = statusText,
+                                progress = if (viewModel.isBatchRunning) viewModel.progress else progress,
+                                statusText = if (viewModel.isBatchRunning) viewModel.statusText else statusText,
                                 encodingPreviewImage = encodingPreviewImage,
                                 showLivePreview = showLivePreview,
-                                isPaused = isPaused,
+                                isPaused = if (viewModel.isBatchRunning) viewModel.isPaused else isPaused,
                                 videoLengthMs = trimmedDurationMs,
-                                onPauseToggle = { isPaused = !isPaused },
-                                onCancel = { isCanceled = true },
+                                onPauseToggle = {
+                                    if (viewModel.isBatchRunning) {
+                                        viewModel.isPaused = !viewModel.isPaused
+                                    } else {
+                                        isPaused = !isPaused
+                                    }
+                                },
+                                onCancel = {
+                                    if (viewModel.isBatchRunning) {
+                                        viewModel.isCanceled = true
+                                    } else {
+                                        isCanceled = true
+                                    }
+                                },
                                 modifier = Modifier.weight(1f).fillMaxWidth()
                             )
                             Spacer(Modifier.height(8.dp))
