@@ -348,11 +348,11 @@ class HudRenderer(val config: HudConfig) {
             val fitDistText: String
             val videoDistText: String
             if (config.useImperialUnits) {
-                fitDistText = "${formatOneDecimal(rawFitDist * 0.000621371)} mi"
-                videoDistText = "${formatOneDecimal(rawVideoDist * 0.000621371)} mi"
+                fitDistText = "${formatTwoDecimals(rawFitDist * 0.000621371)} mi"
+                videoDistText = "${formatTwoDecimals(rawVideoDist * 0.000621371)} mi"
             } else {
-                fitDistText = "${formatOneDecimal(rawFitDist / 1000.0)} km"
-                videoDistText = "${formatOneDecimal(rawVideoDist / 1000.0)} km"
+                fitDistText = "${formatTwoDecimals(rawFitDist / 1000.0)} km"
+                videoDistText = "${formatTwoDecimals(rawVideoDist / 1000.0)} km"
             }
             
             // Format Time Helper
@@ -370,13 +370,13 @@ class HudRenderer(val config: HudConfig) {
             val fitTimeText = formatTime(fitElapsedSeconds)
             val videoTimeText = formatTime(videoElapsedSeconds)
             
-            val infoSize = 13f
-            val line1 = "TRIP  DST: $fitDistText   TIME: $fitTimeText"
-            val line2 = "CLIP  DST: $videoDistText   TIME: $videoTimeText"
+            val infoSize = 16f
+            val line1 = "全体距離: $fitDistText   全体時間: $fitTimeText"
+            val line2 = "動画距離: $videoDistText   動画時間: $videoTimeText"
             
             // Draw immediately below the elevation graph box in two lines
-            canvas.drawText(line1, cx, eGy + graphH + 16f, infoSize, "#cbd5e1", bold = true)
-            canvas.drawText(line2, cx, eGy + graphH + 32f, infoSize, "#94a3b8", bold = true) // Slightly darker gray for video relative info to establish hierarchy
+            canvas.drawText(line1, cx, eGy + graphH + 16f, infoSize, "#ffffff", bold = true)
+            canvas.drawText(line2, cx, eGy + graphH + 34f, infoSize, "#ffffff", bold = true)
         }
 
         // Draw Road Caption overlay
@@ -416,6 +416,16 @@ class HudRenderer(val config: HudConfig) {
         val rounded = (absolute * 10).roundToInt()
         val sign = if (value < 0.0) "-" else ""
         return "$sign${rounded / 10}.${rounded % 10}"
+    }
+
+    private fun formatTwoDecimals(value: Double): String {
+        val absolute = kotlin.math.abs(value)
+        val rounded = (absolute * 100).roundToInt()
+        val sign = if (value < 0.0) "-" else ""
+        val intPart = rounded / 100
+        val fracPart = rounded % 100
+        val fracStr = if (fracPart < 10) "0$fracPart" else "$fracPart"
+        return "$sign$intPart.$fracStr"
     }
 
     private fun formatGrade(value: Double): String {
