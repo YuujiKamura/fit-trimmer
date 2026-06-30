@@ -124,7 +124,14 @@ class HudRenderer(val config: HudConfig) {
         drawCell("W/KG", wkgStr, "w/kg", "#2dd4bf")
 
         // 6. POWER TREND (Bar graph)
-        canvas.drawText("POWER TREND (${config.powerTrendSpanSeconds}s, 1s)", cx, cy, labelSize, "#e5e7eb", bold = true)
+        val spanText = if (config.powerTrendSpanSeconds >= 60) {
+            val min = config.powerTrendSpanSeconds / 60
+            val sec = config.powerTrendSpanSeconds % 60
+            if (sec > 0) "${min}m ${sec}s" else "${min}m"
+        } else {
+            "${config.powerTrendSpanSeconds}s"
+        }
+        canvas.drawText("POWER TREND ($spanText, 1s)", cx, cy, labelSize, "#e5e7eb", bold = true)
         val pGy = cy + labelSize + 4f
         
         if (isValid && pBuf.isNotEmpty()) {
@@ -146,7 +153,36 @@ class HudRenderer(val config: HudConfig) {
                 }
             }
         }
-        cy += labelSize + 4f + graphH + itemSpacing
+
+        // Draw time ticks (grid lines & labels)
+        val tickIntervalSeconds = when (config.powerTrendSpanSeconds) {
+            30 -> 10
+            60 -> 20
+            180 -> 60
+            300 -> 60
+            600 -> 120
+            1200 -> 300
+            else -> config.powerTrendSpanSeconds / 3
+        }
+        
+        var t = tickIntervalSeconds
+        val tickLabelSize = labelSize * 0.8f
+        while (t < config.powerTrendSpanSeconds) {
+            val ratio = t.toFloat() / config.powerTrendSpanSeconds.toFloat()
+            val tickX = cx + graphW - (ratio * graphW)
+            if (tickX >= cx) {
+                // Thin vertical grid line
+                canvas.drawRect(tickX, pGy, 1f, graphH, "#e5e7eb", alpha = 0.15f)
+                
+                // Centered time label (e.g., -1m, -10s)
+                val label = if (t >= 60) "-${t / 60}m" else "-${t}s"
+                val labelW = canvas.getTextWidth(label, tickLabelSize, false)
+                canvas.drawText(label, tickX - labelW / 2f, pGy + graphH + 2f, tickLabelSize, "#9ca3af")
+            }
+            t += tickIntervalSeconds
+        }
+        
+        cy += labelSize + 4f + graphH + (tickLabelSize + 4f) + itemSpacing
 
         // 7. GRADE
         val grdStr = if (isValid) formatGrade(telemetry.grade) else "-"
