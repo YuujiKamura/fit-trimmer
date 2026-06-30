@@ -709,10 +709,10 @@ suspend fun detectRoadSegments(
             }
         }
     }
-    // Filter and deduplicate query offsets to respect Nominatim API rate limit (at least 3.0 seconds gap)
+    // Filter and deduplicate query offsets to respect Nominatim API rate limit (at least 10.0 seconds gap)
     val cleanQueryOffsets = mutableListOf<Double>()
     for (offset in queryOffsets) {
-        if (cleanQueryOffsets.isEmpty() || offset - cleanQueryOffsets.last() >= 3.0) {
+        if (cleanQueryOffsets.isEmpty() || offset - cleanQueryOffsets.last() >= 10.0) {
             cleanQueryOffsets.add(offset)
         }
     }
