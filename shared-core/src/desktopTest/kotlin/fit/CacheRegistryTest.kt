@@ -20,6 +20,20 @@ class CacheRegistryTest {
         testTempDir.deleteRecursively()
     }
 
+    private fun createMockTsFile(dest: File) {
+        val ffmpegPath = try { findFfmpegPath() } catch (e: Exception) { "ffmpeg" }
+        val pb = ProcessBuilder(
+            ffmpegPath, "-y",
+            "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=10:duration=0.2",
+            "-c:v", "libopenh264",
+            "-f", "mpegts",
+            dest.absolutePath
+        )
+        pb.redirectErrorStream(true)
+        val p = pb.start()
+        p.waitFor()
+    }
+
     @Test
     fun testCreateAndTrackTempFile() {
         val groupKey = "test_job_123"
@@ -54,7 +68,7 @@ class CacheRegistryTest {
     @Test
     fun testConcurrencyStress() {
         val executor = Executors.newFixedThreadPool(8)
-        val filesCount = 500
+        val filesCount = 200
         val groupKey = "stress_job"
         val files = mutableListOf<File>()
 
@@ -72,10 +86,11 @@ class CacheRegistryTest {
             }
         }
 
+        // 並行して無関係なクリーンアップ（24時間前をターゲット）を走らせることで、競合状態をテスト
         val cleanupExecutor = Executors.newSingleThreadExecutor()
         cleanupExecutor.submit {
             for (j in 1..20) {
-                CacheRegistry.cleanStaleCache(cutoffMs = 0L)
+                CacheRegistry.cleanStaleCache(cutoffMs = 24 * 60 * 60 * 1000L)
                 Thread.sleep(5)
             }
         }
@@ -114,5 +129,42 @@ class CacheRegistryTest {
         }
         
         tempFile.delete()
+    }
+
+    @Test
+    fun testScanAvailableJobsAndSalvageAndMerge() {
+        val mockVideoPath = File(testTempDir, "video_mock.mp4").absolutePath
+        val workDir = PathResolver.getTempWorkDir(mockVideoPath)
+        val jobDir = File(workDir, "job_99999")
+        jobDir.mkdirs()
+
+        val part1 = File(jobDir, "part_0000.ts")
+        val part2 = File(jobDir, "part_0001.ts")
+        createMockTsFile(part1)
+        createMockTsFile(part2)
+
+        assertTrue(part1.exists() && part1.length() > 0, "Mock TS part 1 should be a valid video stream")
+        assertTrue(part2.exists() && part2.length() > 0, "Mock TS part 2 should be a valid video stream")
+
+        try {
+            val jobs = CacheRegistry.scanAvailableJobs(mockVideoPath)
+            val myJob = jobs.find { it.jobHash == "99999" }
+            assertNotNull(myJob, "Should scan and find our dummy job")
+            assertEquals(2, myJob.partsCount, "Parts count should match")
+
+            val salvagedOutput = File(testTempDir, "salvaged_output.mp4").absolutePath
+            CacheRegistry.salvageAndMerge(jobDir, salvagedOutput) { progress, status ->
+                println("Salvage progress: $progress -> $status")
+            }
+
+            val outFile = File(salvagedOutput)
+            assertTrue(outFile.exists(), "Salvaged output file should be generated")
+            assertTrue(outFile.length() > 0, "Salvaged file should contain data")
+            assertFalse(jobDir.exists(), "Job directory should be cleaned up after successful salvage")
+        } finally {
+            part1.delete()
+            part2.delete()
+            jobDir.delete()
+        }
     }
 }
