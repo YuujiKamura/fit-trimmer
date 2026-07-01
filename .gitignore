@@ -63,5 +63,10 @@ tmp_hud/
 # Temporary timeline and incident logs
 *TIMELINE.md
 *LOG.md
+*LOGS.md
 YESTERDAY*.md
+
+# Scratch and model files
+/composeApp/scratch/
+*.onnx
 
