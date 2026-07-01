@@ -4,6 +4,8 @@ import fit.PlateBox
 import java.io.File
 import java.awt.image.BufferedImage
 import javax.imageio.ImageIO
+import fit.FitParser
+import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertTrue
 
@@ -233,6 +235,162 @@ class PlateDetectorTest {
         
         assertTrue(detector.lastResizeBypassed, "Resize should be bypassed for 640x640 images")
         assertTrue(detector.lastGetRgbBypassed, "getRGB should be bypassed for TYPE_3BYTE_BGR images")
+    }
+
+    @Test
+    fun testCropAndBlurSamplingVerification() {
+        val videoPath = "H:\\\u30DE\u30A4\u30C9\u30E9\u30A4\u30D6\\Insta360\\20260614\\VID_20260614_163204_003.mp4"
+        val videoFile = File(videoPath)
+        if (!videoFile.exists()) {
+            println("SKIP: Video file not found.")
+            return
+        }
+
+        val ffmpegPath = fit.findFfmpegPath()
+        val scratchDir = File("scratch")
+        if (!scratchDir.exists()) scratchDir.mkdirs()
+
+        val cropTestMp4 = File(scratchDir, "crop_test.mp4")
+        val cropBlurredMp4 = File(scratchDir, "crop_blurred_output.mp4")
+
+        // 1. Crop 20 seconds from 390.0s to 410.0s using FFmpeg (with copy to preserve rotate metadata)
+        println("🎬 Cropping video...")
+        val pbCrop = ProcessBuilder(
+            ffmpegPath, "-y",
+            "-ss", "390.0",
+            "-i", videoPath,
+            "-t", "20.0",
+            "-c", "copy",
+            cropTestMp4.absolutePath
+        )
+        pbCrop.redirectErrorStream(true)
+        val pCrop = pbCrop.start()
+        val cropOut = pCrop.inputStream.bufferedReader().readText()
+        pCrop.waitFor()
+        println("🎬 Crop finished: ${cropTestMp4.exists()} (${cropTestMp4.length()} bytes)")
+
+        // 1.5. Generate a dummy .fit file programmatically aligned with the crop video timeline
+        val inputFit = File(scratchDir, "crop_dummy.fit")
+        val fitEpochSec = 631065600L
+        val videoStartUtcSeconds = java.time.Instant.parse("2026-06-14T08:02:06Z").epochSecond
+        val baseFitTimestamp = videoStartUtcSeconds - fitEpochSec // Align with crop video timeline start
+
+        val headerSize = 14
+        val recordsSize = 12 + (9 * 21) // Definition(12) + 21 Data Records(9 bytes each)
+        val totalSize = headerSize + recordsSize + 2
+        val bytes = ByteArray(totalSize)
+
+        bytes[0] = headerSize.toByte()
+        bytes[1] = 32 // Protocol Version
+        bytes[2] = 0xDC.toByte() // Profile Version
+        bytes[3] = 0x07.toByte()
+        bytes[4] = (recordsSize and 0xFF).toByte()
+        bytes[5] = ((recordsSize shr 8) and 0xFF).toByte()
+        bytes[6] = 0x00.toByte()
+        bytes[7] = 0x00.toByte()
+        ".FIT".encodeToByteArray().copyInto(bytes, 8)
+
+        var offset = headerSize
+        bytes[offset] = 0x40.toByte() // Definition header
+        bytes[offset + 1] = 0
+        bytes[offset + 2] = 0 // Little Endian
+        bytes[offset + 3] = 0x14.toByte() // Msg 20 (Record)
+        bytes[offset + 4] = 0x00.toByte()
+        bytes[offset + 5] = 2 // Field count
+
+        bytes[offset + 6] = 253.toByte() // Field 1: timestamp
+        bytes[offset + 7] = 4.toByte()
+        bytes[offset + 8] = 0x86.toByte()
+
+        bytes[offset + 9] = 5.toByte() // Field 2: distance
+        bytes[offset + 10] = 4.toByte()
+        bytes[offset + 11] = 0x86.toByte()
+
+        offset += 12
+
+        for (t in 0..20) {
+            bytes[offset] = 0x00.toByte()
+            val ts = baseFitTimestamp + t
+            bytes[offset + 1] = (ts and 0xFF).toByte()
+            bytes[offset + 2] = ((ts shr 8) and 0xFF).toByte()
+            bytes[offset + 3] = ((ts shr 16) and 0xFF).toByte()
+            bytes[offset + 4] = ((ts shr 24) and 0xFF).toByte()
+
+            val dist = 10000 + t * 10
+            bytes[offset + 5] = (dist and 0xFF).toByte()
+            bytes[offset + 6] = ((dist shr 8) and 0xFF).toByte()
+            bytes[offset + 7] = ((dist shr 16) and 0xFF).toByte()
+            bytes[offset + 8] = ((dist shr 24) and 0xFF).toByte()
+            offset += 9
+        }
+
+        // CRC
+        val computedCrc = crc.Crc16.calculate(bytes, offset = 0, length = totalSize - 2)
+        bytes[totalSize - 2] = (computedCrc and 0xFF).toByte()
+        bytes[totalSize - 1] = ((computedCrc shr 8) and 0xFF).toByte()
+        inputFit.writeBytes(bytes)
+        println("📄 Created test dummy FIT file at: ${inputFit.absolutePath}")
+
+        // 2. Perform plate detection on crop_test.mp4 (starts at 390.0s original time)
+        println("🔍 Scanning crop video for plates...")
+        val fitBytes = inputFit.readBytes()
+        val parser = FitParser(fitBytes)
+        parser.parse()
+        val telemetryPoints = parser.getTelemetry()
+
+        val cache = runBlocking {
+            PlateDetectionManager.runDetection(
+                videoPath = cropTestMp4.absolutePath,
+                telemetryPoints = telemetryPoints,
+                adjustedStartUtc = "2026-06-14T08:02:06Z", // Matches video metadata start
+                onProgress = { println("Detection: ${String.format("%.1f", it)}%") },
+                onCancel = { false }
+            )
+        }
+        assertTrue(cache != null, "Scan cache must be successfully built")
+        println("🔍 Scan finished: Found ${cache.records.size} frames with plates")
+
+        // 3. Run NativeHudEncoder to render crop_blurred_output.mp4
+        println("📹 Encoding blurred video...")
+        val settings = fit.HudSettings(
+            blurLicensePlates = true,
+            exportResolution = "original"
+        )
+        val encoder = fit.NativeHudEncoder(settings)
+        fit.PlateCacheManager.saveCache(cropTestMp4.absolutePath, cache)
+
+        encoder.encode(
+            fitPath = inputFit.absolutePath, // Pass aligned dummy FIT file path
+            videoPath = cropTestMp4.absolutePath,
+            output = cropBlurredMp4.absolutePath,
+            startUtc = "2026-06-14T08:02:06Z",
+            maxDurationSeconds = 20,
+            trimStartSeconds = 0.0,
+            trimEndSeconds = 20.0
+        )
+        assertTrue(cropBlurredMp4.exists(), "Blurred video must be created")
+        println("📹 Encode finished: ${cropBlurredMp4.exists()} (${cropBlurredMp4.length()} bytes)")
+
+        // 4. Sample key frames using FFmpeg to verify visual positioning
+        // 398.4s original time -> 8.4s in crop video
+        // 400.4s original time -> 10.4s in crop video
+        // 402.0s original time -> 12.0s in crop video
+        val sampleTimes = listOf(8.4, 10.4, 12.0)
+        for (st in sampleTimes) {
+            val sampleImgFile = File(scratchDir, "sample_output_blur_${String.format("%.1f", st)}.jpg")
+            val pbSample = ProcessBuilder(
+                ffmpegPath, "-y",
+                "-ss", st.toString(),
+                "-i", cropBlurredMp4.absolutePath,
+                "-vframes", "1",
+                sampleImgFile.absolutePath
+            )
+            pbSample.inheritIO()
+            val pSample = pbSample.start()
+            pSample.waitFor()
+            println("📸 Wrote sample frame at crop time ${st}s to: ${sampleImgFile.absolutePath}")
+            assertTrue(sampleImgFile.exists() && sampleImgFile.length() > 0, "Sample frame should be written successfully")
+        }
     }
 
     private class SGObserver : java.awt.image.ImageObserver {

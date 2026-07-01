@@ -383,6 +383,26 @@ private suspend fun getVideoStartUtcViaParser(videoPath: String): String? = with
     null
 }
 
+fun getVideoRotation(videoPath: String): Int {
+    try {
+        val ffmpegPath = fit.findFfmpegPath()
+        val pb = ProcessBuilder(ffmpegPath, "-i", videoPath)
+        pb.redirectErrorStream(true)
+        val p = pb.start()
+        val output = p.inputStream.bufferedReader().readText()
+        p.waitFor()
+        
+        val rotateMatch = Regex("""rotate\s*:\s*(-?\d+)""").find(output)
+        if (rotateMatch != null) {
+            return rotateMatch.groupValues[1].toIntOrNull() ?: 0
+        }
+    } catch (e: Exception) {
+        e.printStackTrace()
+    }
+    return 0
+}
+
+
 suspend fun generateInitialThumbnail(ffmpegPath: String, videoPath: String): ImageBitmap? = withContext(Dispatchers.IO) {
     try {
         val pb = ProcessBuilder(
