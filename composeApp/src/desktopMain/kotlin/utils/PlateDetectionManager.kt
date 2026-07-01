@@ -32,10 +32,7 @@ object PlateDetectionManager {
         onPartialResult: (VideoPlatesCache) -> Unit = {},
         maxRecords: Int? = null,
         saveCache: Boolean = true,
-        maxSpeedKmh: Double = 15.0,
-        detectionFps: Double = 1.0,
-        paddingSeconds: Double = 2.0,
-        mergeGapSeconds: Double = 5.0
+        settings: fit.HudSettings = fit.HudSettings()
     ): VideoPlatesCache? = withContext(Dispatchers.IO) {
         val ffmpegPath = findFfmpegPath()
         val videoFile = File(videoPath)
@@ -134,10 +131,10 @@ object PlateDetectionManager {
             videoFps = fpsMatch.groupValues[1].toDouble()
         }
 
-        val effectiveDetectionFps = detectionFps.coerceIn(0.25, 4.0)
-        val effectiveMaxSpeedKmh = maxSpeedKmh.coerceAtLeast(0.0)
-        val effectivePaddingSeconds = paddingSeconds.coerceAtLeast(0.0)
-        val effectiveMergeGapSeconds = mergeGapSeconds.coerceAtLeast(0.0)
+        val effectiveDetectionFps = settings.plateDetectionFps.coerceIn(0.25, 4.0)
+        val effectiveMaxSpeedKmh = settings.plateMaxSpeedKmh.coerceAtLeast(0.0)
+        val effectivePaddingSeconds = settings.platePaddingSeconds.coerceAtLeast(0.0)
+        val effectiveMergeGapSeconds = settings.plateMergeGapSeconds.coerceAtLeast(0.0)
         val scanWidth = 640
         val scanHeight = 640
         val filterChain = "scale=$scanWidth:$scanHeight:flags=fast_bilinear:out_range=full,fps=$effectiveDetectionFps"
