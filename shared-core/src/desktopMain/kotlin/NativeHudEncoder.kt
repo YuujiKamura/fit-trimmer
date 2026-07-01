@@ -1003,12 +1003,21 @@ class NativeHudEncoder(
             
             val out = process.outputStream
             
-            // Rings buffer allocation for zero-allocation async encoding pipeline
+            val pBuf = mutableListOf<Double>()
+            val img = if (runBlur) {
+                BufferedImage(exportWidth, exportHeight * 2, BufferedImage.TYPE_4BYTE_ABGR)
+            } else {
+                BufferedImage(exportWidth, exportHeight, BufferedImage.TYPE_4BYTE_ABGR)
+            }
+
+            // Rings buffer allocation based on actual raw bytes size of the BufferedImage to prevent sizing discrepancies
+            val sampleRawBytes = (img.raster.dataBuffer as java.awt.image.DataBufferByte).data
+            val actualBufferSize = sampleRawBytes.size
+
             val bufferCount = 4
-            val bufferSize = if (runBlur) exportWidth * exportHeight * 2 * 4 else exportWidth * exportHeight * 4
             val freeBuffers = java.util.concurrent.ArrayBlockingQueue<ByteArray>(bufferCount)
             for (i in 0 until bufferCount) {
-                freeBuffers.add(ByteArray(bufferSize))
+                freeBuffers.add(ByteArray(actualBufferSize))
             }
             
             val frameQueue = java.util.concurrent.ArrayBlockingQueue<ByteArray>(bufferCount)
@@ -1030,13 +1039,6 @@ class NativeHudEncoder(
                 }
             }
             pipeWriterThread.start()
-
-            val pBuf = mutableListOf<Double>()
-            val img = if (runBlur) {
-                BufferedImage(exportWidth, exportHeight * 2, BufferedImage.TYPE_4BYTE_ABGR)
-            } else {
-                BufferedImage(exportWidth, exportHeight, BufferedImage.TYPE_4BYTE_ABGR)
-            }
             val frameTimes = mutableListOf<Long>()
             
             // Pre-fill power buffer for context if we're not at the start
@@ -1158,18 +1160,23 @@ class NativeHudEncoder(
                     
                     val rawBytes = (img.raster.dataBuffer as java.awt.image.DataBufferByte).data
                     var targetBuf: ByteArray? = null
+                    var attempts = 0
                     while (isEncodingActive.get()) {
                         pipeWriterException.get()?.let { throw it }
-                        targetBuf = freeBuffers.poll(10, java.util.concurrent.TimeUnit.MILLISECONDS)
+                        targetBuf = freeBuffers.poll(100, java.util.concurrent.TimeUnit.MILLISECONDS)
                         if (targetBuf != null) break
                         if (!process.isAlive) {
                             throw Exception("FFmpeg process terminated prematurely.")
                         }
                         if (cancelSupplier()) break
+                        attempts++
+                        if (attempts > 50) { // 100ms * 50 = 5 seconds stall detection
+                            throw Exception("Encoding pipeline stalled: free buffers unavailable for 5 seconds.")
+                        }
                     }
 
                     if (targetBuf != null) {
-                        System.arraycopy(rawBytes, 0, targetBuf, 0, rawBytes.size)
+                        System.arraycopy(rawBytes, 0, targetBuf, 0, minOf(rawBytes.size, targetBuf.size))
                         frameQueue.put(targetBuf)
                     }
                     
