@@ -14,6 +14,42 @@ class PlateDetector private constructor() : AutoCloseable {
     private val env: OrtEnvironment = OrtEnvironment.getEnvironment()
     private val session: OrtSession
 
+    // Performance tracking statistics
+    private var totalFramesProcessed = 0L
+    private var totalResizeMs = 0.0
+    private var totalPreprocessMs = 0.0
+    private var totalInferenceMs = 0.0
+    private var totalPostprocessMs = 0.0
+
+    fun resetPerfStats() {
+        totalFramesProcessed = 0L
+        totalResizeMs = 0.0
+        totalPreprocessMs = 0.0
+        totalInferenceMs = 0.0
+        totalPostprocessMs = 0.0
+    }
+
+    fun printPerfStatsSummary() {
+        if (totalFramesProcessed > 0L) {
+            val avgResize = totalResizeMs / totalFramesProcessed
+            val avgPre = totalPreprocessMs / totalFramesProcessed
+            val avgInf = totalInferenceMs / totalFramesProcessed
+            val avgPost = totalPostprocessMs / totalFramesProcessed
+            val avgTotal = avgResize + avgPre + avgInf + avgPost
+            
+            println(String.format(
+                java.util.Locale.US,
+                "DEBUG: === Plate Detection Average Performance Summary (Over %d frames) ===\n" +
+                "  - Avg Resize:     %.2f ms\n" +
+                "  - Avg Preprocess: %.2f ms\n" +
+                "  - Avg Inference:  %.2f ms\n" +
+                "  - Avg Postprocess: %.2f ms\n" +
+                "  - Total Average:  %.2f ms per frame (approx. %.1f fps)",
+                totalFramesProcessed, avgResize, avgPre, avgInf, avgPost, avgTotal, 1000.0 / avgTotal
+            ))
+        }
+    }
+
     init {
         val modelStream = PlateDetector::class.java.getResourceAsStream("/yolov8n_plate.onnx")
             ?: throw IllegalStateException("Model yolov8n_plate.onnx not found in resources")
@@ -42,35 +78,40 @@ class PlateDetector private constructor() : AutoCloseable {
     data class DetectedBox(val x1: Float, val y1: Float, val x2: Float, val y2: Float, val score: Float)
 
     fun detect(image: BufferedImage, confThreshold: Float = 0.25f, iouThreshold: Float = 0.45f): List<PlateBox> {
+        val t0 = System.nanoTime()
         val width = image.width
         val height = image.height
 
         val resized = resizeImage(image, 640, 640)
-        
+        val tResize = System.nanoTime()
+
         val rgbArray = IntArray(640 * 640)
         resized.getRGB(0, 0, 640, 640, rgbArray, 0, 640)
-        
+
         val inputData = FloatArray(1 * 3 * 640 * 640)
         val rOffset = 0
         val gOffset = 640 * 640
         val bOffset = 2 * 640 * 640
         
+        val inv255 = 1.0f / 255.0f
         for (i in 0 until 640 * 640) {
             val rgb = rgbArray[i]
-            val r = ((rgb shr 16) and 0xFF) / 255.0f
-            val g = ((rgb shr 8) and 0xFF) / 255.0f
-            val b = (rgb and 0xFF) / 255.0f
+            val r = ((rgb shr 16) and 0xFF) * inv255
+            val g = ((rgb shr 8) and 0xFF) * inv255
+            val b = (rgb and 0xFF) * inv255
             
             inputData[rOffset + i] = r
             inputData[gOffset + i] = g
             inputData[bOffset + i] = b
         }
+        val tPreprocess = System.nanoTime()
 
         val inputBuffer = FloatBuffer.wrap(inputData)
         val tensor = OnnxTensor.createTensor(env, inputBuffer, longArrayOf(1, 3, 640, 640))
         
         val outputs = session.run(mapOf("images" to tensor))
         val outputTensor = outputs[0] as OnnxTensor
+        val tInference = System.nanoTime()
         
         // YOLOv8 output is [1, 5, 8400]
         val outputData = outputTensor.value as Array<Array<FloatArray>>
@@ -95,8 +136,7 @@ class PlateDetector private constructor() : AutoCloseable {
         }
         
         val nmsBoxes = nms(boxes, iouThreshold)
-        
-        return nmsBoxes.map { box ->
+        val result = nmsBoxes.map { box ->
             val scaleX = width.toFloat() / 640f
             val scaleY = height.toFloat() / 640f
             val x1 = (box.x1 * scaleX).toInt().coerceAtLeast(0)
@@ -105,6 +145,34 @@ class PlateDetector private constructor() : AutoCloseable {
             val y2 = (box.y2 * scaleY).toInt().coerceAtMost(height)
             PlateBox(x1, y1, x2, y2)
         }
+        val tPostprocess = System.nanoTime()
+
+        val dResize = (tResize - t0) / 1_000_000.0
+        val dPre = (tPreprocess - tResize) / 1_000_000.0
+        val dInf = (tInference - tPreprocess) / 1_000_000.0
+        val dPost = (tPostprocess - tInference) / 1_000_000.0
+        
+        totalFramesProcessed++
+        totalResizeMs += dResize
+        totalPreprocessMs += dPre
+        totalInferenceMs += dInf
+        totalPostprocessMs += dPost
+
+        if (totalFramesProcessed % 100 == 0L || totalFramesProcessed <= 5L) {
+            val avgResize = totalResizeMs / totalFramesProcessed
+            val avgPre = totalPreprocessMs / totalFramesProcessed
+            val avgInf = totalInferenceMs / totalFramesProcessed
+            val avgPost = totalPostprocessMs / totalFramesProcessed
+            val avgTotal = avgResize + avgPre + avgInf + avgPost
+            
+            println(String.format(
+                java.util.Locale.US,
+                "DEBUG: YOLO Scan [Frame %d] - Avg: resize=%.2fms, preprocess=%.2fms, inference=%.2fms, postprocess=%.2fms | Avg total: %.2fms",
+                totalFramesProcessed, avgResize, avgPre, avgInf, avgPost, avgTotal
+            ))
+        }
+
+        return result
     }
 
     private fun resizeImage(originalImage: BufferedImage, targetWidth: Int, targetHeight: Int): BufferedImage {

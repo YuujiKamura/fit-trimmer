@@ -160,6 +160,7 @@ object PlateDetectionManager {
 
         val records = mutableListOf<PlateRecord>()
         val detector = PlateDetector.getInstance()
+        detector.resetPerfStats()
         
         val stream = BufferedInputStream(process.inputStream, 1024 * 1024)
         val buffer = ByteArray(frameBytes)
@@ -230,6 +231,7 @@ object PlateDetectionManager {
         } else {
             val ratio = if (frameIndex > 0) skippedFrames.toFloat() / frameIndex.toFloat() * 100f else 0f
             println("DEBUG: Scan complete. Total frames: $frameIndex, Skipped (speed >= 10km/h): $skippedFrames (${String.format(java.util.Locale.US, "%.1f", ratio)}%)")
+            detector.printPerfStatsSummary()
             val cache = VideoPlatesCache(videoPath, records)
             PlateCacheManager.saveCache(videoPath, cache)
             cache
