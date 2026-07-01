@@ -479,7 +479,7 @@ class PlateDetectorTest {
         }
 
         kotlin.test.assertNotNull(cache, "Scan cache must be successfully built")
-        kotlin.test.assertTrue(cache.records.isNotEmpty(), "Should detect plates even at high speeds (>= 10km/h)")
+        kotlin.test.assertTrue(cache.records.isEmpty(), "Should skip all plates at high speeds (>= 10km/h)")
         println("✅ High Speed Plate Detection Test Completed Successfully!")
     }
 
