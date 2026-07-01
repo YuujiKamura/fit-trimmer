@@ -843,6 +843,7 @@ class NativeHudEncoder(
             val ffmpegInputStart = actualTrimStart + ffmpegStartSeconds
             val remainingDuration = targetDurationSeconds - ffmpegStartSeconds
             
+            val runBlur = settings.blurLicensePlates && plateCache != null && plateCache.records.isNotEmpty()
             val pbArgs = mutableListOf<String>()
             pbArgs.add(ffmpegPath)
             pbArgs.add("-y")
@@ -852,7 +853,11 @@ class NativeHudEncoder(
             pbArgs.add("-pixel_format")
             pbArgs.add("abgr")
             pbArgs.add("-video_size")
-            pbArgs.add("${exportWidth}x${exportHeight * 2}")
+            if (runBlur) {
+                pbArgs.add("${exportWidth}x${exportHeight * 2}")
+            } else {
+                pbArgs.add("${exportWidth}x${exportHeight}")
+            }
             pbArgs.add("-framerate")
             pbArgs.add(videoFps)
             pbArgs.add("-i")
@@ -875,14 +880,21 @@ class NativeHudEncoder(
             pbArgs.add(localVideoPath)
             
             pbArgs.add("-filter_complex")
-            pbArgs.add(
-                "[0:v]crop=$exportWidth:$exportHeight:0:0,setpts=PTS-STARTPTS[hud];" +
-                "[0:v]crop=$exportWidth:$exportHeight:0:$exportHeight,setpts=PTS-STARTPTS,alphaextract[mask];" +
-                "[1:v]scale=$exportWidth:$exportHeight,setpts=PTS-STARTPTS,split[vid_orig][vid_blur_src];" +
-                "[vid_blur_src]avgblur=sizeX=30:sizeY=30[vid_blurred];" +
-                "[vid_orig][vid_blurred][mask]maskedmerge[vid_merged];" +
-                "[vid_merged][hud]overlay=0:0:shortest=1"
-            )
+            if (runBlur) {
+                pbArgs.add(
+                    "[0:v]crop=$exportWidth:$exportHeight:0:0,setpts=PTS-STARTPTS[hud];" +
+                    "[0:v]crop=$exportWidth:$exportHeight:0:$exportHeight,setpts=PTS-STARTPTS,alphaextract[mask];" +
+                    "[1:v]scale=$exportWidth:$exportHeight,setpts=PTS-STARTPTS,split[vid_orig][vid_blur_src];" +
+                    "[vid_blur_src]avgblur=sizeX=30:sizeY=30[vid_blurred];" +
+                    "[vid_orig][vid_blurred][mask]maskedmerge[vid_merged];" +
+                    "[vid_merged][hud]overlay=0:0:shortest=1"
+                )
+            } else {
+                pbArgs.add(
+                    "[1:v]scale=$exportWidth:$exportHeight,setpts=PTS-STARTPTS[vid];" +
+                    "[vid][0:v]overlay=0:0:shortest=1"
+                )
+            }
             
             pbArgs.add("-c:v")
             pbArgs.add(encoderName)
@@ -974,7 +986,11 @@ class NativeHudEncoder(
             
             val out = process.outputStream
             val pBuf = mutableListOf<Double>()
-            val img = BufferedImage(exportWidth, exportHeight * 2, BufferedImage.TYPE_4BYTE_ABGR)
+            val img = if (runBlur) {
+                BufferedImage(exportWidth, exportHeight * 2, BufferedImage.TYPE_4BYTE_ABGR)
+            } else {
+                BufferedImage(exportWidth, exportHeight, BufferedImage.TYPE_4BYTE_ABGR)
+            }
             val frameTimes = mutableListOf<Long>()
             
             // Pre-fill power buffer for context if we're not at the start
@@ -1027,55 +1043,60 @@ class NativeHudEncoder(
                     
                     val g = img.createGraphics()
                     g.composite = AlphaComposite.Clear
-                    g.fillRect(0, 0, exportWidth, exportHeight * 2)
+                    if (runBlur) {
+                        g.fillRect(0, 0, exportWidth, exportHeight * 2)
+                    } else {
+                        g.fillRect(0, 0, exportWidth, exportHeight)
+                    }
                     g.composite = AlphaComposite.SrcOver
                     
                     val isValid = currentFitTs >= telemetry.first().timestamp && currentFitTs <= telemetry.last().timestamp
                     
-                    // Render blur mask in the bottom half (heightOffset = exportHeight)
-                    val timeMs = (currentSec * 1000.0).toLong()
-                    val blurBoxes = plateCache?.shouldBlurAt(timeMs, settings.blurLicensePlates) ?: emptyList()
-                    if (timeMs in 10000L..13000L) {
-                        val neighbors = plateCache?.findNeighborRecords(timeMs)
-                        println("DEBUG_ENCODE: timeMs=$timeMs -> blurBoxes.size=${blurBoxes.size} (prev=${neighbors?.first?.timeMs}, next=${neighbors?.second?.timeMs})")
-                    }
-                    if (blurBoxes.isNotEmpty()) {
-                        val is90Or270 = videoRotation == 90 || videoRotation == -270 || videoRotation == 270 || videoRotation == -90
-                        val fallbackSourceW = if (is90Or270) videoHeight else videoWidth
-                        val fallbackSourceH = if (is90Or270) videoWidth else videoHeight
-
-                        // Mask must be solid white (alpha 255) on a transparent background
-                        g.composite = AlphaComposite.Src
-                        g.color = java.awt.Color(255, 255, 255, 255)
-                        for (box in blurBoxes) {
-                            val maskBox = PlateMaskExpander.expand(
-                                box = box,
-                                mode = settings.plateMaskMode,
-                                sourceWidth = plateCache?.sourceWidth?.takeIf { it > 0 } ?: fallbackSourceW,
-                                sourceHeight = plateCache?.sourceHeight?.takeIf { it > 0 } ?: fallbackSourceH
-                            )
-                            val mapped = PlateCoordinateMapper.mapToTarget(
-                                box = maskBox,
-                                cache = plateCache,
-                                fallbackSourceWidth = fallbackSourceW,
-                                fallbackSourceHeight = fallbackSourceH,
-                                targetWidth = exportWidth.toFloat(),
-                                targetHeight = exportHeight.toFloat()
-                            )
-                            val rx1 = mapped.x
-                            val ry1 = mapped.y + exportHeight // Shift to bottom half
-                            val rx2 = mapped.x + mapped.width
-                            val ry2 = mapped.y + mapped.height + exportHeight // Shift to bottom half
-                            
-                            val w = (rx2 - rx1).toInt()
-                            val h = (ry2 - ry1).toInt()
-                            if (w > 0 && h > 0) {
-                                g.fillRect(rx1.toInt(), ry1.toInt(), w, h)
-                            }
+                    if (runBlur) {
+                        // Render blur mask in the bottom half (heightOffset = exportHeight)
+                        val timeMs = (currentSec * 1000.0).toLong()
+                        val blurBoxes = plateCache?.shouldBlurAt(timeMs, settings.blurLicensePlates) ?: emptyList()
+                        if (timeMs in 10000L..13000L) {
+                            val neighbors = plateCache?.findNeighborRecords(timeMs)
+                            println("DEBUG_ENCODE: timeMs=$timeMs -> blurBoxes.size=${blurBoxes.size} (prev=${neighbors?.first?.timeMs}, next=${neighbors?.second?.timeMs})")
                         }
-                        g.composite = AlphaComposite.SrcOver
-                    }
+                        if (blurBoxes.isNotEmpty()) {
+                            val is90Or270 = videoRotation == 90 || videoRotation == -270 || videoRotation == 270 || videoRotation == -90
+                            val fallbackSourceW = if (is90Or270) videoHeight else videoWidth
+                            val fallbackSourceH = if (is90Or270) videoWidth else videoHeight
 
+                            // Mask must be solid white (alpha 255) on a transparent background
+                            g.composite = AlphaComposite.Src
+                            g.color = java.awt.Color(255, 255, 255, 255)
+                            for (box in blurBoxes) {
+                                val maskBox = PlateMaskExpander.expand(
+                                    box = box,
+                                    mode = settings.plateMaskMode,
+                                    sourceWidth = plateCache?.sourceWidth?.takeIf { it > 0 } ?: fallbackSourceW,
+                                    sourceHeight = plateCache?.sourceHeight?.takeIf { it > 0 } ?: fallbackSourceH
+                                )
+                                val mapped = PlateCoordinateMapper.mapToTarget(
+                                    box = maskBox,
+                                    cache = plateCache,
+                                    fallbackSourceWidth = fallbackSourceW,
+                                    fallbackSourceHeight = fallbackSourceH,
+                                    targetWidth = exportWidth.toFloat(),
+                                    targetHeight = exportHeight.toFloat()
+                                )
+                                val rx1 = mapped.x
+                                val ry1 = mapped.y + exportHeight // Shift to bottom half
+                                val rx2 = mapped.x + mapped.width
+                                val ry2 = mapped.y + mapped.height + exportHeight // Shift to bottom half
+                                
+                                val w = (rx2 - rx1).toInt()
+                                val h = (ry2 - ry1).toInt()
+                                if (w > 0 && h > 0) {
+                                    g.fillRect(rx1.toInt(), ry1.toInt(), w, h)
+                                }
+                            }
+                            g.composite = AlphaComposite.SrcOver
+                        }
+                    }
                     // Render HUD in the top half
                     val gHud = g.create() as java.awt.Graphics2D
                     gHud.clipRect(0, 0, exportWidth, exportHeight)
@@ -1121,7 +1142,11 @@ class NativeHudEncoder(
                         val targetH = (exportHeight * (targetW.toFloat() / exportWidth)).toInt().coerceAtLeast(1)
                         val copy = BufferedImage(targetW, targetH, img.type)
                         val g2d = copy.createGraphics()
-                        g2d.drawImage(img, 0, 0, targetW, targetH, null)
+                        if (runBlur) {
+                            g2d.drawImage(img, 0, 0, targetW, targetH, 0, 0, exportWidth, exportHeight, null)
+                        } else {
+                            g2d.drawImage(img, 0, 0, targetW, targetH, null)
+                        }
                         g2d.dispose()
                         onFrameRendered(copy)
                     }
