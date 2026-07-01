@@ -20,7 +20,7 @@ class HudEncodePipelineTest {
             val cache = HudEncodePipeline.ensurePlateCacheForEncode(
                 settings = HudSettings(blurLicensePlates = false),
                 videoPath = videoPath,
-                platePreScanner = { _, _, _, _, _, _, _, _, _ ->
+                platePreScanner = { _, _, _, _, _, _ ->
                     scannerCalled = true
                     VideoPlatesCache(videoPath = videoPath, records = emptyList())
                 }
@@ -89,7 +89,7 @@ class HudEncodePipelineTest {
             val cache = HudEncodePipeline.ensurePlateCacheForEncode(
                 settings = HudSettings(blurLicensePlates = true),
                 videoPath = videoPath,
-                platePreScanner = { _, _, _, _, _, _, _, _, _ ->
+                platePreScanner = { _, _, _, _, _, _ ->
                     scannerCalled = true
                     VideoPlatesCache(videoPath = videoPath, records = emptyList())
                 }
