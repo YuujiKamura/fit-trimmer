@@ -913,7 +913,7 @@ class NativeHudEncoder(
         val jobHash = kotlin.math.abs((
             fitPath + videoPath + startUtc + maxDurationSeconds + actualTrimStart + actualTrimEnd +
                 videoWidth + videoHeight + exportWidth + exportHeight + config.hashCode() +
-                settings.exportResolution + settings.blurLicensePlates + settings.plateMaskMode +
+                settings.exportResolution + settings.blurLicensePlates + settings.plateMaskExpandRatio.toString() +
                 (plateCache?.sourceWidth ?: 0) + (plateCache?.sourceHeight ?: 0) +
                 (plateCache?.records?.hashCode() ?: 0)
         ).hashCode()).toString()
