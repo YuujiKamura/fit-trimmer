@@ -210,6 +210,9 @@ fun FitTrimmerMainContent(
                 viewModel.plateCache = fit.PlateCacheManager.loadCache(videoPath)
                 viewModel.plateDetectionProgress = "Restored"
             } else {
+                if (playerState.isPlaying) {
+                    playerState.pause()
+                }
                 viewModel.runPlateDetection(scope)
             }
         }
@@ -870,6 +873,9 @@ fun FitTrimmerMainContent(
                                     }
                                 }
                                 is CpCommand.RunPlateDetection -> {
+                                    if (playerState.isPlaying) {
+                                        playerState.pause()
+                                    }
                                     scope.launch {
                                         viewModel.runPlateDetection(
                                             coroutineScope = scope,
@@ -2823,6 +2829,9 @@ fun FitTrimmerMainContent(
                                             fontSize = 10.sp,
                                             color = if (!isEncoding && !viewModel.isDetectingPlates) Color(0xFF007AFF) else Color(0xFF8E8E93),
                                             modifier = Modifier.clickable(enabled = !isEncoding && !viewModel.isDetectingPlates) {
+                                                if (playerState.isPlaying) {
+                                                    playerState.pause()
+                                                }
                                                 viewModel.runPlateDetection(scope)
                                             }
                                         )
@@ -3049,7 +3058,8 @@ fun FitTrimmerMainContent(
                                 blurLicensePlates = settings.blurLicensePlates,
                                 modifier = Modifier.fillMaxWidth().height(140.dp),
                                 isEncoding = isEncoding,
-                                isDetectingPlates = viewModel.isDetectingPlates
+                                isDetectingPlates = viewModel.isDetectingPlates,
+                                language = settings.language
                             )
                             val previewLabel = when (settings.exportResolution) {
                                 "360p" -> "360p (640x360) Overlay Preview"
