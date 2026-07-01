@@ -1,4 +1,4 @@
-﻿package viewmodel
+package viewmodel
 
 import fit.HudSettings
 import fit.FitParser
@@ -722,6 +722,29 @@ class AppViewModelTest {
             assertNotNull(restored)
         } finally {
             PlateCacheManager.deleteCache(videoPath1)
+        }
+    }
+
+    @Test
+    fun testAvailableCacheJobsRefreshOnVideoPathChange() {
+        val mockVideoPath = File(System.getProperty("java.io.tmpdir"), "video_mock_vm.mp4").absolutePath
+        val workDir = fit.PathResolver.getTempWorkDir(mockVideoPath)
+        val jobDir = File(workDir, "job_88888")
+        jobDir.mkdirs()
+        val part = File(jobDir, "part_0000.ts")
+        part.writeText("data")
+
+        try {
+            val viewModel = AppViewModel(null)
+            assertEquals(0, viewModel.availableCacheJobs.size, "Initially should be empty")
+
+            viewModel.videoPath = mockVideoPath
+            val targetJob = viewModel.availableCacheJobs.find { it.jobHash == "88888" }
+            assertNotNull(targetJob, "ViewModel must auto-scan and detect the unfinished cache job")
+            assertEquals(1, targetJob.partsCount)
+        } finally {
+            part.delete()
+            jobDir.delete()
         }
     }
 }
