@@ -642,12 +642,7 @@ class NativeHudEncoder(
         )
         println("DEBUG: NativeHudEncoder.encode config=$config, videoWidth=$videoWidth, videoHeight=$videoHeight")
         val renderer = HudRenderer(config)
-        val plateCache = if (settings.blurLicensePlates) {
-            PlateCacheManager.loadCache(videoPath)
-        } else null
-        if (plateCache != null) {
-            println("DEBUG: Loaded ${plateCache.records.size} plate records for rendering.")
-        }
+        val plateCache: fit.VideoPlatesCache? = null
         
         val (hwaccel, encoderName) = detectEncoderAndHardware(ffmpegPath, originalCodec)
         println("DEBUG: Auto-detected encoder: $encoderName, hwaccel: $hwaccel")

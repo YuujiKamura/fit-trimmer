@@ -297,6 +297,14 @@ object PlateDetectionManager {
                 } else {
                     // Populate reusable BufferedImage directly from frame buffer and detect
                     System.arraycopy(frame.buffer, 0, imgData, 0, frameBytes)
+                    if (frame.frameIndex < 5L) {
+                        try {
+                            val sd = File("scratch")
+                            if (!sd.exists()) sd.mkdirs()
+                            javax.imageio.ImageIO.write(img, "jpg", File(sd, "scan_frame_${frame.frameIndex}.jpg"))
+                            println("DEBUG: Wrote scratch/scan_frame_${frame.frameIndex}.jpg for visual audit.")
+                        } catch (e: Exception) { e.printStackTrace() }
+                    }
                     val rawBoxes = detector.detect(img)
                     // Scale from 640x640 back to original video resolution
                     rawBoxes.map { box ->
