@@ -123,7 +123,17 @@ object PlateDetectionManager {
         }
 
         if (startTimeAdjusted != null) {
-            println("DEBUG: Speed filter ACTIVE. Video start UTC = $startTimeAdjusted, telemetry count = ${telemetryPoints.size}")
+            val fitEpoch = 631065600L
+            val videoStartFitTs = startTimeAdjusted.toEpochSecond() - fitEpoch
+            val fitStart = telemetryPoints.firstOrNull()?.timestamp ?: 0.0
+            val fitEnd = telemetryPoints.lastOrNull()?.timestamp ?: 0.0
+            val diffStart = videoStartFitTs - fitStart
+            println("DEBUG: Speed filter ACTIVE.")
+            println("  - Video start UTC: $startTimeAdjusted")
+            println("  - Video start FIT Ts (1990 epoch): $videoStartFitTs")
+            println("  - FIT range (1990 epoch): $fitStart to $fitEnd")
+            println("  - Time diff (VideoStart - FITStart): $diffStart seconds (${String.format(java.util.Locale.US, "%.2f", diffStart / 3600.0)} hours)")
+            println("  - Telemetry points count: ${telemetryPoints.size}")
         } else {
             println("WARNING: Speed filter INACTIVE. Video start UTC '$adjustedStartUtc' could not be parsed.")
         }
