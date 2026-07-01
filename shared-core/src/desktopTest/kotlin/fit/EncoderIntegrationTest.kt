@@ -54,7 +54,7 @@ class EncoderIntegrationTest {
                     settings = HudSettings(
                         exportResolution = "360p",
                         blurLicensePlates = (maskMode != "off"),
-                        plateMaskMode = if (maskMode != "off") maskMode else "plate"
+                        plateMaskExpandRatio = if (maskMode == "wide") 1.5 else 0.2
                     ),
                     showLivePreviewSupplier = { false },
                     profileSink = { report ->
