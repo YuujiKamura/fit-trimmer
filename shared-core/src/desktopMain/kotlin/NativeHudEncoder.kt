@@ -1130,7 +1130,8 @@ class NativeHudEncoder(
                     fallbackSourceWidth = fallbackSourceW,
                     fallbackSourceHeight = fallbackSourceH,
                     targetWidth = exportWidth.toFloat(),
-                    targetHeight = exportHeight.toFloat()
+                    targetHeight = exportHeight.toFloat(),
+                    timeBufferMs = settings.plateMaskTimeBufferMs
                 ) ?: emptyList()
                 val maskedFrameCount = planned.count { it.isNotEmpty() }
                 println("DEBUG: Precomputed plate mask plan: $maskedFrameCount/$totalFrames frames contain masks.")
