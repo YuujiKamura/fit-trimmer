@@ -2745,26 +2745,31 @@ fun FitTrimmerMainContent(
                                             fontWeight = FontWeight.Medium
                                         )
                                     }
-                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                        val maskModes = listOf(
-                                            "plate" to utils.Localizer.get("plate_mask_plate", settings.language),
-                                            "wide" to utils.Localizer.get("plate_mask_wide", settings.language)
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        androidx.compose.material.Slider(
+                                            value = settings.plateMaskExpandRatio.toFloat(),
+                                            onValueChange = { newValue ->
+                                                val rounded = (kotlin.math.round(newValue * 10f) / 10f).toDouble()
+                                                settings = settings.copy(plateMaskExpandRatio = rounded.coerceIn(0.2, 1.5))
+                                            },
+                                            valueRange = 0.2f..1.5f,
+                                            steps = 12,
+                                            enabled = !isEncoding,
+                                            modifier = Modifier.width(180.dp),
+                                            colors = androidx.compose.material.SliderDefaults.colors(
+                                                thumbColor = Color(0xFF34C759),
+                                                activeTrackColor = Color(0xFF34C759)
+                                            )
                                         )
-                                        maskModes.forEach { (mode, label) ->
-                                            val selected = settings.plateMaskMode == mode
-                                            OutlinedButton(
-                                                onClick = { settings = settings.copy(plateMaskMode = mode) },
-                                                enabled = !isEncoding,
-                                                modifier = Modifier.height(24.dp),
-                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                                                colors = ButtonDefaults.outlinedButtonColors(
-                                                    backgroundColor = if (selected) Color(0xFF34C759) else Color.White,
-                                                    contentColor = if (selected) Color.White else Color(0xFF1C1C1E)
-                                                )
-                                            ) {
-                                                Text(label, fontSize = 9.sp)
-                                            }
-                                        }
+                                        Text(
+                                            text = String.format(java.util.Locale.US, "+%.0f%%", settings.plateMaskExpandRatio * 100),
+                                            fontSize = 10.sp,
+                                            color = Color(0xFF1C1C1E),
+                                            fontWeight = FontWeight.Medium
+                                        )
                                     }
                                     if (viewModel.isDetectingPlates) {
                                         Row(
