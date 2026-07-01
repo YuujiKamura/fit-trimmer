@@ -71,7 +71,7 @@ class AppViewModel(
                 proxyProgress = 0f
                 proxyVideoPath = null
                 
-                plateCache = if (usePlateDetectionCache) fit.PlateCacheManager.loadCache(value) else null
+                plateCache = fit.PlateCacheManager.loadCache(value)
                 videoRotation = utils.getVideoRotation(value)
                 println("DEBUG: Loaded videoRotation: $videoRotation")
             }
@@ -85,7 +85,6 @@ class AppViewModel(
     var isDetectingPlates by mutableStateOf(false)
     var plateDetectionProgress by mutableStateOf("")
     var plateDetectionError by mutableStateOf<String?>(null)
-    var usePlateDetectionCache by mutableStateOf(true)
     var plateDetectionMaxSpeedKmh by mutableStateOf(fit.HudSettings().plateMaxSpeedKmh)
     var plateDetectionFps by mutableStateOf(fit.HudSettings().plateDetectionFps)
     var plateDetectionPaddingSeconds by mutableStateOf(fit.HudSettings().platePaddingSeconds)
@@ -153,7 +152,7 @@ class AppViewModel(
                         plateCache = partialCache
                     },
                     maxRecords = maxRecords,
-                    saveCache = usePlateDetectionCache,
+                    saveCache = true,
                     settings = fit.HudSettings(
                         plateMaxSpeedKmh = plateDetectionMaxSpeedKmh,
                         plateDetectionFps = plateDetectionFps,
@@ -215,31 +214,7 @@ class AppViewModel(
         PlateCacheManager.deleteCache(videoPath)
     }
 
-    fun setPlateDetectionCacheEnabled(enabled: Boolean) {
-        usePlateDetectionCache = enabled
-        plateCache = if (enabled) PlateCacheManager.loadCache(videoPath) else null
-        plateDetectionError = null
-        plateDetectionProgress = if (enabled && plateCache != null) "Restored" else ""
-    }
 
-    fun restorePlateDetectionCache(): Boolean {
-        if (!usePlateDetectionCache) {
-            usePlateDetectionCache = true
-        }
-        val restored = PlateCacheManager.loadCache(videoPath)
-        plateCache = restored
-        plateDetectionError = null
-        plateDetectionProgress = if (restored != null) "Restored" else ""
-        return restored != null
-    }
-
-    fun discardPlateDetectionCache(): Boolean {
-        val deleted = PlateCacheManager.deleteCache(videoPath)
-        plateCache = null
-        plateDetectionError = null
-        plateDetectionProgress = ""
-        return deleted
-    }
 
     fun stopPlateDetection() {
         if (isDetectingPlates) {
