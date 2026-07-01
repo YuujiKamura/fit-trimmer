@@ -66,6 +66,7 @@ fun TelemetryTimelineGraph(
     onSeekEnd: (Long) -> Unit = {},
     modifier: Modifier = Modifier,
     isEncoding: Boolean = false,
+    isDetectingPlates: Boolean = false,
     plateCache: fit.VideoPlatesCache? = null,
     blurLicensePlates: Boolean = false
 ) {
@@ -244,11 +245,11 @@ fun TelemetryTimelineGraph(
                     .fillMaxWidth()
                     .height(130.dp)
                     .clip(RoundedCornerShape(6.dp))
-                    .alpha(if (isEncoding) 0.6f else 1f)
-                    .background(if (isEncoding) Color(0xFFE5E5EA).copy(alpha = 0.5f) else Color(0xFFF2F2F7))
+                    .alpha(if (isEncoding || isDetectingPlates) 0.6f else 1f)
+                    .background(if (isEncoding || isDetectingPlates) Color(0xFFE5E5EA).copy(alpha = 0.5f) else Color(0xFFF2F2F7))
                     .border(1.dp, Color(0xFFE5E5EA), RoundedCornerShape(6.dp))
-                    .pointerInput(isEncoding) {
-                        if (isEncoding) return@pointerInput
+                    .pointerInput(isEncoding || isDetectingPlates) {
+                        if (isEncoding || isDetectingPlates) return@pointerInput
                         detectDragGestures(
                             onDragStart = { offset ->
                                 val vLength = currentVideoLengthMs
