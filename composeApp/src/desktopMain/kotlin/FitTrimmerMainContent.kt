@@ -1509,6 +1509,92 @@ fun FitTrimmerMainContent(
                                      Spacer(Modifier.height(4.dp))
                                      Text(
                                          "未完了のエンコードキャッシュ検出:", 
+                                         color = Color(0xFF1C1C1E), 
+                                         fontWeight = FontWeight.Bold, 
+                                         fontSize = 10.sp, 
+                                         letterSpacing = 0.5.sp
+                                     )
+                                     Spacer(Modifier.height(4.dp))
+                                     viewModel.availableCacheJobs.forEach { job ->
+                                         val formattedTime = java.time.format.DateTimeFormatter.ofPattern("MM-dd HH:mm")
+                                             .format(java.time.LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(job.lastModified), java.time.ZoneId.systemDefault()))
+                                         
+                                         Row(
+                                             modifier = Modifier
+                                                 .fillMaxWidth()
+                                                 .border(BorderStroke(1.dp, Color(0xFFE5E5EA)), androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                                                 .background(Color.White)
+                                                 .padding(8.dp),
+                                             horizontalArrangement = Arrangement.SpaceBetween,
+                                             verticalAlignment = Alignment.CenterVertically
+                                         ) {
+                                             Column {
+                                                 Text("分割パーツ: ${job.partsCount} 個のTSファイル", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1C1C1E))
+                                                 Text("最終アクティブ: $formattedTime", fontSize = 9.sp, color = Color(0xFF1C1C1E))
+                                             }
+                                             Button(
+                                                 onClick = {
+                                                     val uniqueFileName = buildEncodeOutputFileName(
+                                                         settings = settings,
+                                                         videoPath = videoPath,
+                                                         partIndex = -1,
+                                                         numParts = 1,
+                                                         isSample = false
+                                                     ).replace(Regex("""\.(mp4|mov)$""", RegexOption.IGNORE_CASE), "_salvaged.mp4")
+                                                     val salvageOutPath = File(outputDir, uniqueFileName).absolutePath
+                                                     
+                                                     scope.launch(Dispatchers.Main) {
+                                                         val confirm = javax.swing.JOptionPane.showConfirmDialog(
+                                                             null,
+                                                             "レンダリングをスキップし、既存の ${job.partsCount} 個のキャッシュを結合して $uniqueFileName を作成しますか？",
+                                                             "キャッシュのサルベージ結合",
+                                                             javax.swing.JOptionPane.YES_NO_OPTION
+                                                         )
+                                                         if (confirm == javax.swing.JOptionPane.YES_OPTION) {
+                                                             viewModel.runSalvage(
+                                                                 jobInfo = job,
+                                                                 outputPath = salvageOutPath,
+                                                                 coroutineScope = scope,
+                                                                 onComplete = { successMsg ->
+                                                                     javax.swing.JOptionPane.showMessageDialog(null, successMsg, "サルベージ成功", javax.swing.JOptionPane.INFORMATION_MESSAGE)
+                                                                 }
+                                                             )
+                                                         }
+                                                     }
+                                                 },
+                                                 enabled = !isEncoding && !viewModel.isSalvaging,
+                                                 colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF007AFF), contentColor = Color.White),
+                                                 modifier = Modifier.height(26.dp),
+                                                 shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp),
+                                                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp)
+                                             ) {
+                                                 Text("結合して復元", fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                             }
+                                         }
+                                         Spacer(Modifier.height(4.dp))
+                                     }
+                                 }
+
+                                 if (viewModel.isSalvaging) {
+                                     Spacer(Modifier.height(4.dp))
+                                     LinearProgressIndicator(
+                                         progress = viewModel.salvageProgress,
+                                         modifier = Modifier.fillMaxWidth().height(4.dp),
+                                         color = Color(0xFF007AFF)
+                                     )
+                                     Text(
+                                         text = viewModel.salvageStatusText,
+                                         color = Color(0xFF1C1C1E),
+                                         fontSize = 9.sp,
+                                         modifier = Modifier.padding(top = 2.dp)
+                                     )
+                                 }
+                                 if (viewModel.availableCacheJobs.isNotEmpty()) {
+                                     Spacer(Modifier.height(8.dp))
+                                     Divider(color = Color(0xFFE5E5EA))
+                                     Spacer(Modifier.height(4.dp))
+                                     Text(
+                                         "未完了のエンコードキャッシュ検出:", 
                                          color = Color(0xFFFF9500), 
                                          fontWeight = FontWeight.Bold, 
                                          fontSize = 10.sp, 
