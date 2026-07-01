@@ -57,10 +57,19 @@ data class EncodeProfileReport(
     fun appendToHistory(label: String) {
         try {
             var rootDir = java.io.File(".").absoluteFile
-            while (rootDir.parentFile != null && !java.io.File(rootDir, "settings.gradle.kts").exists() && !java.io.File(rootDir, "settings.gradle").exists()) {
+            var foundRoot = false
+            while (rootDir.parentFile != null) {
+                if (java.io.File(rootDir, "settings.gradle.kts").exists() || java.io.File(rootDir, "settings.gradle").exists()) {
+                    foundRoot = true
+                    break
+                }
                 rootDir = rootDir.parentFile
             }
-            val scratchDir = java.io.File(rootDir, "composeApp/scratch")
+            val scratchDir = if (foundRoot) {
+                java.io.File(rootDir, "composeApp/scratch")
+            } else {
+                java.io.File("composeApp/scratch")
+            }
             if (!scratchDir.exists()) scratchDir.mkdirs()
             val historyFile = java.io.File(scratchDir, "encode_profile_history.csv")
             val isNewFile = !historyFile.exists() || historyFile.length() == 0L
