@@ -379,13 +379,13 @@ class PlateDetectorTest {
                 trimStartSeconds = 0.0,
                 trimEndSeconds = 2.0
             )
-            assertTrue(cropBlurredMp4.exists(), "Blurred video ($maskMode) must be created")
-            println("📹 Encode finished ($maskMode): ${cropBlurredMp4.exists()} (${cropBlurredMp4.length()} bytes)")
+            assertTrue(cropBlurredMp4.exists(), "Blurred video ($ratioLabel) must be created")
+            println("📹 Encode finished ($ratioLabel): ${cropBlurredMp4.exists()} (${cropBlurredMp4.length()} bytes)")
 
             // 4. Sample key frames using FFmpeg to verify visual positioning
             val sampleTimes = listOf(0.5, 1.5)
             for (st in sampleTimes) {
-                val sampleImgFile = File(scratchDir, "sample_output_blur_${maskMode}_${String.format("%.1f", st)}.jpg")
+                val sampleImgFile = File(scratchDir, "sample_output_blur_${ratioLabel}_${String.format("%.1f", st)}.jpg")
                 val pbSample = ProcessBuilder(
                     ffmpegPath, "-y",
                     "-i", cropBlurredMp4.absolutePath,
@@ -396,8 +396,8 @@ class PlateDetectorTest {
                 pbSample.inheritIO()
                 val pSample = pbSample.start()
                 pSample.waitFor()
-                println("📸 Wrote sample frame at crop time ${st}s for mode $maskMode to: ${sampleImgFile.absolutePath}")
-                assertTrue(sampleImgFile.exists() && sampleImgFile.length() > 0, "Sample frame ($maskMode) should be written successfully")
+                println("📸 Wrote sample frame at crop time ${st}s for ratio $ratioLabel to: ${sampleImgFile.absolutePath}")
+                assertTrue(sampleImgFile.exists() && sampleImgFile.length() > 0, "Sample frame ($ratioLabel) should be written successfully")
             }
         }
     }
@@ -479,7 +479,8 @@ class PlateDetectorTest {
                 telemetryPoints = telemetry,
                 adjustedStartUtc = "2026-06-14T08:02:06Z",
                 onProgress = {},
-                onCancel = { false }
+                onCancel = { false },
+                settings = fit.HudSettings(plateMaxSpeedKmh = 10.0)
             )
         }
 
