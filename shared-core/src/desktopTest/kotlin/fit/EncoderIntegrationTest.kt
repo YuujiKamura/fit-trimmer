@@ -4,9 +4,93 @@ import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertTrue
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import crc.Crc16
 
 class EncoderIntegrationTest {
+
+    @Test
+    fun testEncodingProfileCapturesDetailedStageTimings() {
+        System.setProperty("FIT_TRIMMER_FORCE_CPU", "true")
+        val tempDir = File(System.getProperty("java.io.tmpdir"), "fit-trimmer-profile-${System.currentTimeMillis()}")
+        tempDir.mkdirs()
+
+        val inputFit = File(tempDir, "profile_input.fit")
+        val inputMp4 = File(tempDir, "profile_input.mp4")
+        val outputMp4 = File(tempDir, "profile_output.mp4")
+
+        try {
+            val baseFitTimestamp = 1000000000L
+            inputFit.writeBytes(createProfileFit(baseFitTimestamp, seconds = 4))
+
+            val ffmpegPath = try { findFfmpegPath() } catch (e: Exception) { "ffmpeg" }
+            val pbVideo = ProcessBuilder(
+                ffmpegPath, "-y",
+                "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=10:duration=3",
+                "-c:v", "libopenh264", "-pix_fmt", "yuv420p", "-r", "10", "-t", "3",
+                inputMp4.absolutePath
+            )
+            pbVideo.redirectErrorStream(true)
+            val pVideo = pbVideo.start()
+            val videoOutput = pVideo.inputStream.bufferedReader().readText()
+            assertTrue(pVideo.waitFor(15000, java.util.concurrent.TimeUnit.MILLISECONDS), "Profile video generation should finish.")
+            assertEquals(0, pVideo.exitValue(), "Profile video generation failed:\n$videoOutput")
+
+            val cache = VideoPlatesCache(
+                videoPath = inputMp4.absolutePath,
+                records = listOf(
+                    PlateRecord(0, listOf(PlateBox(100, 120, 180, 150))),
+                    PlateRecord(1000, listOf(PlateBox(130, 130, 210, 160)))
+                ),
+                sourceWidth = 640,
+                sourceHeight = 360
+            )
+            PlateCacheManager.saveCache(inputMp4.absolutePath, cache)
+
+            var profile: EncodeProfileReport? = null
+            val encoder = NativeHudEncoder(
+                settings = HudSettings(
+                    exportResolution = "360p",
+                    blurLicensePlates = true,
+                    plateMaskMode = "plate"
+                ),
+                showLivePreviewSupplier = { false },
+                profileSink = { report ->
+                    profile = report
+                    println(report.toMetricLine())
+                }
+            )
+
+            val fitEpochSec = 631065600L
+            val computedStartUtc = java.time.Instant.ofEpochSecond(baseFitTimestamp + fitEpochSec).toString()
+            encoder.encode(
+                fitPath = inputFit.absolutePath,
+                videoPath = inputMp4.absolutePath,
+                output = outputMp4.absolutePath,
+                startUtc = computedStartUtc,
+                maxDurationSeconds = 2,
+                trimStartSeconds = 0.0,
+                trimEndSeconds = 2.0
+            )
+
+            val report = assertNotNull(profile, "Encoding profile report must be emitted.")
+            assertTrue(outputMp4.exists() && outputMp4.length() > 0, "Profile encode output must be created.")
+            assertTrue(report.frameCount > 0, "Profile must count encoded frames.")
+            assertTrue(report.maskPlanMs >= 0.0, "Profile must include mask planning time.")
+            assertTrue(report.maskVideoMs > 0.0, "Blur profile must include mask video generation time.")
+            assertTrue(report.hudRenderMs > 0.0, "Profile must include HUD render time.")
+            assertTrue(report.rawCopyMs > 0.0, "Profile must include raw frame copy time.")
+            assertTrue(report.pipeWriteMs > 0.0, "Profile must include pipe write time.")
+            assertTrue(report.pipeBytes > 0, "Profile must include pipe byte count.")
+            assertTrue(report.pipeMiB < 25.0, "2s 360p profile should keep HUD pipe volume bounded after mask stream split.")
+        } finally {
+            try { PlateCacheManager.deleteCache(inputMp4.absolutePath) } catch (e: Exception) {}
+            try { inputFit.delete() } catch (e: Exception) {}
+            try { inputMp4.delete() } catch (e: Exception) {}
+            try { outputMp4.delete() } catch (e: Exception) {}
+            try { tempDir.deleteRecursively() } catch (e: Exception) {}
+        }
+    }
 
     @Test
     fun testRealEncodingWithDummyVideoAndFit() {
@@ -526,5 +610,56 @@ class EncoderIntegrationTest {
         assertEquals(200.0, lerped.distance, 0.001)
         assertEquals(20, lerped.elapsedSeconds)
     }
-}
 
+    private fun createProfileFit(baseFitTimestamp: Long, seconds: Int): ByteArray {
+        val headerSize = 14
+        val recordsSize = 12 + (9 * seconds)
+        val totalSize = headerSize + recordsSize + 2
+        val bytes = ByteArray(totalSize)
+
+        bytes[0] = headerSize.toByte()
+        bytes[1] = 32
+        bytes[2] = 0xDC.toByte()
+        bytes[3] = 0x07.toByte()
+        bytes[4] = (recordsSize and 0xFF).toByte()
+        bytes[5] = ((recordsSize shr 8) and 0xFF).toByte()
+        bytes[6] = 0x00.toByte()
+        bytes[7] = 0x00.toByte()
+        ".FIT".encodeToByteArray().copyInto(bytes, 8)
+
+        var offset = headerSize
+        bytes[offset] = 0x40.toByte()
+        bytes[offset + 1] = 0
+        bytes[offset + 2] = 0
+        bytes[offset + 3] = 0x14.toByte()
+        bytes[offset + 4] = 0x00.toByte()
+        bytes[offset + 5] = 2
+        bytes[offset + 6] = 253.toByte()
+        bytes[offset + 7] = 4.toByte()
+        bytes[offset + 8] = 0x86.toByte()
+        bytes[offset + 9] = 5.toByte()
+        bytes[offset + 10] = 4.toByte()
+        bytes[offset + 11] = 0x86.toByte()
+        offset += 12
+
+        for (t in 0 until seconds) {
+            bytes[offset] = 0x00.toByte()
+            val ts = baseFitTimestamp + t
+            bytes[offset + 1] = (ts and 0xFF).toByte()
+            bytes[offset + 2] = ((ts shr 8) and 0xFF).toByte()
+            bytes[offset + 3] = ((ts shr 16) and 0xFF).toByte()
+            bytes[offset + 4] = ((ts shr 24) and 0xFF).toByte()
+            val dist = 10000 + t * 10
+            bytes[offset + 5] = (dist and 0xFF).toByte()
+            bytes[offset + 6] = ((dist shr 8) and 0xFF).toByte()
+            bytes[offset + 7] = ((dist shr 16) and 0xFF).toByte()
+            bytes[offset + 8] = ((dist shr 24) and 0xFF).toByte()
+            offset += 9
+        }
+
+        val computedCrc = Crc16.calculate(bytes, offset = 0, length = totalSize - 2)
+        bytes[totalSize - 2] = (computedCrc and 0xFF).toByte()
+        bytes[totalSize - 1] = ((computedCrc shr 8) and 0xFF).toByte()
+        return bytes
+    }
+}

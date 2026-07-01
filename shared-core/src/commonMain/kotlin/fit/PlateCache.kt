@@ -41,7 +41,14 @@ data class VideoPlatesCache(
         if (!isBlurEnabled || records.isEmpty()) return emptyList()
         
         val (prev, next) = findNeighborRecords(targetTimeMs)
-        
+        return boxesForTargetTime(targetTimeMs, prev, next)
+    }
+
+    fun boxesForTargetTime(
+        targetTimeMs: Long,
+        prev: PlateRecord?,
+        next: PlateRecord?
+    ): List<PlateBox> {
         if (prev == null && next == null) return emptyList()
         if (prev != null && next != null && prev.timeMs == next.timeMs) {
             return prev.boxes
@@ -137,6 +144,59 @@ data class VideoPlatesCache(
 }
 
 data class MappedPlateBox(val x: Float, val y: Float, val width: Float, val height: Float)
+
+fun VideoPlatesCache.buildMappedMaskFrames(
+    totalFrames: Int,
+    fps: Double,
+    isBlurEnabled: Boolean,
+    maskMode: String,
+    fallbackSourceWidth: Int,
+    fallbackSourceHeight: Int,
+    targetWidth: Float,
+    targetHeight: Float
+): List<List<MappedPlateBox>> {
+    if (!isBlurEnabled || records.isEmpty() || totalFrames <= 0 || fps <= 0.0) {
+        return List(totalFrames.coerceAtLeast(0)) { emptyList() }
+    }
+
+    var prevIndex = -1
+    var nextIndex = 0
+    return List(totalFrames) { frame ->
+        val targetTimeMs = (frame * 1000.0 / fps).toLong()
+        while (nextIndex < records.size && records[nextIndex].timeMs < targetTimeMs) {
+            prevIndex = nextIndex
+            nextIndex++
+        }
+
+        val prev = when {
+            nextIndex < records.size && records[nextIndex].timeMs == targetTimeMs -> records[nextIndex]
+            prevIndex in records.indices -> records[prevIndex]
+            else -> null
+        }
+        val next = when {
+            nextIndex < records.size && records[nextIndex].timeMs == targetTimeMs -> records[nextIndex]
+            nextIndex in records.indices -> records[nextIndex]
+            else -> null
+        }
+
+        boxesForTargetTime(targetTimeMs, prev, next).mapNotNull { box ->
+            val expanded = PlateMaskExpander.expand(
+                box = box,
+                mode = maskMode,
+                sourceWidth = sourceWidth.takeIf { it > 0 } ?: fallbackSourceWidth,
+                sourceHeight = sourceHeight.takeIf { it > 0 } ?: fallbackSourceHeight
+            )
+            PlateCoordinateMapper.mapToTarget(
+                box = expanded,
+                cache = this,
+                fallbackSourceWidth = fallbackSourceWidth,
+                fallbackSourceHeight = fallbackSourceHeight,
+                targetWidth = targetWidth,
+                targetHeight = targetHeight
+            ).takeIf { it.width > 0f && it.height > 0f }
+        }
+    }
+}
 
 object PlateMaskExpander {
     fun expand(

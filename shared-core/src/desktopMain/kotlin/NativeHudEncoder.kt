@@ -11,6 +11,103 @@ import java.io.FileOutputStream
 
 var globalActiveJobDir: java.io.File? = null
 
+data class EncodeProfileReport(
+    val totalElapsedMs: Double,
+    val maskPlanMs: Double,
+    val maskVideoMs: Double,
+    val ffmpegActiveMs: Double,
+    val frameCount: Long,
+    val telemetryMs: Double,
+    val hudRenderMs: Double,
+    val rawCopyMs: Double,
+    val bufferWaitMs: Double,
+    val queuePutMs: Double,
+    val livePreviewMs: Double,
+    val progressMs: Double,
+    val pipeWriteMs: Double,
+    val pipeBytes: Long
+) {
+    val pipeMiB: Double get() = pipeBytes.toDouble() / (1024.0 * 1024.0)
+    val avgHudRenderMs: Double get() = if (frameCount > 0) hudRenderMs / frameCount else 0.0
+    val avgRawCopyMs: Double get() = if (frameCount > 0) rawCopyMs / frameCount else 0.0
+    val avgBufferWaitMs: Double get() = if (frameCount > 0) bufferWaitMs / frameCount else 0.0
+    val avgPipeWriteMs: Double get() = if (frameCount > 0) pipeWriteMs / frameCount else 0.0
+
+    fun toMetricLine(): String =
+        "ENCODE_PROFILE: " +
+            "total_ms=${"%.2f".format(totalElapsedMs)} " +
+            "mask_plan_ms=${"%.2f".format(maskPlanMs)} " +
+            "mask_video_ms=${"%.2f".format(maskVideoMs)} " +
+            "ffmpeg_active_ms=${"%.2f".format(ffmpegActiveMs)} " +
+            "frames=$frameCount " +
+            "telemetry_ms=${"%.2f".format(telemetryMs)} " +
+            "hud_render_ms=${"%.2f".format(hudRenderMs)} " +
+            "raw_copy_ms=${"%.2f".format(rawCopyMs)} " +
+            "buffer_wait_ms=${"%.2f".format(bufferWaitMs)} " +
+            "queue_put_ms=${"%.2f".format(queuePutMs)} " +
+            "live_preview_ms=${"%.2f".format(livePreviewMs)} " +
+            "progress_ms=${"%.2f".format(progressMs)} " +
+            "pipe_write_ms=${"%.2f".format(pipeWriteMs)} " +
+            "pipe_mib=${"%.2f".format(pipeMiB)} " +
+            "avg_hud_ms=${"%.3f".format(avgHudRenderMs)} " +
+            "avg_copy_ms=${"%.3f".format(avgRawCopyMs)} " +
+            "avg_wait_ms=${"%.3f".format(avgBufferWaitMs)} " +
+            "avg_pipe_ms=${"%.3f".format(avgPipeWriteMs)}"
+}
+
+private class EncodeProfiler {
+    private val startNs = System.nanoTime()
+    private val frameCount = java.util.concurrent.atomic.AtomicLong(0)
+    private val pipeBytes = java.util.concurrent.atomic.AtomicLong(0)
+    private val maskPlanNs = java.util.concurrent.atomic.AtomicLong(0)
+    private val maskVideoNs = java.util.concurrent.atomic.AtomicLong(0)
+    private val ffmpegActiveNs = java.util.concurrent.atomic.AtomicLong(0)
+    private val telemetryNs = java.util.concurrent.atomic.AtomicLong(0)
+    private val hudRenderNs = java.util.concurrent.atomic.AtomicLong(0)
+    private val rawCopyNs = java.util.concurrent.atomic.AtomicLong(0)
+    private val bufferWaitNs = java.util.concurrent.atomic.AtomicLong(0)
+    private val queuePutNs = java.util.concurrent.atomic.AtomicLong(0)
+    private val livePreviewNs = java.util.concurrent.atomic.AtomicLong(0)
+    private val progressNs = java.util.concurrent.atomic.AtomicLong(0)
+    private val pipeWriteNs = java.util.concurrent.atomic.AtomicLong(0)
+
+    fun addMaskPlan(ns: Long) = maskPlanNs.addAndGet(ns)
+    fun addMaskVideo(ns: Long) = maskVideoNs.addAndGet(ns)
+    fun addFfmpegActive(ns: Long) = ffmpegActiveNs.addAndGet(ns)
+    fun addTelemetry(ns: Long) = telemetryNs.addAndGet(ns)
+    fun addHudRender(ns: Long) = hudRenderNs.addAndGet(ns)
+    fun addRawCopy(ns: Long) = rawCopyNs.addAndGet(ns)
+    fun addBufferWait(ns: Long) = bufferWaitNs.addAndGet(ns)
+    fun addQueuePut(ns: Long) = queuePutNs.addAndGet(ns)
+    fun addLivePreview(ns: Long) = livePreviewNs.addAndGet(ns)
+    fun addProgress(ns: Long) = progressNs.addAndGet(ns)
+    fun addFrame() = frameCount.incrementAndGet()
+    fun addPipeWrite(ns: Long, bytes: Int) {
+        pipeWriteNs.addAndGet(ns)
+        pipeBytes.addAndGet(bytes.toLong())
+    }
+
+    fun report(): EncodeProfileReport {
+        fun ms(ns: Long): Double = ns.toDouble() / 1_000_000.0
+        return EncodeProfileReport(
+            totalElapsedMs = ms(System.nanoTime() - startNs),
+            maskPlanMs = ms(maskPlanNs.get()),
+            maskVideoMs = ms(maskVideoNs.get()),
+            ffmpegActiveMs = ms(ffmpegActiveNs.get()),
+            frameCount = frameCount.get(),
+            telemetryMs = ms(telemetryNs.get()),
+            hudRenderMs = ms(hudRenderNs.get()),
+            rawCopyMs = ms(rawCopyNs.get()),
+            bufferWaitMs = ms(bufferWaitNs.get()),
+            queuePutMs = ms(queuePutNs.get()),
+            livePreviewMs = ms(livePreviewNs.get()),
+            progressMs = ms(progressNs.get()),
+            pipeWriteMs = ms(pipeWriteNs.get()),
+            pipeBytes = pipeBytes.get()
+        )
+    }
+}
+
 fun findFfmpegPath(): String {
     val os = System.getProperty("os.name").lowercase()
     val isWindows = os.contains("win")
@@ -229,7 +326,8 @@ class NativeHudEncoder(
     val pauseSupplier: () -> Boolean = { false },
     val cancelSupplier: () -> Boolean = { false },
     val customRenderer: ((HudCanvas, fit.FitParser.TelemetryPoint, List<fit.FitParser.TelemetryPoint>, List<Double>, Float) -> Unit)? = null,
-    val showLivePreviewSupplier: () -> Boolean = { true }
+    val showLivePreviewSupplier: () -> Boolean = { true },
+    val profileSink: ((EncodeProfileReport) -> Unit)? = null
 ) {
 
     private val fontCache = java.util.concurrent.ConcurrentHashMap<String, Font>()
@@ -335,6 +433,88 @@ class NativeHudEncoder(
         }
     }
 
+
+    private fun generateMaskVideo(
+        ffmpegPath: String,
+        outputFile: File,
+        maskFramePlan: List<List<MappedPlateBox>>,
+        width: Int,
+        height: Int,
+        fps: String
+    ) {
+        if (maskFramePlan.isEmpty()) return
+        outputFile.parentFile?.mkdirs()
+        if (outputFile.exists()) outputFile.delete()
+
+        val args = listOf(
+            ffmpegPath, "-y",
+            "-f", "rawvideo",
+            "-pixel_format", "gray",
+            "-video_size", "${width}x${height}",
+            "-framerate", fps,
+            "-i", "pipe:0",
+            "-an",
+            "-c:v", "ffv1",
+            "-level", "3",
+            outputFile.absolutePath
+        )
+
+        val pb = ProcessBuilder(args)
+        pb.redirectErrorStream(true)
+        val process = pb.start()
+        val logThread = Thread {
+            try {
+                process.inputStream.bufferedReader().forEachLine { line ->
+                    println("FFMPEG-MASK: $line")
+                }
+            } catch (e: Exception) {
+                if (process.isAlive) e.printStackTrace()
+            }
+        }
+        logThread.start()
+
+        val img = BufferedImage(width, height, BufferedImage.TYPE_BYTE_GRAY)
+        val data = (img.raster.dataBuffer as java.awt.image.DataBufferByte).data
+        val g = img.createGraphics()
+        try {
+            for (boxes in maskFramePlan) {
+                if (cancelSupplier()) {
+                    process.destroy()
+                    try { process.destroyForcibly() } catch (e: Exception) {}
+                    throw Exception("Encoding was canceled by user during mask generation.")
+                }
+                java.util.Arrays.fill(data, 0.toByte())
+                if (boxes.isNotEmpty()) {
+                    g.color = java.awt.Color.WHITE
+                    for (box in boxes) {
+                        val x = box.x.toInt()
+                        val y = box.y.toInt()
+                        val w = box.width.toInt()
+                        val h = box.height.toInt()
+                        if (w > 0 && h > 0) {
+                            g.fillRect(x, y, w, h)
+                        }
+                    }
+                }
+                process.outputStream.write(data)
+            }
+        } finally {
+            g.dispose()
+            try { process.outputStream.close() } catch (e: Exception) {}
+        }
+
+        val exitCode = process.waitFor()
+        try { logThread.interrupt() } catch (e: Exception) {}
+        try { logThread.join(1000) } catch (e: Exception) {}
+
+        if (cancelSupplier()) {
+            outputFile.delete()
+            throw Exception("Encoding was canceled by user during mask generation.")
+        }
+        if (exitCode != 0 || !outputFile.exists() || outputFile.length() == 0L) {
+            throw Exception("Failed to generate mask video. ffmpeg exited with code $exitCode.")
+        }
+    }
 
 
     private fun isGoogleDrivePath(path: String): Boolean {
@@ -446,6 +626,7 @@ class NativeHudEncoder(
         trimEndSeconds: Double = -1.0,
         shouldResume: Boolean = false
     ) {
+        val profiler = EncodeProfiler()
         try {
             val ffmpegPath = findFfmpegPath()
         
@@ -587,6 +768,7 @@ class NativeHudEncoder(
             val pb = ProcessBuilder(pbArgs)
             pb.redirectErrorStream(true)
             val process = pb.start()
+            val ffmpegActiveStartNs = System.nanoTime()
             val logStream = FileOutputStream(logFile, true)
             val readerThread = Thread {
                 try {
@@ -679,7 +861,13 @@ class NativeHudEncoder(
         println("DEBUG: Auto-detected encoder: $encoderName, hwaccel: $hwaccel")
 
         // Create deterministic job hash for crash recovery (include resolution to avoid mismatched segment reuse)
-        val jobHash = kotlin.math.abs((fitPath + videoPath + startUtc + maxDurationSeconds + actualTrimStart + actualTrimEnd + videoWidth + videoHeight + config.hashCode()).hashCode()).toString()
+        val jobHash = kotlin.math.abs((
+            fitPath + videoPath + startUtc + maxDurationSeconds + actualTrimStart + actualTrimEnd +
+                videoWidth + videoHeight + exportWidth + exportHeight + config.hashCode() +
+                settings.exportResolution + settings.blurLicensePlates + settings.plateMaskMode +
+                (plateCache?.sourceWidth ?: 0) + (plateCache?.sourceHeight ?: 0) +
+                (plateCache?.records?.hashCode() ?: 0)
+        ).hashCode()).toString()
         val jobDir = File(workDir, "job_$jobHash")
         if (!jobDir.exists()) jobDir.mkdirs()
         globalActiveJobDir = jobDir
@@ -856,11 +1044,53 @@ class NativeHudEncoder(
                 if (cancelSupplier()) throw Exception("Encoding was canceled by user.")
                 Thread.sleep(100)
             }
-            
+
             val ffmpegInputStart = actualTrimStart + ffmpegStartSeconds
             val remainingDuration = targetDurationSeconds - ffmpegStartSeconds
-            
+
             val runBlur = settings.blurLicensePlates && plateCache != null && plateCache.records.isNotEmpty()
+            val fpsDouble = videoFps.toDoubleOrNull() ?: 30.0
+            val totalFrames = (targetDurationSeconds * fpsDouble).toInt()
+            val resumeFrames = (resumeSeconds * fpsDouble).toInt()
+            val maskFramePlan = if (runBlur) {
+                val maskPlanStartNs = System.nanoTime()
+                val is90Or270 = videoRotation == 90 || videoRotation == -270 || videoRotation == 270 || videoRotation == -90
+                val fallbackSourceW = if (is90Or270) videoHeight else videoWidth
+                val fallbackSourceH = if (is90Or270) videoWidth else videoHeight
+                val planned = plateCache?.buildMappedMaskFrames(
+                    totalFrames = totalFrames,
+                    fps = fpsDouble,
+                    isBlurEnabled = settings.blurLicensePlates,
+                    maskMode = settings.plateMaskMode,
+                    fallbackSourceWidth = fallbackSourceW,
+                    fallbackSourceHeight = fallbackSourceH,
+                    targetWidth = exportWidth.toFloat(),
+                    targetHeight = exportHeight.toFloat()
+                ) ?: emptyList()
+                val maskedFrameCount = planned.count { it.isNotEmpty() }
+                println("DEBUG: Precomputed plate mask plan: $maskedFrameCount/$totalFrames frames contain masks.")
+                profiler.addMaskPlan(System.nanoTime() - maskPlanStartNs)
+                planned
+            } else {
+                emptyList()
+            }
+            val maskVideoFile = if (runBlur) File(jobDir, "plate_mask.mkv") else null
+            val shouldGenerateMaskVideo = runBlur && maskVideoFile != null &&
+                (!shouldResume || resumePartIndex == 0 || !maskVideoFile.exists() || maskVideoFile.length() == 0L)
+            if (shouldGenerateMaskVideo) {
+                val maskFile = maskVideoFile ?: throw Exception("Plate mask output path was not initialized.")
+                onProgress(resumeSeconds.toFloat() / targetDurationSeconds, "Preparing plate mask stream...")
+                val maskVideoStartNs = System.nanoTime()
+                generateMaskVideo(
+                    ffmpegPath = ffmpegPath,
+                    outputFile = maskFile,
+                    maskFramePlan = maskFramePlan,
+                    width = exportWidth,
+                    height = exportHeight,
+                    fps = videoFps
+                )
+                profiler.addMaskVideo(System.nanoTime() - maskVideoStartNs)
+            }
             val pbArgs = mutableListOf<String>()
             pbArgs.add(ffmpegPath)
             pbArgs.add("-y")
@@ -870,11 +1100,7 @@ class NativeHudEncoder(
             pbArgs.add("-pixel_format")
             pbArgs.add("abgr")
             pbArgs.add("-video_size")
-            if (runBlur) {
-                pbArgs.add("${exportWidth}x${exportHeight * 2}")
-            } else {
-                pbArgs.add("${exportWidth}x${exportHeight}")
-            }
+            pbArgs.add("${exportWidth}x${exportHeight}")
             pbArgs.add("-framerate")
             pbArgs.add(videoFps)
             pbArgs.add("-i")
@@ -895,12 +1121,19 @@ class NativeHudEncoder(
             pbArgs.add(remainingDuration.toString())
             pbArgs.add("-i")
             pbArgs.add(localVideoPath)
+
+            if (runBlur && maskVideoFile != null) {
+                pbArgs.add("-ss")
+                pbArgs.add(ffmpegStartSeconds.toString())
+                pbArgs.add("-i")
+                pbArgs.add(maskVideoFile.absolutePath)
+            }
             
             pbArgs.add("-filter_complex")
             if (runBlur) {
                 pbArgs.add(
-                    "[0:v]crop=$exportWidth:$exportHeight:0:0,setpts=PTS-STARTPTS[hud];" +
-                    "[0:v]crop=$exportWidth:$exportHeight:0:$exportHeight,setpts=PTS-STARTPTS,alphaextract[mask];" +
+                    "[0:v]setpts=PTS-STARTPTS[hud];" +
+                    "[2:v]format=gray,setpts=PTS-STARTPTS[mask];" +
                     "[1:v]scale=$exportWidth:$exportHeight,setpts=PTS-STARTPTS,split[vid_orig][vid_blur_src];" +
                     "[vid_blur_src]scale=w=${exportWidth}/20:h=${exportHeight}/20,scale=w=$exportWidth:h=$exportHeight:flags=neighbor[vid_blurred];" +
                     "[vid_orig][vid_blurred][mask]maskedmerge[vid_merged];" +
@@ -956,7 +1189,8 @@ class NativeHudEncoder(
             val pb = ProcessBuilder(pbArgs)
             pb.redirectErrorStream(true)
             val process = pb.start()
-            
+            val ffmpegActiveStartNs = System.nanoTime()
+
             val pid = try { process.pid() } catch (e: Exception) { null }
             if (pid != null) {
                 kotlin.concurrent.thread(start = true, isDaemon = true) {
@@ -1004,11 +1238,7 @@ class NativeHudEncoder(
             val out = process.outputStream
             
             val pBuf = mutableListOf<Double>()
-            val img = if (runBlur) {
-                BufferedImage(exportWidth, exportHeight * 2, BufferedImage.TYPE_4BYTE_ABGR)
-            } else {
-                BufferedImage(exportWidth, exportHeight, BufferedImage.TYPE_4BYTE_ABGR)
-            }
+            val img = BufferedImage(exportWidth, exportHeight, BufferedImage.TYPE_4BYTE_ABGR)
 
             // Rings buffer allocation based on actual raw bytes size of the BufferedImage to prevent sizing discrepancies
             val sampleRawBytes = (img.raster.dataBuffer as java.awt.image.DataBufferByte).data
@@ -1028,8 +1258,10 @@ class NativeHudEncoder(
                     while (isEncodingActive.get() || frameQueue.isNotEmpty()) {
                         val bytes = frameQueue.poll(50, java.util.concurrent.TimeUnit.MILLISECONDS)
                         if (bytes != null) {
+                            val pipeStartNs = System.nanoTime()
                             out.write(bytes)
                             out.flush()
+                            profiler.addPipeWrite(System.nanoTime() - pipeStartNs, bytes.size)
                             freeBuffers.offer(bytes)
                         }
                     }
@@ -1053,9 +1285,6 @@ class NativeHudEncoder(
             }
             
             var telemetryIdx = 0
-            val fpsDouble = videoFps.toDoubleOrNull() ?: 30.0
-            val totalFrames = (targetDurationSeconds * fpsDouble).toInt()
-            val resumeFrames = (resumeSeconds * fpsDouble).toInt()
             var lastPowerSec = resumeSeconds - 1
             var lastProcessedFrame = resumeFrames
             try {
@@ -1079,87 +1308,43 @@ class NativeHudEncoder(
                     val currentSec = f / fpsDouble
                     val currentUtcSeconds = startTimeAdjusted.epochSecond + currentSec
                     val currentFitTs = currentUtcSeconds - fitEpoch
-                    
+
+                    val telemetryStartNs = System.nanoTime()
                     val point = findTelemetryLerp(telemetry, currentFitTs)
-                    
+
                     val currentSecInt = currentSec.toInt()
                     if (currentSecInt > lastPowerSec) {
                         pBuf.add(point.power)
                         if (pBuf.size > settings.powerTrendSpanSeconds) pBuf.removeAt(0)
                         lastPowerSec = currentSecInt
                     }
-                    
+                    profiler.addTelemetry(System.nanoTime() - telemetryStartNs)
+
                     val g = img.createGraphics()
                     g.composite = AlphaComposite.Clear
-                    if (runBlur) {
-                        g.fillRect(0, 0, exportWidth, exportHeight * 2)
-                    } else {
-                        g.fillRect(0, 0, exportWidth, exportHeight)
-                    }
+                    g.fillRect(0, 0, exportWidth, exportHeight)
                     g.composite = AlphaComposite.SrcOver
-                    
-                    val isValid = currentFitTs >= telemetry.first().timestamp && currentFitTs <= telemetry.last().timestamp
-                    
-                    if (runBlur) {
-                        // Render blur mask in the bottom half (heightOffset = exportHeight)
-                        val timeMs = (currentSec * 1000.0).toLong()
-                        val blurBoxes = plateCache?.shouldBlurAt(timeMs, settings.blurLicensePlates) ?: emptyList()
-                        if (timeMs in 10000L..13000L) {
-                            val neighbors = plateCache?.findNeighborRecords(timeMs)
-                            println("DEBUG_ENCODE: timeMs=$timeMs -> blurBoxes.size=${blurBoxes.size} (prev=${neighbors?.first?.timeMs}, next=${neighbors?.second?.timeMs})")
-                        }
-                        if (blurBoxes.isNotEmpty()) {
-                            val is90Or270 = videoRotation == 90 || videoRotation == -270 || videoRotation == 270 || videoRotation == -90
-                            val fallbackSourceW = if (is90Or270) videoHeight else videoWidth
-                            val fallbackSourceH = if (is90Or270) videoWidth else videoHeight
 
-                            // Mask must be solid white (alpha 255) on a transparent background
-                            g.composite = AlphaComposite.Src
-                            g.color = java.awt.Color(255, 255, 255, 255)
-                            for (box in blurBoxes) {
-                                val maskBox = PlateMaskExpander.expand(
-                                    box = box,
-                                    mode = settings.plateMaskMode,
-                                    sourceWidth = plateCache?.sourceWidth?.takeIf { it > 0 } ?: fallbackSourceW,
-                                    sourceHeight = plateCache?.sourceHeight?.takeIf { it > 0 } ?: fallbackSourceH
-                                )
-                                val mapped = PlateCoordinateMapper.mapToTarget(
-                                    box = maskBox,
-                                    cache = plateCache,
-                                    fallbackSourceWidth = fallbackSourceW,
-                                    fallbackSourceHeight = fallbackSourceH,
-                                    targetWidth = exportWidth.toFloat(),
-                                    targetHeight = exportHeight.toFloat()
-                                )
-                                val rx1 = mapped.x
-                                val ry1 = mapped.y + exportHeight // Shift to bottom half
-                                val rx2 = mapped.x + mapped.width
-                                val ry2 = mapped.y + mapped.height + exportHeight // Shift to bottom half
-                                
-                                val w = (rx2 - rx1).toInt()
-                                val h = (ry2 - ry1).toInt()
-                                if (w > 0 && h > 0) {
-                                    g.fillRect(rx1.toInt(), ry1.toInt(), w, h)
-                                }
-                            }
-                            g.composite = AlphaComposite.SrcOver
-                        }
-                    }
+                    val isValid = currentFitTs >= telemetry.first().timestamp && currentFitTs <= telemetry.last().timestamp
+
                     // Render HUD in the top half
                     val gHud = g.create() as java.awt.Graphics2D
                     gHud.clipRect(0, 0, exportWidth, exportHeight)
                     val scale = exportWidth.toFloat() / 1920f
                     val canvas = DesktopHudCanvas(gHud, scale, exportWidth.toFloat() / scale, exportHeight.toFloat() / scale)
+                    val hudStartNs = System.nanoTime()
                     if (customRenderer != null) {
                         customRenderer.invoke(canvas, point, telemetry, pBuf, currentSec.toFloat())
                     } else {
                         renderer.renderFrame(canvas, point, telemetry, pBuf, currentSec.toFloat(), isValid)
                     }
+                    profiler.addHudRender(System.nanoTime() - hudStartNs)
                     gHud.dispose()
                     g.dispose()
-                    
+
                     val rawBytes = (img.raster.dataBuffer as java.awt.image.DataBufferByte).data
                     var targetBuf: ByteArray? = null
+                    val bufferWaitStartNs = System.nanoTime()
                     var attempts = 0
                     while (isEncodingActive.get()) {
                         pipeWriterException.get()?.let { throw it }
@@ -1174,10 +1359,15 @@ class NativeHudEncoder(
                             throw Exception("Encoding pipeline stalled: free buffers unavailable for 5 seconds.")
                         }
                     }
+                    profiler.addBufferWait(System.nanoTime() - bufferWaitStartNs)
 
                     if (targetBuf != null) {
+                        val copyStartNs = System.nanoTime()
                         System.arraycopy(rawBytes, 0, targetBuf, 0, minOf(rawBytes.size, targetBuf.size))
+                        profiler.addRawCopy(System.nanoTime() - copyStartNs)
+                        val queuePutStartNs = System.nanoTime()
                         frameQueue.put(targetBuf)
+                        profiler.addQueuePut(System.nanoTime() - queuePutStartNs)
                     }
                     
                     val loopEnd = System.currentTimeMillis()
@@ -1201,9 +1391,12 @@ class NativeHudEncoder(
                     val speedStr = "%.1fx".format(currentFps / fpsDouble)
                     
                     val statusText = "Encoding: $progressPercent% | $processedStr / $totalStr | Speed: $fpsStr ($speedStr) | ETA: $remainingStr"
+                    val progressStartNs = System.nanoTime()
                     onProgress(progressRatio, statusText)
-                    
+                    profiler.addProgress(System.nanoTime() - progressStartNs)
+
                     if (showLivePreviewSupplier()) {
+                        val previewStartNs = System.nanoTime()
                         val targetW = 960
                         val targetH = (exportHeight * (targetW.toFloat() / exportWidth)).toInt().coerceAtLeast(1)
                         val copy = BufferedImage(targetW, targetH, img.type)
@@ -1215,7 +1408,9 @@ class NativeHudEncoder(
                         }
                         g2d.dispose()
                         onFrameRendered(copy)
+                        profiler.addLivePreview(System.nanoTime() - previewStartNs)
                     }
+                    profiler.addFrame()
                 }
             } catch (e: Exception) {
                 println("\n❌ Pipe Write Error: ${e.message}")
@@ -1241,6 +1436,7 @@ class NativeHudEncoder(
                     }
                 }
                 val exitCode = process.waitFor()
+                profiler.addFfmpegActive(System.nanoTime() - ffmpegActiveStartNs)
                 
                 // Interrupt threads to avoid hanging on blocking IO/sleep
                 try { readerThread.interrupt() } catch (e: Exception) {}
@@ -1344,6 +1540,13 @@ class NativeHudEncoder(
             onProgress(1.0f, "✨ Finished Successfully!")
         }
         } finally {
+            val report = profiler.report()
+            println(report.toMetricLine())
+            try {
+                profileSink?.invoke(report)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
             try {
                 globalActiveJobDir?.let {
                     val usableSpace = try { it.usableSpace } catch (e: Exception) { Long.MAX_VALUE }
