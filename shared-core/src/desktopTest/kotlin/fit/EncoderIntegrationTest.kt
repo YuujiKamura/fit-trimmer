@@ -12,83 +12,86 @@ class EncoderIntegrationTest {
     @Test
     fun testEncodingProfileCapturesDetailedStageTimings() {
         System.setProperty("FIT_TRIMMER_FORCE_CPU", "true")
-        val tempDir = File(System.getProperty("java.io.tmpdir"), "fit-trimmer-profile-${System.currentTimeMillis()}")
-        tempDir.mkdirs()
+        
+        for (maskMode in listOf("plate", "wide")) {
+            val tempDir = File(System.getProperty("java.io.tmpdir"), "fit-trimmer-profile-${maskMode}-${System.currentTimeMillis()}")
+            tempDir.mkdirs()
 
-        val inputFit = File(tempDir, "profile_input.fit")
-        val inputMp4 = File(tempDir, "profile_input.mp4")
-        val outputMp4 = File(tempDir, "profile_output.mp4")
+            val inputFit = File(tempDir, "profile_input.fit")
+            val inputMp4 = File(tempDir, "profile_input.mp4")
+            val outputMp4 = File(tempDir, "profile_output.mp4")
 
-        try {
-            val baseFitTimestamp = 1000000000L
-            inputFit.writeBytes(createProfileFit(baseFitTimestamp, seconds = 4))
+            try {
+                val baseFitTimestamp = 1000000000L
+                inputFit.writeBytes(createProfileFit(baseFitTimestamp, seconds = 4))
 
-            val ffmpegPath = try { findFfmpegPath() } catch (e: Exception) { "ffmpeg" }
-            val pbVideo = ProcessBuilder(
-                ffmpegPath, "-y",
-                "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=10:duration=3",
-                "-c:v", "libopenh264", "-pix_fmt", "yuv420p", "-r", "10", "-t", "3",
-                inputMp4.absolutePath
-            )
-            pbVideo.redirectErrorStream(true)
-            val pVideo = pbVideo.start()
-            val videoOutput = pVideo.inputStream.bufferedReader().readText()
-            assertTrue(pVideo.waitFor(15000, java.util.concurrent.TimeUnit.MILLISECONDS), "Profile video generation should finish.")
-            assertEquals(0, pVideo.exitValue(), "Profile video generation failed:\n$videoOutput")
+                val ffmpegPath = try { findFfmpegPath() } catch (e: Exception) { "ffmpeg" }
+                val pbVideo = ProcessBuilder(
+                    ffmpegPath, "-y",
+                    "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=10:duration=3",
+                    "-c:v", "libopenh264", "-pix_fmt", "yuv420p", "-r", "10", "-t", "3",
+                    inputMp4.absolutePath
+                )
+                pbVideo.redirectErrorStream(true)
+                val pVideo = pbVideo.start()
+                val videoOutput = pVideo.inputStream.bufferedReader().readText()
+                assertTrue(pVideo.waitFor(15000, java.util.concurrent.TimeUnit.MILLISECONDS), "Profile video generation should finish.")
+                assertEquals(0, pVideo.exitValue(), "Profile video generation failed:\n$videoOutput")
 
-            val cache = VideoPlatesCache(
-                videoPath = inputMp4.absolutePath,
-                records = listOf(
-                    PlateRecord(0, listOf(PlateBox(100, 120, 180, 150))),
-                    PlateRecord(1000, listOf(PlateBox(130, 130, 210, 160)))
-                ),
-                sourceWidth = 640,
-                sourceHeight = 360
-            )
-            PlateCacheManager.saveCache(inputMp4.absolutePath, cache)
+                val cache = VideoPlatesCache(
+                    videoPath = inputMp4.absolutePath,
+                    records = listOf(
+                        PlateRecord(0, listOf(PlateBox(100, 120, 180, 150))),
+                        PlateRecord(1000, listOf(PlateBox(130, 130, 210, 160)))
+                    ),
+                    sourceWidth = 640,
+                    sourceHeight = 360
+                )
+                PlateCacheManager.saveCache(inputMp4.absolutePath, cache)
 
-            var profile: EncodeProfileReport? = null
-            val encoder = NativeHudEncoder(
-                settings = HudSettings(
-                    exportResolution = "360p",
-                    blurLicensePlates = true,
-                    plateMaskMode = "plate"
-                ),
-                showLivePreviewSupplier = { false },
-                profileSink = { report ->
-                    profile = report
-                    println(report.toMetricLine())
-                }
-            )
+                var profile: EncodeProfileReport? = null
+                val encoder = NativeHudEncoder(
+                    settings = HudSettings(
+                        exportResolution = "360p",
+                        blurLicensePlates = true,
+                        plateMaskMode = maskMode
+                    ),
+                    showLivePreviewSupplier = { false },
+                    profileSink = { report ->
+                        profile = report
+                        println("Mode: $maskMode -> ${report.toMetricLine()}")
+                    }
+                )
 
-            val fitEpochSec = 631065600L
-            val computedStartUtc = java.time.Instant.ofEpochSecond(baseFitTimestamp + fitEpochSec).toString()
-            encoder.encode(
-                fitPath = inputFit.absolutePath,
-                videoPath = inputMp4.absolutePath,
-                output = outputMp4.absolutePath,
-                startUtc = computedStartUtc,
-                maxDurationSeconds = 2,
-                trimStartSeconds = 0.0,
-                trimEndSeconds = 2.0
-            )
+                val fitEpochSec = 631065600L
+                val computedStartUtc = java.time.Instant.ofEpochSecond(baseFitTimestamp + fitEpochSec).toString()
+                encoder.encode(
+                    fitPath = inputFit.absolutePath,
+                    videoPath = inputMp4.absolutePath,
+                    output = outputMp4.absolutePath,
+                    startUtc = computedStartUtc,
+                    maxDurationSeconds = 2,
+                    trimStartSeconds = 0.0,
+                    trimEndSeconds = 2.0
+                )
 
-            val report = assertNotNull(profile, "Encoding profile report must be emitted.")
-            assertTrue(outputMp4.exists() && outputMp4.length() > 0, "Profile encode output must be created.")
-            assertTrue(report.frameCount > 0, "Profile must count encoded frames.")
-            assertTrue(report.maskPlanMs >= 0.0, "Profile must include mask planning time.")
-            assertTrue(report.maskVideoMs > 0.0, "Blur profile must include mask video generation time.")
-            assertTrue(report.hudRenderMs > 0.0, "Profile must include HUD render time.")
-            assertTrue(report.rawCopyMs > 0.0, "Profile must include raw frame copy time.")
-            assertTrue(report.pipeWriteMs > 0.0, "Profile must include pipe write time.")
-            assertTrue(report.pipeBytes > 0, "Profile must include pipe byte count.")
-            assertTrue(report.pipeMiB < 25.0, "2s 360p profile should keep HUD pipe volume bounded after mask stream split.")
-        } finally {
-            try { PlateCacheManager.deleteCache(inputMp4.absolutePath) } catch (e: Exception) {}
-            try { inputFit.delete() } catch (e: Exception) {}
-            try { inputMp4.delete() } catch (e: Exception) {}
-            try { outputMp4.delete() } catch (e: Exception) {}
-            try { tempDir.deleteRecursively() } catch (e: Exception) {}
+                val report = assertNotNull(profile, "Encoding profile report must be emitted for mode: $maskMode")
+                assertTrue(outputMp4.exists() && outputMp4.length() > 0, "Profile encode output must be created for mode: $maskMode")
+                assertTrue(report.frameCount > 0, "Profile must count encoded frames for mode: $maskMode")
+                assertTrue(report.maskPlanMs >= 0.0, "Profile must include mask planning time for mode: $maskMode")
+                assertTrue(report.maskVideoMs > 0.0, "Blur profile must include mask video generation time for mode: $maskMode")
+                assertTrue(report.hudRenderMs > 0.0, "Profile must include HUD render time for mode: $maskMode")
+                assertTrue(report.rawCopyMs > 0.0, "Profile must include raw frame copy time for mode: $maskMode")
+                assertTrue(report.pipeWriteMs > 0.0, "Profile must include pipe write time for mode: $maskMode")
+                assertTrue(report.pipeBytes > 0, "Profile must include pipe byte count for mode: $maskMode")
+                assertTrue(report.pipeMiB < 25.0, "2s 360p profile should keep HUD pipe volume bounded after mask stream split for mode: $maskMode")
+            } finally {
+                try { PlateCacheManager.deleteCache(inputMp4.absolutePath) } catch (e: Exception) {}
+                try { inputFit.delete() } catch (e: Exception) {}
+                try { inputMp4.delete() } catch (e: Exception) {}
+                try { outputMp4.delete() } catch (e: Exception) {}
+                try { tempDir.deleteRecursively() } catch (e: Exception) {}
+            }
         }
     }
 
