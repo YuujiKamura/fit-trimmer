@@ -86,10 +86,10 @@ class AppViewModel(
     var plateDetectionProgress by mutableStateOf("")
     var plateDetectionError by mutableStateOf<String?>(null)
     var usePlateDetectionCache by mutableStateOf(true)
-    var plateDetectionMaxSpeedKmh by mutableStateOf(15.0)
-    var plateDetectionFps by mutableStateOf(1.0)
-    var plateDetectionPaddingSeconds by mutableStateOf(2.0)
-    var plateDetectionMergeGapSeconds by mutableStateOf(5.0)
+    var plateDetectionMaxSpeedKmh by mutableStateOf(fit.HudSettings().plateMaxSpeedKmh)
+    var plateDetectionFps by mutableStateOf(fit.HudSettings().plateDetectionFps)
+    var plateDetectionPaddingSeconds by mutableStateOf(fit.HudSettings().platePaddingSeconds)
+    var plateDetectionMergeGapSeconds by mutableStateOf(fit.HudSettings().plateMergeGapSeconds)
 
     private var plateDetectionJob: kotlinx.coroutines.Job? = null
     private var plateDetectionStopRequested by mutableStateOf(false)
@@ -154,10 +154,12 @@ class AppViewModel(
                     },
                     maxRecords = maxRecords,
                     saveCache = usePlateDetectionCache,
-                    maxSpeedKmh = plateDetectionMaxSpeedKmh,
-                    detectionFps = plateDetectionFps,
-                    paddingSeconds = plateDetectionPaddingSeconds,
-                    mergeGapSeconds = plateDetectionMergeGapSeconds
+                    settings = fit.HudSettings(
+                        plateMaxSpeedKmh = plateDetectionMaxSpeedKmh,
+                        plateDetectionFps = plateDetectionFps,
+                        platePaddingSeconds = plateDetectionPaddingSeconds,
+                        plateMergeGapSeconds = plateDetectionMergeGapSeconds
+                    )
                 )
                 if (cache != null) {
                     plateCache = cache
