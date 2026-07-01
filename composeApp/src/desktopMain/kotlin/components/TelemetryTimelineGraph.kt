@@ -68,7 +68,8 @@ fun TelemetryTimelineGraph(
     isEncoding: Boolean = false,
     isDetectingPlates: Boolean = false,
     plateCache: fit.VideoPlatesCache? = null,
-    blurLicensePlates: Boolean = false
+    blurLicensePlates: Boolean = false,
+    language: String = "ja"
 ) {
     val textMeasurer = rememberTextMeasurer()
     val videoDurationSec = videoLengthMs / 1000.0
@@ -235,7 +236,7 @@ fun TelemetryTimelineGraph(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.size(8.dp).background(Color(0xFF5856D6), RoundedCornerShape(2.dp)))
                         Spacer(Modifier.width(4.dp))
-                        Text("Plate (プレート検出)", color = Color(0xFF636366), fontSize = 9.sp)
+                        Text(utils.Localizer.get("plate_legend", language), color = Color(0xFF636366), fontSize = 9.sp)
                     }
                 }
             }
