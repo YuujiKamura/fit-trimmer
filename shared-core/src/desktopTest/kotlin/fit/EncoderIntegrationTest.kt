@@ -60,6 +60,7 @@ class EncoderIntegrationTest {
                     profileSink = { report ->
                         profile = report
                         println("Mode: $maskMode -> ${report.toMetricLine()}")
+                        report.appendToHistory(maskMode)
                     }
                 )
 

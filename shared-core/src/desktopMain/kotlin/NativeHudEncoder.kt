@@ -53,6 +53,46 @@ data class EncodeProfileReport(
             "avg_copy_ms=${"%.3f".format(avgRawCopyMs)} " +
             "avg_wait_ms=${"%.3f".format(avgBufferWaitMs)} " +
             "avg_pipe_ms=${"%.3f".format(avgPipeWriteMs)}"
+
+    fun appendToHistory(label: String) {
+        try {
+            var rootDir = java.io.File(".").absoluteFile
+            while (rootDir.parentFile != null && !java.io.File(rootDir, "settings.gradle.kts").exists() && !java.io.File(rootDir, "settings.gradle").exists()) {
+                rootDir = rootDir.parentFile
+            }
+            val scratchDir = java.io.File(rootDir, "composeApp/scratch")
+            if (!scratchDir.exists()) scratchDir.mkdirs()
+            val historyFile = java.io.File(scratchDir, "encode_profile_history.csv")
+            val isNewFile = !historyFile.exists() || historyFile.length() == 0L
+            
+            java.io.FileWriter(historyFile, true).use { writer ->
+                if (isNewFile) {
+                    writer.write("Timestamp,Label,TotalMs,MaskPlanMs,MaskVideoMs,FfmpegActiveMs,Frames,TelemetryMs,HudRenderMs,RawCopyMs,BufferWaitMs,PipeWriteMs,PipeMiB,AvgHudMs,AvgCopyMs,AvgWaitMs,AvgPipeMs\n")
+                }
+                val now = java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+                writer.write(
+                    "$now,$label," +
+                    "${"%.2f".format(totalElapsedMs)}," +
+                    "${"%.2f".format(maskPlanMs)}," +
+                    "${"%.2f".format(maskVideoMs)}," +
+                    "${"%.2f".format(ffmpegActiveMs)}," +
+                    "$frameCount," +
+                    "${"%.2f".format(telemetryMs)}," +
+                    "${"%.2f".format(hudRenderMs)}," +
+                    "${"%.2f".format(rawCopyMs)}," +
+                    "${"%.2f".format(bufferWaitMs)}," +
+                    "${"%.2f".format(pipeWriteMs)}," +
+                    "${"%.2f".format(pipeMiB)}," +
+                    "${"%.3f".format(avgHudRenderMs)}," +
+                    "${"%.3f".format(avgRawCopyMs)}," +
+                    "${"%.3f".format(avgBufferWaitMs)}," +
+                    "${"%.3f".format(avgPipeWriteMs)}\n"
+                )
+            }
+        } catch (e: Exception) {
+            println("WARNING: Failed to write encode profile history: ${e.message}")
+        }
+    }
 }
 
 private class EncodeProfiler {
