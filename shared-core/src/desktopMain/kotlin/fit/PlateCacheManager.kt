@@ -1,4 +1,4 @@
-﻿package fit
+package fit
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -11,10 +11,22 @@ object PlateCacheManager {
     
     fun getNormalizedPath(videoPath: String): String {
         if (videoPath.isEmpty()) return ""
+        val cleanPath = videoPath.replace('\\', '/').trim()
+        
+        // Junction path check: if path is inside temp_work/fit_trimmer_video_junction,
+        // use its file name as the normalization key to ensure original/junction compatibility.
+        if (cleanPath.contains("fit_trimmer_video_junction", ignoreCase = true)) {
+            val name = File(cleanPath).name.lowercase()
+            return "junction_normalized_key:$name"
+        }
+        
+        // Use simple absolute path normalization instead of canonicalPath,
+        // preventing external drive mount resolver variance or path resolves failing.
         return try {
-            File(videoPath).canonicalPath.replace('\\', '/').lowercase()
+            val file = File(cleanPath)
+            file.absolutePath.replace('\\', '/').lowercase()
         } catch (e: Exception) {
-            videoPath.replace('\\', '/').lowercase()
+            cleanPath.lowercase()
         }
     }
 

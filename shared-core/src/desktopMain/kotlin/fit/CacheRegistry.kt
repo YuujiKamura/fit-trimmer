@@ -77,7 +77,7 @@ object CacheRegistry {
         if (!workDir.exists() || !workDir.isDirectory) return emptyList()
 
         val jobs = workDir.listFiles { _, name -> name.startsWith("job_") } ?: emptyArray()
-        val targetNorm = if (videoPath.isNullOrEmpty()) "" else try { File(videoPath).canonicalPath.replace('\\', '/').lowercase() } catch (e: Exception) { videoPath.replace('\\', '/').lowercase() }
+        val targetNorm = PlateCacheManager.getNormalizedPath(videoPath)
 
         return jobs.mapNotNull { jobDir ->
             val parts = jobDir.listFiles { _, name -> name.matches(Regex("part_\\d{4}\\.ts")) } ?: emptyArray()
@@ -90,7 +90,7 @@ object CacheRegistry {
                 } else null
 
                 if (!stateVideo.isNullOrEmpty()) {
-                    val stateNorm = try { File(stateVideo).canonicalPath.replace('\\', '/').lowercase() } catch (e: Exception) { stateVideo.replace('\\', '/').lowercase() }
+                    val stateNorm = PlateCacheManager.getNormalizedPath(stateVideo)
                     if (stateNorm != targetNorm) {
                         return@mapNotNull null
                     }
