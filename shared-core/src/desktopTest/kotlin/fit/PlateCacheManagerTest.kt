@@ -139,4 +139,46 @@ class PlateCacheManagerTest {
         assertEquals(218, expanded.x2)
         assertEquals(151, expanded.y2)
     }
+
+    @Test
+    fun testBuildMappedMaskFramesMatchesBlurTimingAndMapping() {
+        val cache = VideoPlatesCache(
+            videoPath = "test.mp4",
+            records = listOf(
+                PlateRecord(0, listOf(PlateBox(100, 100, 200, 140))),
+                PlateRecord(200, listOf(PlateBox(120, 120, 220, 160)))
+            ),
+            sourceWidth = 500,
+            sourceHeight = 300
+        )
+
+        val frames = cache.buildMappedMaskFrames(
+            totalFrames = 4,
+            fps = 10.0,
+            isBlurEnabled = true,
+            maskMode = "plate",
+            fallbackSourceWidth = 1920,
+            fallbackSourceHeight = 1080,
+            targetWidth = 1000f,
+            targetHeight = 600f
+        )
+
+        assertEquals(4, frames.size)
+        assertEquals(1, frames[0].size) // 0ms exact
+        assertEquals(1, frames[1].size) // 100ms interpolated
+        assertEquals(1, frames[2].size) // 200ms exact
+        assertEquals(1, frames[3].size) // 300ms boundary hold
+
+        val first = frames[0].first()
+        assertEquals(164f, first.x)
+        assertEquals(176f, first.y)
+        assertEquals(272f, first.width)
+        assertEquals(126f, first.height)
+
+        val interpolated = frames[1].first()
+        assertEquals(184f, interpolated.x)
+        assertEquals(196f, interpolated.y)
+        assertEquals(272f, interpolated.width)
+        assertEquals(126f, interpolated.height)
+    }
 }
