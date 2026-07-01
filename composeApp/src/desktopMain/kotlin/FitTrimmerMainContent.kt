@@ -210,10 +210,7 @@ fun FitTrimmerMainContent(
                 viewModel.plateCache = fit.PlateCacheManager.loadCache(videoPath)
                 viewModel.plateDetectionProgress = "Restored"
             } else {
-                if (playerState.isPlaying) {
-                    playerState.pause()
-                }
-                viewModel.runPlateDetection(scope)
+                viewModel.plateDetectionProgress = "Not Scanned"
             }
         }
     }
@@ -2976,6 +2973,24 @@ fun FitTrimmerMainContent(
                                             fontSize = 10.sp,
                                             color = Color(0xFF8E8E93)
                                         )
+                                    }
+                                    if (viewModel.plateCache == null && !viewModel.isDetectingPlates && videoPath.isNotEmpty()) {
+                                         Spacer(Modifier.height(4.dp))
+                                         Button(
+                                             onClick = {
+                                                 if (playerState.isPlaying) {
+                                                     playerState.pause()
+                                                 }
+                                                 viewModel.runPlateDetection(scope)
+                                             },
+                                             colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF007AFF), contentColor = Color.White),
+                                             modifier = Modifier.height(28.dp),
+                                             shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp),
+                                             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp)
+                                         ) {
+                                             Text("プレートスキャン実行", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                         }
+                                         Spacer(Modifier.height(4.dp))
                                     }
                                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                         Text(
