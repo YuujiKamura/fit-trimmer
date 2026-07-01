@@ -155,6 +155,7 @@ fun VideoPreviewArea(
     onSeekEnd: (Long) -> Unit = {},
     modifier: Modifier = Modifier,
     isEncoding: Boolean = false,
+    isDetectingPlates: Boolean = false,
     previewQualityMode: String = "original",
     onPreviewQualityModeChange: (String) -> Unit = {},
     isFullscreen: Boolean = false,
@@ -172,22 +173,26 @@ fun VideoPreviewArea(
 
 
     val togglePlay = {
-        println("DEBUG: togglePlay called. current isPlaying=${playerState.isPlaying}")
-        if (playerState.isPlaying) {
-            println("DEBUG: togglePlay calling playerState.pause()")
-            playerState.pause()
-        } else {
-            if (videoCurrentTimeMs >= videoLengthMs) {
-                playerState.seekTo(0f)
+        if (!isEncoding && !isDetectingPlates) {
+            println("DEBUG: togglePlay called. current isPlaying=${playerState.isPlaying}")
+            if (playerState.isPlaying) {
+                println("DEBUG: togglePlay calling playerState.pause()")
+                playerState.pause()
+            } else {
+                if (videoCurrentTimeMs >= videoLengthMs) {
+                    playerState.seekTo(0f)
+                }
+                println("DEBUG: togglePlay calling playerState.play()")
+                playerState.play()
             }
-            println("DEBUG: togglePlay calling playerState.play()")
-            playerState.play()
         }
     }
 
     val seekTo = { timeMs: Long ->
-        val target = timeMs.coerceIn(0L, videoLengthMs)
-        onSeekEnd(target)
+        if (!isEncoding && !isDetectingPlates) {
+            val target = timeMs.coerceIn(0L, videoLengthMs)
+            onSeekEnd(target)
+        }
     }
 
     LaunchedEffect(playerState.isPlaying) {
@@ -480,7 +485,7 @@ fun VideoPreviewArea(
             ) {
                 Button(
                     onClick = togglePlay,
-                    enabled = !isEncoding,
+                    enabled = !isEncoding && !isDetectingPlates,
                     modifier = Modifier.size(34.dp),
                     contentPadding = PaddingValues(0.dp),
                     colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF007AFF))
@@ -509,7 +514,7 @@ fun VideoPreviewArea(
                         val finalTime = if (isSeeking) seekTargetTimeMs else videoCurrentTimeMs
                         onSeekEnd(finalTime)
                     },
-                    enabled = !isEncoding,
+                    enabled = !isEncoding && !isDetectingPlates,
                     modifier = Modifier.weight(1f),
                     colors = SliderDefaults.colors(
                         thumbColor = Color(0xFF007AFF),
@@ -584,7 +589,7 @@ fun VideoPreviewArea(
                     val selected = previewQualityMode.equals(mode, ignoreCase = true)
                     Button(
                         onClick = { onPreviewQualityModeChange(mode) },
-                        enabled = !isEncoding,
+                        enabled = !isEncoding && !isDetectingPlates,
                         modifier = Modifier.height(24.dp),
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                         colors = ButtonDefaults.buttonColors(
@@ -615,6 +620,7 @@ fun VideoPreviewArea(
                 for ((label, delta) in seekSpecs) {
                     OutlinedButton(
                         onClick = { seekTo((videoCurrentTimeMs + delta).coerceIn(0L, maxOf(0L, videoLengthMs))) },
+                        enabled = !isEncoding && !isDetectingPlates,
                         modifier = seekBtnModifier,
                         colors = seekBtnColors,
                         contentPadding = PaddingValues(0.dp)
@@ -662,7 +668,7 @@ fun VideoPreviewArea(
                         modifier = Modifier
                             .fillMaxSize()
                             .clickable {
-                                if (!isEncoding) {
+                                if (!isEncoding && !isDetectingPlates) {
                                     togglePlay()
                                 }
                             }
