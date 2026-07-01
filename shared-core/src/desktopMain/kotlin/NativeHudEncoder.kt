@@ -1725,7 +1725,7 @@ class NativeHudEncoder(
                 )
 
                 val jobHash = kotlin.math.abs((fitPath + videoPath + startUtc + maxDurationSeconds + actualTrimStart + actualTrimEnd + videoWidth + videoHeight + config.hashCode()).hashCode()).toString()
-                val jobDir = File(workDir, "job_")
+                val jobDir = File(workDir, "job_" + jobHash)
                 if (jobDir.exists()) {
                     val existingParts = jobDir.listFiles { _, name -> name.matches(Regex("part_\\d{4}\\.ts")) }
                     return existingParts != null && existingParts.isNotEmpty()

@@ -1057,15 +1057,16 @@ fun FitTrimmerMainContent(
                             }
 
                             if (existingOutputs.isNotEmpty()) {
-                                val options = arrayOf("譛蛻昴°繧峨ｄ繧顔峩縺・(Overwrite)", "蜑榊屓縺ｮ邯壹″縺九ｉ蜀埼幕 (Resume)", "蛻･蜷阪〒菫晏ｭ・(Save as Copy)", "繧ｭ繝｣繝ｳ繧ｻ繝ｫ (Cancel)")
+                                val options = arrayOf(
+                                    utils.Localizer.get("option_overwrite_all", settings.language),
+                                    utils.Localizer.get("option_resume_all", settings.language),
+                                    utils.Localizer.get("option_save_as_copy", settings.language),
+                                    utils.Localizer.get("option_cancel", settings.language)
+                                )
                                 val choice = javax.swing.JOptionPane.showOptionDialog(
                                     null,
-                                    "蜃ｺ蜉帙ヵ繧｡繧､繝ｫ縺ｮ荳驛ｨ縺梧里縺ｫ蟄伜惠縺励∪縺吶ゅ←縺・＠縺ｾ縺吶°・歃n" +
-                                    "繝ｻ縲梧怙蛻昴°繧峨ｄ繧顔峩縺吶・ 譌｢蟄倥・繝輔ぃ繧､繝ｫ繧剃ｸ頑嶌縺阪＠縺ｦ譛蛻昴°繧峨お繝ｳ繧ｳ繝ｼ繝峨＠縺ｾ縺吶・n" +
-                                    "繝ｻ縲悟燕蝗槭・邯壹″縺九ｉ蜀埼幕縲・ 譌｢縺ｫ菴懈・貂医∩縺ｮ繝代・繝医ｒ繧ｹ繧ｭ繝・・縺励∵ｮ九ｊ縺ｮ蜃ｦ逅・°繧牙・髢九＠縺ｾ縺吶・n" +
-                                    "繝ｻ縲悟挨蜷阪〒菫晏ｭ倥・ 譌｢蟄・of 繝輔ぃ繧､繝ｫ縺ｯ谿九＠縲√さ繝斐・縺ｨ縺励※蛻･蜷阪〒菫晏ｭ倥＠縺ｾ縺吶・n\n" +
-                                    "(Output file already exists. Overwrite, Resume, or Save as Copy?)",
-                                    "蜃ｺ蜉帙ヵ繧｡繧､繝ｫ縺ｮ驥崎､・(File Exists)",
+                                    utils.Localizer.get("dialog_file_exists_message", settings.language),
+                                    utils.Localizer.get("dialog_file_exists_title", settings.language),
                                     javax.swing.JOptionPane.DEFAULT_OPTION,
                                     javax.swing.JOptionPane.QUESTION_MESSAGE,
                                     null,
@@ -1109,14 +1110,15 @@ fun FitTrimmerMainContent(
                                     }
                                 }
                             } else if (hasTempCache) {
-                                val options = arrayOf("譛蛻昴°繧峨ｄ繧顔峩縺・(Overwrite)", "蜑榊屓縺ｮ邯壹″縺九ｉ蜀埼幕 (Resume)", "繧ｭ繝｣繝ｳ繧ｻ繝ｫ (Cancel)")
+                                val options = arrayOf(
+                                    utils.Localizer.get("option_overwrite_all", settings.language),
+                                    utils.Localizer.get("option_resume_all", settings.language),
+                                    utils.Localizer.get("option_cancel", settings.language)
+                                )
                                 val choice = javax.swing.JOptionPane.showOptionDialog(
                                     null,
-                                    "蜑榊屓縺ｮ繧ｨ繝ｳ繧ｳ繝ｼ繝我ｸｭ縺ｮ繝・Φ繝昴Λ繝ｪ繧ｭ繝｣繝・す繝･・井ｸ譎ゅヵ繧｡繧､繝ｫ・峨′讀懷・縺輔ｌ縺ｾ縺励◆縲ゅ←縺・＠縺ｾ縺吶°・歃n" +
-                                    "繝ｻ縲梧怙蛻昴°繧峨ｄ繧顔峩縺吶・ 譌｢蟄倥・繧ｭ繝｣繝・す繝･繧堤ｴ譽・＠縺ｦ縲∵怙蛻昴°繧峨お繝ｳ繧ｳ繝ｼ繝峨＠縺ｾ縺吶・n" +
-                                    "繝ｻ縲悟燕蝗槭・邯壹″縺九ｉ蜀埼幕縲・ 繧ｭ繝｣繝・す繝･繧貞茜逕ｨ縺励∽ｸｭ譁ｭ縺励◆菴咲ｽｮ縺九ｉ繧ｨ繝ｳ繧ｳ繝ｼ繝峨ｒ蜀埼幕縺励∪縺吶・n\n" +
-                                    "(Temporary encoding cache detected. Overwrite or Resume?)",
-                                    "繧ｨ繝ｳ繧ｳ繝ｼ繝峨く繝｣繝・す繝･縺ｮ讀懷・ (Cache Detected)",
+                                    utils.Localizer.get("dialog_cache_detected_message", settings.language),
+                                    utils.Localizer.get("dialog_cache_detected_title", settings.language),
                                     javax.swing.JOptionPane.DEFAULT_OPTION,
                                     javax.swing.JOptionPane.QUESTION_MESSAGE,
                                     null,
