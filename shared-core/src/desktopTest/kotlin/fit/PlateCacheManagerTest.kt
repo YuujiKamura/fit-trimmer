@@ -170,15 +170,15 @@ class PlateCacheManagerTest {
         assertEquals(1, frames[3].size) // 300ms boundary hold
 
         val first = frames[0].first()
-        assertEquals(164f, first.x)
+        assertEquals(160f, first.x)
         assertEquals(176f, first.y)
-        assertEquals(272f, first.width)
-        assertEquals(126f, first.height)
+        assertEquals(280f, first.width)
+        assertEquals(128f, first.height)
 
         val interpolated = frames[1].first()
-        assertEquals(184f, interpolated.x)
+        assertEquals(180f, interpolated.x)
         assertEquals(196f, interpolated.y)
-        assertEquals(272f, interpolated.width)
-        assertEquals(126f, interpolated.height)
+        assertEquals(280f, interpolated.width)
+        assertEquals(128f, interpolated.height)
     }
 }
