@@ -326,7 +326,7 @@ fun TelemetryTimelineGraph(
                     val w = size.width
                     val h = size.height
                     
-                    if (videoDurationSec <= 0 || sampledPoints.isEmpty()) {
+                    if (videoDurationSec <= 0 || videoDurationSec.isNaN() || sampledPoints.isEmpty()) {
                         drawText(
                             textMeasurer,
                             "No Telemetry or Video loaded",
@@ -394,7 +394,9 @@ fun TelemetryTimelineGraph(
                         val bandTop = 4.dp.toPx()
                         val bandHeight = 12.dp.toPx()
                         plateRecords.forEach { record ->
-                            val x = ((record.timeMs / 1000.0 / videoDurationSec) * w).toFloat().coerceIn(0f, w)
+                            val x = if (videoDurationSec > 0.0 && !videoDurationSec.isNaN()) {
+                                ((record.timeMs / 1000.0 / videoDurationSec) * w).toFloat().coerceIn(0f, w)
+                            } else 0f
                             val markerWidth = if (record.boxes.size > 1) 3.dp.toPx() else 2.dp.toPx()
                             drawRect(
                                 color = markerColor.copy(alpha = 0.75f),

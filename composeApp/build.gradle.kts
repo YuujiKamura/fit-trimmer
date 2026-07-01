@@ -98,6 +98,23 @@ tasks.withType<Copy> {
 
 val verifyNoFileLock = tasks.register("verifyNoFileLock") {
     doFirst {
+        val lockFile = File(project.rootDir, "temp_work/encoding.lock")
+        var isEncodingActive = false
+        if (lockFile.exists()) {
+            try {
+                lockFile.outputStream().close()
+            } catch (e: IOException) {
+                isEncodingActive = true
+            }
+        }
+
+        if (isEncodingActive) {
+            throw GradleException(
+                "REJECTED: FitTrimmer is currently executing an encoding job (temp_work/encoding.lock is locked). " +
+                "Please wait for encoding to finish or cancel it in the app before cleaning/building!"
+            )
+        }
+
         val libsDir = layout.buildDirectory.dir("libs").get().asFile
         if (libsDir.exists()) {
             libsDir.listFiles()?.forEach { file ->
@@ -105,10 +122,7 @@ val verifyNoFileLock = tasks.register("verifyNoFileLock") {
                     try {
                         file.outputStream().close()
                     } catch (e: IOException) {
-                        throw GradleException(
-                            "REJECTED: File '${file.name}' is currently locked by a running process (likely FitTrimmer is active). " +
-                            "Please terminate the running application before building or cleaning!"
-                        )
+                        println("WARNING: File '${file.name}' is locked by an active process, but no active encoding job was detected. Proceeding...")
                     }
                 }
             }
