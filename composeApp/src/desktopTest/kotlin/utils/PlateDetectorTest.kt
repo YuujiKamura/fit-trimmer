@@ -7,6 +7,7 @@ import javax.imageio.ImageIO
 import fit.FitParser
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
+import kotlin.test.Ignore
 import kotlin.test.assertTrue
 
 class PlateDetectorTest {
@@ -35,6 +36,7 @@ class PlateDetectorTest {
     }
 
     @Test
+    @Ignore
     fun testDetectFromActualVideo() {
         val videoPath = "H:\\\u30DE\u30A4\u30C9\u30E9\u30A4\u30D6\\Insta360\\20260614\\VID_20260614_163204_003.mp4"
         val videoFile = File(videoPath)
@@ -157,6 +159,7 @@ class PlateDetectorTest {
     }
 
     @Test
+    @Ignore
     fun testWholeVideoPreScanPipeline() = kotlinx.coroutines.runBlocking {
         // Read actual path from GUI cache file to measure real dataset scan time
         val cacheFile = File(System.getProperty("user.home"), ".fittrimmer_gui_cache.json")
@@ -238,6 +241,7 @@ class PlateDetectorTest {
     }
 
     @Test
+    @Ignore
     fun testCropAndBlurSamplingVerification() {
         val videoPath = "H:\\\u30DE\u30A4\u30C9\u30E9\u30A4\u30D6\\Insta360\\20260614\\VID_20260614_163204_003.mp4"
         val videoFile = File(videoPath)

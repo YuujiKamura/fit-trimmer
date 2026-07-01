@@ -1,4 +1,4 @@
-﻿package fit
+package fit
 
 import java.awt.*
 import java.awt.image.BufferedImage
@@ -232,16 +232,33 @@ class NativeHudEncoder(
     val showLivePreviewSupplier: () -> Boolean = { true }
 ) {
 
-    class DesktopHudCanvas(val g: Graphics2D, val scale: Float, val logicalWidth: Float, val logicalHeight: Float) : HudCanvas {
+    private val fontCache = java.util.concurrent.ConcurrentHashMap<String, Font>()
+    private val metricsCache = java.util.concurrent.ConcurrentHashMap<Font, FontMetrics>()
+
+    inner class DesktopHudCanvas(val g: Graphics2D, val scale: Float, val logicalWidth: Float, val logicalHeight: Float) : HudCanvas {
         override val width: Float get() = logicalWidth
         override val height: Float get() = logicalHeight
+
+        private fun getCachedFont(size: Float, bold: Boolean, isWidthCheck: Boolean = false): Font {
+            val actualSize = if (isWidthCheck) size.toInt() else (size * scale).toInt().coerceAtLeast(1)
+            val key = "${actualSize}_${bold}"
+            return fontCache.getOrPut(key) {
+                Font(Font.SANS_SERIF, if (bold) Font.BOLD else Font.PLAIN, actualSize)
+            }
+        }
+
+        private fun getCachedMetrics(font: Font): FontMetrics {
+            return metricsCache.getOrPut(font) {
+                g.getFontMetrics(font)
+            }
+        }
+
         override fun drawText(text: String, x: Float, y: Float, size: Float, color: String, bold: Boolean, anchor: String) {
             g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
-            val scaledSize = (size * scale).toInt().coerceAtLeast(1)
-            val font = Font(Font.SANS_SERIF, if (bold) Font.BOLD else Font.PLAIN, scaledSize)
+            val font = getCachedFont(size, bold)
             g.font = font
             
-            val metrics = g.getFontMetrics(font)
+            val metrics = getCachedMetrics(font)
             val stringWidth = metrics.stringWidth(text).toFloat()
             val stringHeight = metrics.height.toFloat()
             
@@ -313,8 +330,8 @@ class NativeHudEncoder(
         }
 
         override fun getTextWidth(text: String, size: Float, bold: Boolean): Float {
-            val font = Font(Font.SANS_SERIF, if (bold) Font.BOLD else Font.PLAIN, size.toInt())
-            return g.getFontMetrics(font).stringWidth(text).toFloat()
+            val font = getCachedFont(size, bold, isWidthCheck = true)
+            return getCachedMetrics(font).stringWidth(text).toFloat()
         }
     }
 
@@ -985,6 +1002,35 @@ class NativeHudEncoder(
             }
             
             val out = process.outputStream
+            
+            // Rings buffer allocation for zero-allocation async encoding pipeline
+            val bufferCount = 4
+            val bufferSize = if (runBlur) exportWidth * exportHeight * 2 * 4 else exportWidth * exportHeight * 4
+            val freeBuffers = java.util.concurrent.ArrayBlockingQueue<ByteArray>(bufferCount)
+            for (i in 0 until bufferCount) {
+                freeBuffers.add(ByteArray(bufferSize))
+            }
+            
+            val frameQueue = java.util.concurrent.ArrayBlockingQueue<ByteArray>(bufferCount)
+            val pipeWriterException = java.util.concurrent.atomic.AtomicReference<Throwable?>(null)
+            
+            val pipeWriterThread = Thread {
+                try {
+                    while (isEncodingActive.get() || frameQueue.isNotEmpty()) {
+                        val bytes = frameQueue.poll(50, java.util.concurrent.TimeUnit.MILLISECONDS)
+                        if (bytes != null) {
+                            out.write(bytes)
+                            out.flush()
+                            freeBuffers.offer(bytes)
+                        }
+                    }
+                } catch (e: Exception) {
+                    pipeWriterException.set(e)
+                    println("\n❌ Pipe Write Thread Error: ${e.message}")
+                }
+            }
+            pipeWriterThread.start()
+
             val pBuf = mutableListOf<Double>()
             val img = if (runBlur) {
                 BufferedImage(exportWidth, exportHeight * 2, BufferedImage.TYPE_4BYTE_ABGR)
@@ -1111,8 +1157,21 @@ class NativeHudEncoder(
                     g.dispose()
                     
                     val rawBytes = (img.raster.dataBuffer as java.awt.image.DataBufferByte).data
-                    out.write(rawBytes)
-                    out.flush()
+                    var targetBuf: ByteArray? = null
+                    while (isEncodingActive.get()) {
+                        pipeWriterException.get()?.let { throw it }
+                        targetBuf = freeBuffers.poll(10, java.util.concurrent.TimeUnit.MILLISECONDS)
+                        if (targetBuf != null) break
+                        if (!process.isAlive) {
+                            throw Exception("FFmpeg process terminated prematurely.")
+                        }
+                        if (cancelSupplier()) break
+                    }
+
+                    if (targetBuf != null) {
+                        System.arraycopy(rawBytes, 0, targetBuf, 0, rawBytes.size)
+                        frameQueue.put(targetBuf)
+                    }
                     
                     val loopEnd = System.currentTimeMillis()
                     val elapsedLoop = loopEnd - loopStart
@@ -1155,6 +1214,11 @@ class NativeHudEncoder(
                 println("\n❌ Pipe Write Error: ${e.message}")
             } finally {
                 isEncodingActive.set(false)
+                try {
+                    pipeWriterThread.join(5000)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
                 try { out.close() } catch (e: Exception) {}
                 
                 // Wait for the process to finish naturally first (especially if we finished loop normally)
