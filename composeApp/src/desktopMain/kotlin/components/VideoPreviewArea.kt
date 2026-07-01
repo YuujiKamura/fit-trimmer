@@ -687,15 +687,30 @@ fun VideoPreviewArea(
                                 val h = ry2 - ry1
                                 
                                 if (w > 0 && h > 0) {
-                                    // Draw a semi-transparent blur-placeholder block (frosted glass indicator)
-                                    drawRect(
-                                        color = Color(0xB32C2C2E),
-                                        topLeft = Offset(rx1, ry1),
-                                        size = Size(w, h)
-                                    )
+                                    // Render a simulated mosaic (pixelated blur) effect using a grid of blocks
+                                    val blockSize = 8f
+                                    var x = rx1
+                                    while (x < rx2) {
+                                        var y = ry1
+                                        while (y < ry2) {
+                                            val bw = minOf(blockSize, rx2 - x)
+                                            val bh = minOf(blockSize, ry2 - y)
+                                            // Semi-random checkerboard pattern to simulate pixelation
+                                            val isEven = ((x - rx1) / blockSize).toInt() % 2 == ((y - ry1) / blockSize).toInt() % 2
+                                            val colorVal = if (isEven) 0xCC2C2C2E else 0x9948484A // Alternating colors
+                                            drawRect(
+                                                color = Color(colorVal),
+                                                topLeft = Offset(x, y),
+                                                size = Size(bw, bh)
+                                            )
+                                            y += blockSize
+                                        }
+                                        x += blockSize
+                                    }
+
                                     // Draw border
                                     drawRect(
-                                        color = Color(0xFFE5E5EA),
+                                        color = Color(0x80E5E5EA),
                                         topLeft = Offset(rx1, ry1),
                                         size = Size(w, h),
                                         style = Stroke(width = 1f)
