@@ -2472,7 +2472,12 @@ fun FitTrimmerMainContent(
                                         color = Color.Gray
                                     )
                                 } else if (viewModel.plateCache != null) {
-                                    val doneText = if (settings.language == "ja") "完了 (再実行)" else "Done (Re-scan)"
+                                    val count = viewModel.plateCache?.records?.size ?: 0
+                                    val doneText = if (settings.language == "ja") {
+                                        "${count}フレーム検出 (再実行)"
+                                    } else {
+                                        "${count} frames detected (Re-scan)"
+                                    }
                                     Text(
                                         text = "($doneText)",
                                         fontSize = 10.sp,
