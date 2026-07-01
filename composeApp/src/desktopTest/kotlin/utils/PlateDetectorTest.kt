@@ -184,6 +184,21 @@ class PlateDetectorTest {
         println("Successfully verified pre-scan pipeline execution and progress updates.")
     }
 
+    @Test
+    fun testBypassResizeAndGetRgbForOptimizedImage() {
+        val detector = PlateDetector.getInstance()
+        detector.lastResizeBypassed = false
+        detector.lastGetRgbBypassed = false
+        
+        // 640x640 3BYTE_BGR image (simulating FFmpeg output)
+        val img = BufferedImage(640, 640, BufferedImage.TYPE_3BYTE_BGR)
+        
+        detector.detect(img)
+        
+        assertTrue(detector.lastResizeBypassed, "Resize should be bypassed for 640x640 images")
+        assertTrue(detector.lastGetRgbBypassed, "getRGB should be bypassed for TYPE_3BYTE_BGR images")
+    }
+
     private class SGObserver : java.awt.image.ImageObserver {
         override fun imageUpdate(img: java.awt.Image?, infoflags: Int, x: Int, y: Int, width: Int, height: Int): Boolean {
             return false

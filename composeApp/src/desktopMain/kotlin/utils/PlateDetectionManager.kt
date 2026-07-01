@@ -72,18 +72,8 @@ object PlateDetectionManager {
         // Since we have a 1500ms cache padding threshold, 5 fps (200ms intervals) is more than
         // enough to maintain seamless license plate blurring while cutting processing time in half.
         val detectionFps = 5.0
-        val maxDim = 640
-        var scanWidth = videoWidth
-        var scanHeight = videoHeight
-        if (scanWidth > maxDim || scanHeight > maxDim) {
-            if (scanWidth > scanHeight) {
-                scanHeight = (scanHeight * maxDim.toDouble() / scanWidth.toDouble()).toInt()
-                scanWidth = maxDim
-            } else {
-                scanWidth = (scanWidth * maxDim.toDouble() / scanHeight.toDouble()).toInt()
-                scanHeight = maxDim
-            }
-        }
+        val scanWidth = 640
+        val scanHeight = 640
         
         val frameBytes = scanWidth * scanHeight * 3 // RGB24
         
@@ -237,7 +227,18 @@ object PlateDetectionManager {
                 } else {
                     // Populate reusable BufferedImage directly from frame buffer and detect
                     System.arraycopy(frame.buffer, 0, imgData, 0, frameBytes)
-                    detector.detect(img)
+                    val rawBoxes = detector.detect(img)
+                    // Scale from 640x640 back to original video resolution
+                    rawBoxes.map { box ->
+                        val scaleX = videoWidth.toFloat() / 640f
+                        val scaleY = videoHeight.toFloat() / 640f
+                        fit.PlateBox(
+                            x1 = (box.x1 * scaleX).toInt().coerceAtLeast(0),
+                            y1 = (box.y1 * scaleY).toInt().coerceAtLeast(0),
+                            x2 = (box.x2 * scaleX).toInt().coerceAtMost(videoWidth),
+                            y2 = (box.y2 * scaleY).toInt().coerceAtMost(videoHeight)
+                        )
+                    }
                 }
 
                 if (boxes.isNotEmpty()) {
