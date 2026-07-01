@@ -285,6 +285,19 @@ fun findFfmpegPath(): String {
     return "ffmpeg"
 }
 
+fun findFfprobePath(): String {
+    val ffmpeg = findFfmpegPath()
+    val ffprobe = if (ffmpeg.endsWith("ffmpeg.exe")) {
+        ffmpeg.replace("ffmpeg.exe", "ffprobe.exe")
+    } else if (ffmpeg.endsWith("ffmpeg")) {
+        ffmpeg.substringBeforeLast("ffmpeg") + "ffprobe"
+    } else {
+        "ffprobe"
+    }
+    val file = File(ffprobe)
+    return if (file.exists()) ffprobe else "ffprobe"
+}
+
 private fun getSegmentDuration(ffmpegPath: String, file: File): Double {
     var process: Process? = null
     try {
@@ -935,6 +948,7 @@ class NativeHudEncoder(
         )
         val jobDir = File(workDir, "job_$jobHash")
         if (!jobDir.exists()) jobDir.mkdirs()
+        try { File(jobDir, ".video_source").writeText(videoPath) } catch(e: Exception) { e.printStackTrace() }
         globalActiveJobDir = jobDir
 
         // Google Drive mitigation: pre-copy target segment locally to avoid network read bottleneck
@@ -1673,6 +1687,7 @@ class NativeHudEncoder(
         exportWidth: Int,
         exportHeight: Int
     ) {
+        try { jobDir.mkdirs(); File(jobDir, ".video_source").writeText(videoPath) } catch(e: Exception) { e.printStackTrace() }
         val runBlur = settings.blurLicensePlates && plateCache.records.isNotEmpty()
         if (!runBlur) return
 
