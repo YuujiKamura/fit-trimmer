@@ -5,3 +5,12 @@ plugins {
     id("org.jetbrains.compose") version "1.7.3" apply false
     id("org.jetbrains.kotlin.plugin.compose") version "2.1.10" apply false
 }
+
+subprojects {
+    tasks.withType<JavaCompile>().configureEach {
+        options.encoding = "UTF-8"
+    }
+    tasks.withType<ProcessResources>().configureEach {
+        filteringCharset = "UTF-8"
+    }
+}
