@@ -16,7 +16,10 @@ class ControlPlane(
     private val getState: () -> CpState
 ) {
     private var serverSocket: ServerSocket? = null
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = Json {
+        ignoreUnknownKeys = true
+        encodeDefaults = true
+    }
     private val executor = Executors.newFixedThreadPool(4) // 同時接続を4つに制限（エージェント＋予備程度）
 
     fun start(port: Int = 48099) {
