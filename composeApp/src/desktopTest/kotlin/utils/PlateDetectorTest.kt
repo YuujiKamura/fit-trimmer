@@ -357,14 +357,15 @@ class PlateDetectorTest {
             println("  - timeMs: ${rec.timeMs} -> boxes: ${rec.boxes}")
         }
 
-        // 3. Run NativeHudEncoder for both "plate" and "wide" modes to compare
-        for (maskMode in listOf("plate", "wide")) {
-            println("📹 Encoding blurred video for mode: $maskMode...")
-            val cropBlurredMp4 = File(scratchDir, "crop_blurred_${maskMode}_output.mp4")
+        // 3. Run NativeHudEncoder for both standard and wide expand ratios to compare
+        for (expandRatio in listOf(0.2, 1.5)) {
+            val ratioLabel = if (expandRatio == 0.2) "plate" else "wide"
+            println("📹 Encoding blurred video for expandRatio: $expandRatio...")
+            val cropBlurredMp4 = File(scratchDir, "crop_blurred_${ratioLabel}_output.mp4")
             val settings = fit.HudSettings(
                 blurLicensePlates = true,
                 exportResolution = "original",
-                plateMaskMode = maskMode
+                plateMaskExpandRatio = expandRatio
             )
             val encoder = fit.NativeHudEncoder(settings)
             fit.PlateCacheManager.saveCache(cropTestMp4.absolutePath, cache)
