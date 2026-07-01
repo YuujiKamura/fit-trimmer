@@ -37,4 +37,13 @@ object PlateCacheManager {
             e.printStackTrace()
         }
     }
+
+    fun deleteCache(videoPath: String): Boolean {
+        val file = getPlatesFile(videoPath) ?: return false
+        return !file.exists() || file.delete()
+    }
+
+    fun cacheExists(videoPath: String): Boolean {
+        return getPlatesFile(videoPath)?.exists() == true
+    }
 }

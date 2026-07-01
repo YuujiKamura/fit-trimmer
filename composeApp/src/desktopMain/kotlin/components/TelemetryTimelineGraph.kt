@@ -63,7 +63,9 @@ fun TelemetryTimelineGraph(
     onTrimEndChange: (Double) -> Unit,
     onSeek: (Long) -> Unit,
     modifier: Modifier = Modifier,
-    isEncoding: Boolean = false
+    isEncoding: Boolean = false,
+    plateCache: fit.VideoPlatesCache? = null,
+    blurLicensePlates: Boolean = false
 ) {
     val textMeasurer = rememberTextMeasurer()
     val videoDurationSec = videoLengthMs / 1000.0
@@ -379,6 +381,24 @@ fun TelemetryTimelineGraph(
                             topLeft = Offset(xS, 0f),
                             size = Size(xE - xS, h)
                         )
+                    }
+
+                    // Draw license-plate detection distribution. This is intentionally
+                    // independent from telemetry validity so privacy scan coverage is visible.
+                    val plateRecords = plateCache?.records ?: emptyList()
+                    if (blurLicensePlates && plateRecords.isNotEmpty()) {
+                        val markerColor = Color(0xFF5856D6)
+                        val bandTop = 4.dp.toPx()
+                        val bandHeight = 12.dp.toPx()
+                        plateRecords.forEach { record ->
+                            val x = ((record.timeMs / 1000.0 / videoDurationSec) * w).toFloat().coerceIn(0f, w)
+                            val markerWidth = if (record.boxes.size > 1) 3.dp.toPx() else 2.dp.toPx()
+                            drawRect(
+                                color = markerColor.copy(alpha = 0.75f),
+                                topLeft = Offset(x - markerWidth / 2f, bandTop),
+                                size = Size(markerWidth, bandHeight)
+                            )
+                        }
                     }
 
                     // 3. Draw Elevation Area Chart (background, bottom 40% height)

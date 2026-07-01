@@ -486,6 +486,28 @@ class PlateDetectorTest {
 
 
 
+    @Test
+    fun testDetectVehiclesSuccess() {
+        val detector = PlateDetector.getInstance()
+        // 640x640 dummy image should return empty list without throwing errors
+        val dummyImg = BufferedImage(640, 640, BufferedImage.TYPE_3BYTE_BGR)
+        val dummyVehicles = detector.detectVehicles(dummyImg, confThreshold = 0.1f)
+        assertTrue(dummyVehicles.isEmpty(), "Dummy image should yield no vehicle detections")
+
+        // If screenshot is available, test real detection
+        val screenshotPath = "C:\\Users\\yuuji\\OneDrive\\Pictures\\Screenshots\\\u30B9\u30AF\u30EA\u30FC\u30F3\u30B7\u30E7\u30C3\u30C8 2026-07-01 081110.png"
+        val file = File(screenshotPath)
+        if (file.exists()) {
+            val image = ImageIO.read(file)
+            val vehicles = detector.detectVehicles(image, confThreshold = 0.25f)
+            println("Detected ${vehicles.size} vehicles in screenshot:")
+            for ((idx, box) in vehicles.withIndex()) {
+                println("  [$idx] x1=${box.x1}, y1=${box.y1}, x2=${box.x2}, y2=${box.y2}")
+            }
+            assertTrue(vehicles.isNotEmpty(), "Real screenshot should contain at least one vehicle")
+        }
+    }
+
     private class SGObserver : java.awt.image.ImageObserver {
         override fun imageUpdate(img: java.awt.Image?, infoflags: Int, x: Int, y: Int, width: Int, height: Int): Boolean {
             return false

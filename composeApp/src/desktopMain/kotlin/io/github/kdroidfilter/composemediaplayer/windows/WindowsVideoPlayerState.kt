@@ -825,6 +825,9 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
                         _progress = (_currentTime / _duration).toFloat().coerceIn(0f, 1f)
                     }
 
+                    delay(30)
+                    renderCurrentFrame(instance, "seek")
+
                     videoJob = scope.launch {
                         launch { produceFrames() }
                         launch { consumeFrames() }
@@ -836,6 +839,50 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
                 } finally {
                     isLoading = false
                 }
+            }
+        }
+    }
+
+    private fun renderCurrentFrame(instance: Pointer, context: String): Boolean {
+        val ptrRef = PointerByReference()
+        val sizeRef = IntByReference()
+        val readResult = player.ReadVideoFrame(instance, ptrRef, sizeRef)
+        var needsUnlock = false
+        return try {
+            if (readResult < 0 || ptrRef.value == null || sizeRef.value <= 0) {
+                windowsLogger.w { "ReadVideoFrame failed during $context (hr=0x${readResult.toString(16)})" }
+                false
+            } else {
+                needsUnlock = true
+                val sharedBuffer = sharedFrameBuffer ?: ByteArray(frameBufferSize).also { sharedFrameBuffer = it }
+                val buffer = ptrRef.value.getByteBuffer(0, sizeRef.value.toLong())
+                val copySize = min(sizeRef.value, frameBufferSize)
+                if (buffer != null && copySize > 0) {
+                    buffer.get(sharedBuffer, 0, copySize)
+                }
+
+                val bitmap = Bitmap().apply {
+                    allocPixels(createVideoImageInfo())
+                }
+                bitmap.installPixels(
+                    createVideoImageInfo(),
+                    sharedBuffer,
+                    videoWidth * 4
+                )
+                bitmapLock.write {
+                    _currentFrame?.let { old -> old.close() }
+                    _currentFrame = bitmap
+                    currentFrameState.value = bitmap.asComposeImageBitmap()
+                    frameTicks++
+                }
+                true
+            }
+        } catch (e: Exception) {
+            windowsLogger.e { "Failed to render frame during $context: ${e.message}" }
+            false
+        } finally {
+            if (needsUnlock) {
+                player.UnlockVideoFrame(instance)
             }
         }
     }

@@ -667,6 +667,8 @@ fun FitTrimmerMainContent(
         )
     }
 
+    val currentWindow by rememberUpdatedState(composeWindow)
+
     val cp = remember {
         ControlPlane(
             onCommand = { cmd ->
@@ -781,7 +783,7 @@ fun FitTrimmerMainContent(
                                     playerState.seekTo(ratio * 1000f)
                                 }
                                 CpCommand.Capture -> {
-                                    val win = composeWindow
+                                    val win = viewModel.composeWindow
                                     if (win != null) {
                                         try {
                                             win.isAlwaysOnTop = true
@@ -824,6 +826,43 @@ fun FitTrimmerMainContent(
                                         } finally {
                                             viewModel.isAligningTelemetry = false
                                         }
+                                    }
+                                }
+                                is CpCommand.RunPlateDetection -> {
+                                    scope.launch {
+                                        viewModel.runPlateDetection(
+                                            coroutineScope = scope,
+                                            maxRecords = cmd.maxRecords,
+                                            maxSpeedKmh = cmd.maxSpeedKmh ?: 15.0,
+                                            detectionFps = cmd.detectionFps ?: 1.0,
+                                            paddingSeconds = cmd.paddingSeconds ?: 2.0,
+                                            mergeGapSeconds = cmd.mergeGapSeconds ?: 5.0
+                                        )
+                                    }
+                                }
+                                CpCommand.StopPlateDetection -> {
+                                    viewModel.stopPlateDetection()
+                                }
+                                CpCommand.ResetPlateDetection -> {
+                                    viewModel.resetPlateDetection()
+                                }
+                                is CpCommand.SetPlateCacheEnabled -> {
+                                    viewModel.setPlateDetectionCacheEnabled(cmd.enabled)
+                                }
+                                CpCommand.RestorePlateCache -> {
+                                    viewModel.restorePlateDetectionCache()
+                                }
+                                CpCommand.DiscardPlateCache -> {
+                                    viewModel.discardPlateDetectionCache()
+                                }
+                                is CpCommand.SeekPlateDetection -> {
+                                    val index = cmd.index
+                                    val cache = viewModel.plateCache
+                                    if (cache != null && index in cache.records.indices) {
+                                        val timeMs = cache.records[index].timeMs
+                                        val ratio = if (videoLengthMs > 0) timeMs.toFloat() / videoLengthMs.toFloat() else 0f
+                                        playerState.seekTo(ratio * 1000f)
+                                        videoCurrentTimeMs = timeMs
                                     }
                                 }
                             }

@@ -11,7 +11,9 @@ data class PlateRecord(val timeMs: Long, val boxes: List<PlateBox>)
 @Serializable
 data class VideoPlatesCache(
     val videoPath: String,
-    val records: List<PlateRecord>
+    val records: List<PlateRecord>,
+    val sourceWidth: Int = 0,
+    val sourceHeight: Int = 0
 ) {
     fun findNeighborRecords(targetTimeMs: Long): Pair<PlateRecord?, PlateRecord?> {
         if (records.isEmpty()) return Pair(null, null)
@@ -131,5 +133,66 @@ data class VideoPlatesCache(
         }
         
         return result
+    }
+}
+
+data class MappedPlateBox(val x: Float, val y: Float, val width: Float, val height: Float)
+
+object PlateMaskExpander {
+    fun expand(
+        box: PlateBox,
+        mode: String,
+        sourceWidth: Int,
+        sourceHeight: Int
+    ): PlateBox {
+        val width = (box.x2 - box.x1).coerceAtLeast(1)
+        val height = (box.y2 - box.y1).coerceAtLeast(1)
+        val normalizedMode = mode.lowercase()
+
+        val (leftPad, rightPad, topPad, bottomPad) = if (normalizedMode == "wide") {
+            listOf(
+                width * 3.0,
+                width * 3.0,
+                height * 3.0,
+                height * 1.5
+            )
+        } else {
+            val padX = width * 0.18
+            val padY = height * 0.28
+            listOf(padX, padX, padY, padY)
+        }
+
+        return PlateBox(
+            x1 = (box.x1 - leftPad).toInt().coerceIn(0, sourceWidth.coerceAtLeast(1)),
+            y1 = (box.y1 - topPad).toInt().coerceIn(0, sourceHeight.coerceAtLeast(1)),
+            x2 = (box.x2 + rightPad).toInt().coerceIn(0, sourceWidth.coerceAtLeast(1)),
+            y2 = (box.y2 + bottomPad).toInt().coerceIn(0, sourceHeight.coerceAtLeast(1))
+        )
+    }
+}
+
+object PlateCoordinateMapper {
+    fun mapToTarget(
+        box: PlateBox,
+        cache: VideoPlatesCache?,
+        fallbackSourceWidth: Int,
+        fallbackSourceHeight: Int,
+        targetWidth: Float,
+        targetHeight: Float
+    ): MappedPlateBox {
+        val sourceWidth = cache?.sourceWidth?.takeIf { it > 0 } ?: fallbackSourceWidth.coerceAtLeast(1)
+        val sourceHeight = cache?.sourceHeight?.takeIf { it > 0 } ?: fallbackSourceHeight.coerceAtLeast(1)
+        val scaleX = targetWidth / sourceWidth.toFloat()
+        val scaleY = targetHeight / sourceHeight.toFloat()
+        val x1 = box.x1 * scaleX
+        val y1 = box.y1 * scaleY
+        val x2 = box.x2 * scaleX
+        val y2 = box.y2 * scaleY
+        return MappedPlateBox(
+            x = x1,
+            y = y1,
+            width = x2 - x1,
+            height = y2 - y1
+        )
     }
 }

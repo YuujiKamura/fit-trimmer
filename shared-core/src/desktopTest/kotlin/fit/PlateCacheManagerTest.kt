@@ -86,4 +86,57 @@ class PlateCacheManagerTest {
         assertEquals(1, res4.size)
         assertEquals(box1, res4.first())
     }
+
+    @Test
+    fun testPlateCoordinateMapperUsesCacheSourceSize() {
+        val cache = VideoPlatesCache(
+            videoPath = "test.mp4",
+            records = emptyList(),
+            sourceWidth = 2704,
+            sourceHeight = 1520
+        )
+        val mapped = PlateCoordinateMapper.mapToTarget(
+            box = PlateBox(1352, 760, 2704, 1520),
+            cache = cache,
+            fallbackSourceWidth = 1920,
+            fallbackSourceHeight = 1080,
+            targetWidth = 1352f,
+            targetHeight = 760f
+        )
+
+        assertEquals(676f, mapped.x)
+        assertEquals(380f, mapped.y)
+        assertEquals(676f, mapped.width)
+        assertEquals(380f, mapped.height)
+    }
+
+    @Test
+    fun testPlateMaskExpanderSupportsWideVehicleLikeMask() {
+        val expanded = PlateMaskExpander.expand(
+            box = PlateBox(100, 100, 200, 140),
+            mode = "wide",
+            sourceWidth = 500,
+            sourceHeight = 300
+        )
+
+        assertEquals(0, expanded.x1)
+        assertEquals(0, expanded.y1)
+        assertEquals(500, expanded.x2)
+        assertEquals(200, expanded.y2)
+    }
+
+    @Test
+    fun testPlateMaskExpanderAddsSmallPaddingForPlateMode() {
+        val expanded = PlateMaskExpander.expand(
+            box = PlateBox(100, 100, 200, 140),
+            mode = "plate",
+            sourceWidth = 500,
+            sourceHeight = 300
+        )
+
+        assertEquals(82, expanded.x1)
+        assertEquals(88, expanded.y1)
+        assertEquals(218, expanded.x2)
+        assertEquals(151, expanded.y2)
+    }
 }

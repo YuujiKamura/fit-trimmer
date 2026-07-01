@@ -14,6 +14,8 @@ import fit.VideoPlatesCache
 class AppViewModel(
     initialCache: utils.GuiPathCache?
 ) {
+    var composeWindow: java.awt.Window? = null
+
     // Basic States
     var settings by mutableStateOf(initialCache?.settings ?: HudSettings())
     var fitPath by mutableStateOf(initialCache?.fitPath ?: "")
@@ -69,7 +71,7 @@ class AppViewModel(
                 proxyProgress = 0f
                 proxyVideoPath = null
                 
-                plateCache = fit.PlateCacheManager.loadCache(value)
+                plateCache = if (usePlateDetectionCache) fit.PlateCacheManager.loadCache(value) else null
                 videoRotation = utils.getVideoRotation(value)
                 println("DEBUG: Loaded videoRotation: $videoRotation")
             }
@@ -83,10 +85,41 @@ class AppViewModel(
     var isDetectingPlates by mutableStateOf(false)
     var plateDetectionProgress by mutableStateOf("")
     var plateDetectionError by mutableStateOf<String?>(null)
+    var usePlateDetectionCache by mutableStateOf(true)
+    var plateDetectionMaxSpeedKmh by mutableStateOf(15.0)
+    var plateDetectionFps by mutableStateOf(1.0)
+    var plateDetectionPaddingSeconds by mutableStateOf(2.0)
+    var plateDetectionMergeGapSeconds by mutableStateOf(5.0)
 
     private var plateDetectionJob: kotlinx.coroutines.Job? = null
+    private var plateDetectionStopRequested by mutableStateOf(false)
 
-    fun runPlateDetection(coroutineScope: kotlinx.coroutines.CoroutineScope) {
+    val plateRecordCount: Int
+        get() = plateCache?.records?.size ?: 0
+
+    val plateBoxCount: Int
+        get() = plateCache?.records?.sumOf { it.boxes.size } ?: 0
+
+    val plateFirstTimeMs: Long?
+        get() = plateCache?.records?.firstOrNull()?.timeMs
+
+    val plateLastTimeMs: Long?
+        get() = plateCache?.records?.lastOrNull()?.timeMs
+
+    val plateCacheFileExists: Boolean
+        get() = PlateCacheManager.cacheExists(videoPath)
+
+    val plateCacheFilePath: String
+        get() = PlateCacheManager.getPlatesFile(videoPath)?.absolutePath ?: ""
+
+    fun runPlateDetection(
+        coroutineScope: kotlinx.coroutines.CoroutineScope,
+        maxRecords: Int? = null,
+        maxSpeedKmh: Double = plateDetectionMaxSpeedKmh,
+        detectionFps: Double = plateDetectionFps,
+        paddingSeconds: Double = plateDetectionPaddingSeconds,
+        mergeGapSeconds: Double = plateDetectionMergeGapSeconds
+    ) {
         val path = videoPath
         if (path.isEmpty()) return
         
@@ -97,6 +130,11 @@ class AppViewModel(
         }
         
         isDetectingPlates = true
+        plateDetectionStopRequested = false
+        plateDetectionMaxSpeedKmh = maxSpeedKmh.coerceAtLeast(0.0)
+        plateDetectionFps = detectionFps.coerceIn(0.25, 4.0)
+        plateDetectionPaddingSeconds = paddingSeconds.coerceAtLeast(0.0)
+        plateDetectionMergeGapSeconds = mergeGapSeconds.coerceAtLeast(0.0)
         plateDetectionProgress = "0.0%"
         plateDetectionError = null
         
@@ -110,10 +148,23 @@ class AppViewModel(
                         val suffix = if (telemetryPoints.isNotEmpty() && videoStartUtc.isNotEmpty()) "" else " (No Telemetry)"
                         plateDetectionProgress = String.format(java.util.Locale.US, "%.1f%%", progress) + suffix
                     },
-                    onCancel = { !isActive }
+                    onCancel = { plateDetectionStopRequested || !isActive },
+                    onPartialResult = { partialCache ->
+                        plateCache = partialCache
+                    },
+                    maxRecords = maxRecords,
+                    saveCache = usePlateDetectionCache,
+                    maxSpeedKmh = plateDetectionMaxSpeedKmh,
+                    detectionFps = plateDetectionFps,
+                    paddingSeconds = plateDetectionPaddingSeconds,
+                    mergeGapSeconds = plateDetectionMergeGapSeconds,
+                    plateMaskMode = settings.plateMaskMode
                 )
                 if (cache != null) {
                     plateCache = cache
+                    if (plateDetectionStopRequested) {
+                        plateDetectionProgress = "Stopped"
+                    }
                 } else {
                     if (isActive) {
                         plateDetectionError = utils.Localizer.get("plate_error_unknown", settings.language)
@@ -123,9 +174,13 @@ class AppViewModel(
                     }
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
-                plateDetectionError = e.message ?: "Unknown error"
-                plateDetectionProgress = "Error: ${e.message}"
+                if (e is kotlinx.coroutines.CancellationException) {
+                    plateDetectionProgress = "Canceled"
+                } else {
+                    e.printStackTrace()
+                    plateDetectionError = e.message ?: "Unknown error"
+                    plateDetectionProgress = "Error: ${e.message}"
+                }
             } finally {
                 if (plateDetectionJob == coroutineContext[kotlinx.coroutines.Job]) {
                     isDetectingPlates = false
@@ -146,6 +201,58 @@ class AppViewModel(
             isDetectingPlates = false
             plateDetectionProgress = "Canceled"
         }
+    }
+
+    fun resetPlateDetection() {
+        println("DEBUG: Resetting plate detection cache and state.")
+        plateDetectionStopRequested = false
+        plateDetectionJob?.cancel()
+        isDetectingPlates = false
+        plateCache = null
+        plateDetectionProgress = ""
+        plateDetectionError = null
+        PlateCacheManager.deleteCache(videoPath)
+    }
+
+    fun setPlateDetectionCacheEnabled(enabled: Boolean) {
+        usePlateDetectionCache = enabled
+        plateCache = if (enabled) PlateCacheManager.loadCache(videoPath) else null
+        plateDetectionError = null
+        plateDetectionProgress = if (enabled && plateCache != null) "Restored" else ""
+    }
+
+    fun restorePlateDetectionCache(): Boolean {
+        if (!usePlateDetectionCache) {
+            usePlateDetectionCache = true
+        }
+        val restored = PlateCacheManager.loadCache(videoPath)
+        plateCache = restored
+        plateDetectionError = null
+        plateDetectionProgress = if (restored != null) "Restored" else ""
+        return restored != null
+    }
+
+    fun discardPlateDetectionCache(): Boolean {
+        val deleted = PlateCacheManager.deleteCache(videoPath)
+        plateCache = null
+        plateDetectionError = null
+        plateDetectionProgress = ""
+        return deleted
+    }
+
+    fun stopPlateDetection() {
+        if (isDetectingPlates) {
+            println("DEBUG: Requesting plate detection stop while preserving partial results.")
+            plateDetectionStopRequested = true
+            plateDetectionProgress = "Stopping..."
+        }
+    }
+
+    fun setPlateDetectionPreset(maxSpeedKmh: Double, detectionFps: Double, paddingSeconds: Double = 2.0, mergeGapSeconds: Double = 5.0) {
+        plateDetectionMaxSpeedKmh = maxSpeedKmh.coerceAtLeast(0.0)
+        plateDetectionFps = detectionFps.coerceIn(0.25, 4.0)
+        plateDetectionPaddingSeconds = paddingSeconds.coerceAtLeast(0.0)
+        plateDetectionMergeGapSeconds = mergeGapSeconds.coerceAtLeast(0.0)
     }
 
 

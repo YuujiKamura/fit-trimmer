@@ -190,6 +190,7 @@ fun startGui(args: Array<String>) = application {
         state = windowState
     ) {
         LaunchedEffect(window) {
+            viewModel.composeWindow = window
             composeWindow = window
         }
         LaunchedEffect(viewModel.isPreviewFullscreen) {
