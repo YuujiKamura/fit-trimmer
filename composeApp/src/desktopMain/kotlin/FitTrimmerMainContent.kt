@@ -858,6 +858,12 @@ fun FitTrimmerMainContent(
             }
         )
     }
+    DisposableEffect(cp) {
+        cp.start()
+        onDispose {
+            cp.stop()
+        }
+    }
         val textMeasurer = rememberTextMeasurer()
         val effectiveVideoTimeMs by remember {
             derivedStateOf {
