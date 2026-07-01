@@ -79,7 +79,6 @@ object PlateDetectionManager {
         
         val pb = ProcessBuilder(
             ffmpegPath,
-            "-hwaccel", "d3d11va", // Force GPU hardware acceleration on Windows to drop decode wait latency
             "-i", videoPath,
             "-vf", "fps=$detectionFps,scale=$scanWidth:$scanHeight:out_range=full",
             "-f", "rawvideo",
@@ -168,6 +167,7 @@ object PlateDetectionManager {
         var frameIndex = 0L
         var skippedFrames = 0L
         val startEpochSecond = startTimeAdjusted?.toEpochSecond() ?: 0L
+        var lastProgressPercent = 0.0f
  
         val img = BufferedImage(scanWidth, scanHeight, BufferedImage.TYPE_3BYTE_BGR)
         val imgData = (img.raster.dataBuffer as java.awt.image.DataBufferByte).data
@@ -264,7 +264,11 @@ object PlateDetectionManager {
                 val tProgressStart = System.nanoTime()
                 if (totalFrames > 0) {
                     val progress = (frameIndex.toFloat() / totalFrames.toFloat()).coerceIn(0f, 1f)
-                    onProgress(progress * 100f)
+                    val currentPercent = progress * 100f
+                    if (currentPercent - lastProgressPercent >= 0.5f || frameIndex == totalFrames) {
+                        onProgress(currentPercent)
+                        lastProgressPercent = currentPercent
+                    }
                 }
                 val tProgressEnd = System.nanoTime()
 
