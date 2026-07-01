@@ -13,7 +13,7 @@ class EncoderIntegrationTest {
     fun testEncodingProfileCapturesDetailedStageTimings() {
         System.setProperty("FIT_TRIMMER_FORCE_CPU", "true")
         
-        for (maskMode in listOf("plate", "wide")) {
+        for (maskMode in listOf("off", "plate", "wide")) {
             val tempDir = File(System.getProperty("java.io.tmpdir"), "fit-trimmer-profile-${maskMode}-${System.currentTimeMillis()}")
             tempDir.mkdirs()
 
@@ -53,8 +53,8 @@ class EncoderIntegrationTest {
                 val encoder = NativeHudEncoder(
                     settings = HudSettings(
                         exportResolution = "360p",
-                        blurLicensePlates = true,
-                        plateMaskMode = maskMode
+                        blurLicensePlates = (maskMode != "off"),
+                        plateMaskMode = if (maskMode != "off") maskMode else "plate"
                     ),
                     showLivePreviewSupplier = { false },
                     profileSink = { report ->
@@ -78,8 +78,15 @@ class EncoderIntegrationTest {
                 val report = assertNotNull(profile, "Encoding profile report must be emitted for mode: $maskMode")
                 assertTrue(outputMp4.exists() && outputMp4.length() > 0, "Profile encode output must be created for mode: $maskMode")
                 assertTrue(report.frameCount > 0, "Profile must count encoded frames for mode: $maskMode")
-                assertTrue(report.maskPlanMs >= 0.0, "Profile must include mask planning time for mode: $maskMode")
-                assertTrue(report.maskVideoMs > 0.0, "Blur profile must include mask video generation time for mode: $maskMode")
+                
+                if (maskMode == "off") {
+                    assertEquals(0.0, report.maskPlanMs, "Mask planning should be 0 for off mode.")
+                    assertEquals(0.0, report.maskVideoMs, "Mask video generation should be 0 for off mode.")
+                } else {
+                    assertTrue(report.maskPlanMs >= 0.0, "Profile must include mask planning time for mode: $maskMode")
+                    assertTrue(report.maskVideoMs > 0.0, "Blur profile must include mask video generation time for mode: $maskMode")
+                }
+                
                 assertTrue(report.hudRenderMs > 0.0, "Profile must include HUD render time for mode: $maskMode")
                 assertTrue(report.rawCopyMs > 0.0, "Profile must include raw frame copy time for mode: $maskMode")
                 assertTrue(report.pipeWriteMs > 0.0, "Profile must include pipe write time for mode: $maskMode")
