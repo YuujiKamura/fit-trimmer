@@ -6,7 +6,8 @@ import kotlinx.serialization.Serializable
 data class JobState(
     val jobHash: String,
     val isPlateMaskStreamReady: Boolean = false,
-    val isRoadTelemetryReady: Boolean = false
+    val isRoadTelemetryReady: Boolean = false,
+    val videoPath: String? = null
 )
 
 
