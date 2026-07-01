@@ -83,39 +83,50 @@ class AppViewModel(
 
     fun runPlateDetection(coroutineScope: kotlinx.coroutines.CoroutineScope) {
         val path = videoPath
-        if (path.isEmpty() || isDetectingPlates) return
+        if (path.isEmpty()) return
         
-        isDetectingPlates = true
-        plateDetectionProgress = "0.0%"
-        plateDetectionError = null
-        
-        plateDetectionJob = coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            try {
-                val cache = utils.PlateDetectionManager.runDetection(
-                    videoPath = path,
-                    telemetryPoints = telemetryPoints,
-                    adjustedStartUtc = videoStartUtc,
-                    onProgress = { progress ->
-                        plateDetectionProgress = String.format(java.util.Locale.US, "%.1f%%", progress)
-                    },
-                    onCancel = { !isActive }
-                )
-                if (cache != null) {
-                    plateCache = cache
-                } else {
-                    if (isActive) {
-                        plateDetectionError = utils.Localizer.get("plate_error_unknown", settings.language)
-                        plateDetectionProgress = "Failed"
+        coroutineScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+            // Cancel and wait for active job to safely abort before starting a new one
+            if (isDetectingPlates) {
+                println("DEBUG: Cancelling active plate detection job to apply updated parameters.")
+                plateDetectionJob?.cancel()
+                try {
+                    plateDetectionJob?.join()
+                } catch (e: Exception) {}
+            }
+            
+            isDetectingPlates = true
+            plateDetectionProgress = "0.0%"
+            plateDetectionError = null
+            
+            plateDetectionJob = coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                try {
+                    val cache = utils.PlateDetectionManager.runDetection(
+                        videoPath = path,
+                        telemetryPoints = telemetryPoints,
+                        adjustedStartUtc = videoStartUtc,
+                        onProgress = { progress ->
+                            plateDetectionProgress = String.format(java.util.Locale.US, "%.1f%%", progress)
+                        },
+                        onCancel = { !isActive }
+                    )
+                    if (cache != null) {
+                        plateCache = cache
                     } else {
-                        plateDetectionProgress = "Canceled"
+                        if (isActive) {
+                            plateDetectionError = utils.Localizer.get("plate_error_unknown", settings.language)
+                            plateDetectionProgress = "Failed"
+                        } else {
+                            plateDetectionProgress = "Canceled"
+                        }
                     }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    plateDetectionError = e.message ?: "Unknown error"
+                    plateDetectionProgress = "Error: ${e.message}"
+                } finally {
+                    isDetectingPlates = false
                 }
-            } catch (e: Exception) {
-                e.printStackTrace()
-                plateDetectionError = e.message ?: "Unknown error"
-                plateDetectionProgress = "Error: ${e.message}"
-            } finally {
-                isDetectingPlates = false
             }
         }
     }

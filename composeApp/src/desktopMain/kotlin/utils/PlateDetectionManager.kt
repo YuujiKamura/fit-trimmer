@@ -89,6 +89,35 @@ object PlateDetectionManager {
         pb.redirectErrorStream(false)
         val process = pb.start()
  
+        val startTimeAdjusted = try {
+            if (adjustedStartUtc.isNotEmpty()) {
+                val clean = adjustedStartUtc.trim().replace(" ", "T")
+                try {
+                    java.time.ZonedDateTime.parse(clean)
+                } catch (e: Exception) {
+                    try {
+                        java.time.LocalDateTime.parse(clean).atZone(java.time.ZoneId.of("UTC"))
+                    } catch (e2: Exception) {
+                        try {
+                            java.time.OffsetDateTime.parse(clean).toZonedDateTime()
+                        } catch (e3: Exception) {
+                            val fmt = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss")
+                            java.time.LocalDateTime.parse(clean, fmt).atZone(java.time.ZoneId.of("UTC"))
+                        }
+                    }
+                }
+            } else null
+        } catch (e: Exception) {
+            println("DEBUG: Failed to parse adjustedStartUtc '$adjustedStartUtc': ${e.message}")
+            null
+        }
+
+        if (startTimeAdjusted != null) {
+            println("DEBUG: Speed filter ACTIVE. Video start UTC = $startTimeAdjusted, telemetry count = ${telemetryPoints.size}")
+        } else {
+            println("WARNING: Speed filter INACTIVE. Video start UTC '$adjustedStartUtc' could not be parsed.")
+        }
+
         val records = mutableListOf<PlateRecord>()
         val detector = PlateDetector.getInstance()
         
@@ -97,6 +126,7 @@ object PlateDetectionManager {
  
         val totalFrames = (durationSec * detectionFps).toLong()
         var frameIndex = 0L
+        var skippedFrames = 0L
  
         try {
             while (!onCancel()) {
@@ -116,11 +146,6 @@ object PlateDetectionManager {
 
                 // Speed check optimization: Only detect plates when vehicle speed is < 10 km/h.
                 // Plates are blurred and fast-moving cars cannot be read anyway, saving 90%+ CPU processing.
-                val startTimeAdjusted = try {
-                    if (adjustedStartUtc.isNotEmpty()) java.time.ZonedDateTime.parse(adjustedStartUtc) else null
-                } catch (e: Exception) {
-                    null
-                }
                 val fitEpoch = 631065600L // 1990-01-01T00:00:00Z UTC epoch
                 
                 var skipDetection = false
@@ -136,6 +161,7 @@ object PlateDetectionManager {
                 }
 
                 val boxes = if (skipDetection) {
+                    skippedFrames++
                     emptyList()
                 } else {
                     detector.detect(img)
@@ -158,8 +184,11 @@ object PlateDetectionManager {
         }
 
         if (onCancel()) {
+            println("DEBUG: Scan canceled. Processed $frameIndex frames.")
             null
         } else {
+            val ratio = if (frameIndex > 0) skippedFrames.toFloat() / frameIndex.toFloat() * 100f else 0f
+            println("DEBUG: Scan complete. Total frames: $frameIndex, Skipped (speed >= 10km/h): $skippedFrames (${String.format(java.util.Locale.US, "%.1f", ratio)}%)")
             val cache = VideoPlatesCache(videoPath, records)
             PlateCacheManager.saveCache(videoPath, cache)
             cache
