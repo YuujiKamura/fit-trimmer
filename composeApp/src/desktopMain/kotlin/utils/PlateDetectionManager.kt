@@ -134,6 +134,26 @@ object PlateDetectionManager {
             println("  - FIT range (1990 epoch): $fitStart to $fitEnd")
             println("  - Time diff (VideoStart - FITStart): $diffStart seconds (${String.format(java.util.Locale.US, "%.2f", diffStart / 3600.0)} hours)")
             println("  - Telemetry points count: ${telemetryPoints.size}")
+            
+            // Pre-scan target frame estimation (instant calculation using binary search)
+            val totalFrames = (durationSec * detectionFps).toLong()
+            var estimatedTargetFrames = 0L
+            for (f in 0 until totalFrames) {
+                val timeMs = (f * 1000.0 / detectionFps).toLong()
+                val currentSec = timeMs.toDouble() / 1000.0
+                val currentUtcSeconds = startTimeAdjusted.toEpochSecond() + currentSec
+                val currentFitTs = currentUtcSeconds - fitEpoch
+                val point = findClosestTelemetryPoint(telemetryPoints, currentFitTs)
+                if (point == null || point.speed < 10.0) {
+                    estimatedTargetFrames++
+                }
+            }
+            val skipped = totalFrames - estimatedTargetFrames
+            val ratio = if (totalFrames > 0) skipped.toFloat() / totalFrames.toFloat() * 100f else 0f
+            println("  - Pre-scan Estimation:")
+            println("    - Total video frames to read: $totalFrames")
+            println("    - AI (YOLO) scan target frames (<10km/h): $estimatedTargetFrames")
+            println("    - Skipped frames (>=10km/h): $skipped (${String.format(java.util.Locale.US, "%.1f", ratio)}% reduction)")
         } else {
             println("WARNING: Speed filter INACTIVE. Video start UTC '$adjustedStartUtc' could not be parsed.")
         }
