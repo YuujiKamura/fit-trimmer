@@ -206,7 +206,12 @@ fun FitTrimmerMainContent(
     val scope = rememberCoroutineScope()
     LaunchedEffect(videoPath, settings.blurLicensePlates, viewModel.videoStartUtc) {
         if (settings.blurLicensePlates && videoPath.isNotEmpty() && viewModel.plateCache == null) {
-            viewModel.runPlateDetection(scope)
+            if (fit.PlateCacheManager.cacheExists(videoPath)) {
+                viewModel.plateCache = fit.PlateCacheManager.loadCache(videoPath)
+                viewModel.plateDetectionProgress = "Restored"
+            } else {
+                viewModel.runPlateDetection(scope)
+            }
         }
     }
     val triggerUpdatePrompt = remember(latestReleaseInfo, composeWindow) {
@@ -2556,27 +2561,97 @@ fun FitTrimmerMainContent(
                                     fontWeight = FontWeight.Medium
                                 )
                             }
+                            val handleRoadDetectionToggle = { checked: Boolean ->
+                                if (!isEncoding) {
+                                    val history = if (videoPath.isNotEmpty()) utils.GuiCache.loadHistory(videoPath) else null
+                                    val historyCaptions = history?.settings?.roadCaptions ?: emptyList()
+                                    if (checked && historyCaptions.isNotEmpty()) {
+                                        val options = arrayOf("蠕ｩ蜈・☆繧・(Restore)", "譁ｰ隕丈ｽ懈・ (Overwrite)", "繧ｭ繝｣繝ｳ繧ｻ繝ｫ (Cancel)")
+                                        val choice = javax.swing.JOptionPane.showOptionDialog(
+                                            null,
+                                            "莉･蜑阪・霍ｯ邱壹ユ繝ｭ繝・・繝・・繧ｿ縺悟ｭ伜惠縺励∪縺吶ょｾｩ蜈・＠縺ｾ縺吶°・歃n(Road caption history exists. Restore or start fresh?)",
+                                            "繝・・繧ｿ縺ｮ蠕ｩ蜈・｢ｺ隱・(Restore Captions)",
+                                            javax.swing.JOptionPane.DEFAULT_OPTION,
+                                            javax.swing.JOptionPane.QUESTION_MESSAGE,
+                                            null,
+                                            options,
+                                            options[0]
+                                        )
+                                        when (choice) {
+                                            0 -> {
+                                                viewModel.settings = viewModel.settings.copy(
+                                                    enableRoadDetection = true,
+                                                    roadCaptions = historyCaptions
+                                                )
+                                            }
+                                            1 -> {
+                                                viewModel.settings = viewModel.settings.copy(
+                                                    enableRoadDetection = true,
+                                                    roadCaptions = emptyList()
+                                                )
+                                            }
+                                            else -> {
+                                                // Cancel / Closed - do nothing
+                                            }
+                                        }
+                                    } else {
+                                        viewModel.settings = viewModel.settings.copy(enableRoadDetection = checked)
+                                    }
+                                }
+                            }
+
+                            val handlePlateBlurToggle = { checked: Boolean ->
+                                if (!isEncoding) {
+                                    if (checked && videoPath.isNotEmpty() && fit.PlateCacheManager.cacheExists(videoPath)) {
+                                        val options = arrayOf("蠕ｩ蜈・☆繧・(Restore)", "譁ｰ縺励￥繧ｹ繧ｭ繝｣繝ｳ (Scan)", "繧ｭ繝｣繝ｳ繧ｻ繝ｫ (Cancel)")
+                                        val choice = javax.swing.JOptionPane.showOptionDialog(
+                                            null,
+                                            "莉･蜑阪・繝翫Φ繝舌・繝励Ξ繝ｼ繝域､懷・繧ｭ繝｣繝・す繝･縺悟ｭ伜惠縺励∪縺吶ょｾｩ蜈・＠縺ｾ縺吶°・歃n(Plate detection cache exists. Restore or re-scan?)",
+                                            "繧ｭ繝｣繝・す繝･縺ｮ蠕ｩ蜈・｢ｺ隱・(Restore Cache)",
+                                            javax.swing.JOptionPane.DEFAULT_OPTION,
+                                            javax.swing.JOptionPane.QUESTION_MESSAGE,
+                                            null,
+                                            options,
+                                            options[0]
+                                        )
+                                        when (choice) {
+                                            0 -> {
+                                                viewModel.plateCache = fit.PlateCacheManager.loadCache(videoPath)
+                                                viewModel.plateDetectionProgress = "Restored"
+                                                viewModel.onBlurLicensePlatesChanged(true, scope)
+                                            }
+                                            1 -> {
+                                                fit.PlateCacheManager.deleteCache(videoPath)
+                                                viewModel.plateCache = null
+                                                viewModel.onBlurLicensePlatesChanged(true, scope)
+                                            }
+                                            else -> {
+                                                // Cancel / Closed - do nothing
+                                            }
+                                        }
+                                    } else {
+                                        viewModel.onBlurLicensePlatesChanged(checked, scope)
+                                    }
+                                }
+                            }
+
                             Row(
                                 modifier = Modifier.fillMaxWidth().clickable(enabled = !isEncoding) {
-                                    if (!isEncoding) {
-                                        settings = settings.copy(enableRoadDetection = !settings.enableRoadDetection)
-                                    }
+                                    handleRoadDetectionToggle(!viewModel.settings.enableRoadDetection)
                                 },
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 Checkbox(
-                                    checked = settings.enableRoadDetection,
+                                    checked = viewModel.settings.enableRoadDetection,
                                     onCheckedChange = { checked ->
-                                        if (!isEncoding) {
-                                            settings = settings.copy(enableRoadDetection = checked)
-                                        }
+                                        handleRoadDetectionToggle(checked)
                                     },
                                     enabled = !isEncoding,
                                     colors = CheckboxDefaults.colors(checkedColor = Color(0xFF007AFF))
                                 )
                                 Text(
-                                    text = utils.Localizer.get("enable_road_detection", settings.language),
+                                    text = utils.Localizer.get("enable_road_detection", viewModel.settings.language),
                                     fontSize = 11.sp,
                                     color = Color(0xFF1C1C1E),
                                     fontWeight = FontWeight.Medium
@@ -2584,25 +2659,21 @@ fun FitTrimmerMainContent(
                             }
                             Row(
                                 modifier = Modifier.fillMaxWidth().clickable(enabled = !isEncoding) {
-                                    if (!isEncoding) {
-                                        viewModel.onBlurLicensePlatesChanged(!settings.blurLicensePlates, scope)
-                                    }
+                                    handlePlateBlurToggle(!viewModel.settings.blurLicensePlates)
                                 },
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 Checkbox(
-                                    checked = settings.blurLicensePlates,
+                                    checked = viewModel.settings.blurLicensePlates,
                                     onCheckedChange = { checked ->
-                                        if (!isEncoding) {
-                                            viewModel.onBlurLicensePlatesChanged(checked, scope)
-                                        }
+                                        handlePlateBlurToggle(checked)
                                     },
                                     enabled = !isEncoding,
                                     colors = CheckboxDefaults.colors(checkedColor = Color(0xFF007AFF))
                                 )
                                 Text(
-                                    text = utils.Localizer.get("blur_license_plates", settings.language),
+                                    text = utils.Localizer.get("blur_license_plates", viewModel.settings.language),
                                     fontSize = 11.sp,
                                     color = Color(0xFF1C1C1E),
                                     fontWeight = FontWeight.Medium
