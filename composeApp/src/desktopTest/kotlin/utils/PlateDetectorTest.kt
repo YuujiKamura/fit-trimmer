@@ -397,6 +397,93 @@ class PlateDetectorTest {
         }
     }
 
+    @Test
+    fun testGuiFlowPlateCacheAssignment() {
+        val cropTestMp4 = File("C:\\Users\\yuuji\\fit-trimmer\\composeApp\\scratch\\crop_test.mp4")
+        if (!cropTestMp4.exists()) {
+            println("Skipping GUI flow test: crop_test.mp4 not found")
+            return
+        }
+
+        // 1. Clear existing cache file to simulate a fresh first-time video load
+        val cacheFile = fit.PlateCacheManager.getPlatesFile(cropTestMp4.absolutePath)
+        if (cacheFile != null && cacheFile.exists()) {
+            cacheFile.delete()
+        }
+
+        val viewModel = viewmodel.AppViewModel(initialCache = null)
+        
+        // Assert initial completely unassigned state
+        kotlin.test.assertNull(viewModel.plateCache, "Initial plateCache must be null")
+        kotlin.test.assertFalse(viewModel.isDetectingPlates, "Should not be detecting initially")
+
+        // Setting videoPath triggers cache load attempt, which stays null since no cache file exists yet
+        viewModel.videoPath = cropTestMp4.absolutePath
+        kotlin.test.assertNull(viewModel.plateCache, "plateCache must still be null after path change when no cache file exists")
+
+        // Verify that trying to query mask boxes while unassigned safely returns empty (no crash, safe UI rendering)
+        val sampleTimeMs = 12000L
+        val initialBoxes = viewModel.plateCache?.shouldBlurAt(sampleTimeMs, true) ?: emptyList()
+        kotlin.test.assertTrue(initialBoxes.isEmpty(), "Unassigned plate cache must yield empty boxes")
+
+        // 2. Trigger asynchronous plate detection flow as simulated by GUI's LaunchEffect
+        runBlocking {
+            viewModel.runPlateDetection(this)
+            
+            // Wait for the background detection job to complete
+            while (viewModel.isDetectingPlates) {
+                kotlinx.coroutines.delay(50)
+            }
+        }
+
+        // 3. Assert assigned state
+        kotlin.test.assertNotNull(viewModel.plateCache, "plateCache must be assigned after detection completes")
+        kotlin.test.assertFalse(viewModel.isDetectingPlates, "isDetectingPlates must be false after completion")
+        
+        // Verify that once assigned, correct boxes are successfully returned for the frame
+        val assignedBoxes = viewModel.plateCache?.shouldBlurAt(sampleTimeMs, true) ?: emptyList()
+        kotlin.test.assertTrue(assignedBoxes.isNotEmpty(), "Assigned plate cache must yield non-empty boxes for active frames")
+        println("✅ GUI Flow Plate Cache Assignment Test Completed Successfully!")
+    }
+
+    @Test
+    fun testPlateDetectionRunsAtHighSpeed() {
+        val cropTestMp4 = File("C:\\Users\\yuuji\\fit-trimmer\\composeApp\\scratch\\crop_test.mp4")
+        if (!cropTestMp4.exists()) {
+            println("Skipping high speed test: crop_test.mp4 not found")
+            return
+        }
+
+        // Create dummy high-speed telemetry (all points at 25.0 km/h)
+        val telemetry = List(21) { idx ->
+            fit.FitParser.TelemetryPoint(
+                timestamp = 1150022526.0 + idx,
+                speed = 25.0, // 25.0 km/h >= 10.0 km/h
+                power = 200.0,
+                cadence = 90.0,
+                heartRate = 150.0,
+                elevation = 50.0,
+                grade = 0.0
+            )
+        }
+
+        // Run detection with speed filter active
+        val cache = runBlocking {
+            PlateDetectionManager.runDetection(
+                videoPath = cropTestMp4.absolutePath,
+                telemetryPoints = telemetry,
+                adjustedStartUtc = "2026-06-14T08:02:06Z",
+                onProgress = {},
+                onCancel = { false }
+            )
+        }
+
+        kotlin.test.assertNotNull(cache, "Scan cache must be successfully built")
+        kotlin.test.assertTrue(cache.records.isNotEmpty(), "Should detect plates even at high speeds (>= 10km/h)")
+        println("✅ High Speed Plate Detection Test Completed Successfully!")
+    }
+
+
     private class SGObserver : java.awt.image.ImageObserver {
         override fun imageUpdate(img: java.awt.Image?, infoflags: Int, x: Int, y: Int, width: Int, height: Int): Boolean {
             return false

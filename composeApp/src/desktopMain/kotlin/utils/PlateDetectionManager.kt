@@ -194,41 +194,14 @@ object PlateDetectionManager {
             val fitStart = telemetryPoints.firstOrNull()?.timestamp ?: 0.0
             val fitEnd = telemetryPoints.lastOrNull()?.timestamp ?: 0.0
             val diffStart = videoStartFitTs - fitStart
-            println("DEBUG: Speed filter ACTIVE.")
+            println("DEBUG: Speed filter INACTIVE (Always scanning all frames for maximum coverage).")
             println("  - Video start UTC: $startTimeAdjusted")
             println("  - Video start FIT Ts (1990 epoch): $videoStartFitTs")
             println("  - FIT range (1990 epoch): $fitStart to $fitEnd")
             println("  - Time diff (VideoStart - FITStart): $diffStart seconds (${String.format(java.util.Locale.US, "%.2f", diffStart / 3600.0)} hours)")
             println("  - Telemetry points count: ${telemetryPoints.size}")
-            
-            val totalFrames = (durationSec * detectionFps).toLong()
-            var estimatedTargetFrames = 0L
-            for (f in 0 until totalFrames) {
-                val timeMs = (f * 1000.0 / detectionFps).toLong()
-                val currentSec = timeMs.toDouble() / 1000.0
-                val currentUtcSeconds = startTimeAdjusted.toEpochSecond() + currentSec
-                val currentFitTs = currentUtcSeconds - fitEpoch
-                
-                val fitStart = telemetryPoints.first().timestamp
-                val fitEnd = telemetryPoints.last().timestamp
-                
-                if (currentFitTs in fitStart..fitEnd) {
-                    val point = findClosestTelemetryPoint(telemetryPoints, currentFitTs)
-                    if (point == null || point.speed < 10.0) {
-                        estimatedTargetFrames++
-                    }
-                } else {
-                    estimatedTargetFrames++
-                }
-            }
-            val skipped = totalFrames - estimatedTargetFrames
-            val ratio = if (totalFrames > 0) skipped.toFloat() / totalFrames.toFloat() * 100f else 0f
-            println("  - Pre-scan Estimation:")
-            println("    - Total video frames to read: $totalFrames")
-            println("    - AI (YOLO) scan target frames (<10km/h): $estimatedTargetFrames")
-            println("    - Skipped frames (>=10km/h): $skipped (${String.format(java.util.Locale.US, "%.1f", ratio)}% reduction)")
         } else {
-            println("WARNING: Speed filter INACTIVE. Video start UTC '$adjustedStartUtc' could not be parsed.")
+            println("DEBUG: Video start UTC '$adjustedStartUtc' could not be parsed.")
         }
 
         val records = mutableListOf<PlateRecord>()
@@ -268,22 +241,7 @@ object PlateDetectionManager {
 
                     val timeMs = (localFrameIndex * 1000.0 / detectionFps).toLong()
 
-                    var skip = false
-                    if (startTimeAdjusted != null && telemetryPoints.isNotEmpty()) {
-                        val currentSec = timeMs.toDouble() / 1000.0
-                        val currentUtcSeconds = startEpochSecond + currentSec
-                        val currentFitTs = currentUtcSeconds - fitEpoch
-                        
-                        val fitStart = telemetryPoints.first().timestamp
-                        val fitEnd = telemetryPoints.last().timestamp
-                        
-                        if (currentFitTs in fitStart..fitEnd) {
-                            val point = findClosestTelemetryPoint(telemetryPoints, currentFitTs)
-                            if (point != null && point.speed >= 10.0) {
-                                skip = true
-                            }
-                        }
-                    }
+                    val skip = false
 
                     val tSendStart = System.nanoTime()
                     frameChannel.send(DecodedFrame(localFrameIndex, timeMs, frameBuffer, skip))
@@ -397,8 +355,7 @@ object PlateDetectionManager {
             println("DEBUG: Scan canceled. Processed $frameIndex frames.")
             null
         } else {
-            val ratio = if (frameIndex > 0) skippedFrames.toFloat() / frameIndex.toFloat() * 100f else 0f
-            println("DEBUG: Scan complete. Total frames: $frameIndex, Skipped (speed >= 10km/h): $skippedFrames (${String.format(java.util.Locale.US, "%.1f", ratio)}%)")
+            println("DEBUG: Scan complete. Total frames: $frameIndex")
             detector.printPerfStatsSummary()
             val cache = VideoPlatesCache(videoPath, records)
             PlateCacheManager.saveCache(videoPath, cache)
