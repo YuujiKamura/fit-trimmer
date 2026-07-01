@@ -5,9 +5,90 @@ import kotlin.test.Test
 import kotlin.test.assertTrue
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertFalse
 import crc.Crc16
 
 class EncoderIntegrationTest {
+
+    @Test
+    fun testHasResumeCacheMatchesEncodeHash() {
+        val tempDir = File(System.getProperty("java.io.tmpdir"), "fit-trimmer-hash-test-${System.currentTimeMillis()}")
+        tempDir.mkdirs()
+
+        val fitPath = File(tempDir, "hash_test.fit").absolutePath
+        val videoPath = File(tempDir, "hash_test.mp4").absolutePath
+        val startUtc = "2026-06-30T08:44:58Z"
+        val settings = HudSettings(
+            exportResolution = "1080p",
+            blurLicensePlates = true,
+            plateMaskExpandRatio = 0.5
+        )
+
+        val plateCache = VideoPlatesCache(
+            videoPath = videoPath,
+            records = listOf(PlateRecord(0, listOf(PlateBox(10, 10, 20, 20)))),
+            sourceWidth = 640,
+            sourceHeight = 360
+        )
+
+        val initialResult = NativeHudEncoder.hasResumeCache(
+            fitPath = fitPath,
+            videoPath = videoPath,
+            startUtc = startUtc,
+            maxDurationSeconds = -1,
+            trimStartSeconds = 0.0,
+            trimEndSeconds = 10.0,
+            settings = settings,
+            plateCache = plateCache
+        )
+        assertFalse(initialResult, "Should have no cache initially")
+
+        val config = HudConfig(
+            valSize = settings.valSize, tightness = settings.tightness, spacing = settings.spacing,
+            xOffset = settings.xOffset, yOffset = settings.yOffset, graphH = settings.graphH, graphW = settings.graphW,
+            captionPosition = settings.captionPosition,
+            roadCaptions = settings.roadCaptions,
+            powerTrendSpanSeconds = settings.powerTrendSpanSeconds,
+            useImperialUnits = settings.useImperialUnits,
+            language = settings.language
+        )
+        
+        val (exportWidth, exportHeight) = 1920 to 1080
+        val videoWidth = 1920
+        val videoHeight = 1080
+        val longHash = kotlin.math.abs((
+            fitPath + videoPath + startUtc + (-1) + 0.0 + 10.0 +
+                videoWidth + videoHeight + exportWidth + exportHeight + config.hashCode() +
+                settings.exportResolution + settings.blurLicensePlates + settings.plateMaskExpandRatio.toString() +
+                (plateCache.sourceWidth) + (plateCache.sourceHeight) +
+                (plateCache.records.hashCode())
+        ).hashCode()).toString()
+
+        val workDir = PathResolver.getTempWorkDir(videoPath)
+        val jobDir = File(workDir, "job_$longHash")
+        jobDir.mkdirs()
+        
+        val dummyPart = File(jobDir, "part_0000.ts")
+        dummyPart.writeText("dummy ts data")
+
+        try {
+            val hasCache = NativeHudEncoder.hasResumeCache(
+                fitPath = fitPath,
+                videoPath = videoPath,
+                startUtc = startUtc,
+                maxDurationSeconds = -1,
+                trimStartSeconds = 0.0,
+                trimEndSeconds = 10.0,
+                settings = settings,
+                plateCache = plateCache
+            )
+            assertTrue(hasCache, "Cache should be successfully detected if jobHash logic is synchronized")
+        } finally {
+            dummyPart.delete()
+            jobDir.delete()
+            tempDir.deleteRecursively()
+        }
+    }
 
     @Test
     fun testEncodingProfileCapturesDetailedStageTimings() {

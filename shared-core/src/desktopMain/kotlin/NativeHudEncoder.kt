@@ -910,13 +910,21 @@ class NativeHudEncoder(
         println("DEBUG: Auto-detected encoder: $encoderName, hwaccel: $hwaccel")
 
         // Create deterministic job hash for crash recovery (include resolution to avoid mismatched segment reuse)
-        val jobHash = kotlin.math.abs((
-            fitPath + videoPath + startUtc + maxDurationSeconds + actualTrimStart + actualTrimEnd +
-                videoWidth + videoHeight + exportWidth + exportHeight + config.hashCode() +
-                settings.exportResolution + settings.blurLicensePlates + settings.plateMaskExpandRatio.toString() +
-                (plateCache?.sourceWidth ?: 0) + (plateCache?.sourceHeight ?: 0) +
-                (plateCache?.records?.hashCode() ?: 0)
-        ).hashCode()).toString()
+        val jobHash = calculateJobHash(
+            fitPath = fitPath,
+            videoPath = videoPath,
+            startUtc = startUtc,
+            maxDurationSeconds = maxDurationSeconds,
+            actualTrimStart = actualTrimStart,
+            actualTrimEnd = actualTrimEnd,
+            videoWidth = videoWidth,
+            videoHeight = videoHeight,
+            exportWidth = exportWidth,
+            exportHeight = exportHeight,
+            config = config,
+            settings = settings,
+            plateCache = plateCache
+        )
         val jobDir = File(workDir, "job_$jobHash")
         if (!jobDir.exists()) jobDir.mkdirs()
         globalActiveJobDir = jobDir
@@ -1585,9 +1593,13 @@ class NativeHudEncoder(
             }
             
             // Clean up chunks after successful concat
-            parts.forEach { it.delete() }
-            partsListFile.delete()
-            jobDir.deleteRecursively() // Cleanup the whole job folder
+            try {
+                parts.forEach { it.delete() }
+                partsListFile.delete()
+                jobDir.deleteRecursively()
+            } catch (e: Exception) {
+                println("⚠️ Warning: Failed to clean up job directory: ${e.message}")
+            }
             
             onProgress(1.0f, "✨ Finished Successfully!")
         }
@@ -1634,6 +1646,30 @@ class NativeHudEncoder(
     }
 
     companion object {
+        fun calculateJobHash(
+            fitPath: String,
+            videoPath: String,
+            startUtc: String,
+            maxDurationSeconds: Int,
+            actualTrimStart: Double,
+            actualTrimEnd: Double,
+            videoWidth: Int,
+            videoHeight: Int,
+            exportWidth: Int,
+            exportHeight: Int,
+            config: HudConfig,
+            settings: HudSettings,
+            plateCache: fit.VideoPlatesCache?
+        ): String {
+            return kotlin.math.abs((
+                fitPath + videoPath + startUtc + maxDurationSeconds + actualTrimStart + actualTrimEnd +
+                    videoWidth + videoHeight + exportWidth + exportHeight + config.hashCode() +
+                    settings.exportResolution + settings.blurLicensePlates + settings.plateMaskExpandRatio.toString() +
+                    (plateCache?.sourceWidth ?: 0) + (plateCache?.sourceHeight ?: 0) +
+                    (plateCache?.records?.hashCode() ?: 0)
+            ).hashCode()).toString()
+        }
+
         fun hasResumeCache(
             fitPath: String,
             videoPath: String,
@@ -1641,7 +1677,8 @@ class NativeHudEncoder(
             maxDurationSeconds: Int,
             trimStartSeconds: Double,
             trimEndSeconds: Double,
-            settings: HudSettings
+            settings: HudSettings,
+            plateCache: fit.VideoPlatesCache? = null
         ): Boolean {
             try {
                 val ffmpegPath = findFfmpegPath()
@@ -1727,7 +1764,28 @@ class NativeHudEncoder(
                     language = settings.language
                 )
 
-                val jobHash = kotlin.math.abs((fitPath + videoPath + startUtc + maxDurationSeconds + actualTrimStart + actualTrimEnd + videoWidth + videoHeight + config.hashCode()).hashCode()).toString()
+                val (exportWidth, exportHeight) = when (settings.exportResolution) {
+                    "4K" -> 3840 to 2160
+                    "1080p" -> 1920 to 1080
+                    "720p" -> 1280 to 720
+                    else -> videoWidth to videoHeight
+                }
+
+                val jobHash = calculateJobHash(
+                    fitPath = fitPath,
+                    videoPath = videoPath,
+                    startUtc = startUtc,
+                    maxDurationSeconds = maxDurationSeconds,
+                    actualTrimStart = actualTrimStart,
+                    actualTrimEnd = actualTrimEnd,
+                    videoWidth = videoWidth,
+                    videoHeight = videoHeight,
+                    exportWidth = exportWidth,
+                    exportHeight = exportHeight,
+                    config = config,
+                    settings = settings,
+                    plateCache = plateCache
+                )
                 val jobDir = File(workDir, "job_" + jobHash)
                 if (jobDir.exists()) {
                     val existingParts = jobDir.listFiles { _, name -> name.matches(Regex("part_\\d{4}\\.ts")) }
