@@ -554,6 +554,13 @@ class AppViewModel(
         refreshAvailableCacheJobs()
     }
 
+    fun clearAllCaches() {
+        if (videoPath.isNotEmpty()) {
+            fit.CacheRegistry.clearAllCaches(videoPath)
+            refreshAvailableCacheJobs()
+        }
+    }
+
 
 
 

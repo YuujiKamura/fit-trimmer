@@ -142,6 +142,7 @@ class CacheRegistryTest {
         val part2 = File(jobDir, "part_0001.ts")
         createMockTsFile(part1)
         createMockTsFile(part2)
+        JobStateManager.saveState(jobDir, JobState("99999", videoPath = mockVideoPath))
 
         assertTrue(part1.exists() && part1.length() > 0, "Mock TS part 1 should be a valid video stream")
         assertTrue(part2.exists() && part2.length() > 0, "Mock TS part 2 should be a valid video stream")
@@ -174,6 +175,65 @@ class CacheRegistryTest {
             part1.delete()
             part2.delete()
             jobDir.delete()
+        }
+    }
+
+    @Test
+    fun testVideoSwitchingCacheIsolationAndRecovery() {
+        val videoPathA = File(testTempDir, "video_a.mp4").absolutePath
+        val videoPathB = File(testTempDir, "video_b.mp4").absolutePath
+
+        val workDirA = PathResolver.getTempWorkDir(videoPathA)
+        val workDirB = PathResolver.getTempWorkDir(videoPathB)
+
+        val jobDirA = File(workDirA, "job_aaaaa")
+        val jobDirB = File(workDirB, "job_bbbbb")
+
+        jobDirA.mkdirs()
+        jobDirB.mkdirs()
+
+        val partA = File(jobDirA, "part_0000.ts")
+        val partB = File(jobDirB, "part_0000.ts")
+
+        createMockTsFile(partA)
+        createMockTsFile(partB)
+        JobStateManager.saveState(jobDirA, JobState("aaaaa", videoPath = videoPathA))
+        JobStateManager.saveState(jobDirB, JobState("bbbbb", videoPath = videoPathB))
+
+        try {
+            // 1. Scan & Isolation: Scan of A must not find job B caches
+            val jobsA = CacheRegistry.scanAvailableJobs(videoPathA)
+            val foundJobA = jobsA.find { it.jobHash == "aaaaa" }
+            val foundJobBInA = jobsA.find { it.jobHash == "bbbbb" }
+            assertNotNull(foundJobA, "Should find job A cache under video A path")
+            assertNull(foundJobBInA, "Should NOT find job B cache under video A path")
+
+            // 2. Verify Scan B
+            val jobsB = CacheRegistry.scanAvailableJobs(videoPathB)
+            val foundJobB = jobsB.find { it.jobHash == "bbbbb" }
+            val foundJobAInB = jobsB.find { it.jobHash == "aaaaa" }
+            assertNotNull(foundJobB, "Should find job B cache under video B path")
+            assertNull(foundJobAInB, "Should NOT find job A cache under video B path")
+
+            // 3. Simulate re-loading video A (switching back)
+            val reloadJobsA = CacheRegistry.scanAvailableJobs(videoPathA)
+            assertNotNull(reloadJobsA.find { it.jobHash == "aaaaa" }, "Should recover job A cache upon re-scanning video A path")
+
+            // 4. Verify bulk cleanup (clearAllCaches)
+            CacheRegistry.clearAllCaches(videoPathA)
+            assertFalse(jobDirA.exists(), "Job directory A should be completely removed by clearAllCaches")
+            assertTrue(jobDirB.exists(), "Job directory B must remain untouched and isolated")
+
+            // 5. Post-cleanup scanning state
+            assertTrue(CacheRegistry.scanAvailableJobs(videoPathA).isEmpty(), "Scanned jobs for A should be empty after clearAllCaches")
+            assertFalse(CacheRegistry.scanAvailableJobs(videoPathB).isEmpty(), "Scanned jobs for B must still be intact")
+        } finally {
+            partA.delete()
+            partB.delete()
+            jobDirA.delete()
+            jobDirB.delete()
+            CacheRegistry.clearAllCaches(videoPathA)
+            CacheRegistry.clearAllCaches(videoPathB)
         }
     }
 }

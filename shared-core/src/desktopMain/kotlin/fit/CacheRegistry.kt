@@ -77,12 +77,23 @@ object CacheRegistry {
         if (!workDir.exists() || !workDir.isDirectory) return emptyList()
 
         val jobs = workDir.listFiles { _, name -> name.startsWith("job_") } ?: emptyArray()
+        val targetNorm = try { File(videoPath).canonicalPath.replace('\\', '/').lowercase() } catch (e: Exception) { videoPath.replace('\\', '/').lowercase() }
+
         return jobs.mapNotNull { jobDir ->
             val parts = jobDir.listFiles { _, name -> name.matches(Regex("part_\\d{4}\\.ts")) } ?: emptyArray()
             if (parts.isEmpty()) null
             else {
-                val hasMask = File(jobDir, "plate_mask.mkv").exists()
                 val hash = jobDir.name.removePrefix("job_")
+                val state = JobStateManager.loadState(jobDir, hash)
+                val stateVideo = state.videoPath
+                if (stateVideo != null) {
+                    val stateNorm = try { File(stateVideo).canonicalPath.replace('\\', '/').lowercase() } catch (e: Exception) { stateVideo.replace('\\', '/').lowercase() }
+                    if (stateNorm != targetNorm) {
+                        return@mapNotNull null
+                    }
+                }
+
+                val hasMask = File(jobDir, "plate_mask.mkv").exists()
                 CacheJobInfo(
                     jobHash = hash,
                     folder = jobDir,
@@ -224,6 +235,24 @@ object CacheRegistry {
         try {
             if (jobInfo.folder.exists()) {
                 jobInfo.folder.deleteRecursively()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    fun clearAllCaches(videoPath: String) {
+        try {
+            val workDir = PathResolver.getTempWorkDir(videoPath)
+            if (workDir.exists()) {
+                val jobs = scanAvailableJobs(videoPath)
+                jobs.forEach { job ->
+                    deleteCacheJob(job)
+                }
+                val remaining = workDir.listFiles()
+                if (remaining == null || remaining.isEmpty()) {
+                    workDir.delete()
+                }
             }
         } catch (e: Exception) {
             e.printStackTrace()

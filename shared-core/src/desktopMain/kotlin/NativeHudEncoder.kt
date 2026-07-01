@@ -1140,7 +1140,13 @@ class NativeHudEncoder(
             } else {
                 emptyList()
             }
-            val jobState = JobStateManager.loadState(jobDir, jobHash)
+            val jobState = JobStateManager.loadState(jobDir, jobHash).let {
+                if (it.videoPath == null) {
+                    val updated = it.copy(videoPath = videoPath)
+                    JobStateManager.saveState(jobDir, updated)
+                    updated
+                } else it
+            }
             val maskVideoFile = if (runBlur) File(jobDir, "plate_mask.mkv") else null
             val isMaskVideoValid = maskVideoFile != null && maskVideoFile.exists() && maskVideoFile.length() > 0L
             val shouldGenerateMaskVideo = runBlur && maskVideoFile != null &&
@@ -1704,7 +1710,7 @@ class NativeHudEncoder(
         )
 
         val jobState = JobStateManager.loadState(jobDir, jobHash)
-        JobStateManager.saveState(jobDir, jobState.copy(isPlateMaskStreamReady = true))
+        JobStateManager.saveState(jobDir, jobState.copy(videoPath = videoPath, isPlateMaskStreamReady = true))
     }
 
     companion object {
