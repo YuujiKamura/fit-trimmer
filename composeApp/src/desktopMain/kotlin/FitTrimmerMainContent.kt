@@ -2487,6 +2487,86 @@ fun FitTrimmerMainContent(
                             ) {
                                 Text("CLEAR ALL APP TEMP FILES", fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
                             }
+
+                            if (viewModel.availableCacheJobs.isNotEmpty()) {
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    "DETECTED UNFINISHED ENCODES:", 
+                                    color = Color(0xFFD84315), 
+                                    fontWeight = FontWeight.Bold, 
+                                    fontSize = 10.sp, 
+                                    letterSpacing = 0.5.sp
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                viewModel.availableCacheJobs.forEach { job ->
+                                    val formattedTime = java.time.format.DateTimeFormatter.ofPattern("MM-dd HH:mm")
+                                        .format(java.time.LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(job.lastModified), java.time.ZoneId.systemDefault()))
+                                    
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().background(Color(0xFFFFEBEE), androidx.compose.foundation.shape.RoundedCornerShape(4.dp)).padding(6.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column {
+                                            Text("Parts: ${job.partsCount} files", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFC51162))
+                                            Text("Last active: $formattedTime", fontSize = 9.sp, color = Color(0xFF757575))
+                                        }
+                                        Button(
+                                            onClick = {
+                                                val uniqueFileName = buildEncodeOutputFileName(
+                                                    settings = settings,
+                                                    videoPath = videoPath,
+                                                    partIndex = -1,
+                                                    numParts = 1,
+                                                    isSample = false
+                                                ).replace(Regex("""\.(mp4|mov)$""", RegexOption.IGNORE_CASE), "_salvaged.mp4")
+                                                val salvageOutPath = File(outputDir, uniqueFileName).absolutePath
+                                                
+                                                scope.launch(Dispatchers.Main) {
+                                                    val confirm = javax.swing.JOptionPane.showConfirmDialog(
+                                                        null,
+                                                        "Do you want to directly merge these ${job.partsCount} chunks into $uniqueFileName without re-rendering?",
+                                                        "Confirm Salvage & Merge",
+                                                        javax.swing.JOptionPane.YES_NO_OPTION
+                                                    )
+                                                    if (confirm == javax.swing.JOptionPane.YES_OPTION) {
+                                                        viewModel.runSalvage(
+                                                            jobInfo = job,
+                                                            outputPath = salvageOutPath,
+                                                            coroutineScope = scope,
+                                                            onComplete = { successMsg ->
+                                                                javax.swing.JOptionPane.showMessageDialog(null, successMsg, "Salvage Success", javax.swing.JOptionPane.INFORMATION_MESSAGE)
+                                                            }
+                                                        )
+                                                    }
+                                                }
+                                            },
+                                            enabled = !isEncoding && !viewModel.isSalvaging,
+                                            colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFD84315), contentColor = Color.White),
+                                            modifier = Modifier.height(24.dp),
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                                        ) {
+                                            Text("Salvage", fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                    Spacer(Modifier.height(4.dp))
+                                }
+                            }
+
+                            if (viewModel.isSalvaging) {
+                                Spacer(Modifier.height(4.dp))
+                                LinearProgressIndicator(
+                                    progress = viewModel.salvageProgress,
+                                    modifier = Modifier.fillMaxWidth().height(4.dp),
+                                    color = Color(0xFFD84315)
+                                )
+                                Text(
+                                    text = viewModel.salvageStatusText,
+                                    color = Color(0xFFD84315),
+                                    fontSize = 9.sp,
+                                    modifier = Modifier.padding(top = 2.dp)
+                                )
+                            }
                         }
                     }
 

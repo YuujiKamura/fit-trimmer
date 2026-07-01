@@ -52,6 +52,7 @@ class AppViewModel(
                 }
 
                 _videoPath = value
+                refreshAvailableCacheJobs()
                 val history = utils.GuiCache.loadHistory(value)
                 if (history != null) {
                     trimStartSeconds = history.trimStartSeconds ?: 0.0
@@ -223,7 +224,58 @@ class AppViewModel(
         PlateCacheManager.deleteCache(videoPath)
     }
 
+    var availableCacheJobs by androidx.compose.runtime.mutableStateOf<List<fit.CacheRegistry.CacheJobInfo>>(emptyList())
+    var isSalvaging by androidx.compose.runtime.mutableStateOf(false)
+    var salvageProgress by androidx.compose.runtime.mutableStateOf(0f)
+    var salvageStatusText by androidx.compose.runtime.mutableStateOf("")
 
+    fun refreshAvailableCacheJobs() {
+        if (videoPath.isNotEmpty()) {
+            availableCacheJobs = fit.CacheRegistry.scanAvailableJobs(videoPath)
+        } else {
+            availableCacheJobs = emptyList()
+        }
+    }
+
+    fun runSalvage(
+        jobInfo: fit.CacheRegistry.CacheJobInfo,
+        outputPath: String,
+        coroutineScope: kotlinx.coroutines.CoroutineScope,
+        onComplete: (String) -> Unit
+    ) {
+        if (isSalvaging) return
+        isSalvaging = true
+        salvageProgress = 0.1f
+        salvageStatusText = "Initializing Salvage..."
+        
+        coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                fit.CacheRegistry.salvageAndMerge(
+                    jobDir = jobInfo.folder,
+                    output = outputPath,
+                    onProgress = { prog, status ->
+                        coroutineScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                            salvageProgress = prog
+                            salvageStatusText = status
+                        }
+                    }
+                )
+                coroutineScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                    refreshAvailableCacheJobs()
+                    onComplete("✨ Salvaged video saved to: $outputPath")
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                coroutineScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                    salvageStatusText = "❌ Error: ${e.message}"
+                }
+            } finally {
+                coroutineScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                    isSalvaging = false
+                }
+            }
+        }
+    }
 
     fun stopPlateDetection() {
         if (isDetectingPlates) {

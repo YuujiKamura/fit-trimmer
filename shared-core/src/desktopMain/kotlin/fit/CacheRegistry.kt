@@ -63,4 +63,86 @@ object CacheRegistry {
             resources.removeAll(stale)
         }
     }
+
+    data class CacheJobInfo(
+        val jobHash: String,
+        val folder: File,
+        val partsCount: Int,
+        val lastModified: Long,
+        val hasMaskVideo: Boolean
+    )
+
+    fun scanAvailableJobs(videoPath: String): List<CacheJobInfo> {
+        val workDir = PathResolver.getTempWorkDir(videoPath)
+        if (!workDir.exists() || !workDir.isDirectory) return emptyList()
+
+        val jobs = workDir.listFiles { _, name -> name.startsWith("job_") } ?: emptyArray()
+        return jobs.mapNotNull { jobDir ->
+            val parts = jobDir.listFiles { _, name -> name.matches(Regex("part_\\d{4}\\.ts")) } ?: emptyArray()
+            if (parts.isEmpty()) null
+            else {
+                val hasMask = File(jobDir, "plate_mask.mkv").exists()
+                val hash = jobDir.name.removePrefix("job_")
+                CacheJobInfo(
+                    jobHash = hash,
+                    folder = jobDir,
+                    partsCount = parts.size,
+                    lastModified = jobDir.lastModified(),
+                    hasMaskVideo = hasMask
+                )
+            }
+        }.sortedByDescending { it.lastModified }
+    }
+
+    fun salvageAndMerge(
+        jobDir: File,
+        output: String,
+        onProgress: (progress: Float, status: String) -> Unit
+    ) {
+        val ffmpegPath = try { findFfmpegPath() } catch (e: Exception) { "ffmpeg" }
+        val parts = jobDir.listFiles { _, name -> name.matches(Regex("part_\\d{4}\\.ts")) }?.sortedBy { it.name } ?: emptyList()
+        if (parts.isEmpty()) {
+            throw Exception("No valid TS parts found in ${jobDir.absolutePath}")
+        }
+
+        onProgress(0.1f, "Preparing merge list...")
+        val partsListFile = File(jobDir, "parts.txt")
+        val listContent = parts.joinToString("\n") { "file '${it.absolutePath.replace("\\", "/")}'" }
+        partsListFile.writeText(listContent)
+
+        val finalDest = File(output)
+        finalDest.parentFile?.let { if (!it.exists()) it.mkdirs() }
+        if (finalDest.exists()) finalDest.delete()
+
+        onProgress(0.3f, "Merging video segments (Direct Concat)...")
+        val concatArgs = listOf(
+            ffmpegPath, "-y",
+            "-f", "concat",
+            "-safe", "0",
+            "-i", partsListFile.absolutePath,
+            "-c", "copy",
+            "-metadata", "comment=fit-trimmer-hud-burned-salvaged",
+            finalDest.absolutePath
+        )
+
+        val pb = ProcessBuilder(concatArgs)
+        pb.redirectErrorStream(true)
+        val p = pb.start()
+        val exitCode = p.waitFor()
+
+        if (exitCode != 0) {
+            val errorMsg = p.inputStream.bufferedReader().readText()
+            throw Exception("Failed to merge. ffmpeg exit code: $exitCode\n$errorMsg")
+        }
+
+        onProgress(0.9f, "Cleaning up salvaged temporary parts...")
+        try {
+            parts.forEach { it.delete() }
+            partsListFile.delete()
+            jobDir.deleteRecursively()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        onProgress(1.0f, "✨ Salvage & Merge Completed Successfully!")
+    }
 }
