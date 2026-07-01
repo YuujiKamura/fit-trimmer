@@ -135,7 +135,7 @@ object PlateDetectionManager {
 
         // Build filter chain. Inserting "scale=iw:ih" at the very beginning forces FFmpeg's
         // automatic rotation (autorotate) filter to run BEFORE the "fps" filter strips rotation metadata.
-        val filterChain = "scale=iw:ih,fps=$detectionFps,scale=$scanWidth:$scanHeight:out_range=full"
+        val filterChain = "scale=$scanWidth:$scanHeight:out_range=full,fps=$detectionFps"
         
         val frameBytes = scanWidth * scanHeight * 3 // RGB24
         
@@ -148,8 +148,11 @@ object PlateDetectionManager {
             "-vcodec", "rawvideo",
             "pipe:1"
         )
+        val tempWorkDir = File("temp_work")
+        if (!tempWorkDir.exists()) tempWorkDir.mkdirs()
+        val scanErrorLog = File(tempWorkDir, "scan_ffmpeg_error.log")
         pb.redirectErrorStream(false)
-        pb.redirectError(ProcessBuilder.Redirect.DISCARD)
+        pb.redirectError(ProcessBuilder.Redirect.to(scanErrorLog))
         val process = pb.start()
 
         val job = coroutineContext[kotlinx.coroutines.Job]
@@ -353,7 +356,23 @@ object PlateDetectionManager {
         } finally {
             decoderJob.cancel()
             cancellationHandler?.dispose()
+            
+            val exitCode = if (process.isAlive) {
+                try {
+                    if (process.waitFor(500, java.util.concurrent.TimeUnit.MILLISECONDS)) process.exitValue() else -99
+                } catch (e: Exception) { -99 }
+            } else {
+                process.exitValue()
+            }
+            
             process.destroy()
+            
+            if (frameIndex == 0L && exitCode != 0) {
+                val errLogFile = File("temp_work/scan_ffmpeg_error.log")
+                val errMsg = if (errLogFile.exists()) errLogFile.readText() else "No error log found"
+                println("\n❌ FFmpeg Scan Process failed with exit code $exitCode. Error Details:\n$errMsg")
+            }
+            
             tempLocalVideo?.let {
                 if (it.exists()) {
                     println("🧹 Cleaning up temp local video scan cache: ${it.absolutePath}")
