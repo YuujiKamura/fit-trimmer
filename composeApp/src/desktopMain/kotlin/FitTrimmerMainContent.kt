@@ -2715,28 +2715,35 @@ fun FitTrimmerMainContent(
                                         fontSize = 10.sp,
                                         color = Color(0xFF636366)
                                     )
-                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                        val presets = listOf(
-                                            Triple(utils.Localizer.get("plate_scan_light", settings.language), 15.0, 1.0),
-                                            Triple(utils.Localizer.get("plate_scan_standard", settings.language), 25.0, 1.0),
-                                            Triple(utils.Localizer.get("plate_scan_careful", settings.language), 999.0, 1.0)
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        androidx.compose.material.Slider(
+                                            value = if (viewModel.plateDetectionMaxSpeedKmh > 100.0) 100f else viewModel.plateDetectionMaxSpeedKmh.toFloat(),
+                                            onValueChange = { newValue ->
+                                                val rounded = (kotlin.math.round(newValue / 10.0) * 10.0)
+                                                viewModel.plateDetectionMaxSpeedKmh = if (rounded >= 100.0) 999.0 else rounded
+                                            },
+                                            valueRange = 0f..100f,
+                                            steps = 9,
+                                            enabled = !isEncoding && !viewModel.isDetectingPlates,
+                                            modifier = Modifier.width(180.dp),
+                                            colors = androidx.compose.material.SliderDefaults.colors(
+                                                thumbColor = Color(0xFF007AFF),
+                                                activeTrackColor = Color(0xFF007AFF)
+                                            )
                                         )
-                                        presets.forEach { (label, speed, fps) ->
-                                            val selected = kotlin.math.abs(viewModel.plateDetectionMaxSpeedKmh - speed) < 0.01 &&
-                                                kotlin.math.abs(viewModel.plateDetectionFps - fps) < 0.01
-                                            OutlinedButton(
-                                                onClick = { viewModel.setPlateDetectionPreset(speed, fps) },
-                                                enabled = !isEncoding && !viewModel.isDetectingPlates,
-                                                modifier = Modifier.height(24.dp),
-                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                                                colors = ButtonDefaults.outlinedButtonColors(
-                                                    backgroundColor = if (selected) Color(0xFF007AFF) else Color.White,
-                                                    contentColor = if (selected) Color.White else Color(0xFF1C1C1E)
-                                                )
-                                            ) {
-                                                Text(label, fontSize = 9.sp)
-                                            }
-                                        }
+                                        Text(
+                                            text = if (viewModel.plateDetectionMaxSpeedKmh > 100.0) {
+                                                utils.Localizer.get("plate_scan_careful", settings.language)
+                                            } else {
+                                                "${viewModel.plateDetectionMaxSpeedKmh.toInt()} km/h"
+                                            },
+                                            fontSize = 10.sp,
+                                            color = Color(0xFF1C1C1E),
+                                            fontWeight = FontWeight.Medium
+                                        )
                                     }
                                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                         val maskModes = listOf(
