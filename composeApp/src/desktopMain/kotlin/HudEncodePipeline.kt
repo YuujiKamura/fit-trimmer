@@ -1,4 +1,4 @@
-﻿import java.io.File
+import java.io.File
 import java.awt.image.BufferedImage
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
@@ -8,10 +8,72 @@ import fit.HudConfig
 import fit.DynamicRendererProxy
 import fit.NativeHudEncoder
 import fit.HudSettings
-import viewmodel.AppViewModel
+import fit.FitParser
+import fit.PlateCacheManager
+import fit.VideoPlatesCache
+import utils.PlateDetectionManager
 
+
+typealias PlatePreScanner = suspend (
+    videoPath: String,
+    telemetryPoints: List<FitParser.TelemetryPoint>,
+    adjustedStartUtc: String,
+    onProgress: (Float) -> Unit,
+    onCancel: () -> Boolean,
+    settings: HudSettings
+) -> VideoPlatesCache?
 object HudEncodePipeline {
 
+
+    private val defaultPlatePreScanner: PlatePreScanner = { videoPath, telemetryPoints, adjustedStartUtc, onProgress, onCancel, settings ->
+        PlateDetectionManager.runDetection(
+            videoPath = videoPath,
+            telemetryPoints = telemetryPoints,
+            adjustedStartUtc = adjustedStartUtc,
+            onProgress = onProgress,
+            onCancel = onCancel,
+            saveCache = true,
+            settings = settings
+        )
+    }
+
+    suspend fun ensurePlateCacheForEncode(
+        settings: HudSettings,
+        videoPath: String,
+        telemetryPoints: List<FitParser.TelemetryPoint> = emptyList(),
+        adjustedStartUtc: String = "",
+        onProgress: (progress: Float, statusText: String) -> Unit = { _, _ -> },
+        cancelSupplier: () -> Boolean = { false },
+        platePreScanner: PlatePreScanner = defaultPlatePreScanner
+    ): VideoPlatesCache? {
+        if (!settings.blurLicensePlates || videoPath.isEmpty()) {
+            return PlateCacheManager.loadCache(videoPath)
+        }
+
+        PlateCacheManager.loadCache(videoPath)?.let { return it }
+        if (cancelSupplier()) throw Exception("Encoding Canceled")
+
+        onProgress(0f, "Scanning license plates before encoding...")
+        val cache = platePreScanner(
+            videoPath,
+            telemetryPoints,
+            adjustedStartUtc,
+            { percent ->
+                onProgress(0f, "Scanning license plates before encoding: ${"%.1f".format(java.util.Locale.US, percent)}%")
+            },
+            cancelSupplier,
+            settings
+        )
+
+        if (cancelSupplier()) throw Exception("Encoding Canceled")
+        if (cache == null) {
+            throw Exception("License plate blur is enabled, but plate scan cache could not be created.")
+        }
+
+        PlateCacheManager.saveCache(videoPath, cache)
+        onProgress(0f, "Plate scan complete. Starting encode...")
+        return cache
+    }
     suspend fun execute(
         s: HudSettings,
         fitPath: String,
@@ -23,6 +85,8 @@ object HudEncodePipeline {
         isSample: Boolean = false,
         shouldResume: Boolean = false,
         moveOutputToSource: Boolean = false,
+        plateTelemetryPoints: List<FitParser.TelemetryPoint> = emptyList(),
+        platePreScanner: PlatePreScanner = defaultPlatePreScanner,
         onProgress: (progress: Float, statusText: String) -> Unit,
         onFrame: (BufferedImage) -> Unit,
         pauseSupplier: () -> Boolean,
@@ -51,8 +115,17 @@ object HudEncodePipeline {
                 ranges = ranges,
                 isSample = isSample
             )
-            
+
             val totalDuration = encodePlan.totalDurationSeconds
+            ensurePlateCacheForEncode(
+                settings = s,
+                videoPath = videoPath,
+                telemetryPoints = plateTelemetryPoints,
+                adjustedStartUtc = videoStartUtc,
+                onProgress = onProgress,
+                cancelSupplier = cancelSupplier,
+                platePreScanner = platePreScanner
+            )
             var completedDuration = 0.0
             var hasCloudSyncMsg = false
             var finalOutPath = ""
@@ -63,7 +136,7 @@ object HudEncodePipeline {
                 val pStart = segment.startSeconds
                 val pEnd = segment.endSeconds
                 val partDuration = pEnd - pStart
-                
+
                 val finalDestFile = destFiles.getOrNull(idx)
                 if (shouldResume && finalDestFile != null && finalDestFile.exists() && finalDestFile.length() > 0L) {
                     println("DEBUG: Segment ${idx + 1} already finished. Skipping. File: ${finalDestFile.absolutePath}")
@@ -99,7 +172,7 @@ object HudEncodePipeline {
                     isSample = isSample
                 )
                 val partOutPath = File(outputDir, outputFileName).absolutePath
-                
+
                 encoder.encode(fitPath, videoPath, partOutPath, videoStartUtc,
                     maxDurationSeconds = if (isSample) 5 else -1,
                     trimStartSeconds = pStart,
