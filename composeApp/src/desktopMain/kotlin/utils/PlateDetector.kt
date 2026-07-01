@@ -143,17 +143,18 @@ class PlateDetector private constructor() : AutoCloseable {
                 val tInference = System.nanoTime()
                 
                 // YOLOv8 output is [1, 5, 8400]
-                val outputData = outputTensor.value as Array<Array<FloatArray>>
-                val pred = outputData[0] // [5, 8400]
+                // Access direct FloatBuffer to prevent allocating 8400 FloatArray objects per frame,
+                // which causes severe GC pressure and stalls on long video scans.
+                val buffer = outputTensor.floatBuffer
                 
                 val boxes = mutableListOf<DetectedBox>()
                 for (i in 0 until 8400) {
-                    val score = pred[4][i]
+                    val score = buffer.get(4 * 8400 + i)
                     if (score >= confThreshold) {
-                        val cx = pred[0][i]
-                        val cy = pred[1][i]
-                        val w = pred[2][i]
-                        val h = pred[3][i]
+                        val cx = buffer.get(0 * 8400 + i)
+                        val cy = buffer.get(1 * 8400 + i)
+                        val w = buffer.get(2 * 8400 + i)
+                        val h = buffer.get(3 * 8400 + i)
                         
                         val x1 = cx - w / 2f
                         val y1 = cy - h / 2f

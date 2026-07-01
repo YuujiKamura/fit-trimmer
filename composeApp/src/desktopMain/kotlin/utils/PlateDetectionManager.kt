@@ -183,6 +183,7 @@ object PlateDetectionManager {
             var localFrameIndex = 0L
             try {
                 while (isActive && !onCancel()) {
+                    val tReadStart = System.nanoTime()
                     val frameBuffer = ByteArray(frameBytes)
                     var bytesRead = 0
                     while (bytesRead < frameBytes) {
@@ -190,6 +191,7 @@ object PlateDetectionManager {
                         if (read == -1) break
                         bytesRead += read
                     }
+                    val tReadEnd = System.nanoTime()
                     if (bytesRead < frameBytes) break // EOF
 
                     val timeMs = (localFrameIndex * 1000.0 / detectionFps).toLong()
@@ -206,7 +208,16 @@ object PlateDetectionManager {
                         }
                     }
 
+                    val tSendStart = System.nanoTime()
                     frameChannel.send(DecodedFrame(localFrameIndex, timeMs, frameBuffer, skip))
+                    val tSendEnd = System.nanoTime()
+
+                    val dRead = (tReadEnd - tReadStart) / 1_000_000.0
+                    val dSend = (tSendEnd - tSendStart) / 1_000_000.0
+                    if (localFrameIndex <= 10 || localFrameIndex % 50 == 0L) {
+                        println("DEBUG: Producer [Frame $localFrameIndex] - Read: ${String.format(java.util.Locale.US, "%.2f", dRead)}ms, SendWait: ${String.format(java.util.Locale.US, "%.2f", dSend)}ms")
+                    }
+
                     localFrameIndex++
                 }
             } catch (e: Exception) {
@@ -222,6 +233,7 @@ object PlateDetectionManager {
             for (frame in frameChannel) {
                 if (onCancel()) break
 
+                val tConsumeStart = System.nanoTime()
                 val boxes = if (frame.skipDetection) {
                     skippedFrames++
                     emptyList()
@@ -241,6 +253,7 @@ object PlateDetectionManager {
                         )
                     }
                 }
+                val tDetectEnd = System.nanoTime()
 
                 if (boxes.isNotEmpty()) {
                     records.add(PlateRecord(frame.timeMs, boxes))
@@ -248,9 +261,17 @@ object PlateDetectionManager {
 
                 frameIndex++
                 
+                val tProgressStart = System.nanoTime()
                 if (totalFrames > 0) {
                     val progress = (frameIndex.toFloat() / totalFrames.toFloat()).coerceIn(0f, 1f)
                     onProgress(progress * 100f)
+                }
+                val tProgressEnd = System.nanoTime()
+
+                val dDetect = (tDetectEnd - tConsumeStart) / 1_000_000.0
+                val dProgress = (tProgressEnd - tProgressStart) / 1_000_000.0
+                if (frameIndex <= 10 || frameIndex % 50 == 0L) {
+                    println("DEBUG: Consumer [Frame ${frame.frameIndex}] - Detect: ${String.format(java.util.Locale.US, "%.2f", dDetect)}ms, ProgressUI: ${String.format(java.util.Locale.US, "%.2f", dProgress)}ms")
                 }
             }
         } catch (e: Exception) {
