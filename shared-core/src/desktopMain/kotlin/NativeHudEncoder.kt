@@ -1,4 +1,4 @@
-package fit
+﻿package fit
 
 import java.awt.*
 import java.awt.image.BufferedImage
@@ -426,7 +426,8 @@ class NativeHudEncoder(
         startUtc: String, 
         maxDurationSeconds: Int = -1,
         trimStartSeconds: Double = 0.0,
-        trimEndSeconds: Double = -1.0
+        trimEndSeconds: Double = -1.0,
+        shouldResume: Boolean = false
     ) {
         try {
             val ffmpegPath = findFfmpegPath()
@@ -784,15 +785,27 @@ class NativeHudEncoder(
         }
 
         val existingParts = jobDir.listFiles { _, name -> name.matches(Regex("part_\\d{4}\\.ts")) }?.sortedBy { it.name } ?: emptyList()
-        var resumePartIndex = existingParts.size
-        if (resumePartIndex > 0) {
-            try {
-                val lastFile = existingParts.last()
-                lastFile.delete()
-                resumePartIndex--
-                println("⚠️ Detected crash recovery: deleted potentially incomplete last chunk ${lastFile.name}. Resuming from chunk $resumePartIndex.")
-            } catch (e: Exception) {
-                e.printStackTrace()
+        var resumePartIndex = 0
+        if (shouldResume) {
+            resumePartIndex = existingParts.size
+            if (resumePartIndex > 0) {
+                try {
+                    val lastFile = existingParts.last()
+                    lastFile.delete()
+                    resumePartIndex--
+                    println("笞・・Detected crash recovery: deleted potentially incomplete last chunk ${lastFile.name}. Resuming from chunk $resumePartIndex.")
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        } else {
+            existingParts.forEach {
+                try {
+                    it.delete()
+                    println("ｧｹ Discarded existing job cache file: ${it.name}")
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
             }
         }
 
@@ -1266,6 +1279,113 @@ class NativeHudEncoder(
             "%d:%02d:%02d".format(h, m, s)
         } else {
             "%02d:%02d".format(m, s)
+        }
+    }
+
+    companion object {
+        fun hasResumeCache(
+            fitPath: String,
+            videoPath: String,
+            startUtc: String,
+            maxDurationSeconds: Int,
+            trimStartSeconds: Double,
+            trimEndSeconds: Double,
+            settings: HudSettings
+        ): Boolean {
+            try {
+                val ffmpegPath = findFfmpegPath()
+                val workDir = PathResolver.getTempWorkDir(videoPath)
+                
+                // Parse video width/height/duration
+                var videoWidth = 1920
+                var videoHeight = 1080
+                var videoDurationSeconds = 300
+                try {
+                    val pb = ProcessBuilder(ffmpegPath, "-i", videoPath)
+                    pb.redirectErrorStream(true)
+                    val p = pb.start()
+                    val outputInfo = p.inputStream.bufferedReader().readText()
+                    p.waitFor()
+                    
+                    val durRegex = Regex("""Duration:\s*(\d+):(\d+):(\d+)\.(\d+)""")
+                    val durMatch = durRegex.find(outputInfo)
+                    if (durMatch != null) {
+                        val h = durMatch.groupValues[1].toInt()
+                        val m = durMatch.groupValues[2].toInt()
+                        val s = durMatch.groupValues[3].toInt()
+                        videoDurationSeconds = h * 3600 + m * 60 + s
+                    }
+                    
+                    val lines = outputInfo.lines()
+                    val videoLine = lines.find { it.contains("Video:") }
+                    if (videoLine != null) {
+                        val resRegex = Regex("""\b(\d{3,4})x(\d{3,4})\b""")
+                        val resMatch = resRegex.find(videoLine)
+                        if (resMatch != null) {
+                            videoWidth = resMatch.groupValues[1].toInt()
+                            videoHeight = resMatch.groupValues[2].toInt()
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+
+                val actualTrimStart = trimStartSeconds.coerceIn(0.0, videoDurationSeconds.toDouble())
+                val actualTrimEnd = if (trimEndSeconds <= 0.0 || trimEndSeconds > videoDurationSeconds.toDouble()) {
+                    videoDurationSeconds.toDouble()
+                } else {
+                    trimEndSeconds
+                }
+                val trimDurationSeconds = (actualTrimEnd - actualTrimStart).toInt().coerceAtLeast(1)
+                val targetDurationSeconds = if (maxDurationSeconds > 0) {
+                    minOf(trimDurationSeconds, maxDurationSeconds)
+                } else {
+                    trimDurationSeconds
+                }
+
+                val startTime = try { Instant.parse(startUtc) } catch(e: Exception) { Instant.EPOCH }
+                val fitEpoch = Instant.parse("1989-12-31T00:00:00Z").epochSecond
+                val startTimeAdjusted = startTime.plusSeconds(actualTrimStart.toLong())
+                val videoStartFit = startTimeAdjusted.epochSecond - fitEpoch
+                val videoEndFit = (startTimeAdjusted.epochSecond + targetDurationSeconds) - fitEpoch
+                
+                // read telemetry
+                val hasTelemetry = fitPath.isNotEmpty() && File(fitPath).exists()
+                var telemetry = if (hasTelemetry) {
+                    try {
+                        val fitBytes = File(fitPath).readBytes()
+                        val p = FitParser(fitBytes)
+                        p.parse()
+                        p.getTelemetry()
+                    } catch (e: Exception) {
+                        emptyList()
+                    }
+                } else emptyList()
+                val trimmedTelemetry = telemetry.filter { it.timestamp in videoStartFit.toDouble()..videoEndFit.toDouble() }
+                if (trimmedTelemetry.isNotEmpty()) {
+                    telemetry = trimmedTelemetry
+                }
+
+                val config = HudConfig(
+                    valSize = settings.valSize, tightness = settings.tightness, spacing = settings.spacing,
+                    xOffset = settings.xOffset, yOffset = settings.yOffset, graphH = settings.graphH, graphW = settings.graphW,
+                    captionPosition = settings.captionPosition,
+                    roadCaptions = settings.roadCaptions,
+                    powerTrendSpanSeconds = settings.powerTrendSpanSeconds,
+                    useImperialUnits = settings.useImperialUnits,
+                    language = settings.language
+                )
+
+                val jobHash = kotlin.math.abs((fitPath + videoPath + startUtc + maxDurationSeconds + actualTrimStart + actualTrimEnd + videoWidth + videoHeight + config.hashCode()).hashCode()).toString()
+                val jobDir = File(workDir, "job_")
+                if (jobDir.exists()) {
+                    val existingParts = jobDir.listFiles { _, name -> name.matches(Regex("part_\\d{4}\\.ts")) }
+                    return existingParts != null && existingParts.isNotEmpty()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            return false
         }
     }
 }
