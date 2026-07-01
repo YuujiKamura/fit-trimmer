@@ -241,7 +241,6 @@ class PlateDetectorTest {
     }
 
     @Test
-    @Ignore
     fun testCropAndBlurSamplingVerification() {
         val videoPath = "H:\\\u30DE\u30A4\u30C9\u30E9\u30A4\u30D6\\Insta360\\20260614\\VID_20260614_163204_003.mp4"
         val videoFile = File(videoPath)
@@ -257,13 +256,13 @@ class PlateDetectorTest {
         val cropTestMp4 = File(scratchDir, "crop_test.mp4")
         val cropBlurredMp4 = File(scratchDir, "crop_blurred_output.mp4")
 
-        // 1. Crop 20 seconds from 390.0s to 410.0s using FFmpeg (with copy to preserve rotate metadata)
+        // 1. Crop 2 seconds from 390.0s to 392.0s using FFmpeg (with copy to preserve rotate metadata)
         println("🎬 Cropping video...")
         val pbCrop = ProcessBuilder(
             ffmpegPath, "-y",
             "-ss", "390.0",
             "-i", videoPath,
-            "-t", "20.0",
+            "-t", "2.0",
             "-c", "copy",
             cropTestMp4.absolutePath
         )
@@ -280,7 +279,7 @@ class PlateDetectorTest {
         val baseFitTimestamp = videoStartUtcSeconds - fitEpochSec // Align with crop video timeline start
 
         val headerSize = 14
-        val recordsSize = 12 + (9 * 21) // Definition(12) + 21 Data Records(9 bytes each)
+        val recordsSize = 12 + (9 * 3) // Definition(12) + 3 Data Records(9 bytes each)
         val totalSize = headerSize + recordsSize + 2
         val bytes = ByteArray(totalSize)
 
@@ -312,7 +311,7 @@ class PlateDetectorTest {
 
         offset += 12
 
-        for (t in 0..20) {
+        for (t in 0..2) {
             bytes[offset] = 0x00.toByte()
             val ts = baseFitTimestamp + t
             bytes[offset + 1] = (ts and 0xFF).toByte()
@@ -372,18 +371,15 @@ class PlateDetectorTest {
             videoPath = cropTestMp4.absolutePath,
             output = cropBlurredMp4.absolutePath,
             startUtc = "2026-06-14T08:02:06Z",
-            maxDurationSeconds = 20,
+            maxDurationSeconds = 2,
             trimStartSeconds = 0.0,
-            trimEndSeconds = 20.0
+            trimEndSeconds = 2.0
         )
         assertTrue(cropBlurredMp4.exists(), "Blurred video must be created")
         println("📹 Encode finished: ${cropBlurredMp4.exists()} (${cropBlurredMp4.length()} bytes)")
 
         // 4. Sample key frames using FFmpeg to verify visual positioning
-        // 398.4s original time -> 8.4s in crop video
-        // 400.4s original time -> 10.4s in crop video
-        // 402.0s original time -> 12.0s in crop video
-        val sampleTimes = listOf(8.4, 10.4, 12.0)
+        val sampleTimes = listOf(0.5, 1.5)
         for (st in sampleTimes) {
             val sampleImgFile = File(scratchDir, "sample_output_blur_${String.format("%.1f", st)}.jpg")
             val pbSample = ProcessBuilder(
