@@ -62,7 +62,7 @@ object PlateDetectionManager {
         // Since we have a 1500ms cache padding threshold, 5 fps (200ms intervals) is more than
         // enough to maintain seamless license plate blurring while cutting processing time in half.
         val detectionFps = 5.0
-        val maxDim = 1920
+        val maxDim = 640
         var scanWidth = videoWidth
         var scanHeight = videoHeight
         if (scanWidth > maxDim || scanHeight > maxDim) {
@@ -79,6 +79,7 @@ object PlateDetectionManager {
         
         val pb = ProcessBuilder(
             ffmpegPath,
+            "-hwaccel", "d3d11va", // Force GPU hardware acceleration on Windows to drop decode wait latency
             "-i", videoPath,
             "-vf", "fps=$detectionFps,scale=$scanWidth:$scanHeight:out_range=full",
             "-f", "rawvideo",
@@ -168,9 +169,15 @@ object PlateDetectionManager {
         val totalFrames = (durationSec * detectionFps).toLong()
         var frameIndex = 0L
         var skippedFrames = 0L
+        var totalDecodeWaitMs = 0.0
+        val startEpochSecond = startTimeAdjusted?.toEpochSecond() ?: 0L
  
+        val img = BufferedImage(scanWidth, scanHeight, BufferedImage.TYPE_3BYTE_BGR)
+        val imgData = (img.raster.dataBuffer as java.awt.image.DataBufferByte).data
+
         try {
             while (!onCancel()) {
+                val tStartRead = System.nanoTime()
                 var bytesRead = 0
                 while (bytesRead < frameBytes) {
                     val read = stream.read(buffer, bytesRead, frameBytes - bytesRead)
@@ -178,21 +185,22 @@ object PlateDetectionManager {
                     bytesRead += read
                 }
                 if (bytesRead < frameBytes) break // EOF
+                val dRead = (System.nanoTime() - tStartRead) / 1_000_000.0
+                totalDecodeWaitMs += dRead
  
                 val timeMs = (frameIndex * 1000.0 / detectionFps).toLong()
- 
-                val img = BufferedImage(scanWidth, scanHeight, BufferedImage.TYPE_3BYTE_BGR)
-                val imgData = (img.raster.dataBuffer as java.awt.image.DataBufferByte).data
+                
+                // Copy frame bytes into the reusable BufferedImage memory directly
                 System.arraycopy(buffer, 0, imgData, 0, frameBytes)
-
+ 
                 // Speed check optimization: Only detect plates when vehicle speed is < 10 km/h.
-                // Plates are blurred and fast-moving cars cannot be read anyway, saving 90%+ CPU processing.
+                // Plates are blurred and fast-moving cars anyway, saving 90%+ CPU processing.
                 val fitEpoch = 631065600L // 1990-01-01T00:00:00Z UTC epoch
                 
                 var skipDetection = false
                 if (startTimeAdjusted != null && telemetryPoints.isNotEmpty()) {
                     val currentSec = timeMs.toDouble() / 1000.0
-                    val currentUtcSeconds = startTimeAdjusted.toEpochSecond() + currentSec
+                    val currentUtcSeconds = startEpochSecond + currentSec
                     val currentFitTs = currentUtcSeconds - fitEpoch
                     
                     val point = findClosestTelemetryPoint(telemetryPoints, currentFitTs)
@@ -200,7 +208,7 @@ object PlateDetectionManager {
                         skipDetection = true
                     }
                 }
-
+ 
                 val boxes = if (skipDetection) {
                     skippedFrames++
                     emptyList()
@@ -213,6 +221,16 @@ object PlateDetectionManager {
                 }
 
                 frameIndex++
+                
+                if (frameIndex % 100 == 0L || frameIndex <= 5L) {
+                    val avgWait = totalDecodeWaitMs / frameIndex
+                    println(String.format(
+                        java.util.Locale.US,
+                        "DEBUG: Decode Pipeline [Frame %d] - Avg FFmpeg Decode Wait: %.2fms",
+                        frameIndex, avgWait
+                    ))
+                }
+                
                 if (totalFrames > 0) {
                     val progress = (frameIndex.toFloat() / totalFrames.toFloat()).coerceIn(0f, 1f)
                     onProgress(progress * 100f)
