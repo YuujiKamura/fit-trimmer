@@ -1,4 +1,4 @@
-﻿package utils
+package utils
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -37,11 +37,7 @@ object GuiCache {
 
     private fun getHistoryFile(videoPath: String): File? {
         if (videoPath.isEmpty()) return null
-        val norm = try {
-            File(videoPath).canonicalPath.replace('\\', '/').lowercase()
-        } catch (e: Exception) {
-            videoPath.replace('\\', '/').lowercase()
-        }
+        val norm = fit.PlateCacheManager.getNormalizedPath(videoPath)
         val safeName = "hist_" + kotlin.math.abs(norm.hashCode()).toString() + ".json"
         val historyDir = File(System.getProperty("user.home"), ".fittrimmer_history")
         if (!historyDir.exists()) historyDir.mkdirs()
