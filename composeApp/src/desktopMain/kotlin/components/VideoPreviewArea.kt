@@ -686,7 +686,7 @@ fun VideoPreviewArea(
                             for (box in blurBoxes) {
                                 val maskBox = fit.PlateMaskExpander.expand(
                                     box = box,
-                                    mode = settings.plateMaskMode,
+                                    expandRatio = settings.plateMaskExpandRatio,
                                     sourceWidth = plateCache?.sourceWidth?.takeIf { it > 0 } ?: fallbackSourceW,
                                     sourceHeight = plateCache?.sourceHeight?.takeIf { it > 0 } ?: fallbackSourceH
                                 )
