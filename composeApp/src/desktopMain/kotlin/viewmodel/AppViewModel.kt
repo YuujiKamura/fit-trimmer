@@ -56,11 +56,13 @@ class AppViewModel(
                     trimEndSeconds = history.trimEndSeconds ?: 0.0
                     splitPoints = history.splitPoints ?: emptyList()
                     settings = history.settings
+                    videoStartUtc = history.videoStartUtc ?: ""
                     history.timeOffsetMillis?.let { timeOffsetState.update(it) }
                 } else {
                     trimStartSeconds = 0.0
                     trimEndSeconds = 0.0
                     splitPoints = emptyList()
+                    videoStartUtc = ""
                     settings = settings.copy(roadCaptions = emptyList())
                 }
                 isGeneratingProxy = false
@@ -99,7 +101,7 @@ class AppViewModel(
             plateDetectionProgress = "0.0%"
             plateDetectionError = null
             
-            plateDetectionJob = coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val myJob = coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                 try {
                     val cache = utils.PlateDetectionManager.runDetection(
                         videoPath = path,
@@ -126,9 +128,12 @@ class AppViewModel(
                     plateDetectionError = e.message ?: "Unknown error"
                     plateDetectionProgress = "Error: ${e.message}"
                 } finally {
-                    isDetectingPlates = false
+                    if (plateDetectionJob == coroutineContext[kotlinx.coroutines.Job]) {
+                        isDetectingPlates = false
+                    }
                 }
             }
+            plateDetectionJob = myJob
         }
     }
 
