@@ -1049,7 +1049,8 @@ fun FitTrimmerMainContent(
                                     maxDurationSeconds = -1,
                                     trimStartSeconds = pStart,
                                     trimEndSeconds = pEnd,
-                                    settings = settings
+                                    settings = settings,
+                                    plateCache = viewModel.plateCache
                                 )) {
                                     hasTempCache = true
                                     break
