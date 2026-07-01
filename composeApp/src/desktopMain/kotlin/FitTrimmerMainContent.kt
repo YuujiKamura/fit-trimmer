@@ -606,6 +606,7 @@ fun FitTrimmerMainContent(
         }
     }
     LaunchedEffect(videoPath) {
+        viewModel.refreshAvailableCacheJobs()
         val originalPathAtStart = videoPath
         // Clear derived video metadata immediately to prevent stale data from previous video
         videoLengthMs = 0L
