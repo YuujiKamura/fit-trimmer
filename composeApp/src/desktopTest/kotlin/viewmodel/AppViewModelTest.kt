@@ -2,7 +2,12 @@ package viewmodel
 
 import fit.HudSettings
 import fit.FitParser
+import fit.PlateBox
+import fit.PlateCacheManager
+import fit.PlateRecord
+import fit.VideoPlatesCache
 import utils.GuiPathCache
+import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -28,6 +33,44 @@ class AppViewModelTest {
         assertEquals(0.0, viewModel.trimEndSeconds)
         assertTrue(viewModel.splitPoints.isEmpty())
         assertTrue(viewModel.settings.enableRoadDetection)
+    }
+
+    @Test
+    fun testResetPlateDetectionClearsStateAndDeletesCache() {
+        val videoFile = File(System.getProperty("java.io.tmpdir"), "fittrimmer-reset-plate-test.mp4")
+        videoFile.writeText("placeholder")
+        val cacheFile = PlateCacheManager.getPlatesFile(videoFile.absolutePath)
+        cacheFile?.delete()
+
+        PlateCacheManager.saveCache(
+            videoFile.absolutePath,
+            VideoPlatesCache(
+                videoPath = videoFile.absolutePath,
+                records = listOf(
+                    PlateRecord(1000L, listOf(PlateBox(1, 2, 30, 12))),
+                    PlateRecord(2000L, listOf(PlateBox(4, 5, 40, 18)))
+                )
+            )
+        )
+
+        val viewModel = AppViewModel(null)
+        viewModel.videoPath = videoFile.absolutePath
+
+        assertNotNull(viewModel.plateCache)
+        assertEquals(2, viewModel.plateRecordCount)
+        assertEquals(2, viewModel.plateBoxCount)
+        assertTrue(cacheFile?.exists() == true)
+
+        viewModel.resetPlateDetection()
+
+        assertNull(viewModel.plateCache)
+        assertEquals(0, viewModel.plateRecordCount)
+        assertEquals(0, viewModel.plateBoxCount)
+        assertEquals("", viewModel.plateDetectionProgress)
+        assertNull(viewModel.plateDetectionError)
+        assertFalse(cacheFile?.exists() == true)
+
+        videoFile.delete()
     }
 
     @Test

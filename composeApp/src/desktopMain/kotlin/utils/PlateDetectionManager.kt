@@ -28,7 +28,15 @@ object PlateDetectionManager {
         telemetryPoints: List<fit.FitParser.TelemetryPoint> = emptyList(),
         adjustedStartUtc: String = "",
         onProgress: (Float) -> Unit,
-        onCancel: () -> Boolean
+        onCancel: () -> Boolean,
+        onPartialResult: (VideoPlatesCache) -> Unit = {},
+        maxRecords: Int? = null,
+        saveCache: Boolean = true,
+        maxSpeedKmh: Double = 15.0,
+        detectionFps: Double = 1.0,
+        paddingSeconds: Double = 2.0,
+        mergeGapSeconds: Double = 5.0,
+        plateMaskMode: String = "wide"
     ): VideoPlatesCache? = withContext(Dispatchers.IO) {
         val ffmpegPath = findFfmpegPath()
         val videoFile = File(videoPath)
@@ -127,12 +135,13 @@ object PlateDetectionManager {
             videoFps = fpsMatch.groupValues[1].toDouble()
         }
 
-        // To speed up detection without losing tracking accuracy, we decimate frames to 2.0 fps (0.5 second intervals).
-        // The frontend interpolator handles frame transitions smoothly between this 500ms gap.
-        val detectionFps = 2.0
+        val effectiveDetectionFps = detectionFps.coerceIn(0.25, 4.0)
+        val effectiveMaxSpeedKmh = maxSpeedKmh.coerceAtLeast(0.0)
+        val effectivePaddingSeconds = paddingSeconds.coerceAtLeast(0.0)
+        val effectiveMergeGapSeconds = mergeGapSeconds.coerceAtLeast(0.0)
         val scanWidth = 640
         val scanHeight = 640
-        val filterChain = "scale=$scanWidth:$scanHeight:flags=fast_bilinear:out_range=full,fps=$detectionFps"
+        val filterChain = "scale=$scanWidth:$scanHeight:flags=fast_bilinear:out_range=full,fps=$effectiveDetectionFps"
         val frameBytes = scanWidth * scanHeight * 3 // RGB24
 
         val startTimeAdjusted = try {
@@ -159,13 +168,13 @@ object PlateDetectionManager {
         }
 
         val startEpochSecond = startTimeAdjusted?.toEpochSecond() ?: 0L
-        val totalFrames = (durationSec * detectionFps).toLong()
+        val totalFrames = (durationSec * effectiveDetectionFps).toLong()
         val fitEpoch = 631065600L
 
-        // 1. Determine raw scan requirement per frame (speed < 10.0 km/h)
+        // 1. Determine raw scan requirement per frame (speed below configured threshold)
         val rawRequired = BooleanArray(totalFrames.toInt())
         for (f in 0 until totalFrames) {
-            val timeMs = (f * 1000.0 / detectionFps).toLong()
+            val timeMs = (f * 1000.0 / effectiveDetectionFps).toLong()
             val currentSec = timeMs.toDouble() / 1000.0
             val currentUtcSeconds = startEpochSecond + currentSec
             val currentFitTs = currentUtcSeconds - fitEpoch
@@ -176,7 +185,7 @@ object PlateDetectionManager {
                 val fEnd = telemetryPoints.last().timestamp
                 if (currentFitTs in fStart..fEnd) {
                     val point = findClosestTelemetryPoint(telemetryPoints, currentFitTs)
-                    if (point != null && point.speed >= 10.0) {
+                    if (point != null && point.speed >= effectiveMaxSpeedKmh) {
                         skip = true
                     }
                 }
@@ -184,9 +193,9 @@ object PlateDetectionManager {
             rawRequired[f.toInt()] = !skip
         }
 
-        // 2. Pad scan intervals by 3 frames (~1.5 seconds) to ensure blurred plate tracking continuity
+        // 2. Pad scan intervals to ensure blurred plate tracking continuity
         val paddedRequired = BooleanArray(totalFrames.toInt())
-        val paddingFrames = 3
+        val paddingFrames = kotlin.math.ceil(effectivePaddingSeconds * effectiveDetectionFps).toInt()
         for (f in 0 until totalFrames) {
             if (rawRequired[f.toInt()]) {
                 val start = (f - paddingFrames).coerceAtLeast(0).toInt()
@@ -197,8 +206,8 @@ object PlateDetectionManager {
             }
         }
 
-        // 3. Merge gaps shorter than 10 frames (~5.0 seconds) to avoid restarting FFmpeg too frequently
-        val mergeGapFrames = 10
+        // 3. Merge short gaps to avoid restarting FFmpeg too frequently
+        val mergeGapFrames = kotlin.math.ceil(effectiveMergeGapSeconds * effectiveDetectionFps).toInt()
         var falseStart = -1
         var falseCount = 0
         for (f in 0 until totalFrames.toInt()) {
@@ -251,6 +260,10 @@ object PlateDetectionManager {
         val ratio = if (totalFrames > 0) skipped.toFloat() / totalFrames.toFloat() * 100f else 0f
         
         println("DEBUG: Segmented Video Pre-scan Configuration:")
+        println("  - Max speed threshold: ${String.format(java.util.Locale.US, "%.1f", effectiveMaxSpeedKmh)} km/h")
+        println("  - Detection FPS: ${String.format(java.util.Locale.US, "%.2f", effectiveDetectionFps)}")
+        println("  - Padding: ${String.format(java.util.Locale.US, "%.1f", effectivePaddingSeconds)}s ($paddingFrames frames)")
+        println("  - Merge gap: ${String.format(java.util.Locale.US, "%.1f", effectiveMergeGapSeconds)}s ($mergeGapFrames frames)")
         println("  - Total target segments to decode: ${segments.size}")
         println("  - Total video frames in timeline: $totalFrames")
         println("  - Target frames to decode & process: $estimatedTargetFrames")
@@ -309,7 +322,7 @@ object PlateDetectionManager {
                         println("DEBUG: Fast-forwarding Skip Zone - Frames [$skipStart to $skipEnd]")
                         for (f in skipStart..skipEnd) {
                             if (!isActive || onCancel()) break
-                            val timeMs = (f * 1000.0 / detectionFps).toLong()
+                            val timeMs = (f * 1000.0 / effectiveDetectionFps).toLong()
                             frameChannel.send(DecodedFrame(f.toLong(), timeMs, ByteArray(0), skipDetection = true, decodeMs = 0.0))
                         }
                     } else {
@@ -317,8 +330,8 @@ object PlateDetectionManager {
                         val seg = segments[segIdx]
                         segIdx++
                         
-                        val startSec = seg.startFrame * 1000.0 / detectionFps / 1000.0
-                        val durSec = (seg.endFrame - seg.startFrame + 1) * 1000.0 / detectionFps / 1000.0
+                        val startSec = seg.startFrame * 1000.0 / effectiveDetectionFps / 1000.0
+                        val durSec = (seg.endFrame - seg.startFrame + 1) * 1000.0 / effectiveDetectionFps / 1000.0
                         
                         println("DEBUG: Scanning Segment [${segIdx - 1}/${segments.size - 1}] - Frames [${seg.startFrame} to ${seg.endFrame}] | Start: ${String.format(java.util.Locale.US, "%.2f", startSec)}s, Duration: ${String.format(java.util.Locale.US, "%.2f", durSec)}s")
                         
@@ -360,7 +373,7 @@ object PlateDetectionManager {
                                 }
                                 
                                 val globalFrameIndex = seg.startFrame + i
-                                val timeMs = (globalFrameIndex * 1000.0 / detectionFps).toLong()
+                                val timeMs = (globalFrameIndex * 1000.0 / effectiveDetectionFps).toLong()
                                 val skip = !rawRequired[globalFrameIndex]
                                 
                                 val dRead = (tReadEnd - tReadStart) / 1_000_000.0
@@ -414,9 +427,14 @@ object PlateDetectionManager {
                             println("DEBUG: Wrote scratch/scan_frame_${frame.frameIndex}.jpg for visual audit.")
                         } catch (e: Exception) { e.printStackTrace() }
                     }
-                    val rawBoxes = detector.detect(img, confThreshold = 0.08f)
+                    val isVehicleMode = plateMaskMode.lowercase().startsWith("vehicle")
+                    val rawBoxes = if (isVehicleMode) {
+                        detector.detectVehicles(img, confThreshold = 0.25f)
+                    } else {
+                        detector.detect(img, confThreshold = 0.08f)
+                    }
                     // Scale from 640x640 back to original video resolution
-                    rawBoxes.map { box ->
+                    val scaledBoxes = rawBoxes.map { box ->
                         val scaleX = videoWidth.toFloat() / 640f
                         val scaleY = videoHeight.toFloat() / 640f
                         fit.PlateBox(
@@ -425,6 +443,20 @@ object PlateDetectionManager {
                             x2 = (box.x2 * scaleX).toInt().coerceAtMost(videoWidth),
                             y2 = (box.y2 * scaleY).toInt().coerceAtMost(videoHeight)
                         )
+                    }
+                    
+                    if (plateMaskMode.lowercase() == "vehicle_bottom") {
+                        scaledBoxes.map { box ->
+                            val h = box.y2 - box.y1
+                            fit.PlateBox(
+                                x1 = box.x1,
+                                y1 = box.y1 + h / 2, // Shift y1 down to cover only bottom half (plates are typically located at the bottom)
+                                x2 = box.x2,
+                                y2 = box.y2
+                            )
+                        }
+                    } else {
+                        scaledBoxes
                     }
                 }
                 val tDetectEnd = System.nanoTime()
@@ -436,6 +468,20 @@ object PlateDetectionManager {
 
                 if (boxes.isNotEmpty()) {
                     records.add(PlateRecord(frame.timeMs, boxes))
+                    val partialCache = VideoPlatesCache(
+                        videoPath = videoPath,
+                        records = records.toList(),
+                        sourceWidth = videoWidth,
+                        sourceHeight = videoHeight
+                    )
+                    if (saveCache) {
+                        PlateCacheManager.saveCache(videoPath, partialCache)
+                    }
+                    onPartialResult(partialCache)
+                    if (maxRecords != null && records.size >= maxRecords) {
+                        println("DEBUG: Plate scan early stop after ${records.size} records.")
+                        break
+                    }
                 }
 
                 frameIndex++
@@ -516,13 +562,33 @@ object PlateDetectionManager {
 
         if (onCancel()) {
             println("DEBUG: Scan canceled. Processed $frameIndex frames.")
-            null
+            if (records.isNotEmpty()) {
+                val cache = VideoPlatesCache(
+                    videoPath = videoPath,
+                    records = records,
+                    sourceWidth = videoWidth,
+                    sourceHeight = videoHeight
+                )
+                if (saveCache) {
+                    PlateCacheManager.saveCache(videoPath, cache)
+                }
+                cache
+            } else {
+                null
+            }
         } else {
             val ratio = if (frameIndex > 0) skippedFrames.toFloat() / frameIndex.toFloat() * 100f else 0f
             println("DEBUG: Scan complete. Total frames: $frameIndex, Skipped (speed >= 10km/h): $skippedFrames (${String.format(java.util.Locale.US, "%.1f", ratio)}%)")
             detector.printPerfStatsSummary()
-            val cache = VideoPlatesCache(videoPath, records)
-            PlateCacheManager.saveCache(videoPath, cache)
+            val cache = VideoPlatesCache(
+                videoPath = videoPath,
+                records = records,
+                sourceWidth = videoWidth,
+                sourceHeight = videoHeight
+            )
+            if (saveCache) {
+                PlateCacheManager.saveCache(videoPath, cache)
+            }
             cache
         }
     }

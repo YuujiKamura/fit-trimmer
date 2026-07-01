@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -670,49 +671,50 @@ fun VideoPreviewArea(
                             val wState = playerState as? WindowsVideoPlayerState
                             val videoW = wState?.videoWidth?.takeIf { it > 0 } ?: 1920
                             val videoH = wState?.videoHeight?.takeIf { it > 0 } ?: 1080
-                            
                             val is90Or270 = videoRotation == 90 || videoRotation == -270 || videoRotation == 270 || videoRotation == -90
-                            val rotatedVideoW = if (is90Or270) videoH else videoW
-                            val rotatedVideoH = if (is90Or270) videoW else videoH
-                            
-                            val scaleX = size.width / rotatedVideoW.toFloat()
-                            val scaleY = size.height / rotatedVideoH.toFloat()
+                            val fallbackSourceW = if (is90Or270) videoH else videoW
+                            val fallbackSourceH = if (is90Or270) videoW else videoH
                             for (box in blurBoxes) {
-                                val rx1 = box.x1.toFloat() * scaleX
-                                val ry1 = box.y1.toFloat() * scaleY
-                                val rx2 = box.x2.toFloat() * scaleX
-                                val ry2 = box.y2.toFloat() * scaleY
-                                
-                                val w = rx2 - rx1
-                                val h = ry2 - ry1
+                                val maskBox = fit.PlateMaskExpander.expand(
+                                    box = box,
+                                    mode = settings.plateMaskMode,
+                                    sourceWidth = plateCache?.sourceWidth?.takeIf { it > 0 } ?: fallbackSourceW,
+                                    sourceHeight = plateCache?.sourceHeight?.takeIf { it > 0 } ?: fallbackSourceH
+                                )
+                                val mapped = fit.PlateCoordinateMapper.mapToTarget(
+                                    box = maskBox,
+                                    cache = plateCache,
+                                    fallbackSourceWidth = fallbackSourceW,
+                                    fallbackSourceHeight = fallbackSourceH,
+                                    targetWidth = size.width,
+                                    targetHeight = size.height
+                                )
+                                val rx1 = mapped.x
+                                val ry1 = mapped.y
+                                val w = mapped.width
+                                val h = mapped.height
+                                val rx2 = rx1 + w
+                                val ry2 = ry1 + h
                                 
                                 if (w > 0 && h > 0) {
-                                    // Render a simulated mosaic (pixelated blur) effect using a grid of blocks
-                                    val blockSize = 8f
-                                    var x = rx1
-                                    while (x < rx2) {
-                                        var y = ry1
-                                        while (y < ry2) {
-                                            val bw = minOf(blockSize, rx2 - x)
-                                            val bh = minOf(blockSize, ry2 - y)
-                                            // Semi-random checkerboard pattern to simulate pixelation
-                                            val isEven = ((x - rx1) / blockSize).toInt() % 2 == ((y - ry1) / blockSize).toInt() % 2
-                                            val colorVal = if (isEven) 0xCC2C2C2E else 0x9948484A // Alternating colors
-                                            drawRect(
-                                                color = Color(colorVal),
-                                                topLeft = Offset(x, y),
-                                                size = Size(bw, bh)
-                                            )
-                                            y += blockSize
-                                        }
-                                        x += blockSize
-                                    }
-
-                                    // Draw border
-                                    drawRect(
-                                        color = Color(0x80E5E5EA),
+                                    val radius = minOf(w, h) * 0.18f
+                                    drawRoundRect(
+                                        color = Color(0xAA1C1C1E),
                                         topLeft = Offset(rx1, ry1),
                                         size = Size(w, h),
+                                        cornerRadius = CornerRadius(radius, radius)
+                                    )
+                                    drawRoundRect(
+                                        color = Color.White.copy(alpha = 0.18f),
+                                        topLeft = Offset(rx1 + w * 0.08f, ry1 + h * 0.10f),
+                                        size = Size(w * 0.84f, h * 0.42f),
+                                        cornerRadius = CornerRadius(radius * 0.75f, radius * 0.75f)
+                                    )
+                                    drawRoundRect(
+                                        color = Color.White.copy(alpha = 0.28f),
+                                        topLeft = Offset(rx1, ry1),
+                                        size = Size(w, h),
+                                        cornerRadius = CornerRadius(radius, radius),
                                         style = Stroke(width = 1f)
                                     )
                                 }

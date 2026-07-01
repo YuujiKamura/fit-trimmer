@@ -14,6 +14,9 @@ class PlateDetector private constructor() : AutoCloseable {
     private val env: OrtEnvironment = OrtEnvironment.getEnvironment()
     private val session: OrtSession
 
+    @Volatile
+    private var vehicleSession: OrtSession? = null
+
     // TDD Verification Flags
     var lastResizeBypassed = false
     var lastGetRgbBypassed = false
@@ -51,6 +54,24 @@ class PlateDetector private constructor() : AutoCloseable {
                 "  - Total Average:  %.2f ms per frame (approx. %.1f fps)",
                 totalFramesProcessed, avgResize, avgPre, avgInf, avgPost, avgTotal, 1000.0 / avgTotal
             ))
+        }
+    }
+
+    private fun getVehicleSession(): OrtSession {
+        return vehicleSession ?: synchronized(this) {
+            vehicleSession ?: run {
+                val modelStream = PlateDetector::class.java.getResourceAsStream("/yolov8n.onnx")
+                    ?: throw IllegalStateException("Model yolov8n.onnx not found in resources")
+                val modelBytes = modelStream.use { it.readBytes() }
+                val opts = OrtSession.SessionOptions()
+                val cores = Runtime.getRuntime().availableProcessors().coerceAtLeast(1)
+                val threads = (cores / 2).coerceIn(2, 4)
+                opts.setIntraOpNumThreads(threads)
+                opts.setInterOpNumThreads(threads)
+                val sess = env.createSession(modelBytes, opts)
+                vehicleSession = sess
+                sess
+            }
         }
     }
 
@@ -207,6 +228,105 @@ class PlateDetector private constructor() : AutoCloseable {
         return result
     }
 
+    fun detectVehicles(image: BufferedImage, confThreshold: Float = 0.25f, iouThreshold: Float = 0.45f): List<PlateBox> {
+        val width = image.width
+        val height = image.height
+
+        val resized: BufferedImage
+        if (width == 640 && height == 640) {
+            resized = image
+        } else {
+            resized = resizeImage(image, 640, 640)
+        }
+
+        val inputData = FloatArray(1 * 3 * 640 * 640)
+        val rOffset = 0
+        val gOffset = 640 * 640
+        val bOffset = 2 * 640 * 640
+        val inv255 = 1.0f / 255.0f
+
+        val raster = resized.raster
+        val dataBuffer = raster.dataBuffer
+        if (resized.type == BufferedImage.TYPE_3BYTE_BGR && dataBuffer is java.awt.image.DataBufferByte) {
+            val bytes = dataBuffer.data
+            for (i in 0 until 640 * 640) {
+                val base = i * 3
+                val b = (bytes[base].toInt() and 0xFF) * inv255
+                val g = (bytes[base + 1].toInt() and 0xFF) * inv255
+                val r = (bytes[base + 2].toInt() and 0xFF) * inv255
+                
+                inputData[rOffset + i] = r
+                inputData[gOffset + i] = g
+                inputData[bOffset + i] = b
+            }
+        } else {
+            val rgbArray = IntArray(640 * 640)
+            resized.getRGB(0, 0, 640, 640, rgbArray, 0, 640)
+            for (i in 0 until 640 * 640) {
+                val rgb = rgbArray[i]
+                val r = ((rgb shr 16) and 0xFF) * inv255
+                val g = ((rgb shr 8) and 0xFF) * inv255
+                val b = (rgb and 0xFF) * inv255
+                
+                inputData[rOffset + i] = r
+                inputData[gOffset + i] = g
+                inputData[bOffset + i] = b
+            }
+        }
+
+        val inputBuffer = FloatBuffer.wrap(inputData)
+        val tensor = OnnxTensor.createTensor(env, inputBuffer, longArrayOf(1, 3, 640, 640))
+        
+        val sess = getVehicleSession()
+        val result = tensor.use { t ->
+            sess.run(mapOf("images" to t)).use { outputs ->
+                val outputTensor = outputs[0] as OnnxTensor
+                val buffer = outputTensor.floatBuffer
+                
+                val boxes = mutableListOf<DetectedBox>()
+                // COCO vehicle classes: 2 (car), 3 (motorcycle), 5 (bus), 7 (truck)
+                val vehicleClasses = intArrayOf(2, 3, 5, 7)
+                
+                for (i in 0 until 8400) {
+                    var maxScore = 0.0f
+                    for (cls in vehicleClasses) {
+                        val score = buffer.get((4 + cls) * 8400 + i)
+                        if (score > maxScore) {
+                            maxScore = score
+                        }
+                    }
+                    
+                    if (maxScore >= confThreshold) {
+                        val cx = buffer.get(0 * 8400 + i)
+                        val cy = buffer.get(1 * 8400 + i)
+                        val w = buffer.get(2 * 8400 + i)
+                        val h = buffer.get(3 * 8400 + i)
+                        
+                        val x1 = cx - w / 2f
+                        val y1 = cy - h / 2f
+                        val x2 = cx + w / 2f
+                        val y2 = cy + h / 2f
+                        
+                        boxes.add(DetectedBox(x1, y1, x2, y2, maxScore))
+                    }
+                }
+                
+                val nmsBoxes = nms(boxes, iouThreshold)
+                val mapped = nmsBoxes.map { box ->
+                    val scaleX = width.toFloat() / 640f
+                    val scaleY = height.toFloat() / 640f
+                    val x1 = (box.x1 * scaleX).toInt().coerceAtLeast(0)
+                    val y1 = (box.y1 * scaleY).toInt().coerceAtLeast(0)
+                    val x2 = (box.x2 * scaleX).toInt().coerceAtMost(width)
+                    val y2 = (box.y2 * scaleY).toInt().coerceAtMost(height)
+                    PlateBox(x1, y1, x2, y2)
+                }
+                mapped
+            }
+        }
+        return result
+    }
+
     private fun resizeImage(originalImage: BufferedImage, targetWidth: Int, targetHeight: Int): BufferedImage {
         var currentImg = originalImage
         var w = originalImage.width
@@ -261,6 +381,7 @@ class PlateDetector private constructor() : AutoCloseable {
 
     override fun close() {
         session.close()
+        vehicleSession?.close()
         env.close()
     }
 }

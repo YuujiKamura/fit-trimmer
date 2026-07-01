@@ -1028,20 +1028,31 @@ class NativeHudEncoder(
                     }
                     if (blurBoxes.isNotEmpty()) {
                         val is90Or270 = videoRotation == 90 || videoRotation == -270 || videoRotation == 270 || videoRotation == -90
-                        val rotatedVideoW = if (is90Or270) videoHeight else videoWidth
-                        val rotatedVideoH = if (is90Or270) videoWidth else videoHeight
-                        
-                        val scaleX = exportWidth.toFloat() / rotatedVideoW.toFloat()
-                        val scaleY = exportHeight.toFloat() / rotatedVideoH.toFloat()
-                        
+                        val fallbackSourceW = if (is90Or270) videoHeight else videoWidth
+                        val fallbackSourceH = if (is90Or270) videoWidth else videoHeight
+
                         // Mask must be solid white (alpha 255) on a transparent background
                         g.composite = AlphaComposite.Src
                         g.color = java.awt.Color(255, 255, 255, 255)
                         for (box in blurBoxes) {
-                            val rx1 = box.x1.toFloat() * scaleX
-                            val ry1 = box.y1.toFloat() * scaleY + exportHeight // Shift to bottom half
-                            val rx2 = box.x2.toFloat() * scaleX
-                            val ry2 = box.y2.toFloat() * scaleY + exportHeight // Shift to bottom half
+                            val maskBox = PlateMaskExpander.expand(
+                                box = box,
+                                mode = settings.plateMaskMode,
+                                sourceWidth = plateCache?.sourceWidth?.takeIf { it > 0 } ?: fallbackSourceW,
+                                sourceHeight = plateCache?.sourceHeight?.takeIf { it > 0 } ?: fallbackSourceH
+                            )
+                            val mapped = PlateCoordinateMapper.mapToTarget(
+                                box = maskBox,
+                                cache = plateCache,
+                                fallbackSourceWidth = fallbackSourceW,
+                                fallbackSourceHeight = fallbackSourceH,
+                                targetWidth = exportWidth.toFloat(),
+                                targetHeight = exportHeight.toFloat()
+                            )
+                            val rx1 = mapped.x
+                            val ry1 = mapped.y + exportHeight // Shift to bottom half
+                            val rx2 = mapped.x + mapped.width
+                            val ry2 = mapped.y + mapped.height + exportHeight // Shift to bottom half
                             
                             val w = (rx2 - rx1).toInt()
                             val h = (ry2 - ry1).toInt()
