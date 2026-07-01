@@ -522,6 +522,8 @@ class NativeHudEncoder(
         }
         logThread.start()
 
+        val dataSize = width * height
+        val blackFrame = ByteArray(dataSize) // Pre-allocated and pre-cleared black frame (all zeros)
         val img = BufferedImage(width, height, BufferedImage.TYPE_BYTE_GRAY)
         val data = (img.raster.dataBuffer as java.awt.image.DataBufferByte).data
         val g = img.createGraphics()
@@ -532,8 +534,14 @@ class NativeHudEncoder(
                     try { process.destroyForcibly() } catch (e: Exception) {}
                     throw Exception("Encoding was canceled by user during mask generation.")
                 }
-                java.util.Arrays.fill(data, 0.toByte())
-                if (boxes.isNotEmpty()) {
+                
+                if (boxes.isEmpty()) {
+                    // No mask boxes for this frame: completely skip zero-fill and AWT drawing.
+                    // Directly write the pre-cached black frame to FFmpeg pipeline.
+                    process.outputStream.write(blackFrame)
+                } else {
+                    // Mask boxes exist: clean transient buffer, draw white rects, and write.
+                    java.util.Arrays.fill(data, 0.toByte())
                     g.color = java.awt.Color.WHITE
                     for (box in boxes) {
                         val x = box.x.toInt()
@@ -544,8 +552,8 @@ class NativeHudEncoder(
                             g.fillRect(x, y, w, h)
                         }
                     }
+                    process.outputStream.write(data)
                 }
-                process.outputStream.write(data)
             }
         } finally {
             g.dispose()
