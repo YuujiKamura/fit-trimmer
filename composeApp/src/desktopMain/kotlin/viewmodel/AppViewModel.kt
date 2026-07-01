@@ -157,8 +157,7 @@ class AppViewModel(
                     maxSpeedKmh = plateDetectionMaxSpeedKmh,
                     detectionFps = plateDetectionFps,
                     paddingSeconds = plateDetectionPaddingSeconds,
-                    mergeGapSeconds = plateDetectionMergeGapSeconds,
-                    plateMaskMode = settings.plateMaskMode
+                    mergeGapSeconds = plateDetectionMergeGapSeconds
                 )
                 if (cache != null) {
                     plateCache = cache

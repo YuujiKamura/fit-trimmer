@@ -833,10 +833,10 @@ fun FitTrimmerMainContent(
                                         viewModel.runPlateDetection(
                                             coroutineScope = scope,
                                             maxRecords = cmd.maxRecords,
-                                            maxSpeedKmh = cmd.maxSpeedKmh ?: 15.0,
-                                            detectionFps = cmd.detectionFps ?: 1.0,
-                                            paddingSeconds = cmd.paddingSeconds ?: 2.0,
-                                            mergeGapSeconds = cmd.mergeGapSeconds ?: 5.0
+                                            maxSpeedKmh = cmd.maxSpeedKmh ?: viewModel.plateDetectionMaxSpeedKmh,
+                                            detectionFps = cmd.detectionFps ?: viewModel.plateDetectionFps,
+                                            paddingSeconds = cmd.paddingSeconds ?: viewModel.plateDetectionPaddingSeconds,
+                                            mergeGapSeconds = cmd.mergeGapSeconds ?: viewModel.plateDetectionMergeGapSeconds
                                         )
                                     }
                                 }
@@ -885,6 +885,7 @@ fun FitTrimmerMainContent(
                 result
             },
             getState = {
+                val activePlateBoxes = viewModel.plateCache?.shouldBlurAt(videoCurrentTimeMs, settings.blurLicensePlates) ?: emptyList()
                 CpState(
                     settings = settings,
                     fitPath = fitPath,
@@ -892,7 +893,27 @@ fun FitTrimmerMainContent(
                     isEncoding = isEncoding,
                     progress = progress,
                     videoStartUtc = videoStartUtc,
-                    isAligningTelemetry = viewModel.isAligningTelemetry
+                    isAligningTelemetry = viewModel.isAligningTelemetry,
+                    isDetectingPlates = viewModel.isDetectingPlates,
+                    plateDetectionProgress = viewModel.plateDetectionProgress,
+                    plateDetectionError = viewModel.plateDetectionError,
+                    plateRecordCount = viewModel.plateRecordCount,
+                    plateBoxCount = viewModel.plateBoxCount,
+                    plateFirstTimeMs = viewModel.plateFirstTimeMs,
+                    plateLastTimeMs = viewModel.plateLastTimeMs,
+                    plateCacheLoaded = viewModel.plateCache != null,
+                    videoCurrentTimeMs = videoCurrentTimeMs,
+                    activePlateBoxCount = activePlateBoxes.size,
+                    activePlateBoxes = activePlateBoxes,
+                    plateCacheEnabled = viewModel.usePlateDetectionCache,
+                    plateCacheFileExists = viewModel.plateCacheFileExists,
+                    plateCacheFilePath = viewModel.plateCacheFilePath,
+                    plateCacheSourceWidth = viewModel.plateCache?.sourceWidth ?: 0,
+                    plateCacheSourceHeight = viewModel.plateCache?.sourceHeight ?: 0,
+                    plateDetectionMaxSpeedKmh = viewModel.plateDetectionMaxSpeedKmh,
+                    plateDetectionFps = viewModel.plateDetectionFps,
+                    plateDetectionPaddingSeconds = viewModel.plateDetectionPaddingSeconds,
+                    plateDetectionMergeGapSeconds = viewModel.plateDetectionMergeGapSeconds
                 )
             }
         )
@@ -2505,39 +2526,174 @@ fun FitTrimmerMainContent(
                                     color = Color(0xFF1C1C1E),
                                     fontWeight = FontWeight.Medium
                                 )
-                                if (viewModel.isDetectingPlates) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(12.dp),
-                                        strokeWidth = 1.5.dp,
-                                        color = Color(0xFF007AFF)
-                                    )
-                                    Text(
-                                        text = viewModel.plateDetectionProgress,
-                                        fontSize = 10.sp,
-                                        color = Color.Gray
-                                    )
-                                } else if (viewModel.plateCache != null) {
-                                    val count = viewModel.plateCache?.records?.size ?: 0
-                                    val doneText = if (settings.language == "ja") {
-                                        "${count}フレーム検出 (再実行)"
-                                    } else {
-                                        "${count} frames detected (Re-scan)"
-                                    }
-                                    Text(
-                                        text = "($doneText)",
-                                        fontSize = 10.sp,
-                                        color = Color(0xFF34C759),
-                                        modifier = Modifier.clickable { viewModel.runPlateDetection(scope) }
-                                    )
-                                }
                             }
-                            viewModel.plateDetectionError?.let { err ->
-                                Text(
-                                    text = err,
-                                    fontSize = 9.sp,
-                                    color = Color(0xFFFF3B30),
-                                    modifier = Modifier.padding(start = 24.dp, top = 2.dp, bottom = 4.dp)
-                                )
+                            if (settings.blurLicensePlates || viewModel.plateCache != null || viewModel.isDetectingPlates) {
+                                Column(
+                                    modifier = Modifier.padding(start = 24.dp, top = 2.dp, bottom = 4.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text(
+                                        text = String.format(
+                                            java.util.Locale.US,
+                                            utils.Localizer.get("plate_scan_profile_status", settings.language),
+                                            viewModel.plateDetectionMaxSpeedKmh,
+                                            viewModel.plateDetectionFps
+                                        ),
+                                        fontSize = 10.sp,
+                                        color = Color(0xFF636366)
+                                    )
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        val presets = listOf(
+                                            Triple(utils.Localizer.get("plate_scan_light", settings.language), 15.0, 1.0),
+                                            Triple(utils.Localizer.get("plate_scan_standard", settings.language), 25.0, 1.0),
+                                            Triple(utils.Localizer.get("plate_scan_careful", settings.language), 999.0, 1.0)
+                                        )
+                                        presets.forEach { (label, speed, fps) ->
+                                            val selected = kotlin.math.abs(viewModel.plateDetectionMaxSpeedKmh - speed) < 0.01 &&
+                                                kotlin.math.abs(viewModel.plateDetectionFps - fps) < 0.01
+                                            OutlinedButton(
+                                                onClick = { viewModel.setPlateDetectionPreset(speed, fps) },
+                                                enabled = !isEncoding && !viewModel.isDetectingPlates,
+                                                modifier = Modifier.height(24.dp),
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                                colors = ButtonDefaults.outlinedButtonColors(
+                                                    backgroundColor = if (selected) Color(0xFF007AFF) else Color.White,
+                                                    contentColor = if (selected) Color.White else Color(0xFF1C1C1E)
+                                                )
+                                            ) {
+                                                Text(label, fontSize = 9.sp)
+                                            }
+                                        }
+                                    }
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        val maskModes = listOf(
+                                            "plate" to utils.Localizer.get("plate_mask_plate", settings.language),
+                                            "wide" to utils.Localizer.get("plate_mask_wide", settings.language)
+                                        )
+                                        maskModes.forEach { (mode, label) ->
+                                            val selected = settings.plateMaskMode == mode
+                                            OutlinedButton(
+                                                onClick = { settings = settings.copy(plateMaskMode = mode) },
+                                                enabled = !isEncoding,
+                                                modifier = Modifier.height(24.dp),
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                                colors = ButtonDefaults.outlinedButtonColors(
+                                                    backgroundColor = if (selected) Color(0xFF34C759) else Color.White,
+                                                    contentColor = if (selected) Color.White else Color(0xFF1C1C1E)
+                                                )
+                                            ) {
+                                                Text(label, fontSize = 9.sp)
+                                            }
+                                        }
+                                    }
+                                    if (viewModel.isDetectingPlates) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(12.dp),
+                                                strokeWidth = 1.5.dp,
+                                                color = Color(0xFF007AFF)
+                                            )
+                                            Text(
+                                                text = utils.Localizer.get("plate_status_scanning", settings.language) + " " + viewModel.plateDetectionProgress,
+                                                fontSize = 10.sp,
+                                                color = Color.Gray
+                                            )
+                                            Text(
+                                                text = "Stop",
+                                                fontSize = 10.sp,
+                                                color = Color(0xFFFF9500),
+                                                modifier = Modifier.clickable { viewModel.stopPlateDetection() }
+                                            )
+                                        }
+                                    } else if (viewModel.plateCache != null) {
+                                        val timeRange = if (viewModel.plateFirstTimeMs != null && viewModel.plateLastTimeMs != null) {
+                                            "${formatTime(viewModel.plateFirstTimeMs!!)}-${formatTime(viewModel.plateLastTimeMs!!)}"
+                                        } else {
+                                            "-"
+                                        }
+                                        Text(
+                                            text = String.format(
+                                                java.util.Locale.US,
+                                                utils.Localizer.get("plate_status_detected", settings.language),
+                                                viewModel.plateRecordCount,
+                                                viewModel.plateBoxCount,
+                                                timeRange
+                                            ),
+                                            fontSize = 10.sp,
+                                            color = Color(0xFF34C759)
+                                        )
+                                    } else {
+                                        Text(
+                                            text = utils.Localizer.get("plate_status_not_scanned", settings.language),
+                                            fontSize = 10.sp,
+                                            color = Color(0xFF8E8E93)
+                                        )
+                                    }
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Text(
+                                            text = utils.Localizer.get("plate_rescan", settings.language),
+                                            fontSize = 10.sp,
+                                            color = if (!isEncoding && !viewModel.isDetectingPlates) Color(0xFF007AFF) else Color(0xFF8E8E93),
+                                            modifier = Modifier.clickable(enabled = !isEncoding && !viewModel.isDetectingPlates) {
+                                                viewModel.runPlateDetection(scope)
+                                            }
+                                        )
+                                        Text(
+                                            text = utils.Localizer.get("plate_reset", settings.language),
+                                            fontSize = 10.sp,
+                                            color = if (!isEncoding) Color(0xFFFF3B30) else Color(0xFF8E8E93),
+                                            modifier = Modifier.clickable(enabled = !isEncoding) {
+                                                viewModel.resetPlateDetection()
+                                            }
+                                        )
+                                        Text(
+                                            text = utils.Localizer.get("plate_cache_restore", settings.language),
+                                            fontSize = 10.sp,
+                                            color = if (!isEncoding) Color(0xFF007AFF) else Color(0xFF8E8E93),
+                                            modifier = Modifier.clickable(enabled = !isEncoding) {
+                                                viewModel.restorePlateDetectionCache()
+                                            }
+                                        )
+                                        Text(
+                                            text = utils.Localizer.get("plate_cache_discard", settings.language),
+                                            fontSize = 10.sp,
+                                            color = if (!isEncoding) Color(0xFFFF9500) else Color(0xFF8E8E93),
+                                            modifier = Modifier.clickable(enabled = !isEncoding) {
+                                                viewModel.discardPlateDetectionCache()
+                                            }
+                                        )
+                                    }
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().clickable(enabled = !isEncoding && !viewModel.isDetectingPlates) {
+                                            viewModel.setPlateDetectionCacheEnabled(!viewModel.usePlateDetectionCache)
+                                        },
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Checkbox(
+                                            checked = viewModel.usePlateDetectionCache,
+                                            onCheckedChange = { checked -> viewModel.setPlateDetectionCacheEnabled(checked) },
+                                            enabled = !isEncoding && !viewModel.isDetectingPlates,
+                                            modifier = Modifier.size(18.dp),
+                                            colors = CheckboxDefaults.colors(checkedColor = Color(0xFF007AFF))
+                                        )
+                                        Text(
+                                            text = utils.Localizer.get("plate_cache_enabled", settings.language),
+                                            fontSize = 10.sp,
+                                            color = Color(0xFF636366)
+                                        )
+                                    }
+                                    viewModel.plateDetectionError?.let { err ->
+                                        Text(
+                                            text = err,
+                                            fontSize = 9.sp,
+                                            color = Color(0xFFFF3B30)
+                                        )
+                                    }
+                                }
                             }
                             Spacer(Modifier.height(4.dp))
                             Text(utils.Localizer.get("power_trend_span", settings.language).uppercase(), color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 0.5.sp)
