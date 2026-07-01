@@ -839,7 +839,7 @@ class NativeHudEncoder(
             pbArgs.add("-pixel_format")
             pbArgs.add("abgr")
             pbArgs.add("-video_size")
-            pbArgs.add("${exportWidth}x${exportHeight}")
+            pbArgs.add("${exportWidth}x${exportHeight * 2}")
             pbArgs.add("-framerate")
             pbArgs.add(videoFps)
             pbArgs.add("-i")
@@ -862,7 +862,14 @@ class NativeHudEncoder(
             pbArgs.add(localVideoPath)
             
             pbArgs.add("-filter_complex")
-            pbArgs.add("[0:v]setpts=PTS-STARTPTS[hud];[1:v]scale=$exportWidth:$exportHeight,setpts=PTS-STARTPTS[vid];[vid][hud]overlay=0:0:shortest=1")
+            pbArgs.add(
+                "[0:v]crop=$exportWidth:$exportHeight:0:0,setpts=PTS-STARTPTS[hud];" +
+                "[0:v]crop=$exportWidth:$exportHeight:0:$exportHeight,setpts=PTS-STARTPTS,extractplanes=a[mask];" +
+                "[1:v]scale=$exportWidth:$exportHeight,setpts=PTS-STARTPTS,split[vid_orig][vid_blur_src];" +
+                "[vid_blur_src]avgblur=sizeX=30:sizeY=30[vid_blurred];" +
+                "[vid_orig][vid_blurred][mask]maskedmerge[vid_merged];" +
+                "[vid_merged][hud]overlay=0:0:shortest=1"
+            )
             
             pbArgs.add("-c:v")
             pbArgs.add(encoderName)
@@ -954,7 +961,7 @@ class NativeHudEncoder(
             
             val out = process.outputStream
             val pBuf = mutableListOf<Double>()
-            val img = BufferedImage(exportWidth, exportHeight, BufferedImage.TYPE_4BYTE_ABGR)
+            val img = BufferedImage(exportWidth, exportHeight * 2, BufferedImage.TYPE_4BYTE_ABGR)
             val frameTimes = mutableListOf<Long>()
             
             // Pre-fill power buffer for context if we're not at the start
@@ -1007,14 +1014,15 @@ class NativeHudEncoder(
                     
                     val g = img.createGraphics()
                     g.composite = AlphaComposite.Clear
-                    g.fillRect(0, 0, exportWidth, exportHeight)
+                    g.fillRect(0, 0, exportWidth, exportHeight * 2)
                     g.composite = AlphaComposite.SrcOver
                     
                     val isValid = currentFitTs >= telemetry.first().timestamp && currentFitTs <= telemetry.last().timestamp
                     
+                    // Render blur mask in the bottom half (heightOffset = exportHeight)
                     val timeMs = (currentSec * 1000.0).toLong()
                     val blurBoxes = plateCache?.shouldBlurAt(timeMs, settings.blurLicensePlates) ?: emptyList()
-                     if (blurBoxes.isNotEmpty()) {
+                    if (blurBoxes.isNotEmpty()) {
                         val is90Or270 = videoRotation == 90 || videoRotation == -270 || videoRotation == 270 || videoRotation == -90
                         val rotatedVideoW = if (is90Or270) videoHeight else videoWidth
                         val rotatedVideoH = if (is90Or270) videoWidth else videoHeight
@@ -1022,31 +1030,33 @@ class NativeHudEncoder(
                         val scaleX = exportWidth.toFloat() / rotatedVideoW.toFloat()
                         val scaleY = exportHeight.toFloat() / rotatedVideoH.toFloat()
                         
+                        // Mask must be solid white (alpha 255) on a transparent background
+                        g.color = java.awt.Color(255, 255, 255, 255)
                         for (box in blurBoxes) {
                             val rx1 = box.x1.toFloat() * scaleX
-                            val ry1 = box.y1.toFloat() * scaleY
+                            val ry1 = box.y1.toFloat() * scaleY + exportHeight // Shift to bottom half
                             val rx2 = box.x2.toFloat() * scaleX
-                            val ry2 = box.y2.toFloat() * scaleY
+                            val ry2 = box.y2.toFloat() * scaleY + exportHeight // Shift to bottom half
                             
                             val w = (rx2 - rx1).toInt()
                             val h = (ry2 - ry1).toInt()
-                            
                             if (w > 0 && h > 0) {
-                                g.color = java.awt.Color(0x1C, 0x1C, 0x1E)
                                 g.fillRect(rx1.toInt(), ry1.toInt(), w, h)
-                                g.color = java.awt.Color(0xE5, 0xE5, 0xEA)
-                                g.drawRect(rx1.toInt(), ry1.toInt(), w, h)
                             }
                         }
                     }
 
+                    // Render HUD in the top half
+                    val gHud = g.create() as java.awt.Graphics2D
+                    gHud.clipRect(0, 0, exportWidth, exportHeight)
                     val scale = exportWidth.toFloat() / 1920f
-                    val canvas = DesktopHudCanvas(g, scale, exportWidth.toFloat() / scale, exportHeight.toFloat() / scale)
+                    val canvas = DesktopHudCanvas(gHud, scale, exportWidth.toFloat() / scale, exportHeight.toFloat() / scale)
                     if (customRenderer != null) {
                         customRenderer.invoke(canvas, point, telemetry, pBuf, currentSec.toFloat())
                     } else {
                         renderer.renderFrame(canvas, point, telemetry, pBuf, currentSec.toFloat(), isValid)
                     }
+                    gHud.dispose()
                     g.dispose()
                     
                     val rawBytes = (img.raster.dataBuffer as java.awt.image.DataBufferByte).data
