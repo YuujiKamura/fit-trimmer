@@ -1570,14 +1570,9 @@ fun FitTrimmerMainContent(
                                                  Spacer(Modifier.width(6.dp))
                                              Button(
                                                  onClick = {
-                                                     val uniqueFileName = buildEncodeOutputFileName(
-                                                         settings = settings,
-                                                         videoPath = videoPath,
-                                                         partIndex = -1,
-                                                         numParts = 1,
-                                                         isSample = false
-                                                     ).replace(Regex("""\.(mp4|mov)$""", RegexOption.IGNORE_CASE), "_salvaged.mp4")
-                                                     val salvageOutPath = File(outputDir, uniqueFileName).absolutePath
+                                                     val salvageOutFile = fit.CacheRegistry.getSalvageOutputPath(videoPath, outputDir, settings)
+                                                      val uniqueFileName = salvageOutFile.name
+                                                      val salvageOutPath = salvageOutFile.absolutePath
                                                      
                                                      scope.launch(Dispatchers.Main) {
                                                          val confirm = javax.swing.JOptionPane.showConfirmDialog(

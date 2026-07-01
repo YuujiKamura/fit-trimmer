@@ -184,4 +184,49 @@ object CacheRegistry {
         }
         onProgress(1.0f, "✨ Salvage & Merge Completed Successfully!")
     }
+
+    fun buildEncodeOutputFileName(
+        settings: HudSettings,
+        videoPath: String,
+        partIndex: Int = -1,
+        numParts: Int = 1,
+        isSample: Boolean = false
+    ): String {
+        val videoFile = File(videoPath)
+        val baseName = videoFile.name.replace(".mp4", "", ignoreCase = true).replace(".mov", "", ignoreCase = true)
+        val partSuffix = if (!isSample && partIndex >= 0 && numParts > 1) "_part${partIndex + 1}" else ""
+        val resSuffix = when (settings.exportResolution) {
+            "1080p" -> "_1080p"
+            "2.7k" -> "_2.7k"
+            else -> "_orig"
+        }
+        val suffix = if (isSample) {
+            "${partSuffix}_TEST_HUD.mp4"
+        } else {
+            "${partSuffix}_KMP_HUD${resSuffix}.mp4"
+        }
+        return baseName + suffix
+    }
+
+    fun getSalvageOutputPath(videoPath: String, outputDir: String, settings: HudSettings): File {
+        val baseFileName = buildEncodeOutputFileName(
+            settings = settings,
+            videoPath = videoPath,
+            partIndex = -1,
+            numParts = 1,
+            isSample = false
+        )
+        val salvagedName = baseFileName.replace(Regex("""\.(mp4|mov)$""", RegexOption.IGNORE_CASE), "_salvaged.mp4")
+        return File(File(outputDir), salvagedName)
+    }
+
+    fun deleteCacheJob(jobInfo: CacheJobInfo) {
+        try {
+            if (jobInfo.folder.exists()) {
+                jobInfo.folder.deleteRecursively()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
 }
