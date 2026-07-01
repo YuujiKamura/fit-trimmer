@@ -101,7 +101,6 @@ object PlateDetectionManager {
         var videoHeight = 1080
         var durationSec = 100.0
         var videoFps = 30.0
-        var videoRotation = 0
 
         // Parse resolution (e.g., "1920x1080")
         val resMatch = Regex("""\b(\d{3,4})x(\d{3,4})\b""").find(outputInfo)
@@ -132,17 +131,13 @@ object PlateDetectionManager {
         val detectionFps = 5.0
         val scanWidth = 640
         val scanHeight = 640
-
-        // Build filter chain. Inserting "scale=iw:ih" at the very beginning forces FFmpeg's
-        // automatic rotation (autorotate) filter to run BEFORE the "fps" filter strips rotation metadata.
-        val filterChain = "scale=iw:ih,fps=$detectionFps,scale=$scanWidth:$scanHeight:out_range=full"
         
         val frameBytes = scanWidth * scanHeight * 3 // RGB24
         
         val pb = ProcessBuilder(
             ffmpegPath,
             "-i", localVideoPath,
-            "-vf", filterChain,
+            "-vf", "fps=$detectionFps,scale=$scanWidth:$scanHeight:out_range=full",
             "-f", "rawvideo",
             "-pix_fmt", "bgr24", // Use bgr24 for fast native image buffer copy
             "-vcodec", "rawvideo",
