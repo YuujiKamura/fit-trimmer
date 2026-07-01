@@ -293,20 +293,7 @@ fun buildEncodeOutputFileName(
     numParts: Int = 1,
     isSample: Boolean = false
 ): String {
-    val videoFile = File(videoPath)
-    val baseName = videoFile.name.replace(".mp4", "", ignoreCase = true).replace(".mov", "", ignoreCase = true)
-    val partSuffix = if (!isSample && partIndex >= 0 && numParts > 1) "_part${partIndex + 1}" else ""
-    val resSuffix = when (settings.exportResolution) {
-        "1080p" -> "_1080p"
-        "2.7k" -> "_2.7k"
-        else -> "_orig"
-    }
-    val suffix = if (isSample) {
-        "${partSuffix}_TEST_HUD.mp4"
-    } else {
-        "${partSuffix}_KMP_HUD${resSuffix}.mp4"
-    }
-    return baseName + suffix
+    return fit.CacheRegistry.buildEncodeOutputFileName(settings, videoPath, partIndex, numParts, isSample)
 }
 
 fun buildEncodePlan(
