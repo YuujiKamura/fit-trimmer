@@ -191,9 +191,8 @@ class AppViewModel(
                 }
             } finally {
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                    if (plateDetectionJob == coroutineContext[kotlinx.coroutines.Job]) {
-                        isDetectingPlates = false
-                    }
+                    isDetectingPlates = false
+                    plateDetectionJob = null
                 }
             }
         }

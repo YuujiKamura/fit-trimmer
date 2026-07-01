@@ -95,6 +95,16 @@ object HudEncodePipeline {
         onSegmentStart: (start: Double, end: Double) -> Unit = { _, _ -> }
     ): String {
         return withContext(Dispatchers.IO) {
+            val lockFile = File(fit.PathResolver.getProjectRoot(), "temp_work/encoding.lock")
+            lockFile.parentFile.mkdirs()
+            var lockRaf: java.io.RandomAccessFile? = null
+            var fileLock: java.nio.channels.FileLock? = null
+            try {
+                lockRaf = java.io.RandomAccessFile(lockFile, "rw")
+                fileLock = lockRaf.channel.tryLock()
+                if (fileLock == null) {
+                    println("WARNING: Another encoding job might be active (encoding.lock is locked).")
+                }
             val config = HudConfig(
                 valSize = s.valSize, tightness = s.tightness, spacing = s.spacing,
                 xOffset = s.xOffset, yOffset = s.yOffset, graphH = s.graphH, graphW = s.graphW,
@@ -213,6 +223,17 @@ object HudEncodePipeline {
                 "✨ Copied to Cloud. Drive Desktop is syncing in background (Check system tray)."
             } else {
                 "✨ Finished Successfully!"
+            }
+            } finally {
+                try {
+                    fileLock?.release()
+                } catch (e: Exception) {}
+                try {
+                    lockRaf?.close()
+                } catch (e: Exception) {}
+                try {
+                    if (lockFile.exists()) lockFile.delete()
+                } catch (e: Exception) {}
             }
         }
     }
