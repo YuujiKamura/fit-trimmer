@@ -127,10 +127,9 @@ object PlateDetectionManager {
             videoFps = fpsMatch.groupValues[1].toDouble()
         }
 
-        // To speed up detection without losing tracking accuracy, we decimate frames to 5 fps.
-        // Since we have a 1500ms cache padding threshold, 5 fps (200ms intervals) is more than
-        // enough to maintain seamless license plate blurring while cutting processing time in half.
-        val detectionFps = 5.0
+        // To speed up detection without losing tracking accuracy, we decimate frames to 2.0 fps (0.5 second intervals).
+        // The frontend interpolator handles frame transitions smoothly between this 500ms gap.
+        val detectionFps = 2.0
         val scanWidth = 640
         val scanHeight = 640
         val filterChain = "scale=$scanWidth:$scanHeight:flags=fast_bilinear:out_range=full,fps=$detectionFps"
@@ -185,9 +184,9 @@ object PlateDetectionManager {
             rawRequired[f.toInt()] = !skip
         }
 
-        // 2. Pad scan intervals by 8 frames (~1.6 seconds) to ensure blurred plate tracking continuity
+        // 2. Pad scan intervals by 3 frames (~1.5 seconds) to ensure blurred plate tracking continuity
         val paddedRequired = BooleanArray(totalFrames.toInt())
-        val paddingFrames = 8
+        val paddingFrames = 3
         for (f in 0 until totalFrames) {
             if (rawRequired[f.toInt()]) {
                 val start = (f - paddingFrames).coerceAtLeast(0).toInt()
@@ -198,8 +197,8 @@ object PlateDetectionManager {
             }
         }
 
-        // 3. Merge gaps shorter than 25 frames (~5.0 seconds) to avoid restarting FFmpeg too frequently
-        val mergeGapFrames = 25
+        // 3. Merge gaps shorter than 10 frames (~5.0 seconds) to avoid restarting FFmpeg too frequently
+        val mergeGapFrames = 10
         var falseStart = -1
         var falseCount = 0
         for (f in 0 until totalFrames.toInt()) {
