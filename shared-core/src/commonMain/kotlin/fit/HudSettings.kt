@@ -33,5 +33,6 @@ data class HudSettings(
     val plateDetectionFps: Double = 1.0,
     val platePaddingSeconds: Double = 2.0,
     val plateMergeGapSeconds: Double = 5.0,
-    val plateMaskExpandRatio: Double = 0.2
+    val plateMaskExpandRatio: Double = 0.2,
+    val plateMaskTimeBufferMs: Long = 300L
 )

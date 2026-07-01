@@ -2904,6 +2904,38 @@ fun FitTrimmerMainContent(
                                             fontWeight = FontWeight.Medium
                                         )
                                     }
+                                     Spacer(Modifier.height(4.dp))
+                                     Text(
+                                         text = utils.Localizer.get("plate_mask_time_buffer_label", settings.language),
+                                         fontSize = 10.sp,
+                                         color = Color(0xFF636366)
+                                     )
+                                     Row(
+                                         verticalAlignment = Alignment.CenterVertically,
+                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                     ) {
+                                         androidx.compose.material.Slider(
+                                             value = settings.plateMaskTimeBufferMs.toFloat() / 1000f,
+                                             onValueChange = { newValue ->
+                                                 val roundedMs = (kotlin.math.round(newValue * 10f) / 10f * 1000f).toLong()
+                                                 settings = settings.copy(plateMaskTimeBufferMs = roundedMs.coerceIn(0L, 2000L))
+                                             },
+                                             valueRange = 0.0f..2.0f,
+                                             steps = 20,
+                                             enabled = !isEncoding,
+                                             modifier = Modifier.width(180.dp),
+                                             colors = androidx.compose.material.SliderDefaults.colors(
+                                                 thumbColor = Color(0xFF5856D6),
+                                                 activeTrackColor = Color(0xFF5856D6)
+                                             )
+                                         )
+                                         Text(
+                                             text = String.format(java.util.Locale.US, "%.1f s", settings.plateMaskTimeBufferMs.toDouble() / 1000.0),
+                                             fontSize = 10.sp,
+                                             color = Color(0xFF1C1C1E),
+                                             fontWeight = FontWeight.Medium
+                                         )
+                                     }
                                     if (viewModel.isDetectingPlates) {
                                         Row(
                                             verticalAlignment = Alignment.CenterVertically,

@@ -37,17 +37,34 @@ data class VideoPlatesCache(
         return Pair(prev, next)
     }
 
-    fun shouldBlurAt(targetTimeMs: Long, isBlurEnabled: Boolean): List<PlateBox> {
+    fun shouldBlurAt(targetTimeMs: Long, isBlurEnabled: Boolean, timeBufferMs: Long = 300L): List<PlateBox> {
         if (!isBlurEnabled || records.isEmpty()) return emptyList()
         
         val (prev, next) = findNeighborRecords(targetTimeMs)
-        return boxesForTargetTime(targetTimeMs, prev, next)
+        return boxesForTargetTime(targetTimeMs, prev, next, timeBufferMs)
+    }
+
+    private fun expandBoxRatio(box: PlateBox, scale: Float): PlateBox {
+        if (scale <= 1.0f) return box
+        val w = box.x2 - box.x1
+        val h = box.y2 - box.y1
+        val cx = (box.x1 + box.x2) / 2f
+        val cy = (box.y1 + box.y2) / 2f
+        val newW = w * scale
+        val newH = h * scale
+        return PlateBox(
+            x1 = (cx - newW / 2).toInt(),
+            y1 = (cy - newH / 2).toInt(),
+            x2 = (cx + newW / 2).toInt(),
+            y2 = (cy + newH / 2).toInt()
+        )
     }
 
     fun boxesForTargetTime(
         targetTimeMs: Long,
         prev: PlateRecord?,
-        next: PlateRecord?
+        next: PlateRecord?,
+        timeBufferMs: Long = 300L
     ): List<PlateBox> {
         if (prev == null && next == null) return emptyList()
         if (prev != null && next != null && prev.timeMs == next.timeMs) {
@@ -60,25 +77,37 @@ data class VideoPlatesCache(
                 val alpha = (targetTimeMs - prev.timeMs).toFloat() / interval.toFloat()
                 return interpolateBoxes(prev.boxes, next.boxes, alpha)
             } else {
-                // Interval too large, only apply close to boundaries (within 300ms)
+                // Interval too large, only apply close to boundaries (within timeBufferMs)
                 val distPrev = targetTimeMs - prev.timeMs
                 val distNext = next.timeMs - targetTimeMs
                 return when {
-                    distPrev <= 300 -> prev.boxes
-                    distNext <= 300 -> next.boxes
+                    distPrev <= timeBufferMs -> {
+                        val scale = 1.0f + (distPrev.toFloat() / timeBufferMs.toFloat()) * 0.4f
+                        prev.boxes.map { expandBoxRatio(it, scale) }
+                    }
+                    distNext <= timeBufferMs -> {
+                        val scale = 1.0f + (distNext.toFloat() / timeBufferMs.toFloat()) * 0.4f
+                        next.boxes.map { expandBoxRatio(it, scale) }
+                    }
                     else -> emptyList()
                 }
             }
         }
         
-        // Single-sided boundary cases (within 300ms)
+        // Single-sided boundary cases (within timeBufferMs)
         if (prev != null) {
             val dist = targetTimeMs - prev.timeMs
-            if (dist <= 300) return prev.boxes
+            if (dist <= timeBufferMs) {
+                val scale = 1.0f + (dist.toFloat() / timeBufferMs.toFloat()) * 0.4f
+                return prev.boxes.map { expandBoxRatio(it, scale) }
+            }
         }
         if (next != null) {
             val dist = next.timeMs - targetTimeMs
-            if (dist <= 300) return next.boxes
+            if (dist <= timeBufferMs) {
+                val scale = 1.0f + (dist.toFloat() / timeBufferMs.toFloat()) * 0.4f
+                return next.boxes.map { expandBoxRatio(it, scale) }
+            }
         }
         
         return emptyList()
@@ -142,7 +171,6 @@ data class VideoPlatesCache(
         return result
     }
 }
-
 data class MappedPlateBox(val x: Float, val y: Float, val width: Float, val height: Float)
 
 fun VideoPlatesCache.buildMappedMaskFrames(
@@ -153,7 +181,8 @@ fun VideoPlatesCache.buildMappedMaskFrames(
     fallbackSourceWidth: Int,
     fallbackSourceHeight: Int,
     targetWidth: Float,
-    targetHeight: Float
+    targetHeight: Float,
+    timeBufferMs: Long = 300L
 ): List<List<MappedPlateBox>> {
     if (!isBlurEnabled || records.isEmpty() || totalFrames <= 0 || fps <= 0.0) {
         return List(totalFrames.coerceAtLeast(0)) { emptyList() }
@@ -179,7 +208,7 @@ fun VideoPlatesCache.buildMappedMaskFrames(
             else -> null
         }
 
-        boxesForTargetTime(targetTimeMs, prev, next).mapNotNull { box ->
+        boxesForTargetTime(targetTimeMs, prev, next, timeBufferMs).mapNotNull { box ->
             val expanded = PlateMaskExpander.expand(
                 box = box,
                 expandRatio = expandRatio,
