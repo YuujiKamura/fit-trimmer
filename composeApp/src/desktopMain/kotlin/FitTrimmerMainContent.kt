@@ -888,13 +888,13 @@ fun FitTrimmerMainContent(
                                     viewModel.resetPlateDetection()
                                 }
                                 is CpCommand.SetPlateCacheEnabled -> {
-                                    viewModel.setPlateDetectionCacheEnabled(cmd.enabled)
+                                    // Cache is always enabled now, no-op
                                 }
                                 CpCommand.RestorePlateCache -> {
-                                    viewModel.restorePlateDetectionCache()
+                                    viewModel.plateCache = fit.PlateCacheManager.loadCache(videoPath)
                                 }
                                 CpCommand.DiscardPlateCache -> {
-                                    viewModel.discardPlateDetectionCache()
+                                    viewModel.resetPlateDetection()
                                 }
                                 is CpCommand.SetLivePreviewEnabled -> {
                                     showLivePreview = cmd.enabled
@@ -952,7 +952,7 @@ fun FitTrimmerMainContent(
                     videoCurrentTimeMs = videoCurrentTimeMs,
                     activePlateBoxCount = activePlateBoxes.size,
                     activePlateBoxes = activePlateBoxes,
-                    plateCacheEnabled = viewModel.usePlateDetectionCache,
+                    plateCacheEnabled = true,
                     plateCacheFileExists = viewModel.plateCacheFileExists,
                     plateCacheFilePath = viewModel.plateCacheFilePath,
                     plateCacheSourceWidth = viewModel.plateCache?.sourceWidth ?: 0,
@@ -2812,7 +2812,7 @@ fun FitTrimmerMainContent(
                                             color = Color(0xFF8E8E93)
                                         )
                                     }
-                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                         Text(
                                             text = utils.Localizer.get("plate_rescan", settings.language),
                                             fontSize = 10.sp,
@@ -2828,42 +2828,6 @@ fun FitTrimmerMainContent(
                                             modifier = Modifier.clickable(enabled = !isEncoding) {
                                                 viewModel.resetPlateDetection()
                                             }
-                                        )
-                                        Text(
-                                            text = utils.Localizer.get("plate_cache_restore", settings.language),
-                                            fontSize = 10.sp,
-                                            color = if (!isEncoding) Color(0xFF007AFF) else Color(0xFF8E8E93),
-                                            modifier = Modifier.clickable(enabled = !isEncoding) {
-                                                viewModel.restorePlateDetectionCache()
-                                            }
-                                        )
-                                        Text(
-                                            text = utils.Localizer.get("plate_cache_discard", settings.language),
-                                            fontSize = 10.sp,
-                                            color = if (!isEncoding) Color(0xFFFF9500) else Color(0xFF8E8E93),
-                                            modifier = Modifier.clickable(enabled = !isEncoding) {
-                                                viewModel.discardPlateDetectionCache()
-                                            }
-                                        )
-                                    }
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth().clickable(enabled = !isEncoding && !viewModel.isDetectingPlates) {
-                                            viewModel.setPlateDetectionCacheEnabled(!viewModel.usePlateDetectionCache)
-                                        },
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Checkbox(
-                                            checked = viewModel.usePlateDetectionCache,
-                                            onCheckedChange = { checked -> viewModel.setPlateDetectionCacheEnabled(checked) },
-                                            enabled = !isEncoding && !viewModel.isDetectingPlates,
-                                            modifier = Modifier.size(18.dp),
-                                            colors = CheckboxDefaults.colors(checkedColor = Color(0xFF007AFF))
-                                        )
-                                        Text(
-                                            text = utils.Localizer.get("plate_cache_enabled", settings.language),
-                                            fontSize = 10.sp,
-                                            color = Color(0xFF636366)
                                         )
                                     }
                                     viewModel.plateDetectionError?.let { err ->
