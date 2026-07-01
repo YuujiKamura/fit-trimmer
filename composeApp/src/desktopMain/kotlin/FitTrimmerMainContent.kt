@@ -2566,11 +2566,17 @@ fun FitTrimmerMainContent(
                                     val history = if (videoPath.isNotEmpty()) utils.GuiCache.loadHistory(videoPath) else null
                                     val historyCaptions = history?.settings?.roadCaptions ?: emptyList()
                                     if (checked && historyCaptions.isNotEmpty()) {
-                                        val options = arrayOf("蠕ｩ蜈・☆繧・(Restore)", "譁ｰ隕丈ｽ懈・ (Overwrite)", "繧ｭ繝｣繝ｳ繧ｻ繝ｫ (Cancel)")
+                                        val title = utils.Localizer.get("restore_dialog_title", viewModel.settings.language)
+                                        val message = utils.Localizer.get("restore_dialog_message_captions", viewModel.settings.language)
+                                        val optRestore = utils.Localizer.get("option_restore", viewModel.settings.language)
+                                        val optOverwrite = utils.Localizer.get("option_overwrite", viewModel.settings.language)
+                                        val optCancel = utils.Localizer.get("option_cancel", viewModel.settings.language)
+                                        
+                                        val options = arrayOf(optRestore, optOverwrite, optCancel)
                                         val choice = javax.swing.JOptionPane.showOptionDialog(
                                             null,
-                                            "莉･蜑阪・霍ｯ邱壹ユ繝ｭ繝・・繝・・繧ｿ縺悟ｭ伜惠縺励∪縺吶ょｾｩ蜈・＠縺ｾ縺吶°・歃n(Road caption history exists. Restore or start fresh?)",
-                                            "繝・・繧ｿ縺ｮ蠕ｩ蜈・｢ｺ隱・(Restore Captions)",
+                                            message,
+                                            title,
                                             javax.swing.JOptionPane.DEFAULT_OPTION,
                                             javax.swing.JOptionPane.QUESTION_MESSAGE,
                                             null,
@@ -2603,11 +2609,17 @@ fun FitTrimmerMainContent(
                             val handlePlateBlurToggle = { checked: Boolean ->
                                 if (!isEncoding) {
                                     if (checked && videoPath.isNotEmpty() && fit.PlateCacheManager.cacheExists(videoPath)) {
-                                        val options = arrayOf("蠕ｩ蜈・☆繧・(Restore)", "譁ｰ縺励￥繧ｹ繧ｭ繝｣繝ｳ (Scan)", "繧ｭ繝｣繝ｳ繧ｻ繝ｫ (Cancel)")
+                                        val title = utils.Localizer.get("restore_dialog_title", viewModel.settings.language)
+                                        val message = utils.Localizer.get("restore_dialog_message_plates", viewModel.settings.language)
+                                        val optRestore = utils.Localizer.get("option_restore", viewModel.settings.language)
+                                        val optScan = utils.Localizer.get("option_scan", viewModel.settings.language)
+                                        val optCancel = utils.Localizer.get("option_cancel", viewModel.settings.language)
+                                        
+                                        val options = arrayOf(optRestore, optScan, optCancel)
                                         val choice = javax.swing.JOptionPane.showOptionDialog(
                                             null,
-                                            "莉･蜑阪・繝翫Φ繝舌・繝励Ξ繝ｼ繝域､懷・繧ｭ繝｣繝・す繝･縺悟ｭ伜惠縺励∪縺吶ょｾｩ蜈・＠縺ｾ縺吶°・歃n(Plate detection cache exists. Restore or re-scan?)",
-                                            "繧ｭ繝｣繝・す繝･縺ｮ蠕ｩ蜈・｢ｺ隱・(Restore Cache)",
+                                            message,
+                                            title,
                                             javax.swing.JOptionPane.DEFAULT_OPTION,
                                             javax.swing.JOptionPane.QUESTION_MESSAGE,
                                             null,
