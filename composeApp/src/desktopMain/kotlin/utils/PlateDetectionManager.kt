@@ -17,7 +17,8 @@ private data class DecodedFrame(
     val frameIndex: Long,
     val timeMs: Long,
     val buffer: ByteArray,
-    val skipDetection: Boolean
+    val skipDetection: Boolean,
+    val decodeMs: Double
 )
 
 object PlateDetectionManager {
@@ -244,6 +245,9 @@ object PlateDetectionManager {
         val startEpochSecond = startTimeAdjusted?.toEpochSecond() ?: 0L
         var lastProgressPercent = 0.0f
         val scanStartTimeMs = System.currentTimeMillis()
+        var totalDecodeMs = 0.0
+        var totalYoloMs = 0.0
+        var yoloCount = 0L
  
         val img = BufferedImage(scanWidth, scanHeight, BufferedImage.TYPE_3BYTE_BGR)
         val imgData = (img.raster.dataBuffer as java.awt.image.DataBufferByte).data
@@ -289,11 +293,11 @@ object PlateDetectionManager {
                         }
                     }
 
+                    val dRead = (tReadEnd - tReadStart) / 1_000_000.0
                     val tSendStart = System.nanoTime()
-                    frameChannel.send(DecodedFrame(localFrameIndex, timeMs, frameBuffer, skip))
+                    frameChannel.send(DecodedFrame(localFrameIndex, timeMs, frameBuffer, skip, dRead))
                     val tSendEnd = System.nanoTime()
 
-                    val dRead = (tReadEnd - tReadStart) / 1_000_000.0
                     val dSend = (tSendEnd - tSendStart) / 1_000_000.0
                     if (localFrameIndex <= 10 || localFrameIndex % 50 == 0L) {
                         println("DEBUG: Producer [Frame $localFrameIndex] - Read: ${String.format(java.util.Locale.US, "%.2f", dRead)}ms, SendWait: ${String.format(java.util.Locale.US, "%.2f", dSend)}ms")
@@ -315,6 +319,7 @@ object PlateDetectionManager {
                 if (onCancel()) break
 
                 val tConsumeStart = System.nanoTime()
+                totalDecodeMs += frame.decodeMs
                 val boxes = if (frame.skipDetection) {
                     skippedFrames++
                     emptyList()
@@ -343,6 +348,11 @@ object PlateDetectionManager {
                     }
                 }
                 val tDetectEnd = System.nanoTime()
+                val dDetect = (tDetectEnd - tConsumeStart) / 1_000_000.0
+                if (!frame.skipDetection) {
+                    totalYoloMs += dDetect
+                    yoloCount++
+                }
 
                 if (boxes.isNotEmpty()) {
                     records.add(PlateRecord(frame.timeMs, boxes))
@@ -374,17 +384,21 @@ object PlateDetectionManager {
                     val elapsedStr = if (elapsedMs >= 60000) "${elapsedMs / 60000}m ${(elapsedMs % 60000) / 1000}s" else "${String.format(java.util.Locale.US, "%.1f", elapsedSec)}s"
                     val skipRatio = if (frameIndex > 0L) (skippedFrames.toFloat() / frameIndex.toFloat() * 100f) else 0f
                     val progressPercent = if (totalFrames > 0L) (frameIndex.toFloat() / totalFrames.toFloat() * 100f) else 0f
-                    val estSavedSec = (skippedFrames * 80.0) / 1000.0
-                    println("DEBUG: Plate Scan Progress: ${String.format(java.util.Locale.US, "%.1f", progressPercent)}% ($frameIndex/$totalFrames) | Speed: ${String.format(java.util.Locale.US, "%.1f", avgFps)} fps | Skipped: $skippedFrames (${String.format(java.util.Locale.US, "%.1f", skipRatio)}%) | Elapsed: $elapsedStr | ETA: $etaStr (Saved ~${String.format(java.util.Locale.US, "%.1f", estSavedSec)}s)")
+                    
+                    val avgDecodeMs = totalDecodeMs / frameIndex.toDouble()
+                    val avgYoloMs = if (yoloCount > 0L) totalYoloMs / yoloCount.toDouble() else 0.0
+                    val estSavedMs = skippedFrames * (if (yoloCount > 0L) avgYoloMs else 80.0)
+                    val estSavedSec = estSavedMs / 1000.0
+                    
+                    println("DEBUG: Plate Scan Progress: ${String.format(java.util.Locale.US, "%.1f", progressPercent)}% ($frameIndex/$totalFrames) | Speed: ${String.format(java.util.Locale.US, "%.1f", avgFps)} fps | Skipped: $skippedFrames (${String.format(java.util.Locale.US, "%.1f", skipRatio)}%) | Elapsed: $elapsedStr | ETA: $etaStr | AvgDecode: ${String.format(java.util.Locale.US, "%.1f", avgDecodeMs)}ms | AvgYolo: ${String.format(java.util.Locale.US, "%.1f", avgYoloMs)}ms | Saved: ~${String.format(java.util.Locale.US, "%.1f", estSavedSec)}s")
                     
                     val jsonProgress = String.format(java.util.Locale.US, 
-                        "{\"percent\":%.1f,\"current\":%d,\"total\":%d,\"fps\":%.1f,\"skipped\":%d,\"elapsed_ms\":%d,\"eta_sec\":%d}",
-                        progressPercent, frameIndex, totalFrames, avgFps, skippedFrames, elapsedMs, etaSec
+                        "{\"percent\":%.1f,\"current\":%d,\"total\":%d,\"fps\":%.1f,\"skipped\":%d,\"elapsed_ms\":%d,\"eta_sec\":%d,\"yolo_count\":%d,\"skipped_count\":%d,\"avg_decode_ms\":%.2f,\"avg_yolo_ms\":%.2f,\"saved_ms\":%.1f}",
+                        progressPercent, frameIndex, totalFrames, avgFps, skippedFrames, elapsedMs, etaSec, yoloCount, skippedFrames, avgDecodeMs, avgYoloMs, estSavedMs
                     )
                     println("PROGRESS_METRIC: $jsonProgress")
                 }
 
-                val dDetect = (tDetectEnd - tConsumeStart) / 1_000_000.0
                 val dProgress = (tProgressEnd - tProgressStart) / 1_000_000.0
                 if (frameIndex <= 5) {
                     println("DEBUG: Consumer [Frame ${frame.frameIndex}] - Detect: ${String.format(java.util.Locale.US, "%.2f", dDetect)}ms, ProgressUI: ${String.format(java.util.Locale.US, "%.2f", dProgress)}ms")

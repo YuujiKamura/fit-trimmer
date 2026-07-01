@@ -39,6 +39,7 @@ kotlin {
             }
         }
         val desktopTest by getting {
+            resources.srcDirs("src/desktopTest/resources", "src/desktopMain/resources")
             dependencies {
                 implementation(kotlin("test"))
                 implementation(kotlin("test-junit"))
@@ -88,4 +89,8 @@ tasks.withType<Test> {
     testLogging {
         showStandardStreams = true
     }
+}
+
+tasks.withType<Copy> {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
