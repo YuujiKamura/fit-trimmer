@@ -1015,46 +1015,18 @@ class NativeHudEncoder(
                     val timeMs = (currentSec * 1000.0).toLong()
                     val blurBoxes = plateCache?.shouldBlurAt(timeMs, settings.blurLicensePlates) ?: emptyList()
                      if (blurBoxes.isNotEmpty()) {
-                        val scaleX = exportWidth.toFloat() / videoWidth.toFloat()
-                        val scaleY = exportHeight.toFloat() / videoHeight.toFloat()
+                        val is90Or270 = videoRotation == 90 || videoRotation == -270 || videoRotation == 270 || videoRotation == -90
+                        val rotatedVideoW = if (is90Or270) videoHeight else videoWidth
+                        val rotatedVideoH = if (is90Or270) videoWidth else videoHeight
+                        
+                        val scaleX = exportWidth.toFloat() / rotatedVideoW.toFloat()
+                        val scaleY = exportHeight.toFloat() / rotatedVideoH.toFloat()
                         
                         for (box in blurBoxes) {
-                            val x1 = box.x1.toFloat()
-                            val y1 = box.y1.toFloat()
-                            val x2 = box.x2.toFloat()
-                            val y2 = box.y2.toFloat()
-                            
-                            val rx1: Float
-                            val ry1: Float
-                            val rx2: Float
-                            val ry2: Float
-                            
-                            when (videoRotation) {
-                                90, -270 -> {
-                                    rx1 = (videoHeight.toFloat() - y2) * scaleX
-                                    ry1 = x1 * scaleY
-                                    rx2 = (videoHeight.toFloat() - y1) * scaleX
-                                    ry2 = x2 * scaleY
-                                }
-                                180, -180 -> {
-                                    rx1 = (videoWidth.toFloat() - x2) * scaleX
-                                    ry1 = (videoHeight.toFloat() - y2) * scaleY
-                                    rx2 = (videoWidth.toFloat() - x1) * scaleX
-                                    ry2 = (videoHeight.toFloat() - y1) * scaleY
-                                }
-                                270, -90 -> {
-                                    rx1 = y1 * scaleX
-                                    ry1 = (videoWidth.toFloat() - x2) * scaleY
-                                    rx2 = y2 * scaleX
-                                    ry2 = (videoWidth.toFloat() - x1) * scaleY
-                                }
-                                else -> {
-                                    rx1 = x1 * scaleX
-                                    ry1 = y1 * scaleY
-                                    rx2 = x2 * scaleX
-                                    ry2 = y2 * scaleY
-                                }
-                            }
+                            val rx1 = box.x1.toFloat() * scaleX
+                            val ry1 = box.y1.toFloat() * scaleY
+                            val rx2 = box.x2.toFloat() * scaleX
+                            val ry2 = box.y2.toFloat() * scaleY
                             
                             val w = (rx2 - rx1).toInt()
                             val h = (ry2 - ry1).toInt()
