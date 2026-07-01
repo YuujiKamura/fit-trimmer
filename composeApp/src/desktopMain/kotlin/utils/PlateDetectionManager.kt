@@ -6,9 +6,19 @@ import fit.PlateRecord
 import fit.PlateCacheManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.channels.Channel
 import java.io.File
 import java.awt.image.BufferedImage
 import java.io.BufferedInputStream
+
+private data class DecodedFrame(
+    val frameIndex: Long,
+    val timeMs: Long,
+    val buffer: ByteArray,
+    val skipDetection: Boolean
+)
 
 object PlateDetectionManager {
 
@@ -163,73 +173,78 @@ object PlateDetectionManager {
         val detector = PlateDetector.getInstance()
         detector.resetPerfStats()
         
-        val stream = BufferedInputStream(process.inputStream, 1024 * 1024)
-        val buffer = ByteArray(frameBytes)
- 
         val totalFrames = (durationSec * detectionFps).toLong()
         var frameIndex = 0L
         var skippedFrames = 0L
-        var totalDecodeWaitMs = 0.0
         val startEpochSecond = startTimeAdjusted?.toEpochSecond() ?: 0L
  
         val img = BufferedImage(scanWidth, scanHeight, BufferedImage.TYPE_3BYTE_BGR)
         val imgData = (img.raster.dataBuffer as java.awt.image.DataBufferByte).data
 
-        try {
-            while (!onCancel()) {
-                val tStartRead = System.nanoTime()
-                var bytesRead = 0
-                while (bytesRead < frameBytes) {
-                    val read = stream.read(buffer, bytesRead, frameBytes - bytesRead)
-                    if (read == -1) break
-                    bytesRead += read
-                }
-                if (bytesRead < frameBytes) break // EOF
-                val dRead = (System.nanoTime() - tStartRead) / 1_000_000.0
-                totalDecodeWaitMs += dRead
- 
-                val timeMs = (frameIndex * 1000.0 / detectionFps).toLong()
-                
-                // Copy frame bytes into the reusable BufferedImage memory directly
-                System.arraycopy(buffer, 0, imgData, 0, frameBytes)
- 
-                // Speed check optimization: Only detect plates when vehicle speed is < 10 km/h.
-                // Plates are blurred and fast-moving cars anyway, saving 90%+ CPU processing.
-                val fitEpoch = 631065600L // 1990-01-01T00:00:00Z UTC epoch
-                
-                var skipDetection = false
-                if (startTimeAdjusted != null && telemetryPoints.isNotEmpty()) {
-                    val currentSec = timeMs.toDouble() / 1000.0
-                    val currentUtcSeconds = startEpochSecond + currentSec
-                    val currentFitTs = currentUtcSeconds - fitEpoch
-                    
-                    val point = findClosestTelemetryPoint(telemetryPoints, currentFitTs)
-                    if (point != null && point.speed >= 10.0) {
-                        skipDetection = true
+        // Channel for parallel pipelined decoding and inference.
+        // Bounded capacity prevents high memory usage while maintaining pre-buffered frames.
+        val frameChannel = Channel<DecodedFrame>(capacity = 16)
+
+        // Background Producer: Decodes raw frames from FFmpeg as fast as possible
+        val decoderJob = launch(Dispatchers.IO) {
+            val stream = BufferedInputStream(process.inputStream, 1024 * 1024)
+            val fitEpoch = 631065600L
+            var localFrameIndex = 0L
+            try {
+                while (isActive && !onCancel()) {
+                    val frameBuffer = ByteArray(frameBytes)
+                    var bytesRead = 0
+                    while (bytesRead < frameBytes) {
+                        val read = stream.read(frameBuffer, bytesRead, frameBytes - bytesRead)
+                        if (read == -1) break
+                        bytesRead += read
                     }
+                    if (bytesRead < frameBytes) break // EOF
+
+                    val timeMs = (localFrameIndex * 1000.0 / detectionFps).toLong()
+
+                    var skip = false
+                    if (startTimeAdjusted != null && telemetryPoints.isNotEmpty()) {
+                        val currentSec = timeMs.toDouble() / 1000.0
+                        val currentUtcSeconds = startEpochSecond + currentSec
+                        val currentFitTs = currentUtcSeconds - fitEpoch
+                        
+                        val point = findClosestTelemetryPoint(telemetryPoints, currentFitTs)
+                        if (point != null && point.speed >= 10.0) {
+                            skip = true
+                        }
+                    }
+
+                    frameChannel.send(DecodedFrame(localFrameIndex, timeMs, frameBuffer, skip))
+                    localFrameIndex++
                 }
- 
-                val boxes = if (skipDetection) {
+            } catch (e: Exception) {
+                // Pipe closed
+            } finally {
+                frameChannel.close()
+                try { stream.close() } catch (e: Exception) {}
+            }
+        }
+
+        // Consumer Loop: Processes frames as they arrive from the background decoder
+        try {
+            for (frame in frameChannel) {
+                if (onCancel()) break
+
+                val boxes = if (frame.skipDetection) {
                     skippedFrames++
                     emptyList()
                 } else {
+                    // Populate reusable BufferedImage directly from frame buffer and detect
+                    System.arraycopy(frame.buffer, 0, imgData, 0, frameBytes)
                     detector.detect(img)
                 }
-                
+
                 if (boxes.isNotEmpty()) {
-                    records.add(PlateRecord(timeMs, boxes))
+                    records.add(PlateRecord(frame.timeMs, boxes))
                 }
 
                 frameIndex++
-                
-                if (frameIndex % 100 == 0L || frameIndex <= 5L) {
-                    val avgWait = totalDecodeWaitMs / frameIndex
-                    println(String.format(
-                        java.util.Locale.US,
-                        "DEBUG: Decode Pipeline [Frame %d] - Avg FFmpeg Decode Wait: %.2fms",
-                        frameIndex, avgWait
-                    ))
-                }
                 
                 if (totalFrames > 0) {
                     val progress = (frameIndex.toFloat() / totalFrames.toFloat()).coerceIn(0f, 1f)
@@ -239,6 +254,7 @@ object PlateDetectionManager {
         } catch (e: Exception) {
             e.printStackTrace()
         } finally {
+            decoderJob.cancel()
             cancellationHandler?.dispose()
             process.destroy()
         }
