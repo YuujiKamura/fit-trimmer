@@ -175,6 +175,11 @@ fun FitTrimmerMainContent(
     var trimEndSeconds by viewModel::trimEndSeconds
     var videoCurrentTimeMs by remember { mutableStateOf(0L) }
     val scope = rememberCoroutineScope()
+    LaunchedEffect(viewModel.videoStartUtc, viewModel.telemetryPoints.size, settings.blurLicensePlates) {
+        if (settings.blurLicensePlates && viewModel.videoPath.isNotEmpty()) {
+            viewModel.runPlateDetection(scope)
+        }
+    }
     val triggerUpdatePrompt = remember(latestReleaseInfo, composeWindow) {
         fun() {
             val release = latestReleaseInfo ?: return
