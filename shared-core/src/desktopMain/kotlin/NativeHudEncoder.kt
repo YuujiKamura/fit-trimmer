@@ -1110,7 +1110,7 @@ class NativeHudEncoder(
                     totalFrames = totalFrames,
                     fps = fpsDouble,
                     isBlurEnabled = settings.blurLicensePlates,
-                    maskMode = settings.plateMaskMode,
+                    expandRatio = settings.plateMaskExpandRatio,
                     fallbackSourceWidth = fallbackSourceW,
                     fallbackSourceHeight = fallbackSourceH,
                     targetWidth = exportWidth.toFloat(),
