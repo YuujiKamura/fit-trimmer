@@ -885,7 +885,7 @@ class NativeHudEncoder(
                     "[0:v]crop=$exportWidth:$exportHeight:0:0,setpts=PTS-STARTPTS[hud];" +
                     "[0:v]crop=$exportWidth:$exportHeight:0:$exportHeight,setpts=PTS-STARTPTS,alphaextract[mask];" +
                     "[1:v]scale=$exportWidth:$exportHeight,setpts=PTS-STARTPTS,split[vid_orig][vid_blur_src];" +
-                    "[vid_blur_src]avgblur=sizeX=30:sizeY=30[vid_blurred];" +
+                    "[vid_blur_src]scale=w=${exportWidth}/20:h=${exportHeight}/20,scale=w=$exportWidth:h=$exportHeight:flags=neighbor[vid_blurred];" +
                     "[vid_orig][vid_blurred][mask]maskedmerge[vid_merged];" +
                     "[vid_merged][hud]overlay=0:0:shortest=1"
                 )
