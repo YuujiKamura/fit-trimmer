@@ -175,8 +175,8 @@ fun FitTrimmerMainContent(
     var trimEndSeconds by viewModel::trimEndSeconds
     var videoCurrentTimeMs by remember { mutableStateOf(0L) }
     val scope = rememberCoroutineScope()
-    LaunchedEffect(videoPath, settings.blurLicensePlates) {
-        if (settings.blurLicensePlates && videoPath.isNotEmpty() && viewModel.plateCache == null && !viewModel.isDetectingPlates) {
+    LaunchedEffect(videoPath, settings.blurLicensePlates, viewModel.videoStartUtc) {
+        if (settings.blurLicensePlates && videoPath.isNotEmpty() && viewModel.plateCache == null) {
             viewModel.runPlateDetection(scope)
         }
     }

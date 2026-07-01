@@ -243,6 +243,7 @@ object PlateDetectionManager {
         var skippedFrames = 0L
         val startEpochSecond = startTimeAdjusted?.toEpochSecond() ?: 0L
         var lastProgressPercent = 0.0f
+        val scanStartTimeMs = System.currentTimeMillis()
  
         val img = BufferedImage(scanWidth, scanHeight, BufferedImage.TYPE_3BYTE_BGR)
         val imgData = (img.raster.dataBuffer as java.awt.image.DataBufferByte).data
@@ -360,9 +361,32 @@ object PlateDetectionManager {
                 }
                 val tProgressEnd = System.nanoTime()
 
+                // Progress & ETA estimation logs
+                if (frameIndex > 0L && (frameIndex % 50 == 0L || frameIndex == totalFrames)) {
+                    val elapsedMs = System.currentTimeMillis() - scanStartTimeMs
+                    val elapsedSec = elapsedMs / 1000.0
+                    val avgFps = if (elapsedSec > 0.0) frameIndex.toDouble() / elapsedSec else 0.0
+                    val remainingFrames = totalFrames - frameIndex
+                    val etaSec = if (avgFps > 0.0) (remainingFrames / avgFps).toLong() else 0L
+                    val etaMin = etaSec / 60
+                    val etaRemainingSec = etaSec % 60
+                    val etaStr = if (etaMin > 0) "${etaMin}m ${etaRemainingSec}s" else "${etaRemainingSec}s"
+                    val elapsedStr = if (elapsedMs >= 60000) "${elapsedMs / 60000}m ${(elapsedMs % 60000) / 1000}s" else "${String.format(java.util.Locale.US, "%.1f", elapsedSec)}s"
+                    val skipRatio = if (frameIndex > 0L) (skippedFrames.toFloat() / frameIndex.toFloat() * 100f) else 0f
+                    val progressPercent = if (totalFrames > 0L) (frameIndex.toFloat() / totalFrames.toFloat() * 100f) else 0f
+                    val estSavedSec = (skippedFrames * 80.0) / 1000.0
+                    println("DEBUG: Plate Scan Progress: ${String.format(java.util.Locale.US, "%.1f", progressPercent)}% ($frameIndex/$totalFrames) | Speed: ${String.format(java.util.Locale.US, "%.1f", avgFps)} fps | Skipped: $skippedFrames (${String.format(java.util.Locale.US, "%.1f", skipRatio)}%) | Elapsed: $elapsedStr | ETA: $etaStr (Saved ~${String.format(java.util.Locale.US, "%.1f", estSavedSec)}s)")
+                    
+                    val jsonProgress = String.format(java.util.Locale.US, 
+                        "{\"percent\":%.1f,\"current\":%d,\"total\":%d,\"fps\":%.1f,\"skipped\":%d,\"elapsed_ms\":%d,\"eta_sec\":%d}",
+                        progressPercent, frameIndex, totalFrames, avgFps, skippedFrames, elapsedMs, etaSec
+                    )
+                    println("PROGRESS_METRIC: $jsonProgress")
+                }
+
                 val dDetect = (tDetectEnd - tConsumeStart) / 1_000_000.0
                 val dProgress = (tProgressEnd - tProgressStart) / 1_000_000.0
-                if (frameIndex <= 10 || frameIndex % 50 == 0L) {
+                if (frameIndex <= 5) {
                     println("DEBUG: Consumer [Frame ${frame.frameIndex}] - Detect: ${String.format(java.util.Locale.US, "%.2f", dDetect)}ms, ProgressUI: ${String.format(java.util.Locale.US, "%.2f", dProgress)}ms")
                 }
             }
