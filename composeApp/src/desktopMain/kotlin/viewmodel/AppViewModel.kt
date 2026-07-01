@@ -145,11 +145,15 @@ class AppViewModel(
                     adjustedStartUtc = videoStartUtc,
                     onProgress = { progress ->
                         val suffix = if (telemetryPoints.isNotEmpty() && videoStartUtc.isNotEmpty()) "" else " (No Telemetry)"
-                        plateDetectionProgress = String.format(java.util.Locale.US, "%.1f%%", progress) + suffix
+                        coroutineScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                            plateDetectionProgress = String.format(java.util.Locale.US, "%.1f%%", progress) + suffix
+                        }
                     },
                     onCancel = { plateDetectionStopRequested || !isActive },
                     onPartialResult = { partialCache ->
-                        plateCache = partialCache
+                        coroutineScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                            plateCache = partialCache
+                        }
                     },
                     maxRecords = maxRecords,
                     saveCache = true,
@@ -160,30 +164,36 @@ class AppViewModel(
                         plateMergeGapSeconds = plateDetectionMergeGapSeconds
                     )
                 )
-                if (cache != null) {
-                    plateCache = cache
-                    if (plateDetectionStopRequested) {
-                        plateDetectionProgress = "Stopped"
-                    }
-                } else {
-                    if (isActive) {
-                        plateDetectionError = utils.Localizer.get("plate_error_unknown", settings.language)
-                        plateDetectionProgress = "Failed"
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    if (cache != null) {
+                        plateCache = cache
+                        if (plateDetectionStopRequested) {
+                            plateDetectionProgress = "Stopped"
+                        }
                     } else {
-                        plateDetectionProgress = "Canceled"
+                        if (isActive) {
+                            plateDetectionError = utils.Localizer.get("plate_error_unknown", settings.language)
+                            plateDetectionProgress = "Failed"
+                        } else {
+                            plateDetectionProgress = "Canceled"
+                        }
                     }
                 }
             } catch (e: Exception) {
-                if (e is kotlinx.coroutines.CancellationException) {
-                    plateDetectionProgress = "Canceled"
-                } else {
-                    e.printStackTrace()
-                    plateDetectionError = e.message ?: "Unknown error"
-                    plateDetectionProgress = "Error: ${e.message}"
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    if (e is kotlinx.coroutines.CancellationException) {
+                        plateDetectionProgress = "Canceled"
+                    } else {
+                        e.printStackTrace()
+                        plateDetectionError = e.message ?: "Unknown error"
+                        plateDetectionProgress = "Error: ${e.message}"
+                    }
                 }
             } finally {
-                if (plateDetectionJob == coroutineContext[kotlinx.coroutines.Job]) {
-                    isDetectingPlates = false
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    if (plateDetectionJob == coroutineContext[kotlinx.coroutines.Job]) {
+                        isDetectingPlates = false
+                    }
                 }
             }
         }
