@@ -1,4 +1,4 @@
-﻿import io.github.kdroidfilter.composemediaplayer.rememberVideoPlayerState
+import io.github.kdroidfilter.composemediaplayer.rememberVideoPlayerState
 import io.github.kdroidfilter.composemediaplayer.VideoPlayerSurface
 import io.github.vinceglb.filekit.PlatformFile
 import androidx.compose.foundation.Canvas
@@ -2924,6 +2924,8 @@ fun FitTrimmerMainContent(
                                 onSeekStart = { if (!isEncoding) onSeekStart() },
                                 onSeekProgress = { if (!isEncoding) onSeekProgress(it) },
                                 onSeekEnd = { if (!isEncoding) onSeekEnd(it) },
+                                plateCache = viewModel.plateCache,
+                                blurLicensePlates = settings.blurLicensePlates,
                                 modifier = Modifier.fillMaxWidth().height(140.dp),
                                 isEncoding = isEncoding
                             )
