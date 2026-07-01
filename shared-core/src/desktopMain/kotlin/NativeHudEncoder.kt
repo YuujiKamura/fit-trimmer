@@ -463,7 +463,6 @@ class NativeHudEncoder(
         var videoDurationSeconds = 300
         var videoFps = "30" // default to 30
         var originalCodec = "h264"
-        var videoRotation = 0
         try {
             // Run ffmpeg -i to gather duration and resolution via stderr stream to avoid missing ffprobe dependency
             val pb = ProcessBuilder(ffmpegPath, "-i", localVideoPath)
@@ -500,13 +499,6 @@ class NativeHudEncoder(
                 if (fpsMatch != null) {
                     videoFps = fpsMatch.groupValues[1]
                 }
-            }
-
-            // Parse rotation
-            val rotateMatch = Regex("""rotate\s*:\s*(-?\d+)""").find(outputInfo)
-            if (rotateMatch != null) {
-                videoRotation = rotateMatch.groupValues[1].toIntOrNull() ?: 0
-                println("DEBUG: NativeHudEncoder rotation parsed: $videoRotation degrees")
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -650,12 +642,7 @@ class NativeHudEncoder(
         )
         println("DEBUG: NativeHudEncoder.encode config=$config, videoWidth=$videoWidth, videoHeight=$videoHeight")
         val renderer = HudRenderer(config)
-        val plateCache = if (settings.blurLicensePlates) {
-            PlateCacheManager.loadCache(videoPath)
-        } else null
-        if (plateCache != null) {
-            println("DEBUG: Loaded ${plateCache.records.size} plate records for rendering.")
-        }
+        val plateCache: fit.VideoPlatesCache? = null
         
         val (hwaccel, encoderName) = detectEncoderAndHardware(ffmpegPath, originalCodec)
         println("DEBUG: Auto-detected encoder: $encoderName, hwaccel: $hwaccel")
@@ -1014,56 +1001,23 @@ class NativeHudEncoder(
                     
                     val timeMs = (currentSec * 1000.0).toLong()
                     val blurBoxes = plateCache?.shouldBlurAt(timeMs, settings.blurLicensePlates) ?: emptyList()
-                     if (blurBoxes.isNotEmpty()) {
+                    if (blurBoxes.isNotEmpty()) {
                         val scaleX = exportWidth.toFloat() / videoWidth.toFloat()
                         val scaleY = exportHeight.toFloat() / videoHeight.toFloat()
                         
                         for (box in blurBoxes) {
-                            val x1 = box.x1.toFloat()
-                            val y1 = box.y1.toFloat()
-                            val x2 = box.x2.toFloat()
-                            val y2 = box.y2.toFloat()
-                            
-                            val rx1: Float
-                            val ry1: Float
-                            val rx2: Float
-                            val ry2: Float
-                            
-                            when (videoRotation) {
-                                90, -270 -> {
-                                    rx1 = (videoHeight.toFloat() - y2) * scaleX
-                                    ry1 = x1 * scaleY
-                                    rx2 = (videoHeight.toFloat() - y1) * scaleX
-                                    ry2 = x2 * scaleY
-                                }
-                                180, -180 -> {
-                                    rx1 = (videoWidth.toFloat() - x2) * scaleX
-                                    ry1 = (videoHeight.toFloat() - y2) * scaleY
-                                    rx2 = (videoWidth.toFloat() - x1) * scaleX
-                                    ry2 = (videoHeight.toFloat() - y1) * scaleY
-                                }
-                                270, -90 -> {
-                                    rx1 = y1 * scaleX
-                                    ry1 = (videoWidth.toFloat() - x2) * scaleY
-                                    rx2 = y2 * scaleX
-                                    ry2 = (videoWidth.toFloat() - x1) * scaleY
-                                }
-                                else -> {
-                                    rx1 = x1 * scaleX
-                                    ry1 = y1 * scaleY
-                                    rx2 = x2 * scaleX
-                                    ry2 = y2 * scaleY
-                                }
-                            }
-                            
-                            val w = (rx2 - rx1).toInt()
-                            val h = (ry2 - ry1).toInt()
+                            val x1 = (box.x1 * scaleX).toInt()
+                            val y1 = (box.y1 * scaleY).toInt()
+                            val x2 = (box.x2 * scaleX).toInt()
+                            val y2 = (box.y2 * scaleY).toInt()
+                            val w = x2 - x1
+                            val h = y2 - y1
                             
                             if (w > 0 && h > 0) {
                                 g.color = java.awt.Color(0x1C, 0x1C, 0x1E)
-                                g.fillRect(rx1.toInt(), ry1.toInt(), w, h)
+                                g.fillRect(x1, y1, w, h)
                                 g.color = java.awt.Color(0xE5, 0xE5, 0xEA)
-                                g.drawRect(rx1.toInt(), ry1.toInt(), w, h)
+                                g.drawRect(x1, y1, w, h)
                             }
                         }
                     }
