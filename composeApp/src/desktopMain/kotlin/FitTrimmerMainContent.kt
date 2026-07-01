@@ -1,4 +1,4 @@
-import io.github.kdroidfilter.composemediaplayer.rememberVideoPlayerState
+﻿import io.github.kdroidfilter.composemediaplayer.rememberVideoPlayerState
 import io.github.kdroidfilter.composemediaplayer.VideoPlayerSurface
 import io.github.vinceglb.filekit.PlatformFile
 import androidx.compose.foundation.Canvas
@@ -883,6 +883,12 @@ fun FitTrimmerMainContent(
                                 }
                                 CpCommand.DiscardPlateCache -> {
                                     viewModel.discardPlateDetectionCache()
+                                }
+                                is CpCommand.SetLivePreviewEnabled -> {
+                                    showLivePreview = cmd.enabled
+                                    if (!cmd.enabled) {
+                                        encodingPreviewImage = null
+                                    }
                                 }
                                 is CpCommand.SeekPlateDetection -> {
                                     val index = cmd.index

@@ -63,6 +63,9 @@ sealed class CpCommand {
 
     @Serializable @kotlinx.serialization.SerialName("discard_plate_cache")
     object DiscardPlateCache : CpCommand()
+
+    @Serializable @kotlinx.serialization.SerialName("set_live_preview_enabled")
+    data class SetLivePreviewEnabled(val enabled: Boolean) : CpCommand()
 }
 
 @Serializable
