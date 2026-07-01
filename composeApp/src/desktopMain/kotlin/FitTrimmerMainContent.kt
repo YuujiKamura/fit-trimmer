@@ -1,4 +1,4 @@
-﻿import io.github.kdroidfilter.composemediaplayer.rememberVideoPlayerState
+import io.github.kdroidfilter.composemediaplayer.rememberVideoPlayerState
 import io.github.kdroidfilter.composemediaplayer.VideoPlayerSurface
 import io.github.vinceglb.filekit.PlatformFile
 import androidx.compose.foundation.Canvas
@@ -683,7 +683,7 @@ fun FitTrimmerMainContent(
     }
 
     suspend fun prepareSettingsForEncode(baseSettings: HudSettings): HudSettings {
-        return prepareRoadCaptionSettingsForEncode(
+        val prepared = prepareRoadCaptionSettingsForEncode(
             baseSettings = baseSettings,
             autoDetectRoadCaptionsOnEncode = autoDetectRoadCaptionsOnEncode,
             context = RoadCaptionDetectionContext(
@@ -698,6 +698,12 @@ fun FitTrimmerMainContent(
             onSettingsPrepared = { preparedSettings ->
                 settings = preparedSettings
             }
+        )
+        return prepared.copy(
+            plateMaxSpeedKmh = viewModel.plateDetectionMaxSpeedKmh,
+            plateDetectionFps = viewModel.plateDetectionFps,
+            platePaddingSeconds = viewModel.plateDetectionPaddingSeconds,
+            plateMergeGapSeconds = viewModel.plateDetectionMergeGapSeconds
         )
     }
 
@@ -752,6 +758,7 @@ fun FitTrimmerMainContent(
                                                 isSample = false,
                                                 shouldResume = false,
                                                 moveOutputToSource = moveOutputToSource,
+                                                plateTelemetryPoints = viewModel.trimmedTelemetryPoints,
                                                 onProgress = { prog, status ->
                                                     progress = prog
                                                     statusText = status
@@ -800,7 +807,7 @@ fun FitTrimmerMainContent(
                                     progress = cmd.progress
                                     isEncoding = cmd.isEncoding
                                 }
-                                CpCommand.GetState -> {} 
+                                CpCommand.GetState -> {}
                                 CpCommand.ReloadHud -> {
                                     rendererProxy.reload()
                                     reloadTrigger++
@@ -1146,6 +1153,7 @@ fun FitTrimmerMainContent(
                                             isSample = false,
                                             shouldResume = shouldResume,
                                             moveOutputToSource = moveOutputToSource,
+                                            plateTelemetryPoints = viewModel.trimmedTelemetryPoints,
                                             onProgress = { prog, status ->
                                                 progress = prog
                                                 statusText = status
@@ -1241,6 +1249,7 @@ fun FitTrimmerMainContent(
                                             isSample = true,
                                             shouldResume = false,
                                             moveOutputToSource = moveOutputToSource,
+                                            plateTelemetryPoints = viewModel.trimmedTelemetryPoints,
                                             onProgress = { prog, status ->
                                                 progress = prog
                                                 statusText = status
@@ -1785,8 +1794,8 @@ fun FitTrimmerMainContent(
                                       .fillMaxWidth()
                                       .background(Color(0xFFF2F2F7), shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
                                       .border(1.dp, Color(0xFFE5E5EA), shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
-                                      .clickable { 
-                                          showLivePreview = !showLivePreview 
+                                      .clickable {
+                                          showLivePreview = !showLivePreview
                                           if (!showLivePreview) {
                                               encodingPreviewImage = null
                                           }
@@ -1801,8 +1810,8 @@ fun FitTrimmerMainContent(
                                   }
                                   Switch(
                                       checked = showLivePreview,
-                                      onCheckedChange = { 
-                                          showLivePreview = it 
+                                      onCheckedChange = {
+                                          showLivePreview = it
                                           if (!it) {
                                               encodingPreviewImage = null
                                           }
@@ -2571,7 +2580,7 @@ fun FitTrimmerMainContent(
                                         val optRestore = utils.Localizer.get("option_restore", viewModel.settings.language)
                                         val optOverwrite = utils.Localizer.get("option_overwrite", viewModel.settings.language)
                                         val optCancel = utils.Localizer.get("option_cancel", viewModel.settings.language)
-                                        
+
                                         val options = arrayOf(optRestore, optOverwrite, optCancel)
                                         val choice = javax.swing.JOptionPane.showOptionDialog(
                                             null,
@@ -2614,7 +2623,7 @@ fun FitTrimmerMainContent(
                                         val optRestore = utils.Localizer.get("option_restore", viewModel.settings.language)
                                         val optScan = utils.Localizer.get("option_scan", viewModel.settings.language)
                                         val optCancel = utils.Localizer.get("option_cancel", viewModel.settings.language)
-                                        
+
                                         val options = arrayOf(optRestore, optScan, optCancel)
                                         val choice = javax.swing.JOptionPane.showOptionDialog(
                                             null,
@@ -3093,7 +3102,7 @@ fun FitTrimmerMainContent(
                     }
                 )
             }
-            
+
             if (setupStep > 0) {
                 Box(
                     modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)),
@@ -3123,7 +3132,7 @@ fun FitTrimmerMainContent(
                                     color = Color.Gray,
                                     textAlign = androidx.compose.ui.text.style.TextAlign.Center
                                 )
-                                
+
                                 Box(modifier = Modifier.height(200.dp).border(1.dp, Color(0xFFE5E5EA), androidx.compose.foundation.shape.RoundedCornerShape(8.dp)).padding(4.dp)) {
                                     val scrollState = rememberScrollState()
                                     Column(
@@ -3149,7 +3158,7 @@ fun FitTrimmerMainContent(
                                         adapter = rememberScrollbarAdapter(scrollState)
                                     )
                                 }
-                                
+
                                 Button(
                                     onClick = {
                                         setupStep = 2 // Move to privacy consent
