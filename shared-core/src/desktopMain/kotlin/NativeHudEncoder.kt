@@ -1654,6 +1654,59 @@ class NativeHudEncoder(
         }
     }
 
+    fun generateMaskVideoOnly(
+        videoPath: String,
+        jobDir: File,
+        jobHash: String,
+        plateCache: VideoPlatesCache,
+        targetDurationSeconds: Double,
+        videoRotation: Int,
+        videoWidth: Int,
+        videoHeight: Int,
+        videoFps: String,
+        exportWidth: Int,
+        exportHeight: Int
+    ) {
+        val runBlur = settings.blurLicensePlates && plateCache.records.isNotEmpty()
+        if (!runBlur) return
+
+        val fpsDouble = videoFps.toDoubleOrNull() ?: 30.0
+        val totalFrames = (targetDurationSeconds * fpsDouble).toInt()
+
+        val is90Or270 = videoRotation == 90 || videoRotation == -270 || videoRotation == 270 || videoRotation == -90
+        val fallbackSourceW = if (is90Or270) videoHeight else videoWidth
+        val fallbackSourceH = if (is90Or270) videoWidth else videoHeight
+        
+        val maskFramePlan = plateCache.buildMappedMaskFrames(
+            totalFrames = totalFrames,
+            fps = fpsDouble,
+            isBlurEnabled = settings.blurLicensePlates,
+            expandRatio = settings.plateMaskExpandRatio,
+            fallbackSourceWidth = fallbackSourceW,
+            fallbackSourceHeight = fallbackSourceH,
+            targetWidth = exportWidth.toFloat(),
+            targetHeight = exportHeight.toFloat(),
+            timeBufferMs = settings.plateMaskTimeBufferMs
+        )
+
+        val maskVideoFile = File(jobDir, "plate_mask.mkv")
+        if (maskVideoFile.exists()) {
+            maskVideoFile.delete()
+        }
+
+        generateMaskVideo(
+            ffmpegPath = try { findFfmpegPath() } catch (e: Exception) { "ffmpeg" },
+            outputFile = maskVideoFile,
+            maskFramePlan = maskFramePlan,
+            width = exportWidth,
+            height = exportHeight,
+            fps = videoFps
+        )
+
+        val jobState = JobStateManager.loadState(jobDir, jobHash)
+        JobStateManager.saveState(jobDir, jobState.copy(isPlateMaskStreamReady = true))
+    }
+
     companion object {
         fun calculateJobHash(
             fitPath: String,
