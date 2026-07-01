@@ -211,10 +211,10 @@ object PlateMaskExpander {
 
         val (leftPad, rightPad, topPad, bottomPad) = if (normalizedMode == "wide") {
             listOf(
-                width * 3.0,
-                width * 3.0,
-                height * 3.0,
-                height * 1.5
+                width * 1.5,
+                width * 1.5,
+                height * 1.5,
+                height * 1.0
             )
         } else {
             val padX = width * 0.18

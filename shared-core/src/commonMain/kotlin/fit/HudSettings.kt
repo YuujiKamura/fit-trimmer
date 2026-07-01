@@ -28,5 +28,5 @@ data class HudSettings(
     val useImperialUnits: Boolean = false,
     val enableRoadDetection: Boolean = true,
     val blurLicensePlates: Boolean = false,
-    val plateMaskMode: String = "wide"
+    val plateMaskMode: String = "plate"
 )
