@@ -148,6 +148,11 @@ fun VideoPreviewArea(
     playerState: VideoPlayerState,
     videoCurrentTimeMs: Long,
     onCurrentTimeChange: (Long) -> Unit,
+    isSeeking: Boolean = false,
+    seekTargetTimeMs: Long = 0L,
+    onSeekStart: () -> Unit = {},
+    onSeekProgress: (Long) -> Unit = {},
+    onSeekEnd: (Long) -> Unit = {},
     modifier: Modifier = Modifier,
     isEncoding: Boolean = false,
     previewQualityMode: String = "original",
@@ -159,12 +164,10 @@ fun VideoPreviewArea(
 ) {
     var isPlaying by remember { mutableStateOf(false) }
     var lastVolume by remember { mutableStateOf(1f) }
-    var currentRenderTimeMs by remember { mutableStateOf(videoCurrentTimeMs) }
-    var activePreviewSourceLabel by remember { mutableStateOf("Original") }
-
-    LaunchedEffect(videoCurrentTimeMs) {
-        currentRenderTimeMs = videoCurrentTimeMs
+    val currentRenderTimeMs by remember(isSeeking, seekTargetTimeMs, videoCurrentTimeMs) {
+        derivedStateOf { if (isSeeking) seekTargetTimeMs else videoCurrentTimeMs }
     }
+    var activePreviewSourceLabel by remember { mutableStateOf("Original") }
 
 
 
@@ -184,10 +187,7 @@ fun VideoPreviewArea(
 
     val seekTo = { timeMs: Long ->
         val target = timeMs.coerceIn(0L, videoLengthMs)
-        currentRenderTimeMs = target
-        onCurrentTimeChange(target)
-        val ratio = if (videoLengthMs > 0) target.toFloat() / videoLengthMs.toFloat() else 0f
-        playerState.seekTo(ratio * 1000f)
+        onSeekEnd(target)
     }
 
     LaunchedEffect(playerState.isPlaying) {
@@ -226,7 +226,6 @@ fun VideoPreviewArea(
                         lastSyncNanos = nowNanos
                     }
                     val finalTime = interpolatedTimeMs.coerceIn(0L, videoLengthMs)
-                    currentRenderTimeMs = finalTime
                     onCurrentTimeChange(finalTime)
                 }
             }
@@ -236,12 +235,14 @@ fun VideoPreviewArea(
     LaunchedEffect(playerState, videoLengthMs) {
         snapshotFlow { playerState.sliderPos to (playerState.metadata.duration ?: 0L) }
             .collect { (sliderPos, durationMs) ->
-                val elapsedMs = fit.TimelineMapper.calculateCurrentTimeMs(
-                    sliderPos = sliderPos,
-                    durationMs = durationMs,
-                    fullVideoLengthMs = videoLengthMs
-                )
-                onCurrentTimeChange(elapsedMs)
+                if (!isSeeking) {
+                    val elapsedMs = fit.TimelineMapper.calculateCurrentTimeMs(
+                        sliderPos = sliderPos,
+                        durationMs = durationMs,
+                        fullVideoLengthMs = videoLengthMs
+                    )
+                    onCurrentTimeChange(elapsedMs)
+                }
             }
     }
 
@@ -495,10 +496,18 @@ fun VideoPreviewArea(
                 )
 
                 Slider(
-                    value = if (videoLengthMs > 0) videoCurrentTimeMs.toFloat() / videoLengthMs.toFloat() else 0f,
+                    value = if (videoLengthMs > 0) {
+                        val current = if (isSeeking) seekTargetTimeMs else videoCurrentTimeMs
+                        current.toFloat() / videoLengthMs.toFloat()
+                    } else 0f,
                     onValueChange = { ratio ->
+                        onSeekStart()
                         val targetTime = (ratio * videoLengthMs).toLong()
-                        seekTo(targetTime)
+                        onSeekProgress(targetTime)
+                    },
+                    onValueChangeFinished = {
+                        val finalTime = if (isSeeking) seekTargetTimeMs else videoCurrentTimeMs
+                        onSeekEnd(finalTime)
                     },
                     enabled = !isEncoding,
                     modifier = Modifier.weight(1f),

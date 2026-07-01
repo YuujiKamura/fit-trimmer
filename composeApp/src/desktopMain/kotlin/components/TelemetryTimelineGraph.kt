@@ -61,7 +61,9 @@ fun TelemetryTimelineGraph(
     videoCurrentTimeMs: Long,
     onTrimStartChange: (Double) -> Unit,
     onTrimEndChange: (Double) -> Unit,
-    onSeek: (Long) -> Unit,
+    onSeekStart: () -> Unit = {},
+    onSeekProgress: (Long) -> Unit = {},
+    onSeekEnd: (Long) -> Unit = {},
     modifier: Modifier = Modifier,
     isEncoding: Boolean = false,
     plateCache: fit.VideoPlatesCache? = null,
@@ -77,10 +79,9 @@ fun TelemetryTimelineGraph(
     
     val currentOnTrimStartChange by rememberUpdatedState(onTrimStartChange)
     val currentOnTrimEndChange by rememberUpdatedState(onTrimEndChange)
-    val currentOnSeek by rememberUpdatedState(onSeek)
-
-    var lastSeekTime by remember { mutableStateOf(0L) }
-    var pendingSeekTimeMs by remember { mutableStateOf<Long?>(null) }
+    val currentOnSeekStart by rememberUpdatedState(onSeekStart)
+    val currentOnSeekProgress by rememberUpdatedState(onSeekProgress)
+    val currentOnSeekEnd by rememberUpdatedState(onSeekEnd)
 
     // Sample telemetry points to match video seconds
     val sampledPoints = remember(telemetryPoints, adjustedStartUtc, videoLengthMs) {
@@ -262,10 +263,14 @@ fun TelemetryTimelineGraph(
                                             else -> null
                                         }
                                         
+                                        if (activeDragHandle == DragHandle.PLAYHEAD) {
+                                            currentOnSeekStart()
+                                        }
+                                        
                                         // If no handle is grabbed, perform a seek click
                                         if (activeDragHandle == null) {
                                             val ratio = (offset.x / w).coerceIn(0f, 1f)
-                                            currentOnSeek((ratio * vLength).toLong())
+                                            currentOnSeekEnd((ratio * vLength).toLong())
                                         }
                                     }
                                 }
@@ -288,32 +293,23 @@ fun TelemetryTimelineGraph(
                                         }
                                         DragHandle.PLAYHEAD -> {
                                             val targetTimeMs = (targetSec * 1000.0).toLong()
-                                            val now = System.currentTimeMillis()
-                                            if (now - lastSeekTime > 80) {
-                                                currentOnSeek(targetTimeMs)
-                                                lastSeekTime = now
-                                                pendingSeekTimeMs = null
-                                            } else {
-                                                pendingSeekTimeMs = targetTimeMs
-                                            }
+                                            currentOnSeekProgress(targetTimeMs)
                                         }
                                         null -> {}
                                     }
                                 }
                             },
                             onDragEnd = {
-                                if (activeDragHandle == DragHandle.PLAYHEAD && pendingSeekTimeMs != null) {
-                                    currentOnSeek(pendingSeekTimeMs!!)
+                                if (activeDragHandle == DragHandle.PLAYHEAD) {
+                                    currentOnSeekEnd(currentVideoCurrentTimeMs)
                                 }
                                 activeDragHandle = null
-                                pendingSeekTimeMs = null
                             },
                             onDragCancel = {
-                                if (activeDragHandle == DragHandle.PLAYHEAD && pendingSeekTimeMs != null) {
-                                    currentOnSeek(pendingSeekTimeMs!!)
+                                if (activeDragHandle == DragHandle.PLAYHEAD) {
+                                    currentOnSeekEnd(currentVideoCurrentTimeMs)
                                 }
                                 activeDragHandle = null
-                                pendingSeekTimeMs = null
                             }
                         )
                     }

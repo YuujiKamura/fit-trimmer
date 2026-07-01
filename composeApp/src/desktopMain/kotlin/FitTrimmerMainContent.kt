@@ -1,4 +1,4 @@
-import io.github.kdroidfilter.composemediaplayer.rememberVideoPlayerState
+﻿import io.github.kdroidfilter.composemediaplayer.rememberVideoPlayerState
 import io.github.kdroidfilter.composemediaplayer.VideoPlayerSurface
 import io.github.vinceglb.filekit.PlatformFile
 import androidx.compose.foundation.Canvas
@@ -174,6 +174,35 @@ fun FitTrimmerMainContent(
     var trimStartSeconds by viewModel::trimStartSeconds
     var trimEndSeconds by viewModel::trimEndSeconds
     var videoCurrentTimeMs by remember { mutableStateOf(0L) }
+    var isSeeking by remember { mutableStateOf(false) }
+    var seekTargetTimeMs by remember { mutableStateOf(0L) }
+    var lastSeekTime by remember { mutableStateOf(0L) }
+
+    val onSeekStart = {
+        isSeeking = true
+        playerState.userDragging = true
+    }
+
+    val onSeekProgress = { targetMs: Long ->
+        val target = targetMs.coerceIn(0L, videoLengthMs)
+        seekTargetTimeMs = target
+        val now = System.currentTimeMillis()
+        if (now - lastSeekTime > 80) {
+            val ratio = if (videoLengthMs > 0) target.toFloat() / videoLengthMs.toFloat() else 0f
+            playerState.seekTo(ratio * 1000f)
+            lastSeekTime = now
+        }
+    }
+
+    val onSeekEnd = { targetMs: Long ->
+        val target = targetMs.coerceIn(0L, videoLengthMs)
+        seekTargetTimeMs = target
+        val ratio = if (videoLengthMs > 0) target.toFloat() / videoLengthMs.toFloat() else 0f
+        playerState.seekTo(ratio * 1000f)
+        videoCurrentTimeMs = target
+        isSeeking = false
+        playerState.userDragging = false
+    }
     val scope = rememberCoroutineScope()
     LaunchedEffect(videoPath, settings.blurLicensePlates, viewModel.videoStartUtc) {
         if (settings.blurLicensePlates && videoPath.isNotEmpty() && viewModel.plateCache == null) {
@@ -937,7 +966,7 @@ fun FitTrimmerMainContent(
                     val durationSec = actualTrimEnd - actualTrimStart
                     ((actualTrimStart + progress * durationSec) * 1000).toLong()
                 } else {
-                    videoCurrentTimeMs
+                    if (isSeeking) seekTargetTimeMs else videoCurrentTimeMs
                 }
             }
         }
@@ -2792,6 +2821,11 @@ fun FitTrimmerMainContent(
                                 playerState = playerState,
                                 videoCurrentTimeMs = videoCurrentTimeMs,
                                 onCurrentTimeChange = { videoCurrentTimeMs = it },
+                                isSeeking = isSeeking,
+                                seekTargetTimeMs = seekTargetTimeMs,
+                                onSeekStart = onSeekStart,
+                                onSeekProgress = onSeekProgress,
+                                onSeekEnd = onSeekEnd,
                                 modifier = if (isPreviewFullscreen) Modifier.fillMaxSize() else Modifier.weight(1f).fillMaxWidth(),
                                 isEncoding = false,
                                 previewQualityMode = previewQualityMode,
@@ -2887,13 +2921,9 @@ fun FitTrimmerMainContent(
                                 videoCurrentTimeMs = effectiveVideoTimeMs,
                                 onTrimStartChange = { if (!isEncoding) trimStartSeconds = it },
                                 onTrimEndChange = { if (!isEncoding) trimEndSeconds = it },
-                                onSeek = { timeMs ->
-                                    if (!isEncoding) {
-                                        val ratio = if (videoLengthMs > 0) timeMs.toFloat() / videoLengthMs.toFloat() else 0f
-                                        playerState.seekTo(ratio * 1000f)
-                                        videoCurrentTimeMs = timeMs
-                                    }
-                                },
+                                onSeekStart = { if (!isEncoding) onSeekStart() },
+                                onSeekProgress = { if (!isEncoding) onSeekProgress(it) },
+                                onSeekEnd = { if (!isEncoding) onSeekEnd(it) },
                                 modifier = Modifier.fillMaxWidth().height(140.dp),
                                 isEncoding = isEncoding
                             )
