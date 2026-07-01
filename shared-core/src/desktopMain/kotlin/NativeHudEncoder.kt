@@ -1023,7 +1023,8 @@ class NativeHudEncoder(
                     val timeMs = (currentSec * 1000.0).toLong()
                     val blurBoxes = plateCache?.shouldBlurAt(timeMs, settings.blurLicensePlates) ?: emptyList()
                     if (timeMs in 10000L..13000L) {
-                        println("DEBUG_ENCODE: timeMs=$timeMs -> blurBoxes.size=${blurBoxes.size} (closest=${plateCache?.findClosestRecord(timeMs)?.timeMs})")
+                        val neighbors = plateCache?.findNeighborRecords(timeMs)
+                        println("DEBUG_ENCODE: timeMs=$timeMs -> blurBoxes.size=${blurBoxes.size} (prev=${neighbors?.first?.timeMs}, next=${neighbors?.second?.timeMs})")
                     }
                     if (blurBoxes.isNotEmpty()) {
                         val is90Or270 = videoRotation == 90 || videoRotation == -270 || videoRotation == 270 || videoRotation == -90
