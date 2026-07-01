@@ -136,12 +136,13 @@ object PlateDetectionManager {
 
         // Build filter chain. Inserting "scale=iw:ih" at the very beginning forces FFmpeg's
         // automatic rotation (autorotate) filter to run BEFORE the "fps" filter strips rotation metadata.
-        val filterChain = "scale=$scanWidth:$scanHeight:out_range=full,fps=$detectionFps"
+        val filterChain = "scale=$scanWidth:$scanHeight:flags=fast_bilinear:out_range=full,fps=$detectionFps"
         
         val frameBytes = scanWidth * scanHeight * 3 // RGB24
         
         val pb = ProcessBuilder(
             ffmpegPath,
+            "-threads", "0",      // Force multi-threaded software decoding for high speed and robustness
             "-i", localVideoPath,
             "-vf", filterChain,
             "-f", "rawvideo",
