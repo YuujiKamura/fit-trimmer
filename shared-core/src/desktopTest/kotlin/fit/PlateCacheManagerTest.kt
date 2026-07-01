@@ -111,7 +111,7 @@ class PlateCacheManagerTest {
     }
 
     @Test
-    fun testPlateMaskExpanderSupportsWideVehicleLikeMask() {
+    fun testPlateMaskExpanderSupportsWideMask() {
         val expanded = PlateMaskExpander.expand(
             box = PlateBox(100, 100, 200, 140),
             mode = "wide",

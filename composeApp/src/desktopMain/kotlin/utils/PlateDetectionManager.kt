@@ -35,8 +35,7 @@ object PlateDetectionManager {
         maxSpeedKmh: Double = 15.0,
         detectionFps: Double = 1.0,
         paddingSeconds: Double = 2.0,
-        mergeGapSeconds: Double = 5.0,
-        plateMaskMode: String = "wide"
+        mergeGapSeconds: Double = 5.0
     ): VideoPlatesCache? = withContext(Dispatchers.IO) {
         val ffmpegPath = findFfmpegPath()
         val videoFile = File(videoPath)
@@ -427,12 +426,7 @@ object PlateDetectionManager {
                             println("DEBUG: Wrote scratch/scan_frame_${frame.frameIndex}.jpg for visual audit.")
                         } catch (e: Exception) { e.printStackTrace() }
                     }
-                    val isVehicleMode = plateMaskMode.lowercase().startsWith("vehicle")
-                    val rawBoxes = if (isVehicleMode) {
-                        detector.detectVehicles(img, confThreshold = 0.25f)
-                    } else {
-                        detector.detect(img, confThreshold = 0.08f)
-                    }
+                    val rawBoxes = detector.detect(img, confThreshold = 0.08f)
                     // Scale from 640x640 back to original video resolution
                     val scaledBoxes = rawBoxes.map { box ->
                         val scaleX = videoWidth.toFloat() / 640f
@@ -444,20 +438,7 @@ object PlateDetectionManager {
                             y2 = (box.y2 * scaleY).toInt().coerceAtMost(videoHeight)
                         )
                     }
-                    
-                    if (plateMaskMode.lowercase() == "vehicle_bottom") {
-                        scaledBoxes.map { box ->
-                            val h = box.y2 - box.y1
-                            fit.PlateBox(
-                                x1 = box.x1,
-                                y1 = box.y1 + h / 2, // Shift y1 down to cover only bottom half (plates are typically located at the bottom)
-                                x2 = box.x2,
-                                y2 = box.y2
-                            )
-                        }
-                    } else {
-                        scaledBoxes
-                    }
+                    scaledBoxes
                 }
                 val tDetectEnd = System.nanoTime()
                 val dDetect = (tDetectEnd - tConsumeStart) / 1_000_000.0
