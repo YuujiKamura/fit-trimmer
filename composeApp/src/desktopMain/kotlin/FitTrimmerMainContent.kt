@@ -2948,6 +2948,7 @@ fun FitTrimmerMainContent(
                                 onSeekEnd = onSeekEnd,
                                 modifier = if (isPreviewFullscreen) Modifier.fillMaxSize() else Modifier.weight(1f).fillMaxWidth(),
                                 isEncoding = false,
+                                isDetectingPlates = viewModel.isDetectingPlates,
                                 previewQualityMode = previewQualityMode,
                                 onPreviewQualityModeChange = { previewQualityMode = it },
                                 isFullscreen = isPreviewFullscreen,
@@ -3047,7 +3048,8 @@ fun FitTrimmerMainContent(
                                 plateCache = viewModel.plateCache,
                                 blurLicensePlates = settings.blurLicensePlates,
                                 modifier = Modifier.fillMaxWidth().height(140.dp),
-                                isEncoding = isEncoding
+                                isEncoding = isEncoding,
+                                isDetectingPlates = viewModel.isDetectingPlates
                             )
                             val previewLabel = when (settings.exportResolution) {
                                 "360p" -> "360p (640x360) Overlay Preview"
