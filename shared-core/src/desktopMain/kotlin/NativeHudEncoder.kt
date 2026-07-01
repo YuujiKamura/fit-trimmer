@@ -1123,9 +1123,11 @@ class NativeHudEncoder(
             } else {
                 emptyList()
             }
+            val jobState = JobStateManager.loadState(jobDir, jobHash)
             val maskVideoFile = if (runBlur) File(jobDir, "plate_mask.mkv") else null
+            val isMaskVideoValid = maskVideoFile != null && maskVideoFile.exists() && maskVideoFile.length() > 0L
             val shouldGenerateMaskVideo = runBlur && maskVideoFile != null &&
-                (!shouldResume || resumePartIndex == 0 || !maskVideoFile.exists() || maskVideoFile.length() == 0L)
+                (!shouldResume || !jobState.isPlateMaskStreamReady || !isMaskVideoValid)
             if (shouldGenerateMaskVideo) {
                 val maskFile = maskVideoFile ?: throw Exception("Plate mask output path was not initialized.")
                 onProgress(resumeSeconds.toFloat() / targetDurationSeconds, "Preparing plate mask stream...")
@@ -1139,6 +1141,7 @@ class NativeHudEncoder(
                     fps = videoFps
                 )
                 profiler.addMaskVideo(System.nanoTime() - maskVideoStartNs)
+                JobStateManager.saveState(jobDir, jobState.copy(isPlateMaskStreamReady = true))
             }
             val pbArgs = mutableListOf<String>()
             pbArgs.add(ffmpegPath)
