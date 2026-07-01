@@ -673,31 +673,7 @@ fun VideoPreviewArea(
                             val scaleX = size.width / videoW.toFloat()
                             val scaleY = size.height / videoH.toFloat()
                             
-                            for (box in blurBoxes) {
-                                val x1 = box.x1 * scaleX
-                                val y1 = box.y1 * scaleY
-                                val x2 = box.x2 * scaleX
-                                val y2 = box.y2 * scaleY
-                                
-                                val w = x2 - x1
-                                val h = y2 - y1
-                                
-                                if (w > 0 && h > 0) {
-                                    // Draw a solid dark-gray privacy block
-                                    drawRect(
-                                        color = Color(0xFF1C1C1E),
-                                        topLeft = Offset(x1, y1),
-                                        size = Size(w, h)
-                                    )
-                                    // Draw border
-                                    drawRect(
-                                        color = Color(0xFFE5E5EA),
-                                        topLeft = Offset(x1, y1),
-                                        size = Size(w, h),
-                                        style = Stroke(width = 1f)
-                                    )
-                                }
-                            }
+
                         }
 
                         val telemetryPoint = currentPoint ?: fit.FitParser.TelemetryPoint(
