@@ -156,32 +156,68 @@ class PlateDetectorTest {
 
     @Test
     fun testWholeVideoPreScanPipeline() = kotlinx.coroutines.runBlocking {
-        val videoPath = "H:\\\u30DE\u30A4\u30C9\u30E9\u30A4\u30D6\\Insta360\\20260614\\VID_20260614_163204_003.mp4"
-        val videoFile = File(videoPath)
-        if (!videoFile.exists()) {
-            println("Skipping whole video test: Video file not found on GDrive.")
+        // Read actual path from GUI cache file to measure real dataset scan time
+        val cacheFile = File(System.getProperty("user.home"), ".fittrimmer_gui_cache.json")
+        if (!cacheFile.exists()) {
+            println("Skipping benchmark: GUI cache file not found.")
             return@runBlocking
         }
-
-        var progressCalled = false
-        var frameCount = 0
+        val content = cacheFile.readText(Charsets.UTF_8)
+        val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+        val cache = json.decodeFromString<utils.GuiPathCache>(content)
         
-        // Run pre-scan via PlateDetectionManager
-        // Cancel early after 30 frames to keep the test fast
-        PlateDetectionManager.runDetection(
+        val videoPath = cache.videoPath
+        val videoFile = File(videoPath)
+        if (!videoFile.exists()) {
+            println("Skipping benchmark: Video file '$videoPath' from GUI cache does not exist.")
+            return@runBlocking
+        }
+        
+        val fitPath = cache.fitPath
+        val fitFile = File(fitPath)
+        val telemetryPoints = if (fitFile.exists()) {
+            val parser = fit.FitParser(fitFile.readBytes())
+            parser.parse()
+            parser.getTelemetry()
+        } else emptyList()
+
+        println("======================================================================")
+        println("🚀 BENCHMARK: MEASURING TOTAL EXECUTION TIME FOR REAL DATASET SCAN")
+        println("  - Video Path: $videoPath")
+        println("  - Telemetry Points: ${telemetryPoints.size}")
+        println("  - Start UTC: ${cache.videoStartUtc}")
+        println("======================================================================")
+
+        val tStart = System.currentTimeMillis()
+        var totalFramesScanned = 0
+        
+        val result = PlateDetectionManager.runDetection(
             videoPath = videoPath,
+            telemetryPoints = telemetryPoints,
+            adjustedStartUtc = cache.videoStartUtc,
             onProgress = { progress ->
-                progressCalled = true
-                println("Scan progress: $progress%")
+                // Collect and output progress metrics
+                totalFramesScanned++
             },
             onCancel = {
-                frameCount++
-                frameCount > 30
+                // Run full video scan to completion
+                false
             }
         )
 
-        assertTrue(progressCalled, "Progress callback should have been triggered during scan")
-        println("Successfully verified pre-scan pipeline execution and progress updates.")
+        val tEnd = System.currentTimeMillis()
+        val totalSec = (tEnd - tStart) / 1000.0
+        
+        println("======================================================================")
+        println("🏁 BENCHMARK COMPLETED")
+        println("  - Total Measured Execution Time: ${String.format(java.util.Locale.US, "%.2f", totalSec)} seconds")
+        println("  - Plates Cache Created: ${result != null}")
+        if (result != null) {
+            println("  - Total Detected Plates Records: ${result.records.size}")
+        }
+        println("======================================================================")
+        
+        assertTrue(result != null, "Should output a valid plates cache for the video")
     }
 
     @Test

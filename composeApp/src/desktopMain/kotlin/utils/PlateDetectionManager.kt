@@ -33,8 +33,65 @@ object PlateDetectionManager {
         val videoFile = File(videoPath)
         if (!videoFile.exists()) return@withContext null
 
+        var localVideoPath = videoPath
+        var tempLocalVideo: File? = null
+
+        // Google Drive mitigation: pre-copy video locally to avoid network read bottleneck
+        if (isGoogleDrivePath(videoPath)) {
+            val workDir = fit.PathResolver.getTempWorkDir(videoPath)
+            if (!workDir.exists()) workDir.mkdirs()
+            val jobHash = kotlin.math.abs(videoPath.hashCode()).toString()
+            val jobDir = File(workDir, "scan_$jobHash")
+            if (!jobDir.exists()) jobDir.mkdirs()
+            
+            val tempFile = File(jobDir, "temp_scan_input.mp4")
+            if (!tempFile.exists() || tempFile.length() == 0L) {
+                println("⚠️ Cloud drive path detected during plate scan: $videoPath")
+                println("📥 Pre-copying video to local temp file to avoid network bottlenecks: ${tempFile.absolutePath}")
+                
+                try {
+                    val pbCopy = ProcessBuilder(
+                        ffmpegPath,
+                        "-y",
+                        "-i", videoPath,
+                        "-c", "copy",
+                        tempFile.absolutePath
+                    )
+                    pbCopy.redirectError(ProcessBuilder.Redirect.DISCARD)
+                    val pCopy = pbCopy.start()
+                    
+                    val cancelMonitor = launch {
+                        while (pCopy.isAlive) {
+                            if (onCancel()) {
+                                pCopy.destroy()
+                                try { pCopy.destroyForcibly() } catch (e: Exception) {}
+                                break
+                            }
+                            kotlinx.coroutines.delay(100)
+                        }
+                    }
+                    val exitCode = pCopy.waitFor()
+                    cancelMonitor.cancel()
+                    
+                    if (onCancel() || exitCode != 0) {
+                        try { tempFile.delete() } catch (e: Exception) {}
+                        if (onCancel()) {
+                            println("DEBUG: Scan canceled during local copy.")
+                            return@withContext null
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+            if (tempFile.exists() && tempFile.length() > 0L) {
+                localVideoPath = tempFile.absolutePath
+                tempLocalVideo = tempFile
+            }
+        }
+
         // 1. Get video metadata using ffmpeg -i
-        val pbInfo = ProcessBuilder(ffmpegPath, "-i", videoPath)
+        val pbInfo = ProcessBuilder(ffmpegPath, "-i", localVideoPath)
         pbInfo.redirectErrorStream(true)
         val pInfo = pbInfo.start()
         val outputInfo = pInfo.inputStream.bufferedReader().readText()
@@ -79,7 +136,7 @@ object PlateDetectionManager {
         
         val pb = ProcessBuilder(
             ffmpegPath,
-            "-i", videoPath,
+            "-i", localVideoPath,
             "-vf", "fps=$detectionFps,scale=$scanWidth:$scanHeight:out_range=full",
             "-f", "rawvideo",
             "-pix_fmt", "bgr24", // Use bgr24 for fast native image buffer copy
@@ -284,6 +341,12 @@ object PlateDetectionManager {
             decoderJob.cancel()
             cancellationHandler?.dispose()
             process.destroy()
+            tempLocalVideo?.let {
+                if (it.exists()) {
+                    println("🧹 Cleaning up temp local video scan cache: ${it.absolutePath}")
+                    try { it.delete() } catch (e: Exception) {}
+                }
+            }
         }
 
         if (onCancel()) {
@@ -332,5 +395,14 @@ object PlateDetectionManager {
                 }
             }
         }
+    }
+
+    private fun isGoogleDrivePath(path: String): Boolean {
+        val normalized = path.replace("\\", "/").lowercase()
+        return normalized.contains("google drive") || 
+               normalized.contains("マイドライブ") || 
+               normalized.contains("my drive") ||
+               normalized.startsWith("g:/") || 
+               normalized.startsWith("h:/")
     }
 }
