@@ -357,43 +357,47 @@ class PlateDetectorTest {
             println("  - timeMs: ${rec.timeMs} -> boxes: ${rec.boxes}")
         }
 
-        // 3. Run NativeHudEncoder to render crop_blurred_output.mp4
-        println("📹 Encoding blurred video...")
-        val settings = fit.HudSettings(
-            blurLicensePlates = true,
-            exportResolution = "original"
-        )
-        val encoder = fit.NativeHudEncoder(settings)
-        fit.PlateCacheManager.saveCache(cropTestMp4.absolutePath, cache)
-
-        encoder.encode(
-            fitPath = inputFit.absolutePath, // Pass aligned dummy FIT file path
-            videoPath = cropTestMp4.absolutePath,
-            output = cropBlurredMp4.absolutePath,
-            startUtc = "2026-06-14T08:02:06Z",
-            maxDurationSeconds = 2,
-            trimStartSeconds = 0.0,
-            trimEndSeconds = 2.0
-        )
-        assertTrue(cropBlurredMp4.exists(), "Blurred video must be created")
-        println("📹 Encode finished: ${cropBlurredMp4.exists()} (${cropBlurredMp4.length()} bytes)")
-
-        // 4. Sample key frames using FFmpeg to verify visual positioning
-        val sampleTimes = listOf(0.5, 1.5)
-        for (st in sampleTimes) {
-            val sampleImgFile = File(scratchDir, "sample_output_blur_${String.format("%.1f", st)}.jpg")
-            val pbSample = ProcessBuilder(
-                ffmpegPath, "-y",
-                "-i", cropBlurredMp4.absolutePath,
-                "-ss", st.toString(),
-                "-vframes", "1",
-                sampleImgFile.absolutePath
+        // 3. Run NativeHudEncoder for both "plate" and "wide" modes to compare
+        for (maskMode in listOf("plate", "wide")) {
+            println("📹 Encoding blurred video for mode: $maskMode...")
+            val cropBlurredMp4 = File(scratchDir, "crop_blurred_${maskMode}_output.mp4")
+            val settings = fit.HudSettings(
+                blurLicensePlates = true,
+                exportResolution = "original",
+                plateMaskMode = maskMode
             )
-            pbSample.inheritIO()
-            val pSample = pbSample.start()
-            pSample.waitFor()
-            println("📸 Wrote sample frame at crop time ${st}s to: ${sampleImgFile.absolutePath}")
-            assertTrue(sampleImgFile.exists() && sampleImgFile.length() > 0, "Sample frame should be written successfully")
+            val encoder = fit.NativeHudEncoder(settings)
+            fit.PlateCacheManager.saveCache(cropTestMp4.absolutePath, cache)
+
+            encoder.encode(
+                fitPath = inputFit.absolutePath, // Pass aligned dummy FIT file path
+                videoPath = cropTestMp4.absolutePath,
+                output = cropBlurredMp4.absolutePath,
+                startUtc = "2026-06-14T08:02:06Z",
+                maxDurationSeconds = 2,
+                trimStartSeconds = 0.0,
+                trimEndSeconds = 2.0
+            )
+            assertTrue(cropBlurredMp4.exists(), "Blurred video ($maskMode) must be created")
+            println("📹 Encode finished ($maskMode): ${cropBlurredMp4.exists()} (${cropBlurredMp4.length()} bytes)")
+
+            // 4. Sample key frames using FFmpeg to verify visual positioning
+            val sampleTimes = listOf(0.5, 1.5)
+            for (st in sampleTimes) {
+                val sampleImgFile = File(scratchDir, "sample_output_blur_${maskMode}_${String.format("%.1f", st)}.jpg")
+                val pbSample = ProcessBuilder(
+                    ffmpegPath, "-y",
+                    "-i", cropBlurredMp4.absolutePath,
+                    "-ss", st.toString(),
+                    "-vframes", "1",
+                    sampleImgFile.absolutePath
+                )
+                pbSample.inheritIO()
+                val pSample = pbSample.start()
+                pSample.waitFor()
+                println("📸 Wrote sample frame at crop time ${st}s for mode $maskMode to: ${sampleImgFile.absolutePath}")
+                assertTrue(sampleImgFile.exists() && sampleImgFile.length() > 0, "Sample frame ($maskMode) should be written successfully")
+            }
         }
     }
 
