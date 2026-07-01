@@ -1,4 +1,5 @@
 import java.io.ByteArrayOutputStream
+import java.io.IOException
 
 plugins {
     kotlin("multiplatform")
@@ -93,4 +94,28 @@ tasks.withType<Test> {
 
 tasks.withType<Copy> {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+val verifyNoFileLock = tasks.register("verifyNoFileLock") {
+    doFirst {
+        val libsDir = layout.buildDirectory.dir("libs").get().asFile
+        if (libsDir.exists()) {
+            libsDir.listFiles()?.forEach { file ->
+                if (file.extension == "jar") {
+                    try {
+                        file.outputStream().close()
+                    } catch (e: IOException) {
+                        throw GradleException(
+                            "REJECTED: File '${file.name}' is currently locked by a running process (likely FitTrimmer is active). " +
+                            "Please terminate the running application before building or cleaning!"
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+tasks.named("clean") {
+    dependsOn(verifyNoFileLock)
 }
