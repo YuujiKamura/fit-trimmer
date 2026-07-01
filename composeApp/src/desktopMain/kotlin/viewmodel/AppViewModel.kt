@@ -276,7 +276,19 @@ class AppViewModel(
                 }
             }
         }
-    }
+    }
+
+    fun deleteCacheJob(jobInfo: fit.CacheRegistry.CacheJobInfo) {
+        try {
+            if (jobInfo.folder.exists()) {
+                jobInfo.folder.deleteRecursively()
+            }
+            refreshAvailableCacheJobs()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
 
     fun stopPlateDetection() {
         if (isDetectingPlates) {

@@ -1193,7 +1193,7 @@ class NativeHudEncoder(
             if (runBlur) {
                 pbArgs.add(
                     "[0:v]setpts=PTS-STARTPTS[hud];" +
-                    "[2:v]format=yuv420p,setpts=PTS-STARTPTS[mask];" +
+                    "[2:v]scale=$exportWidth:$exportHeight,format=yuv420p,setpts=PTS-STARTPTS[mask];" +
                     "[1:v]scale=$exportWidth:$exportHeight,setpts=PTS-STARTPTS,split[vid_orig][vid_blur_src];" +
                     "[vid_blur_src]scale=w=${exportWidth}/20:h=${exportHeight}/20,scale=w=$exportWidth:h=$exportHeight:flags=neighbor[vid_blurred];" +
                     "[vid_orig][vid_blurred][mask]maskedmerge[vid_merged];" +
