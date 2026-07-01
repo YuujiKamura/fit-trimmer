@@ -231,6 +231,11 @@ fun TelemetryTimelineGraph(
                         Spacer(Modifier.width(4.dp))
                         Text("Stopped (停車)", color = Color(0xFFFF3B30), fontSize = 9.sp, fontWeight = FontWeight.Bold)
                     }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(8.dp).background(Color(0xFF5856D6), RoundedCornerShape(2.dp)))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Plate (プレート検出)", color = Color(0xFF636366), fontSize = 9.sp)
+                    }
                 }
             }
 
