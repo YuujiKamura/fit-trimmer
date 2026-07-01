@@ -88,6 +88,7 @@ object PlateDetectionManager {
             "pipe:1"
         )
         pb.redirectErrorStream(false)
+        pb.redirectError(ProcessBuilder.Redirect.DISCARD)
         val process = pb.start()
 
         val job = coroutineContext[kotlinx.coroutines.Job]
