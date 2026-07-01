@@ -39,14 +39,7 @@ data class VideoMetaInfo(
     val fps: String
 )
 
-fun parseVideoMetaInfo(videoPath: String): VideoMetaInfo {
-    val ffmpegPath = try { fit.findFfmpegPath() } catch (e: Exception) { "ffmpeg" }
-    val pb = ProcessBuilder(ffmpegPath, "-i", videoPath)
-    pb.redirectErrorStream(true)
-    val p = pb.start()
-    val output = p.inputStream.bufferedReader().readText()
-    p.waitFor()
-
+fun fallbackParseVideoMetaInfo(output: String): VideoMetaInfo {
     var width = 1920
     var height = 1080
     var duration = 300.0
@@ -80,6 +73,108 @@ fun parseVideoMetaInfo(videoPath: String): VideoMetaInfo {
     val rotMatch = rotRegex.find(output)
     if (rotMatch != null) {
         rotation = rotMatch.groupValues[1].toDouble().toInt()
+    }
+
+    return VideoMetaInfo(width, height, rotation, duration, fps)
+}
+
+fun parseVideoMetaInfo(videoPath: String): VideoMetaInfo {
+    val ffprobePath = try { fit.findFfprobePath() } catch (e: Exception) { "ffprobe" }
+    
+    // Call ffprobe for structured JSON
+    val pb = ProcessBuilder(
+        ffprobePath, "-v", "error",
+        "-select_streams", "v:0",
+        "-show_entries", "stream=width,height,r_frame_rate:stream_tags=rotate",
+        "-show_entries", "format=duration",
+        "-show_entries", "stream_side_data=rotation",
+        "-of", "json",
+        videoPath
+    )
+    pb.redirectErrorStream(true)
+    
+    var width = 1920
+    var height = 1080
+    var duration = 300.0
+    var fps = "30"
+    var rotation = 0
+
+    try {
+        val p = pb.start()
+        val output = p.inputStream.bufferedReader().readText()
+        p.waitFor()
+
+        val root = kotlinx.serialization.json.Json.parseToJsonElement(output).jsonObject
+        
+        // 1. Format (duration)
+        val formatObj = root["format"]?.let { if (it is kotlinx.serialization.json.JsonObject) it.jsonObject else null }
+        if (formatObj != null) {
+            formatObj["duration"]?.let { if (it is kotlinx.serialization.json.JsonPrimitive) it.jsonPrimitive else null }?.contentOrNull?.toDoubleOrNull()?.let {
+                duration = it
+            }
+        }
+
+        // 2. Streams (width, height, fps, rotation)
+        val streams = root["streams"]?.let { if (it is kotlinx.serialization.json.JsonArray) it.jsonArray else null }
+        if (streams != null && streams.isNotEmpty()) {
+            val streamElement = streams[0]
+            if (streamElement is kotlinx.serialization.json.JsonObject) {
+                val stream = streamElement.jsonObject
+                stream["width"]?.let { if (it is kotlinx.serialization.json.JsonPrimitive) it.jsonPrimitive else null }?.intOrNull?.let { width = it }
+                stream["height"]?.let { if (it is kotlinx.serialization.json.JsonPrimitive) it.jsonPrimitive else null }?.intOrNull?.let { height = it }
+                
+                // Parse r_frame_rate fraction (e.g. "30000/1001" or "30/1")
+                stream["r_frame_rate"]?.let { if (it is kotlinx.serialization.json.JsonPrimitive) it.jsonPrimitive else null }?.contentOrNull?.let { rateStr ->
+                    if ("/" in rateStr) {
+                        val parts = rateStr.split("/")
+                        if (parts.size == 2) {
+                            val num = parts[0].toDoubleOrNull()
+                            val den = parts[1].toDoubleOrNull()
+                            if (num != null && den != null && den > 0.0) {
+                                val calcFps = num / den
+                                fps = String.format(java.util.Locale.US, "%.2f", calcFps)
+                            }
+                        }
+                    } else {
+                        fps = rateStr
+                    }
+                }
+
+                // Tags (rotate)
+                val tagsObj = stream["tags"]?.let { if (it is kotlinx.serialization.json.JsonObject) it.jsonObject else null }
+                if (tagsObj != null) {
+                    tagsObj["rotate"]?.let { if (it is kotlinx.serialization.json.JsonPrimitive) it.jsonPrimitive else null }?.contentOrNull?.toDoubleOrNull()?.let {
+                        rotation = it.toInt()
+                    }
+                }
+
+                // Side data list (rotation)
+                val sideDataList = stream["side_data_list"]?.let { if (it is kotlinx.serialization.json.JsonArray) it.jsonArray else null }
+                if (sideDataList != null) {
+                    sideDataList.forEach { sideDataElement ->
+                        if (sideDataElement is kotlinx.serialization.json.JsonObject) {
+                            val sideData = sideDataElement.jsonObject
+                            sideData["rotation"]?.let { if (it is kotlinx.serialization.json.JsonPrimitive) it.jsonPrimitive else null }?.contentOrNull?.toDoubleOrNull()?.let {
+                                rotation = it.toInt()
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    } catch (e: Exception) {
+        // Fallback to legacy ffmpeg stderr output parsing
+        try {
+            val ffmpegPath = try { fit.findFfmpegPath() } catch (ex: Exception) { "ffmpeg" }
+            val pbFallback = ProcessBuilder(ffmpegPath, "-i", videoPath)
+            pbFallback.redirectErrorStream(true)
+            val pFallback = pbFallback.start()
+            val outputFallback = pFallback.inputStream.bufferedReader().readText()
+            pFallback.waitFor()
+            return fallbackParseVideoMetaInfo(outputFallback)
+        } catch (ex: Exception) {
+            ex.printStackTrace()
+        }
     }
 
     return VideoMetaInfo(width, height, rotation, duration, fps)

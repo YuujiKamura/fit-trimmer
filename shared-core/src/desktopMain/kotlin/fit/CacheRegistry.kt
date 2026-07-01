@@ -77,16 +77,19 @@ object CacheRegistry {
         if (!workDir.exists() || !workDir.isDirectory) return emptyList()
 
         val jobs = workDir.listFiles { _, name -> name.startsWith("job_") } ?: emptyArray()
-        val targetNorm = try { File(videoPath).canonicalPath.replace('\\', '/').lowercase() } catch (e: Exception) { videoPath.replace('\\', '/').lowercase() }
+        val targetNorm = if (videoPath.isNullOrEmpty()) "" else try { File(videoPath).canonicalPath.replace('\\', '/').lowercase() } catch (e: Exception) { videoPath.replace('\\', '/').lowercase() }
 
         return jobs.mapNotNull { jobDir ->
             val parts = jobDir.listFiles { _, name -> name.matches(Regex("part_\\d{4}\\.ts")) } ?: emptyArray()
             if (parts.isEmpty()) null
             else {
                 val hash = jobDir.name.removePrefix("job_")
-                val state = JobStateManager.loadState(jobDir, hash)
-                val stateVideo = state.videoPath
-                if (stateVideo != null) {
+                val sourceFile = File(jobDir, ".video_source")
+                val stateVideo = if (sourceFile.exists()) {
+                    try { sourceFile.readText().trim() } catch (e: Exception) { null }
+                } else null
+
+                if (!stateVideo.isNullOrEmpty()) {
                     val stateNorm = try { File(stateVideo).canonicalPath.replace('\\', '/').lowercase() } catch (e: Exception) { stateVideo.replace('\\', '/').lowercase() }
                     if (stateNorm != targetNorm) {
                         return@mapNotNull null

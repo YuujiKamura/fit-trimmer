@@ -143,6 +143,7 @@ class CacheRegistryTest {
         createMockTsFile(part1)
         createMockTsFile(part2)
         JobStateManager.saveState(jobDir, JobState("99999", videoPath = mockVideoPath))
+        File(jobDir, ".video_source").writeText(mockVideoPath)
 
         assertTrue(part1.exists() && part1.length() > 0, "Mock TS part 1 should be a valid video stream")
         assertTrue(part2.exists() && part2.length() > 0, "Mock TS part 2 should be a valid video stream")
@@ -199,6 +200,8 @@ class CacheRegistryTest {
         createMockTsFile(partB)
         JobStateManager.saveState(jobDirA, JobState("aaaaa", videoPath = videoPathA))
         JobStateManager.saveState(jobDirB, JobState("bbbbb", videoPath = videoPathB))
+        File(jobDirA, ".video_source").writeText(videoPathA)
+        File(jobDirB, ".video_source").writeText(videoPathB)
 
         try {
             // 1. Scan & Isolation: Scan of A must not find job B caches
