@@ -1,4 +1,4 @@
-import java.io.File
+﻿import java.io.File
 import java.awt.image.BufferedImage
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
@@ -103,7 +103,8 @@ object HudEncodePipeline {
                 encoder.encode(fitPath, videoPath, partOutPath, videoStartUtc,
                     maxDurationSeconds = if (isSample) 5 else -1,
                     trimStartSeconds = pStart,
-                    trimEndSeconds = pEnd
+                    trimEndSeconds = pEnd,
+                    shouldResume = shouldResume
                 )
 
                 if (destFiles.isNotEmpty() && !cancelSupplier()) {

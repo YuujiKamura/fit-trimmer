@@ -1020,16 +1020,34 @@ fun FitTrimmerMainContent(
                             // Check for existing outputs
                             val existingOutputs = targetDestFiles.filter { it.exists() && it.length() > 0L }
                             var shouldResume = false
+                            var hasTempCache = false
+                            for (segment in initialPlan.segments) {
+                                val pStart = segment.startSeconds
+                                val pEnd = segment.endSeconds
+                                if (fit.NativeHudEncoder.hasResumeCache(
+                                    fitPath = fitPath,
+                                    videoPath = targetVideoPath,
+                                    startUtc = adjustedStartUtc,
+                                    maxDurationSeconds = -1,
+                                    trimStartSeconds = pStart,
+                                    trimEndSeconds = pEnd,
+                                    settings = settings
+                                )) {
+                                    hasTempCache = true
+                                    break
+                                }
+                            }
+
                             if (existingOutputs.isNotEmpty()) {
-                                val options = arrayOf("最初からやり直す (Overwrite)", "前回の続きから再開 (Resume)", "別名で保存 (Save as Copy)", "キャンセル (Cancel)")
+                                val options = arrayOf("譛蛻昴°繧峨ｄ繧顔峩縺・(Overwrite)", "蜑榊屓縺ｮ邯壹″縺九ｉ蜀埼幕 (Resume)", "蛻･蜷阪〒菫晏ｭ・(Save as Copy)", "繧ｭ繝｣繝ｳ繧ｻ繝ｫ (Cancel)")
                                 val choice = javax.swing.JOptionPane.showOptionDialog(
                                     null,
-                                    "出力ファイルの一部が既に存在します。どうしますか？\n" +
-                                    "・「最初からやり直す」: 既存のファイルを上書きして最初からエンコードします。\n" +
-                                    "・「前回の続きから再開」: 既に作成済みのパートをスキップし、残りの処理から再開します。\n" +
-                                    "・「別名で保存」: 既存のファイルは残し、コピーとして別名で保存します。\n\n" +
+                                    "蜃ｺ蜉帙ヵ繧｡繧､繝ｫ縺ｮ荳驛ｨ縺梧里縺ｫ蟄伜惠縺励∪縺吶ゅ←縺・＠縺ｾ縺吶°・歃n" +
+                                    "繝ｻ縲梧怙蛻昴°繧峨ｄ繧顔峩縺吶・ 譌｢蟄倥・繝輔ぃ繧､繝ｫ繧剃ｸ頑嶌縺阪＠縺ｦ譛蛻昴°繧峨お繝ｳ繧ｳ繝ｼ繝峨＠縺ｾ縺吶・n" +
+                                    "繝ｻ縲悟燕蝗槭・邯壹″縺九ｉ蜀埼幕縲・ 譌｢縺ｫ菴懈・貂医∩縺ｮ繝代・繝医ｒ繧ｹ繧ｭ繝・・縺励∵ｮ九ｊ縺ｮ蜃ｦ逅・°繧牙・髢九＠縺ｾ縺吶・n" +
+                                    "繝ｻ縲悟挨蜷阪〒菫晏ｭ倥・ 譌｢蟄・of 繝輔ぃ繧､繝ｫ縺ｯ谿九＠縲√さ繝斐・縺ｨ縺励※蛻･蜷阪〒菫晏ｭ倥＠縺ｾ縺吶・n\n" +
                                     "(Output file already exists. Overwrite, Resume, or Save as Copy?)",
-                                    "出力ファイルの重複 (File Exists)",
+                                    "蜃ｺ蜉帙ヵ繧｡繧､繝ｫ縺ｮ驥崎､・(File Exists)",
                                     javax.swing.JOptionPane.DEFAULT_OPTION,
                                     javax.swing.JOptionPane.QUESTION_MESSAGE,
                                     null,
@@ -1037,18 +1055,18 @@ fun FitTrimmerMainContent(
                                     options[0]
                                 )
                                 when (choice) {
-                                    0 -> { // Overwrite
-                                        existingOutputs.forEach { 
+                                    0 -> {
+                                        existingOutputs.forEach {
                                             try { if (it.exists()) it.delete() } catch (e: Exception) { e.printStackTrace() }
                                         }
                                         destFiles.addAll(targetDestFiles)
                                         shouldResume = false
                                     }
-                                    1 -> { // Resume
+                                    1 -> {
                                         destFiles.addAll(targetDestFiles)
                                         shouldResume = true
                                     }
-                                    2 -> { // Save as Copy
+                                    2 -> {
                                         shouldResume = false
                                         for (idx in targetDestFiles.indices) {
                                             val file = targetDestFiles[idx]
@@ -1068,7 +1086,35 @@ fun FitTrimmerMainContent(
                                             }
                                         }
                                     }
-                                    else -> { // Cancel / Closed
+                                    else -> {
+                                        proceed = false
+                                    }
+                                }
+                            } else if (hasTempCache) {
+                                val options = arrayOf("譛蛻昴°繧峨ｄ繧顔峩縺・(Overwrite)", "蜑榊屓縺ｮ邯壹″縺九ｉ蜀埼幕 (Resume)", "繧ｭ繝｣繝ｳ繧ｻ繝ｫ (Cancel)")
+                                val choice = javax.swing.JOptionPane.showOptionDialog(
+                                    null,
+                                    "蜑榊屓縺ｮ繧ｨ繝ｳ繧ｳ繝ｼ繝我ｸｭ縺ｮ繝・Φ繝昴Λ繝ｪ繧ｭ繝｣繝・す繝･・井ｸ譎ゅヵ繧｡繧､繝ｫ・峨′讀懷・縺輔ｌ縺ｾ縺励◆縲ゅ←縺・＠縺ｾ縺吶°・歃n" +
+                                    "繝ｻ縲梧怙蛻昴°繧峨ｄ繧顔峩縺吶・ 譌｢蟄倥・繧ｭ繝｣繝・す繝･繧堤ｴ譽・＠縺ｦ縲∵怙蛻昴°繧峨お繝ｳ繧ｳ繝ｼ繝峨＠縺ｾ縺吶・n" +
+                                    "繝ｻ縲悟燕蝗槭・邯壹″縺九ｉ蜀埼幕縲・ 繧ｭ繝｣繝・す繝･繧貞茜逕ｨ縺励∽ｸｭ譁ｭ縺励◆菴咲ｽｮ縺九ｉ繧ｨ繝ｳ繧ｳ繝ｼ繝峨ｒ蜀埼幕縺励∪縺吶・n\n" +
+                                    "(Temporary encoding cache detected. Overwrite or Resume?)",
+                                    "繧ｨ繝ｳ繧ｳ繝ｼ繝峨く繝｣繝・す繝･縺ｮ讀懷・ (Cache Detected)",
+                                    javax.swing.JOptionPane.DEFAULT_OPTION,
+                                    javax.swing.JOptionPane.QUESTION_MESSAGE,
+                                    null,
+                                    options,
+                                    options[0]
+                                )
+                                when (choice) {
+                                    0 -> {
+                                        shouldResume = false
+                                        destFiles.addAll(targetDestFiles)
+                                    }
+                                    1 -> {
+                                        shouldResume = true
+                                        destFiles.addAll(targetDestFiles)
+                                    }
+                                    else -> {
                                         proceed = false
                                     }
                                 }
