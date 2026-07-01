@@ -687,9 +687,9 @@ fun VideoPreviewArea(
                                 val h = ry2 - ry1
                                 
                                 if (w > 0 && h > 0) {
-                                    // Draw a solid dark-gray privacy block
+                                    // Draw a semi-transparent blur-placeholder block (frosted glass indicator)
                                     drawRect(
-                                        color = Color(0xFF1C1C1E),
+                                        color = Color(0xB32C2C2E),
                                         topLeft = Offset(rx1, ry1),
                                         size = Size(w, h)
                                     )
