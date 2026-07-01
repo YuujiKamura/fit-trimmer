@@ -422,7 +422,7 @@ class PlateDetectorTest {
         kotlin.test.assertNull(viewModel.plateCache, "plateCache must still be null after path change when no cache file exists")
 
         // Verify that trying to query mask boxes while unassigned safely returns empty (no crash, safe UI rendering)
-        val sampleTimeMs = 12000L
+        val sampleTimeMs = 0L // 0ms (aligned within the 2-second video range)
         val initialBoxes = viewModel.plateCache?.shouldBlurAt(sampleTimeMs, true) ?: emptyList()
         kotlin.test.assertTrue(initialBoxes.isEmpty(), "Unassigned plate cache must yield empty boxes")
 
