@@ -153,9 +153,18 @@ class CacheRegistryTest {
             assertEquals(2, myJob.partsCount, "Parts count should match")
 
             val salvagedOutput = File(testTempDir, "salvaged_output.mp4").absolutePath
+            val progressList = mutableListOf<Float>()
+            val statusList = mutableListOf<String>()
             CacheRegistry.salvageAndMerge(jobDir, salvagedOutput) { progress, status ->
                 println("Salvage progress: $progress -> $status")
+                progressList.add(progress)
+                statusList.add(status)
             }
+
+            val mergingStatuses = statusList.filter { "Merging video segments" in it }
+            assertTrue(mergingStatuses.isNotEmpty(), "Should report merging status")
+            val hasPercentAndMb = mergingStatuses.any { "%" in it && "MB" in it }
+            assertTrue(hasPercentAndMb, "Merging status should report numeric progress in % and size in MB (actual statuses: $mergingStatuses)")
 
             val outFile = File(salvagedOutput)
             assertTrue(outFile.exists(), "Salvaged output file should be generated")
