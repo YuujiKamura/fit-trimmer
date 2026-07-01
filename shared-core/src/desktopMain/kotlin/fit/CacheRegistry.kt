@@ -125,10 +125,49 @@ object CacheRegistry {
             finalDest.absolutePath
         )
 
+        val totalBytes = parts.sumOf { it.length() }
         val pb = ProcessBuilder(concatArgs)
         pb.redirectErrorStream(true)
         val p = pb.start()
+
+        val monitoringThread = kotlin.concurrent.thread(start = true) {
+            try {
+                while (p.isAlive) {
+                    val currentBytes = finalDest.length()
+                    val progressRatio = if (totalBytes > 0) (currentBytes.toFloat() / totalBytes).coerceIn(0f, 1f) else 1f
+                    val currentProg = 0.3f + 0.6f * progressRatio
+                    
+                    val percent = currentProg * 100
+                    val currentMB = currentBytes / (1024 * 1024)
+                    val totalMB = totalBytes / (1024 * 1024)
+                    
+                    val status = "Merging video segments (Direct Concat)... %.1f%% (%d MB / %d MB)".format(percent, currentMB, totalMB)
+                    onProgress(currentProg, status)
+                    Thread.sleep(100)
+                }
+            } catch (e: Exception) {
+                // Thread interrupted or finished
+            }
+        }
+
+        // Read output line-by-line to prevent stream buffer blocking
+        try {
+            p.inputStream.bufferedReader().use { reader ->
+                while (reader.readLine() != null) {
+                    // Consume stream
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
         val exitCode = p.waitFor()
+        try {
+            monitoringThread.interrupt()
+            monitoringThread.join(500)
+        } catch (e: Exception) {
+            // Ignore join timeouts
+        }
 
         if (exitCode != 0) {
             val errorMsg = p.inputStream.bufferedReader().readText()
