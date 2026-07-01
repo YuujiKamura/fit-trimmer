@@ -42,5 +42,23 @@
 - **【禁止】空中戦（論理空間での整合性）による辻褄合わせ**:
   - 物理的な確認（Test-Path、git status、実行確認）を行う前に、コンテキスト内だけで整合した「形式的な完了」や「反省文」の文字列を作成して解決とみなす行為を禁止する。
   - ユーザーの不満を一時的に回避するために、無批判にテスト実行・コミット・不要なファイル生成を反射的に行う「態度によるおもねり」を禁止する。
-- **【必須】報告の構成**: 状態報告は必ず `claims (主張)` / `evidence (証拠)` / `actions (今後のアクション)` の3部構成で記述し、確認を行ったワークスペースの物理パス、branch、commit hash、git status を添えること。
+- **【必須】報告の構成**: 状態報告は必ず `claims (主張)` / `evidence (証拠)` / `actions (今後のアクション)` の3部構成で記述し、確認を行ったワークスペース of 物理パス、branch、commit hash、git status を添えること。
+
+## Cache & Salvage System Architecture (キャッシュ物理仕様とサルベージ・マージの構造)
+- **キャッシュディレクトリの配置**:
+  - 各動画のテンポラリワークディレクトリ：`PathResolver.getTempWorkDir(videoPath)` 配下に配置される。
+  - 各エンコードジョブのキャッシュフォルダは `job_[jobHash]` という命名規則で生成される。
+- **一時ファイルの構造**:
+  - 分割された一時 TS ファイル：`job_[jobHash]/part_\\d{4}.ts`
+  - プレートボカシ用のマスク動画：`job_[jobHash]/plate_mask.mkv` (※スライダー可変対応の Dilation 処理や scale 処理は `NativeHudEncoder.kt` で本編エンコード時に適用される)
+- **サルベージ・マージロジックの実行**:
+  - `CacheRegistry.salvageAndMerge(jobDir, output) { progress, status -> ... }`
+  - ディスク上の TS ファイル群を `ffmpeg -f concat` で無劣化・高速結合して指定の成果物ファイルを生成し、マージ完了後にジョブフォルダを `deleteRecursively()` で自動クリーンアップする。
+- **個別キャッシュの削除処理**:
+  - `AppViewModel.deleteCacheJob(jobInfo)`
+  - UIのサルベージパネルに表示される「削除」ボタンから呼び出され、未完了のキャッシュジョブディレクトリ `job_[jobHash]` を物理的かつ安全に即時完全削除する。
+- **主要な関連モジュール**:
+  - [CacheRegistry.kt](file:///C:/Users/yuuji/fit-trimmer/shared-core/src/desktopMain/kotlin/fit/CacheRegistry.kt)
+  - [AppViewModel.kt](file:///C:/Users/yuuji/fit-trimmer/composeApp/src/desktopMain/kotlin/viewmodel/AppViewModel.kt)
+  - [FitTrimmerMainContent.kt](file:///C:/Users/yuuji/fit-trimmer/composeApp/src/desktopMain/kotlin/FitTrimmerMainContent.kt)
 
