@@ -14,6 +14,10 @@ import fit.VideoPlatesCache
 class AppViewModel(
     initialCache: utils.GuiPathCache?
 ) {
+    init {
+        refreshAvailableCacheJobs()
+    }
+
     var composeWindow: java.awt.Window? = null
 
     // Basic States
