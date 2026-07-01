@@ -153,7 +153,8 @@ fun VideoPreviewArea(
     onPreviewQualityModeChange: (String) -> Unit = {},
     isFullscreen: Boolean = false,
     onFullscreenToggle: (() -> Unit)? = null,
-    plateCache: fit.VideoPlatesCache? = null
+    plateCache: fit.VideoPlatesCache? = null,
+    videoRotation: Int = 0
 ) {
     var isPlaying by remember { mutableStateOf(false) }
     var lastVolume by remember { mutableStateOf(1f) }
@@ -672,8 +673,64 @@ fun VideoPreviewArea(
                             
                             val scaleX = size.width / videoW.toFloat()
                             val scaleY = size.height / videoH.toFloat()
-                            
-
+                            val rotation = videoRotation
+                            for (box in blurBoxes) {
+                                val x1 = box.x1.toFloat()
+                                val y1 = box.y1.toFloat()
+                                val x2 = box.x2.toFloat()
+                                val y2 = box.y2.toFloat()
+                                
+                                val rx1: Float
+                                val ry1: Float
+                                val rx2: Float
+                                val ry2: Float
+                                
+                                when (rotation) {
+                                    90, -270 -> {
+                                        rx1 = (videoH.toFloat() - y2) * scaleX
+                                        ry1 = x1 * scaleY
+                                        rx2 = (videoH.toFloat() - y1) * scaleX
+                                        ry2 = x2 * scaleY
+                                    }
+                                    180, -180 -> {
+                                        rx1 = (videoW.toFloat() - x2) * scaleX
+                                        ry1 = (videoH.toFloat() - y2) * scaleY
+                                        rx2 = (videoW.toFloat() - x1) * scaleX
+                                        ry2 = (videoH.toFloat() - y1) * scaleY
+                                    }
+                                    270, -90 -> {
+                                        rx1 = y1 * scaleX
+                                        ry1 = (videoW.toFloat() - x2) * scaleY
+                                        rx2 = y2 * scaleX
+                                        ry2 = (videoW.toFloat() - x1) * scaleY
+                                    }
+                                    else -> {
+                                        rx1 = x1 * scaleX
+                                        ry1 = y1 * scaleY
+                                        rx2 = x2 * scaleX
+                                        ry2 = y2 * scaleY
+                                    }
+                                }
+                                
+                                val w = rx2 - rx1
+                                val h = ry2 - ry1
+                                
+                                if (w > 0 && h > 0) {
+                                    // Draw a solid dark-gray privacy block
+                                    drawRect(
+                                        color = Color(0xFF1C1C1E),
+                                        topLeft = Offset(rx1, ry1),
+                                        size = Size(w, h)
+                                    )
+                                    // Draw border
+                                    drawRect(
+                                        color = Color(0xFFE5E5EA),
+                                        topLeft = Offset(rx1, ry1),
+                                        size = Size(w, h),
+                                        style = Stroke(width = 1f)
+                                    )
+                                }
+                            }
                         }
 
                         val telemetryPoint = currentPoint ?: fit.FitParser.TelemetryPoint(

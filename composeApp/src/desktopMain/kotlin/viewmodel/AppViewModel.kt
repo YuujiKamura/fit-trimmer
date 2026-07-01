@@ -70,10 +70,13 @@ class AppViewModel(
                 proxyVideoPath = null
                 
                 plateCache = fit.PlateCacheManager.loadCache(value)
+                videoRotation = utils.getVideoRotation(value)
+                println("DEBUG: Loaded videoRotation: $videoRotation")
             }
         }
 
     // License Plate Detection States
+    var videoRotation by mutableStateOf(0)
     var plateCache by mutableStateOf<fit.VideoPlatesCache?>(
         initialCache?.videoPath?.let { fit.PlateCacheManager.loadCache(it) }
     )
@@ -84,11 +87,71 @@ class AppViewModel(
     private var plateDetectionJob: kotlinx.coroutines.Job? = null
 
     fun runPlateDetection(coroutineScope: kotlinx.coroutines.CoroutineScope) {
-        // Omitted
+        val path = videoPath
+        if (path.isEmpty()) return
+        
+        coroutineScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+            // Cancel and wait for active job to safely abort before starting a new one
+            if (isDetectingPlates) {
+                println("DEBUG: Cancelling active plate detection job to apply updated parameters.")
+                plateDetectionJob?.cancel()
+                try {
+                    plateDetectionJob?.join()
+                } catch (e: Exception) {}
+            }
+            
+            isDetectingPlates = true
+            plateDetectionProgress = "0.0%"
+            plateDetectionError = null
+            
+            val myJob = coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                try {
+                    val cache = utils.PlateDetectionManager.runDetection(
+                        videoPath = path,
+                        telemetryPoints = telemetryPoints,
+                        adjustedStartUtc = videoStartUtc,
+                        onProgress = { progress ->
+                            val suffix = if (telemetryPoints.isNotEmpty() && videoStartUtc.isNotEmpty()) "" else " (No Telemetry)"
+                            plateDetectionProgress = String.format(java.util.Locale.US, "%.1f%%", progress) + suffix
+                        },
+                        onCancel = { !isActive }
+                    )
+                    if (cache != null) {
+                        plateCache = cache
+                    } else {
+                        if (isActive) {
+                            plateDetectionError = utils.Localizer.get("plate_error_unknown", settings.language)
+                            plateDetectionProgress = "Failed"
+                        } else {
+                            plateDetectionProgress = "Canceled"
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    plateDetectionError = e.message ?: "Unknown error"
+                    plateDetectionProgress = "Error: ${e.message}"
+                } finally {
+                    if (plateDetectionJob == coroutineContext[kotlinx.coroutines.Job]) {
+                        isDetectingPlates = false
+                    }
+                }
+            }
+            plateDetectionJob = myJob
+        }
     }
 
     fun onBlurLicensePlatesChanged(enabled: Boolean, coroutineScope: kotlinx.coroutines.CoroutineScope) {
-        settings = settings.copy(blurLicensePlates = false)
+        settings = settings.copy(blurLicensePlates = enabled)
+        if (enabled) {
+            if (plateCache == null && videoPath.isNotEmpty()) {
+                runPlateDetection(coroutineScope)
+            }
+        } else {
+            println("DEBUG: Blur settings disabled. Cancelling active plate detection job.")
+            plateDetectionJob?.cancel()
+            isDetectingPlates = false
+            plateDetectionProgress = "Canceled"
+        }
     }
 
 
