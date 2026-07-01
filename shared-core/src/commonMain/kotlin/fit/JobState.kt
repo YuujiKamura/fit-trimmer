@@ -8,3 +8,5 @@ data class JobState(
     val isPlateMaskStreamReady: Boolean = false,
     val isRoadTelemetryReady: Boolean = false
 )
+
+
