@@ -175,8 +175,8 @@ fun FitTrimmerMainContent(
     var trimEndSeconds by viewModel::trimEndSeconds
     var videoCurrentTimeMs by remember { mutableStateOf(0L) }
     val scope = rememberCoroutineScope()
-    LaunchedEffect(viewModel.videoStartUtc, viewModel.telemetryPoints.size, settings.blurLicensePlates) {
-        if (settings.blurLicensePlates && viewModel.videoPath.isNotEmpty()) {
+    LaunchedEffect(videoPath, settings.blurLicensePlates) {
+        if (settings.blurLicensePlates && videoPath.isNotEmpty() && viewModel.plateCache == null && !viewModel.isDetectingPlates) {
             viewModel.runPlateDetection(scope)
         }
     }
@@ -2470,6 +2470,14 @@ fun FitTrimmerMainContent(
                                         text = viewModel.plateDetectionProgress,
                                         fontSize = 10.sp,
                                         color = Color.Gray
+                                    )
+                                } else if (viewModel.plateCache != null) {
+                                    val doneText = if (settings.language == "ja") "完了 (再実行)" else "Done (Re-scan)"
+                                    Text(
+                                        text = "($doneText)",
+                                        fontSize = 10.sp,
+                                        color = Color(0xFF34C759),
+                                        modifier = Modifier.clickable { viewModel.runPlateDetection(scope) }
                                     )
                                 }
                             }
