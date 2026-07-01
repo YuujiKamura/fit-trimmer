@@ -88,6 +88,16 @@ object PlateDetectionManager {
         )
         pb.redirectErrorStream(false)
         val process = pb.start()
+
+        val job = coroutineContext[kotlinx.coroutines.Job]
+        val cancellationHandler = job?.invokeOnCompletion {
+            if (job.isCancelled) {
+                println("DEBUG: Scanning coroutine cancelled. Force destroying FFmpeg process...")
+                try {
+                    process.destroyForcibly()
+                } catch (e: Exception) {}
+            }
+        }
  
         val startTimeAdjusted = try {
             if (adjustedStartUtc.isNotEmpty()) {
@@ -180,6 +190,7 @@ object PlateDetectionManager {
         } catch (e: Exception) {
             e.printStackTrace()
         } finally {
+            cancellationHandler?.dispose()
             process.destroy()
         }
 

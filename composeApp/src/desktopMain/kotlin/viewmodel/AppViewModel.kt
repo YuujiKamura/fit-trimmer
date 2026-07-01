@@ -106,7 +106,8 @@ class AppViewModel(
                         telemetryPoints = telemetryPoints,
                         adjustedStartUtc = videoStartUtc,
                         onProgress = { progress ->
-                            plateDetectionProgress = String.format(java.util.Locale.US, "%.1f%%", progress)
+                            val suffix = if (telemetryPoints.isNotEmpty() && videoStartUtc.isNotEmpty()) "" else " (No Telemetry)"
+                            plateDetectionProgress = String.format(java.util.Locale.US, "%.1f%%", progress) + suffix
                         },
                         onCancel = { !isActive }
                     )
@@ -133,8 +134,15 @@ class AppViewModel(
 
     fun onBlurLicensePlatesChanged(enabled: Boolean, coroutineScope: kotlinx.coroutines.CoroutineScope) {
         settings = settings.copy(blurLicensePlates = enabled)
-        if (enabled && plateCache == null && videoPath.isNotEmpty()) {
-            runPlateDetection(coroutineScope)
+        if (enabled) {
+            if (plateCache == null && videoPath.isNotEmpty()) {
+                runPlateDetection(coroutineScope)
+            }
+        } else {
+            println("DEBUG: Blur settings disabled. Cancelling active plate detection job.")
+            plateDetectionJob?.cancel()
+            isDetectingPlates = false
+            plateDetectionProgress = "Canceled"
         }
     }
 
