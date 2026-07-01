@@ -1,4 +1,4 @@
-package viewmodel
+﻿package viewmodel
 
 import fit.HudSettings
 import fit.FitParser
@@ -671,5 +671,57 @@ class AppViewModelTest {
         
         val unitLabelJa = utils.Localizer.get("use_imperial_units", "ja")
         assertEquals("マイル・フィート表示 (Imperial Units)", unitLabelJa)
+    }
+
+    @Test
+    fun testInitializationWithCacheRestoresPlateCache() {
+        val videoFile = File(System.getProperty("java.io.tmpdir"), "fittrimmer-restore-init-test.mp4")
+        videoFile.writeText("placeholder")
+        val cacheFile = PlateCacheManager.getPlatesFile(videoFile.absolutePath)
+        cacheFile?.delete()
+
+        val expectedCache = VideoPlatesCache(
+            videoPath = videoFile.absolutePath,
+            records = listOf(
+                PlateRecord(1000L, listOf(PlateBox(1, 2, 30, 12))),
+                PlateRecord(2000L, listOf(PlateBox(4, 5, 40, 18)))
+            )
+        )
+        PlateCacheManager.saveCache(videoFile.absolutePath, expectedCache)
+
+        val cache = GuiPathCache(
+            fitPath = "/path/to/fit",
+            videoPath = videoFile.absolutePath,
+            videoStartUtc = "2026-06-29T10:00:00Z",
+            settings = HudSettings(blurLicensePlates = true)
+        )
+        val viewModel = AppViewModel(cache)
+        
+        assertNotNull(viewModel.plateCache, "plateCache must be restored immediately on startup when settings.blurLicensePlates is true")
+        assertEquals(2, viewModel.plateRecordCount)
+        
+        PlateCacheManager.deleteCache(videoFile.absolutePath)
+        videoFile.delete()
+    }
+
+    @Test
+    fun testCacheExistsWithDifferentPathFormatting() {
+        val videoPath1 = "C:\\\\Users\\\\yuuji\\\\Test.mp4"
+        val videoPath2 = "c:/Users/yuuji/Test.mp4"
+        
+        val cache = VideoPlatesCache(
+            videoPath = videoPath1,
+            records = listOf(PlateRecord(1000L, emptyList()))
+        )
+        
+        PlateCacheManager.saveCache(videoPath1, cache)
+        
+        try {
+            assertTrue(PlateCacheManager.cacheExists(videoPath2), "Cache must be detected even if slash directions or drive letter casing differ")
+            val restored = PlateCacheManager.loadCache(videoPath2)
+            assertNotNull(restored)
+        } finally {
+            PlateCacheManager.deleteCache(videoPath1)
+        }
     }
 }
