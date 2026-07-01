@@ -45,10 +45,40 @@ fun EncodingProgressArea(
             if (showLivePreview) {
                 encodingPreviewImage?.let { hudImg ->
                     Canvas(modifier = Modifier.fillMaxSize()) {
-                        drawImage(
-                            image = hudImg,
-                            dstSize = IntSize(size.width.toInt(), size.height.toInt())
-                        )
+                        val imgW = hudImg.width.toFloat()
+                        val imgH = hudImg.height.toFloat()
+                        if (imgW > 0f && imgH > 0f) {
+                            val imgAspect = imgW / imgH
+                            val canvasAspect = size.width / size.height
+                            
+                            val dstW: Float
+                            val dstH: Float
+                            val offsetX: Float
+                            val offsetY: Float
+                            
+                            if (canvasAspect > imgAspect) {
+                                dstH = size.height
+                                dstW = size.height * imgAspect
+                                offsetX = (size.width - dstW) / 2f
+                                offsetY = 0f
+                            } else {
+                                dstW = size.width
+                                dstH = size.width / imgAspect
+                                offsetX = 0f
+                                offsetY = (size.height - dstH) / 2f
+                            }
+                            
+                            drawImage(
+                                image = hudImg,
+                                dstOffset = androidx.compose.ui.unit.IntOffset(offsetX.toInt(), offsetY.toInt()),
+                                dstSize = IntSize(dstW.toInt(), dstH.toInt())
+                            )
+                        } else {
+                            drawImage(
+                                image = hudImg,
+                                dstSize = IntSize(size.width.toInt(), size.height.toInt())
+                            )
+                        }
                     }
                 }
             } else {
