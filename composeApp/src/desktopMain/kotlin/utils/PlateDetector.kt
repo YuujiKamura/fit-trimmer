@@ -14,6 +14,10 @@ class PlateDetector private constructor() : AutoCloseable {
     private val env: OrtEnvironment = OrtEnvironment.getEnvironment()
     private val session: OrtSession
 
+    // TDD Verification Flags
+    var lastResizeBypassed = false
+    var lastGetRgbBypassed = false
+
     // Performance tracking statistics
     private var totalFramesProcessed = 0L
     private var totalResizeMs = 0.0
@@ -82,96 +86,123 @@ class PlateDetector private constructor() : AutoCloseable {
         val width = image.width
         val height = image.height
 
-        val resized = resizeImage(image, 640, 640)
+        val resized: BufferedImage
+        if (width == 640 && height == 640) {
+            resized = image
+            lastResizeBypassed = true
+        } else {
+            resized = resizeImage(image, 640, 640)
+            lastResizeBypassed = false
+        }
         val tResize = System.nanoTime()
-
-        val rgbArray = IntArray(640 * 640)
-        resized.getRGB(0, 0, 640, 640, rgbArray, 0, 640)
 
         val inputData = FloatArray(1 * 3 * 640 * 640)
         val rOffset = 0
         val gOffset = 640 * 640
         val bOffset = 2 * 640 * 640
-        
         val inv255 = 1.0f / 255.0f
-        for (i in 0 until 640 * 640) {
-            val rgb = rgbArray[i]
-            val r = ((rgb shr 16) and 0xFF) * inv255
-            val g = ((rgb shr 8) and 0xFF) * inv255
-            val b = (rgb and 0xFF) * inv255
-            
-            inputData[rOffset + i] = r
-            inputData[gOffset + i] = g
-            inputData[bOffset + i] = b
+
+        val raster = resized.raster
+        val dataBuffer = raster.dataBuffer
+        if (resized.type == BufferedImage.TYPE_3BYTE_BGR && dataBuffer is java.awt.image.DataBufferByte) {
+            val bytes = dataBuffer.data
+            for (i in 0 until 640 * 640) {
+                val base = i * 3
+                val b = (bytes[base].toInt() and 0xFF) * inv255
+                val g = (bytes[base + 1].toInt() and 0xFF) * inv255
+                val r = (bytes[base + 2].toInt() and 0xFF) * inv255
+                
+                inputData[rOffset + i] = r
+                inputData[gOffset + i] = g
+                inputData[bOffset + i] = b
+            }
+            lastGetRgbBypassed = true
+        } else {
+            val rgbArray = IntArray(640 * 640)
+            resized.getRGB(0, 0, 640, 640, rgbArray, 0, 640)
+            for (i in 0 until 640 * 640) {
+                val rgb = rgbArray[i]
+                val r = ((rgb shr 16) and 0xFF) * inv255
+                val g = ((rgb shr 8) and 0xFF) * inv255
+                val b = (rgb and 0xFF) * inv255
+                
+                inputData[rOffset + i] = r
+                inputData[gOffset + i] = g
+                inputData[bOffset + i] = b
+            }
+            lastGetRgbBypassed = false
         }
         val tPreprocess = System.nanoTime()
 
         val inputBuffer = FloatBuffer.wrap(inputData)
         val tensor = OnnxTensor.createTensor(env, inputBuffer, longArrayOf(1, 3, 640, 640))
         
-        val outputs = session.run(mapOf("images" to tensor))
-        val outputTensor = outputs[0] as OnnxTensor
-        val tInference = System.nanoTime()
-        
-        // YOLOv8 output is [1, 5, 8400]
-        val outputData = outputTensor.value as Array<Array<FloatArray>>
-        val pred = outputData[0] // [5, 8400]
-        
-        val boxes = mutableListOf<DetectedBox>()
-        for (i in 0 until 8400) {
-            val score = pred[4][i]
-            if (score >= confThreshold) {
-                val cx = pred[0][i]
-                val cy = pred[1][i]
-                val w = pred[2][i]
-                val h = pred[3][i]
+        val result = tensor.use { t ->
+            session.run(mapOf("images" to t)).use { outputs ->
+                val outputTensor = outputs[0] as OnnxTensor
+                val tInference = System.nanoTime()
                 
-                val x1 = cx - w / 2f
-                val y1 = cy - h / 2f
-                val x2 = cx + w / 2f
-                val y2 = cy + h / 2f
+                // YOLOv8 output is [1, 5, 8400]
+                val outputData = outputTensor.value as Array<Array<FloatArray>>
+                val pred = outputData[0] // [5, 8400]
                 
-                boxes.add(DetectedBox(x1, y1, x2, y2, score))
+                val boxes = mutableListOf<DetectedBox>()
+                for (i in 0 until 8400) {
+                    val score = pred[4][i]
+                    if (score >= confThreshold) {
+                        val cx = pred[0][i]
+                        val cy = pred[1][i]
+                        val w = pred[2][i]
+                        val h = pred[3][i]
+                        
+                        val x1 = cx - w / 2f
+                        val y1 = cy - h / 2f
+                        val x2 = cx + w / 2f
+                        val y2 = cy + h / 2f
+                        
+                        boxes.add(DetectedBox(x1, y1, x2, y2, score))
+                    }
+                }
+                
+                val nmsBoxes = nms(boxes, iouThreshold)
+                val mapped = nmsBoxes.map { box ->
+                    val scaleX = width.toFloat() / 640f
+                    val scaleY = height.toFloat() / 640f
+                    val x1 = (box.x1 * scaleX).toInt().coerceAtLeast(0)
+                    val y1 = (box.y1 * scaleY).toInt().coerceAtLeast(0)
+                    val x2 = (box.x2 * scaleX).toInt().coerceAtMost(width)
+                    val y2 = (box.y2 * scaleY).toInt().coerceAtMost(height)
+                    PlateBox(x1, y1, x2, y2)
+                }
+                val tPostprocess = System.nanoTime()
+
+                val dResize = (tResize - t0) / 1_000_000.0
+                val dPre = (tPreprocess - tResize) / 1_000_000.0
+                val dInf = (tInference - tPreprocess) / 1_000_000.0
+                val dPost = (tPostprocess - tInference) / 1_000_000.0
+                
+                totalFramesProcessed++
+                totalResizeMs += dResize
+                totalPreprocessMs += dPre
+                totalInferenceMs += dInf
+                totalPostprocessMs += dPost
+
+                if (totalFramesProcessed % 100 == 0L || totalFramesProcessed <= 5L) {
+                    val avgResize = totalResizeMs / totalFramesProcessed
+                    val avgPre = totalPreprocessMs / totalFramesProcessed
+                    val avgInf = totalInferenceMs / totalFramesProcessed
+                    val avgPost = totalPostprocessMs / totalFramesProcessed
+                    val avgTotal = avgResize + avgPre + avgInf + avgPost
+                    
+                    println(String.format(
+                        java.util.Locale.US,
+                        "DEBUG: YOLO Scan [Frame %d] - Avg: resize=%.2fms, preprocess=%.2fms, inference=%.2fms, postprocess=%.2fms | Avg total: %.2fms",
+                        totalFramesProcessed, avgResize, avgPre, avgInf, avgPost, avgTotal
+                    ))
+                }
+                mapped
             }
         }
-        
-        val nmsBoxes = nms(boxes, iouThreshold)
-        val result = nmsBoxes.map { box ->
-            val scaleX = width.toFloat() / 640f
-            val scaleY = height.toFloat() / 640f
-            val x1 = (box.x1 * scaleX).toInt().coerceAtLeast(0)
-            val y1 = (box.y1 * scaleY).toInt().coerceAtLeast(0)
-            val x2 = (box.x2 * scaleX).toInt().coerceAtMost(width)
-            val y2 = (box.y2 * scaleY).toInt().coerceAtMost(height)
-            PlateBox(x1, y1, x2, y2)
-        }
-        val tPostprocess = System.nanoTime()
-
-        val dResize = (tResize - t0) / 1_000_000.0
-        val dPre = (tPreprocess - tResize) / 1_000_000.0
-        val dInf = (tInference - tPreprocess) / 1_000_000.0
-        val dPost = (tPostprocess - tInference) / 1_000_000.0
-        
-        totalFramesProcessed++
-        totalResizeMs += dResize
-        totalPreprocessMs += dPre
-        totalInferenceMs += dInf
-        totalPostprocessMs += dPost
-
-        if (totalFramesProcessed % 100 == 0L || totalFramesProcessed <= 5L) {
-            val avgResize = totalResizeMs / totalFramesProcessed
-            val avgPre = totalPreprocessMs / totalFramesProcessed
-            val avgInf = totalInferenceMs / totalFramesProcessed
-            val avgPost = totalPostprocessMs / totalFramesProcessed
-            val avgTotal = avgResize + avgPre + avgInf + avgPost
-            
-            println(String.format(
-                java.util.Locale.US,
-                "DEBUG: YOLO Scan [Frame %d] - Avg: resize=%.2fms, preprocess=%.2fms, inference=%.2fms, postprocess=%.2fms | Avg total: %.2fms",
-                totalFramesProcessed, avgResize, avgPre, avgInf, avgPost, avgTotal
-            ))
-        }
-
         return result
     }
 
