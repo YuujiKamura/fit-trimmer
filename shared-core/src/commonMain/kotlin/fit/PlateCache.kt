@@ -149,7 +149,7 @@ fun VideoPlatesCache.buildMappedMaskFrames(
     totalFrames: Int,
     fps: Double,
     isBlurEnabled: Boolean,
-    maskMode: String,
+    expandRatio: Double,
     fallbackSourceWidth: Int,
     fallbackSourceHeight: Int,
     targetWidth: Float,
@@ -182,7 +182,7 @@ fun VideoPlatesCache.buildMappedMaskFrames(
         boxesForTargetTime(targetTimeMs, prev, next).mapNotNull { box ->
             val expanded = PlateMaskExpander.expand(
                 box = box,
-                mode = maskMode,
+                expandRatio = expandRatio,
                 sourceWidth = sourceWidth.takeIf { it > 0 } ?: fallbackSourceWidth,
                 sourceHeight = sourceHeight.takeIf { it > 0 } ?: fallbackSourceHeight
             )
@@ -201,32 +201,21 @@ fun VideoPlatesCache.buildMappedMaskFrames(
 object PlateMaskExpander {
     fun expand(
         box: PlateBox,
-        mode: String,
+        expandRatio: Double,
         sourceWidth: Int,
         sourceHeight: Int
     ): PlateBox {
         val width = (box.x2 - box.x1).coerceAtLeast(1)
         val height = (box.y2 - box.y1).coerceAtLeast(1)
-        val normalizedMode = mode.lowercase()
 
-        val (leftPad, rightPad, topPad, bottomPad) = if (normalizedMode == "wide") {
-            listOf(
-                width * 1.5,
-                width * 1.5,
-                height * 1.5,
-                height * 1.0
-            )
-        } else {
-            val padX = width * 0.18
-            val padY = height * 0.28
-            listOf(padX, padX, padY, padY)
-        }
+        val padX = width * expandRatio
+        val padY = height * (expandRatio * 1.5)
 
         return PlateBox(
-            x1 = (box.x1 - leftPad).toInt().coerceIn(0, sourceWidth.coerceAtLeast(1)),
-            y1 = (box.y1 - topPad).toInt().coerceIn(0, sourceHeight.coerceAtLeast(1)),
-            x2 = (box.x2 + rightPad).toInt().coerceIn(0, sourceWidth.coerceAtLeast(1)),
-            y2 = (box.y2 + bottomPad).toInt().coerceIn(0, sourceHeight.coerceAtLeast(1))
+            x1 = (box.x1 - padX).toInt().coerceIn(0, sourceWidth.coerceAtLeast(1)),
+            y1 = (box.y1 - padY).toInt().coerceIn(0, sourceHeight.coerceAtLeast(1)),
+            x2 = (box.x2 + padX).toInt().coerceIn(0, sourceWidth.coerceAtLeast(1)),
+            y2 = (box.y2 + padY).toInt().coerceIn(0, sourceHeight.coerceAtLeast(1))
         )
     }
 }
