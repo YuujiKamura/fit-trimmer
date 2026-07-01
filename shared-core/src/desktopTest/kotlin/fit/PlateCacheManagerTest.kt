@@ -57,9 +57,9 @@ class PlateCacheManagerTest {
         assertEquals(1, result1.size)
         assertEquals(box, result1.first())
 
-        // Case 2: Blur is enabled, but time difference exceeds 1500ms
-        // e.g., targetTimeMs = 2600 (diff = 1600ms > 1500ms) -> Should return empty
-        val result2 = cache.shouldBlurAt(2600, isBlurEnabled = true)
+        // Case 2: Blur is enabled, but time difference exceeds 2500ms
+        // e.g., targetTimeMs = 3600 (diff = 2600ms > 2500ms) -> Should return empty
+        val result2 = cache.shouldBlurAt(3600, isBlurEnabled = true)
         assertEquals(0, result2.size)
 
         // Case 3: Blur is disabled, even with exact time match -> Should return empty (toggled OFF behavior)

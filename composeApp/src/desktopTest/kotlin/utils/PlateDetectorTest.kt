@@ -349,6 +349,10 @@ class PlateDetectorTest {
         }
         assertTrue(cache != null, "Scan cache must be successfully built")
         println("🔍 Scan finished: Found ${cache.records.size} frames with plates")
+        println("📝 DEBUG: Detected Plate Cache Records:")
+        for (rec in cache.records) {
+            println("  - timeMs: ${rec.timeMs} -> boxes: ${rec.boxes}")
+        }
 
         // 3. Run NativeHudEncoder to render crop_blurred_output.mp4
         println("📹 Encoding blurred video...")
@@ -380,8 +384,8 @@ class PlateDetectorTest {
             val sampleImgFile = File(scratchDir, "sample_output_blur_${String.format("%.1f", st)}.jpg")
             val pbSample = ProcessBuilder(
                 ffmpegPath, "-y",
-                "-ss", st.toString(),
                 "-i", cropBlurredMp4.absolutePath,
+                "-ss", st.toString(),
                 "-vframes", "1",
                 sampleImgFile.absolutePath
             )

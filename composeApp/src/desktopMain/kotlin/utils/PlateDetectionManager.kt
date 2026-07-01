@@ -201,7 +201,6 @@ object PlateDetectionManager {
             println("  - Time diff (VideoStart - FITStart): $diffStart seconds (${String.format(java.util.Locale.US, "%.2f", diffStart / 3600.0)} hours)")
             println("  - Telemetry points count: ${telemetryPoints.size}")
             
-            // Pre-scan target frame estimation (instant calculation using binary search)
             val totalFrames = (durationSec * detectionFps).toLong()
             var estimatedTargetFrames = 0L
             for (f in 0 until totalFrames) {
@@ -209,8 +208,16 @@ object PlateDetectionManager {
                 val currentSec = timeMs.toDouble() / 1000.0
                 val currentUtcSeconds = startTimeAdjusted.toEpochSecond() + currentSec
                 val currentFitTs = currentUtcSeconds - fitEpoch
-                val point = findClosestTelemetryPoint(telemetryPoints, currentFitTs)
-                if (point == null || point.speed < 10.0) {
+                
+                val fitStart = telemetryPoints.first().timestamp
+                val fitEnd = telemetryPoints.last().timestamp
+                
+                if (currentFitTs in fitStart..fitEnd) {
+                    val point = findClosestTelemetryPoint(telemetryPoints, currentFitTs)
+                    if (point == null || point.speed < 10.0) {
+                        estimatedTargetFrames++
+                    }
+                } else {
                     estimatedTargetFrames++
                 }
             }
@@ -267,9 +274,14 @@ object PlateDetectionManager {
                         val currentUtcSeconds = startEpochSecond + currentSec
                         val currentFitTs = currentUtcSeconds - fitEpoch
                         
-                        val point = findClosestTelemetryPoint(telemetryPoints, currentFitTs)
-                        if (point != null && point.speed >= 10.0) {
-                            skip = true
+                        val fitStart = telemetryPoints.first().timestamp
+                        val fitEnd = telemetryPoints.last().timestamp
+                        
+                        if (currentFitTs in fitStart..fitEnd) {
+                            val point = findClosestTelemetryPoint(telemetryPoints, currentFitTs)
+                            if (point != null && point.speed >= 10.0) {
+                                skip = true
+                            }
                         }
                     }
 
@@ -305,7 +317,7 @@ object PlateDetectionManager {
                 } else {
                     // Populate reusable BufferedImage directly from frame buffer and detect
                     System.arraycopy(frame.buffer, 0, imgData, 0, frameBytes)
-                    if (frame.frameIndex < 5L) {
+                    if (frame.frameIndex < 5L || (frame.frameIndex in 48L..54L)) {
                         try {
                             val sd = File("scratch")
                             if (!sd.exists()) sd.mkdirs()
@@ -313,7 +325,7 @@ object PlateDetectionManager {
                             println("DEBUG: Wrote scratch/scan_frame_${frame.frameIndex}.jpg for visual audit.")
                         } catch (e: Exception) { e.printStackTrace() }
                     }
-                    val rawBoxes = detector.detect(img)
+                    val rawBoxes = detector.detect(img, confThreshold = 0.08f)
                     // Scale from 640x640 back to original video resolution
                     rawBoxes.map { box ->
                         val scaleX = videoWidth.toFloat() / 640f

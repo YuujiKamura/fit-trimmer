@@ -864,7 +864,7 @@ class NativeHudEncoder(
             pbArgs.add("-filter_complex")
             pbArgs.add(
                 "[0:v]crop=$exportWidth:$exportHeight:0:0,setpts=PTS-STARTPTS[hud];" +
-                "[0:v]crop=$exportWidth:$exportHeight:0:$exportHeight,setpts=PTS-STARTPTS,extractplanes=a[mask];" +
+                "[0:v]crop=$exportWidth:$exportHeight:0:$exportHeight,setpts=PTS-STARTPTS,alphaextract[mask];" +
                 "[1:v]scale=$exportWidth:$exportHeight,setpts=PTS-STARTPTS,split[vid_orig][vid_blur_src];" +
                 "[vid_blur_src]avgblur=sizeX=30:sizeY=30[vid_blurred];" +
                 "[vid_orig][vid_blurred][mask]maskedmerge[vid_merged];" +
@@ -1022,6 +1022,9 @@ class NativeHudEncoder(
                     // Render blur mask in the bottom half (heightOffset = exportHeight)
                     val timeMs = (currentSec * 1000.0).toLong()
                     val blurBoxes = plateCache?.shouldBlurAt(timeMs, settings.blurLicensePlates) ?: emptyList()
+                    if (timeMs in 10000L..13000L) {
+                        println("DEBUG_ENCODE: timeMs=$timeMs -> blurBoxes.size=${blurBoxes.size} (closest=${plateCache?.findClosestRecord(timeMs)?.timeMs})")
+                    }
                     if (blurBoxes.isNotEmpty()) {
                         val is90Or270 = videoRotation == 90 || videoRotation == -270 || videoRotation == 270 || videoRotation == -90
                         val rotatedVideoW = if (is90Or270) videoHeight else videoWidth
@@ -1031,6 +1034,7 @@ class NativeHudEncoder(
                         val scaleY = exportHeight.toFloat() / rotatedVideoH.toFloat()
                         
                         // Mask must be solid white (alpha 255) on a transparent background
+                        g.composite = AlphaComposite.Src
                         g.color = java.awt.Color(255, 255, 255, 255)
                         for (box in blurBoxes) {
                             val rx1 = box.x1.toFloat() * scaleX
@@ -1044,6 +1048,7 @@ class NativeHudEncoder(
                                 g.fillRect(rx1.toInt(), ry1.toInt(), w, h)
                             }
                         }
+                        g.composite = AlphaComposite.SrcOver
                     }
 
                     // Render HUD in the top half

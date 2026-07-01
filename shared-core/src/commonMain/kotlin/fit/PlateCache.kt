@@ -48,7 +48,7 @@ data class VideoPlatesCache(
     fun shouldBlurAt(targetTimeMs: Long, isBlurEnabled: Boolean): List<PlateBox> {
         if (!isBlurEnabled) return emptyList()
         val record = findClosestRecord(targetTimeMs) ?: return emptyList()
-        return if (kotlin.math.abs(record.timeMs - targetTimeMs) < 1500) {
+        return if (kotlin.math.abs(record.timeMs - targetTimeMs) < 2500) {
             record.boxes
         } else {
             emptyList()
