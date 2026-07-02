@@ -2989,21 +2989,80 @@ fun FitTrimmerMainContent(
                                     if (!isActiveEncoding) {
                                         Text("現在の設定でHUD付き動画を書き出します。サンプルは短い確認用、バッチは後でまとめて処理する待ち行列です。", color = Color(0xFF636366), fontSize = 10.sp, lineHeight = 13.sp)
                                          val isQueueEnabled = fitPath.isNotEmpty() && videoPath.isNotEmpty()
-                                         Button(
-                                             onClick = {
-                                                 viewModel.addToBatchQueue()
-                                                 statusText = "ジョブをキューに追加しました"
-                                             },
-                                             modifier = Modifier.fillMaxWidth().height(40.dp),
-                                             enabled = isQueueEnabled && hasEnoughSpace,
-                                             colors = ButtonDefaults.buttonColors(
-                                                 backgroundColor = if (hasEnoughSpace) Color(0xFF007AFF) else Color(0xFFD1D1D6),
-                                                 disabledBackgroundColor = Color(0xFFE5E5EA)
-                                             ),
-                                             shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
-                                         ) {
-                                             Text(if (hasEnoughSpace) "バッチに追加" else "ディスク容量不足", color = if (hasEnoughSpace) Color.White else Color(0xFF8E8E93), fontWeight = FontWeight.Bold)
-                                         }
+                                        Button(
+                                            onClick = onNativeEncodeClick,
+                                            modifier = Modifier.fillMaxWidth().height(40.dp),
+                                            enabled = hasEnoughSpace && fitPath.isNotEmpty() && videoPath.isNotEmpty(),
+                                            colors = ButtonDefaults.buttonColors(
+                                                backgroundColor = if (hasEnoughSpace) Color(0xFF007AFF) else Color(0xFFD1D1D6),
+                                                disabledBackgroundColor = Color(0xFFE5E5EA)
+                                            ),
+                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                                        ) {
+                                            Text(if (hasEnoughSpace) "エンコード開始" else "ディスク容量不足", color = if (hasEnoughSpace) Color.White else Color(0xFF8E8E93), fontWeight = FontWeight.Bold)
+                                        }
+                                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                                            val canStartBatch = viewModel.batchQueue.any { it.status == BatchJobStatus.WAITING || it.status == BatchJobStatus.FAILED }
+                                            OutlinedButton(
+                                                onClick = {
+                                                    scope.launch(Dispatchers.Main) {
+                                                        val jobsListText = viewModel.batchQueue.joinToString("\n") { job ->
+                                                            "・\${File(job.videoPath).name} (Trim: %.1fs - %.1fs)".format(job.trimStartSeconds, job.trimEndSeconds)
+                                                        }
+                                                        val confirm = javax.swing.JOptionPane.showConfirmDialog(
+                                                            composeWindow ?: viewModel.composeWindow,
+                                                            "以下のバッチジョブ（計 \${viewModel.batchQueue.size} 件）のエンコードを開始しますか？\n\n\$jobsListText",
+                                                            "バッチエンコードの確認",
+                                                            javax.swing.JOptionPane.YES_NO_OPTION,
+                                                            javax.swing.JOptionPane.QUESTION_MESSAGE
+                                                        )
+                                                        if (confirm == javax.swing.JOptionPane.YES_OPTION) {
+                                                            viewModel.batchQueue.forEach {
+                                                                if (it.status == BatchJobStatus.FAILED || it.status == BatchJobStatus.COMPLETED) {
+                                                                    it.status = BatchJobStatus.WAITING
+                                                                    it.progress = 0f
+                                                                    it.errorMessage = null
+                                                                }
+                                                            }
+                                                            runBatchJobs(
+                                                                viewModel = viewModel,
+                                                                outputDir = outputDir,
+                                                                moveOutputToSource = moveOutputToSource,
+                                                                showLivePreview = showLivePreview,
+                                                                onProgressUpdate = {}
+                                                            )
+                                                        }
+                                                    }
+                                                },
+                                                modifier = Modifier.weight(1f).height(36.dp),
+                                                enabled = canStartBatch && !viewModel.isBatchRunning,
+                                                colors = ButtonDefaults.outlinedButtonColors(
+                                                    contentColor = Color(0xFF007AFF),
+                                                    disabledContentColor = Color(0xFF8E8E93)
+                                                ),
+                                                border = BorderStroke(1.5.dp, if (canStartBatch && !viewModel.isBatchRunning) Color(0xFF007AFF) else Color(0xFFE5E5EA)),
+                                                shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                                            ) {
+                                                Text("バッチエンコード", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                            val isQueueEnabled = fitPath.isNotEmpty() && videoPath.isNotEmpty()
+                                            OutlinedButton(
+                                                onClick = {
+                                                    viewModel.addToBatchQueue()
+                                                    statusText = "ジョブをキューに追加しました"
+                                                },
+                                                modifier = Modifier.weight(1f).height(36.dp),
+                                                enabled = isQueueEnabled,
+                                                colors = ButtonDefaults.outlinedButtonColors(
+                                                    contentColor = Color(0xFF34C759),
+                                                    disabledContentColor = Color(0xFF8E8E93)
+                                                ),
+                                                border = BorderStroke(1.5.dp, if (isQueueEnabled) Color(0xFF34C759) else Color(0xFFE5E5EA)),
+                                                shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                                            ) {
+                                                Text("バッチに追加", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
 
                                     } else {
                                         val currentStatusText = if (viewModel.isBatchRunning) viewModel.statusText else statusText
@@ -3058,32 +3117,6 @@ fun FitTrimmerMainContent(
                                                 ) {
                                                     Text("CANCEL BATCH", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                                 }
-                                            }
-                                        } else if (viewModel.batchQueue.isNotEmpty()) {
-                                            val canStartBatch = viewModel.batchQueue.any { it.status == BatchJobStatus.WAITING || it.status == BatchJobStatus.FAILED }
-                                            Button(
-                                                onClick = {
-                                                    scope.launch {
-                                                        viewModel.batchQueue.forEach {
-                                                            if (it.status == BatchJobStatus.FAILED || it.status == BatchJobStatus.COMPLETED) {
-                                                                it.status = BatchJobStatus.WAITING
-                                                                it.progress = 0f
-                                                            }
-                                                        }
-                                                        runBatchJobs(
-                                                            viewModel = viewModel,
-                                                            outputDir = outputDir,
-                                                            moveOutputToSource = moveOutputToSource,
-                                                            showLivePreview = showLivePreview,
-                                                            onProgressUpdate = {}
-                                                        )
-                                                    }
-                                                },
-                                                enabled = canStartBatch,
-                                                modifier = Modifier.fillMaxWidth().height(36.dp),
-                                                colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF34C759))
-                                            ) {
-                                                Text("START BATCH ENCODE", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                             }
                                         }
                                 }
