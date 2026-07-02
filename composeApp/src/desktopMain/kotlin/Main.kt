@@ -451,6 +451,7 @@ suspend fun runBatchJobs(
             if (viewModel.isCanceled) break
             job.status = BatchJobStatus.RUNNING
             job.progress = 0f
+            viewModel.saveBatchQueue()
             onProgressUpdate()
             viewModel.batchStatusText = "[${jobIdx + 1}/${jobs.size}] ${job.entryName} を処理中..."
             val detectedVideoDurationSeconds = getVideoDuration(job.videoPath)?.toDouble()?.div(1000.0)
@@ -533,6 +534,7 @@ suspend fun runBatchJobs(
                 )
                 job.status = BatchJobStatus.COMPLETED
                 job.progress = 1.0f
+                viewModel.saveBatchQueue()
             } catch (e: Exception) {
                 if (viewModel.isCanceled) {
                     job.status = BatchJobStatus.WAITING
@@ -542,6 +544,7 @@ suspend fun runBatchJobs(
                     job.errorMessage = e.message ?: "Unknown error"
                     e.printStackTrace()
                 }
+                viewModel.saveBatchQueue()
             }
             onProgressUpdate()
         }
