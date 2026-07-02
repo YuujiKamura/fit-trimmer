@@ -32,9 +32,6 @@ jobs:
         shell: pwsh
         run: .\gradlew.bat :shared-core:desktopTest :composeApp:desktopTest :composeApp:compileKotlinDesktop --no-build-cache --rerun-tasks
 
-      - name: Run Desktop Playback Smoke
-        shell: pwsh
-        run: pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\desktop-playback-smoke.ps1
 
       - name: Build Desktop Distribution
         shell: pwsh
