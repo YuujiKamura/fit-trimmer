@@ -734,6 +734,19 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
             operation = "play",
             precondition = true
         ) {
+            val instance = videoPlayerInstance
+            val isAtEnd = _duration > 0.0 && (_progress >= 0.999f || _currentTime >= _duration - 0.2)
+            if (instance != null && isAtEnd) {
+                val hr = player.SeekMedia(instance, 0)
+                if (hr < 0) {
+                    windowsLogger.e { "Failed to seek to beginning before replay (hr=0x${hr.toString(16)})" }
+                } else {
+                    clearFrameChannel()
+                    _currentTime = 0.0
+                    _progress = 0f
+                    renderCurrentFrame(instance, "replay")
+                }
+            }
             setPlaybackState(true, "Error while starting playback")
             if (_hasMedia && (videoJob == null || videoJob?.isActive == false)) {
                 videoJob = scope.launch {
@@ -743,7 +756,6 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
             }
 
             // Restore the volume setting for this instance
-            val instance = videoPlayerInstance
             if (instance != null) {
                 val storedVolume = instanceVolumes[instance]
                 if (storedVolume != null) {

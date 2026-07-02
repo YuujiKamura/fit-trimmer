@@ -165,6 +165,25 @@ function Assert-Stopped($port, $message) {
     return $b
 }
 
+function Assert-Near($actual, $expected, $tolerance, $message) {
+    if ([Math]::Abs($actual - $expected) -gt $tolerance) {
+        throw "$message Actual=$actual, expected=$expected, tolerance=$tolerance"
+    }
+}
+
+function Assert-SeekNear($port, $targetMs, $toleranceMs, $message) {
+    $deadline = (Get-Date).AddSeconds(6)
+    while ((Get-Date) -lt $deadline) {
+        $state = Get-State $port
+        if ([Math]::Abs($state.videoCurrentTimeMs - $targetMs) -le $toleranceMs) {
+            return $state.videoCurrentTimeMs
+        }
+        Start-Sleep -Milliseconds 250
+    }
+    $state = Get-State $port
+    throw "$message Current=$($state.videoCurrentTimeMs), target=$targetMs, tolerance=$toleranceMs"
+}
+
 $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
 $session = Read-CpSession
 $startedProcess = $null
@@ -209,6 +228,17 @@ $state = Get-State $port
 if ($state.videoPath -ne $videoPath) {
     throw "Smoke video was not loaded. State videoPath=$($state.videoPath)"
 }
+if ($state.videoLengthMs -lt 7000 -or $state.videoLengthMs -gt 9000) {
+    throw "Unexpected smoke video length. videoLengthMs=$($state.videoLengthMs)"
+}
+$videoLengthMs = [int]$state.videoLengthMs
+Write-Step "Smoke video duration: ${videoLengthMs}ms"
+
+Write-Step "Checking CP seek while paused"
+Send-CpCommand $port '{"type":"pause"}' | Out-Null
+Send-CpCommand $port '{"type":"seek","timeMs":3200}' | Out-Null
+$seeked = Assert-SeekNear $port 3200 500 "CP seek while paused did not land near target."
+Write-Step "CP seek while paused ok: $seeked"
 
 Write-Step "Checking CP play/pause"
 Send-CpCommand $port '{"type":"pause"}' | Out-Null
@@ -220,6 +250,18 @@ $advanced = Assert-Advanced $port $base "CP play did not advance playback."
 Send-CpCommand $port '{"type":"pause"}' | Out-Null
 $stopped = Assert-Stopped $port "CP pause did not stop playback."
 Write-Step "CP playback ok: $base -> $advanced -> $stopped"
+
+Write-Step "Checking CP seek while playing"
+Send-CpCommand $port '{"type":"pause"}' | Out-Null
+Send-CpCommand $port '{"type":"seek","timeMs":1200}' | Out-Null
+Start-Sleep -Milliseconds 500
+Send-CpCommand $port '{"type":"play"}' | Out-Null
+Start-Sleep -Milliseconds 900
+Send-CpCommand $port '{"type":"seek","timeMs":5200}' | Out-Null
+$seeked = Assert-SeekNear $port 5200 600 "CP seek while playing did not land near target."
+$advancedAfterSeek = Assert-Advanced $port $seeked "Playback did not continue after seek while playing."
+Send-CpCommand $port '{"type":"pause"}' | Out-Null
+Write-Step "CP seek while playing ok: $seeked -> $advancedAfterSeek"
 
 Write-Step "Checking preview click toggle"
 Send-CpCommand $port '{"type":"capture"}' | Out-Null
@@ -241,14 +283,16 @@ Write-Step "Preview click playback ok: $base -> $advanced -> $stopped"
 
 Write-Step "Checking EOF settles"
 Send-CpCommand $port '{"type":"pause"}' | Out-Null
-Send-CpCommand $port '{"type":"seek","timeMs":7600}' | Out-Null
+$nearEndSeek = [Math]::Max(0, $videoLengthMs - 400)
+$seekJson = "{`"type`":`"seek`",`"timeMs`":$nearEndSeek}"
+Send-CpCommand $port $seekJson | Out-Null
 Start-Sleep -Milliseconds 700
 Send-CpCommand $port '{"type":"play"}' | Out-Null
 $eofDeadline = (Get-Date).AddSeconds(6)
 $nearEnd = $false
 while ((Get-Date) -lt $eofDeadline) {
     $state = Get-State $port
-    if ($state.videoCurrentTimeMs -ge 7900) {
+    if ((-not $state.isPlaying) -and $state.videoDisplayCurrentTimeMs -eq $state.videoLengthMs) {
         $nearEnd = $true
         break
     }
@@ -256,18 +300,32 @@ while ((Get-Date) -lt $eofDeadline) {
 }
 if (-not $nearEnd) {
     $state = Get-State $port
-    throw "Playback did not reach EOF. Current=$($state.videoCurrentTimeMs)"
+    throw "Playback did not reach display EOF. Current=$($state.videoCurrentTimeMs), display=$($state.videoDisplayCurrentTimeMs), length=$($state.videoLengthMs)"
 }
-$eofA = (Get-State $port).videoCurrentTimeMs
+$eofStateA = Get-State $port
+$eofA = $eofStateA.videoCurrentTimeMs
+$displayA = $eofStateA.videoDisplayCurrentTimeMs
 Start-Sleep -Milliseconds 1200
-$eofB = (Get-State $port).videoCurrentTimeMs
+$eofStateB = Get-State $port
+$eofB = $eofStateB.videoCurrentTimeMs
+$displayB = $eofStateB.videoDisplayCurrentTimeMs
 if ([Math]::Abs($eofB - $eofA) -gt 150) {
     throw "EOF did not settle. Before=$eofA, after=$eofB"
 }
-if ($eofB -lt 7800) {
-    throw "EOF settled away from the end. Current=$eofB"
+if ($displayB -ne $videoLengthMs) {
+    throw "EOF display did not settle at video length. Current=$eofB, display=$displayB, length=$videoLengthMs"
 }
-Write-Step "EOF settled ok: $eofA -> $eofB"
+Write-Step "EOF settled ok: current $eofA -> $eofB, display $displayA -> $displayB"
+
+Write-Step "Checking replay from EOF starts at beginning"
+Click-At $clickX $clickY
+$replayStart = Assert-SeekNear $port 0 700 "Preview click at EOF did not seek back to the beginning."
+$replayAdvanced = Assert-Advanced $port $replayStart "Preview click at EOF did not restart playback from the beginning."
+if ($replayAdvanced -gt 3500) {
+    throw "Preview click at EOF did not restart near the beginning. Current=$replayAdvanced"
+}
+Send-CpCommand $port '{"type":"pause"}' | Out-Null
+Write-Step "Replay from EOF ok: $replayStart -> $replayAdvanced"
 
 if (-not $KeepRunning -and $startedProcess) {
     Write-Step "Stopping launched app process tree"

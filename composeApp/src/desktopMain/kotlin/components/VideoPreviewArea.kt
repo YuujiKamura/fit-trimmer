@@ -164,6 +164,7 @@ fun VideoPreviewArea(
     plateCache: fit.VideoPlatesCache? = null,
     videoRotation: Int = 0
 ) {
+    val previewScope = rememberCoroutineScope()
     var isPlaying by remember { mutableStateOf(false) }
     var lastVolume by remember { mutableStateOf(1f) }
     val currentRenderTimeMs by remember(isSeeking, seekTargetTimeMs, videoCurrentTimeMs) {
@@ -180,11 +181,20 @@ fun VideoPreviewArea(
                 println("DEBUG: togglePlayButton calling playerState.pause()")
                 playerState.pause()
             } else {
-                if (videoCurrentTimeMs >= videoLengthMs) {
-                    playerState.seekTo(0f)
+                val isAtEndForReplay = (videoLengthMs > 0L && videoCurrentTimeMs >= videoLengthMs - 500L) ||
+                    playerState.sliderPos >= 995f
+                if (isAtEndForReplay) {
+                    previewScope.launch {
+                        playerState.seekTo(0f)
+                        onCurrentTimeChange(0L)
+                        delay(700)
+                        println("DEBUG: togglePlayButton replaying from start")
+                        playerState.play()
+                    }
+                } else {
+                    println("DEBUG: togglePlayButton calling playerState.play()")
+                    playerState.play()
                 }
-                println("DEBUG: togglePlayButton calling playerState.play()")
-                playerState.play()
             }
         }
     }
@@ -195,7 +205,11 @@ fun VideoPreviewArea(
             onSeekEnd(target)
         }
     }
-    fun formatPreviewTime(ms: Long): String = formatTime((ms + 500L).coerceAtLeast(0L))
+    fun formatPreviewTime(ms: Long): String = if (videoLengthMs > 0L) {
+        formatTime((ms + 500L).coerceIn(0L, videoLengthMs))
+    } else {
+        formatTime((ms + 500L).coerceAtLeast(0L))
+    }
 
     LaunchedEffect(playerState.isPlaying) {
         isPlaying = playerState.isPlaying

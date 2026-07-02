@@ -820,6 +820,7 @@ fun FitTrimmerMainContent(
                                     val target = cmd.timeMs.coerceIn(0L, videoLengthMs)
                                     val ratio = if (videoLengthMs > 0) target.toFloat() / videoLengthMs.toFloat() else 0f
                                     playerState.seekTo(ratio * 1000f)
+                                    videoCurrentTimeMs = target
                                 }
                                 CpCommand.Capture -> {
                                     val win = viewModel.composeWindow
@@ -934,6 +935,11 @@ fun FitTrimmerMainContent(
             },
             getState = {
                 val activePlateBoxes = viewModel.plateCache?.shouldBlurAt(videoCurrentTimeMs, settings.blurLicensePlates) ?: emptyList()
+                val videoDisplayCurrentTimeMs = if (videoLengthMs > 0L) {
+                    (videoCurrentTimeMs + 500L).coerceIn(0L, videoLengthMs)
+                } else {
+                    videoCurrentTimeMs.coerceAtLeast(0L)
+                }
                 CpState(
                     settings = settings,
                     fitPath = fitPath,
@@ -950,7 +956,10 @@ fun FitTrimmerMainContent(
                     plateFirstTimeMs = viewModel.plateFirstTimeMs,
                     plateLastTimeMs = viewModel.plateLastTimeMs,
                     plateCacheLoaded = viewModel.plateCache != null,
+                    isPlaying = playerState.isPlaying,
+                    videoLengthMs = videoLengthMs,
                     videoCurrentTimeMs = videoCurrentTimeMs,
+                    videoDisplayCurrentTimeMs = videoDisplayCurrentTimeMs,
                     activePlateBoxCount = activePlateBoxes.size,
                     activePlateBoxes = activePlateBoxes,
                     plateCacheEnabled = true,
@@ -3453,5 +3462,4 @@ fun FitTrimmerMainContent(
             }
         }
 }
-
 
