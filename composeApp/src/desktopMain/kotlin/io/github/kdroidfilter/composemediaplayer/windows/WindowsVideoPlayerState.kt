@@ -912,15 +912,18 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
     fun onResized() {
         if (!isInitialized || !_hasMedia) return
         if (System.nanoTime() < suppressResizeUntilNanos.get()) return
+        if (!scope.isActive) return
         isResizing.set(true)
         scope.launch {
             try {
                 clearFrameChannel()
             } finally {
                 resizeJob?.cancel()
-                resizeJob = scope.launch {
-                    delay(200)
-                    isResizing.set(false)
+                if (scope.isActive) {
+                    resizeJob = scope.launch {
+                        delay(200)
+                        isResizing.set(false)
+                    }
                 }
             }
         }
