@@ -181,4 +181,38 @@ class PlateCacheManagerTest {
         assertEquals(280f, interpolated.width)
         assertEquals(128f, interpolated.height)
     }
+
+    @Test
+    fun testBuildMappedMaskFramesUsesSourceStartOffsetForTrimmedOutput() {
+        val cache = VideoPlatesCache(
+            videoPath = "test.mp4",
+            records = listOf(
+                PlateRecord(10_000, listOf(PlateBox(100, 100, 200, 140))),
+                PlateRecord(10_200, listOf(PlateBox(120, 120, 220, 160)))
+            ),
+            sourceWidth = 500,
+            sourceHeight = 300
+        )
+
+        val frames = cache.buildMappedMaskFrames(
+            totalFrames = 3,
+            fps = 10.0,
+            isBlurEnabled = true,
+            expandRatio = 0.2,
+            fallbackSourceWidth = 1920,
+            fallbackSourceHeight = 1080,
+            targetWidth = 1000f,
+            targetHeight = 600f,
+            sourceStartTimeMs = 10_000
+        )
+
+        assertEquals(3, frames.size)
+        assertEquals(1, frames[0].size)
+        assertEquals(1, frames[1].size)
+        assertEquals(1, frames[2].size)
+
+        val first = frames[0].first()
+        assertEquals(160f, first.x)
+        assertEquals(176f, first.y)
+    }
 }

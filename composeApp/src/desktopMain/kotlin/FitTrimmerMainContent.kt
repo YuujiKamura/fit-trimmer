@@ -75,7 +75,6 @@ fun FitTrimmerMainContent(
     val timeOffsetState = viewModel.timeOffsetState
     val adjustedStartUtc by viewModel::adjustedStartUtc
     var isEncoding by viewModel::isEncoding
-    var isPaused by viewModel::isPaused
     var isCanceled by viewModel::isCanceled
     var progress by viewModel::progress
     var encodingPreviewImage by viewModel::encodingPreviewImage
@@ -479,7 +478,7 @@ fun FitTrimmerMainContent(
             requiredSpaceGB = 2.0
         }
     }
-    LaunchedEffect(requiredSpaceGB, sampleRequiredSpaceGB, isEncoding, isPaused, isSampleEncoding, videoPath) {
+    LaunchedEffect(requiredSpaceGB, sampleRequiredSpaceGB, isEncoding, isSampleEncoding, videoPath) {
         launch(Dispatchers.IO) {
             while (true) {
                 try {
@@ -529,9 +528,9 @@ fun FitTrimmerMainContent(
                     hasEnoughSpace = cDriveFreeSpaceGB >= remainingNative
                     hasEnoughSpaceForSample = cDriveFreeSpaceGB >= remainingSample
                     val currentHasEnough = if (isSampleEncoding) hasEnoughSpaceForSample else hasEnoughSpace
-                    if (isEncoding && !currentHasEnough && !isPaused) {
-                        isPaused = true
-                        statusText = "PAUSED (Not enough space on C: drive!)"
+                    if (isEncoding && !currentHasEnough) {
+                        isCanceled = true
+                        statusText = "CANCELED (Not enough space on C: drive!)"
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()
@@ -735,7 +734,6 @@ fun FitTrimmerMainContent(
                                     scope.launch {
                                         encodingPreviewImage = null
                                         isEncoding = true
-                                        isPaused = false
                                         isCanceled = false
                                         try {
                                             val encodeSettings = prepareSettingsForEncode(settings)
@@ -770,7 +768,6 @@ fun FitTrimmerMainContent(
                                                         encodingPreviewImage = bitmap
                                                     }
                                                 },
-                                                pauseSupplier = { isPaused },
                                                 cancelSupplier = { isCanceled },
                                                 showLivePreviewSupplier = { showLivePreview },
                                                 onSegmentStart = { pStart, pEnd ->
@@ -1145,7 +1142,6 @@ fun FitTrimmerMainContent(
                                     encodingPreviewImage = null
                                     isSampleEncoding = false
                                     isEncoding = true
-                                    isPaused = false
                                     isCanceled = false
                                     try {
                                         val encodeSettings = prepareSettingsForEncode(settings)
@@ -1171,7 +1167,6 @@ fun FitTrimmerMainContent(
                                                     encodingPreviewImage = bitmap
                                                 }
                                             },
-                                            pauseSupplier = { isPaused },
                                             cancelSupplier = { isCanceled },
                                             showLivePreviewSupplier = { showLivePreview },
                                             onSegmentStart = { pStart, pEnd ->
@@ -1232,7 +1227,6 @@ fun FitTrimmerMainContent(
                                     encodingPreviewImage = null
                                     isSampleEncoding = true
                                     isEncoding = true
-                                    isPaused = false
                                     isCanceled = false
                                     try {
                                         val encodeSettings = prepareSettingsForEncode(settings)
@@ -1267,7 +1261,6 @@ fun FitTrimmerMainContent(
                                                     encodingPreviewImage = bitmap
                                                 }
                                             },
-                                            pauseSupplier = { isPaused },
                                             cancelSupplier = { isCanceled },
                                             showLivePreviewSupplier = { showLivePreview },
                                             onSegmentStart = { pStart, pEnd ->
@@ -1545,7 +1538,7 @@ fun FitTrimmerMainContent(
                                                  onClick = {
                                                      scope.launch(Dispatchers.Main) {
                                                          val confirm = javax.swing.JOptionPane.showConfirmDialog(
-                                                             null,
+                                                             composeWindow ?: viewModel.composeWindow,
                                                               "この未完了キャッシュ（パーツ数: ${job.partsCount} 個）を物理的に削除しますか？\n(削除すると二度と復元できなくなります)",
                                                              "キャッシュの削除",
                                                              javax.swing.JOptionPane.YES_NO_OPTION,
@@ -1573,7 +1566,7 @@ fun FitTrimmerMainContent(
                                                      
                                                      scope.launch(Dispatchers.Main) {
                                                          val confirm = javax.swing.JOptionPane.showConfirmDialog(
-                                                             null,
+                                                             composeWindow ?: viewModel.composeWindow,
                                                              "レンダリングをスキップし、既存の ${job.partsCount} 個のキャッシュを結合して $uniqueFileName を作成しますか？\n(無劣化・高速結合処理になります)",
                                                              "キャッシュのサルベージ結合",
                                                              javax.swing.JOptionPane.YES_NO_OPTION
@@ -1620,8 +1613,6 @@ fun FitTrimmerMainContent(
                             } else {
                                 val currentStatusText = if (viewModel.isBatchRunning) viewModel.statusText else statusText
                                 val currentProgress = if (viewModel.isBatchRunning) viewModel.progress else progress
-                                val currentPaused = if (viewModel.isBatchRunning) viewModel.isPaused else isPaused
-
                                 if (currentStatusText.contains("Merging", ignoreCase = true)) {
                                     LinearProgressIndicator(
                                         modifier = Modifier.fillMaxWidth(),
@@ -1632,30 +1623,12 @@ fun FitTrimmerMainContent(
                                     LinearProgressIndicator(
                                         progress = currentProgress,
                                         modifier = Modifier.fillMaxWidth(),
-                                        color = if (currentPaused) Color(0xFFFF9F0A) else Color(0xFF007AFF),
+                                        color = Color(0xFF007AFF),
                                         backgroundColor = Color(0xFFE5E5EA)
                                     )
                                 }
-                                Text(if (currentPaused) "PAUSED (Not enough space or paused manually)\n$currentStatusText" else currentStatusText, color = Color(0xFF1C1C1E), fontSize = 11.sp, lineHeight = 14.sp)
+                                Text(currentStatusText, color = Color(0xFF1C1C1E), fontSize = 11.sp, lineHeight = 14.sp)
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Button(
-                                        onClick = {
-                                            if (viewModel.isBatchRunning) {
-                                                viewModel.isPaused = !viewModel.isPaused
-                                            } else {
-                                                isPaused = !isPaused
-                                            }
-                                        },
-                                        modifier = Modifier.weight(1f).height(32.dp),
-                                        enabled = !(!currentPaused && !hasEnoughSpace),
-                                        colors = ButtonDefaults.buttonColors(
-                                            backgroundColor = if (currentPaused) Color(0xFF34C759) else Color(0xFFFF9F0A),
-                                            disabledBackgroundColor = Color(0xFFE5E5EA)
-                                        ),
-                                        shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
-                                    ) {
-                                        Text(if (currentPaused) "RESUME" else "PAUSE", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                    }
                                     Button(
                                         onClick = {
                                             if (viewModel.isBatchRunning) {
@@ -2700,38 +2673,40 @@ fun FitTrimmerMainContent(
                                     val history = if (videoPath.isNotEmpty()) utils.GuiCache.loadHistory(videoPath) else null
                                     val historyCaptions = history?.settings?.roadCaptions ?: emptyList()
                                     if (checked && historyCaptions.isNotEmpty()) {
-                                        val title = utils.Localizer.get("restore_dialog_title", viewModel.settings.language)
-                                        val message = utils.Localizer.get("restore_dialog_message_captions", viewModel.settings.language)
-                                        val optRestore = utils.Localizer.get("option_restore", viewModel.settings.language)
-                                        val optOverwrite = utils.Localizer.get("option_overwrite", viewModel.settings.language)
-                                        val optCancel = utils.Localizer.get("option_cancel", viewModel.settings.language)
+                                        scope.launch(Dispatchers.Main) {
+                                            val title = utils.Localizer.get("restore_dialog_title", viewModel.settings.language)
+                                            val message = utils.Localizer.get("restore_dialog_message_captions", viewModel.settings.language)
+                                            val optRestore = utils.Localizer.get("option_restore", viewModel.settings.language)
+                                            val optOverwrite = utils.Localizer.get("option_overwrite", viewModel.settings.language)
+                                            val optCancel = utils.Localizer.get("option_cancel", viewModel.settings.language)
 
-                                        val options = arrayOf(optRestore, optOverwrite, optCancel)
-                                        val choice = javax.swing.JOptionPane.showOptionDialog(
-                                            null,
-                                            message,
-                                            title,
-                                            javax.swing.JOptionPane.DEFAULT_OPTION,
-                                            javax.swing.JOptionPane.QUESTION_MESSAGE,
-                                            null,
-                                            options,
-                                            options[0]
-                                        )
-                                        when (choice) {
-                                            0 -> {
-                                                viewModel.settings = viewModel.settings.copy(
-                                                    enableRoadDetection = true,
-                                                    roadCaptions = historyCaptions
-                                                )
-                                            }
-                                            1 -> {
-                                                viewModel.settings = viewModel.settings.copy(
-                                                    enableRoadDetection = true,
-                                                    roadCaptions = emptyList()
-                                                )
-                                            }
-                                            else -> {
-                                                // Cancel / Closed - do nothing
+                                            val options = arrayOf(optRestore, optOverwrite, optCancel)
+                                            val choice = javax.swing.JOptionPane.showOptionDialog(
+                                                composeWindow ?: viewModel.composeWindow,
+                                                message,
+                                                title,
+                                                javax.swing.JOptionPane.DEFAULT_OPTION,
+                                                javax.swing.JOptionPane.QUESTION_MESSAGE,
+                                                null,
+                                                options,
+                                                options[0]
+                                            )
+                                            when (choice) {
+                                                0 -> {
+                                                    viewModel.settings = viewModel.settings.copy(
+                                                        enableRoadDetection = true,
+                                                        roadCaptions = historyCaptions
+                                                    )
+                                                }
+                                                1 -> {
+                                                    viewModel.settings = viewModel.settings.copy(
+                                                        enableRoadDetection = true,
+                                                        roadCaptions = emptyList()
+                                                    )
+                                                }
+                                                else -> {
+                                                    // Cancel / Closed - do nothing
+                                                }
                                             }
                                         }
                                     } else {
@@ -2743,36 +2718,38 @@ fun FitTrimmerMainContent(
                             val handlePlateBlurToggle = { checked: Boolean ->
                                 if (!isEncoding) {
                                     if (checked && videoPath.isNotEmpty() && fit.PlateCacheManager.cacheExists(videoPath)) {
-                                        val title = utils.Localizer.get("restore_dialog_title", viewModel.settings.language)
-                                        val message = utils.Localizer.get("restore_dialog_message_plates", viewModel.settings.language)
-                                        val optRestore = utils.Localizer.get("option_restore", viewModel.settings.language)
-                                        val optScan = utils.Localizer.get("option_scan", viewModel.settings.language)
-                                        val optCancel = utils.Localizer.get("option_cancel", viewModel.settings.language)
+                                        scope.launch(Dispatchers.Main) {
+                                            val title = utils.Localizer.get("restore_dialog_title", viewModel.settings.language)
+                                            val message = utils.Localizer.get("restore_dialog_message_plates", viewModel.settings.language)
+                                            val optRestore = utils.Localizer.get("option_restore", viewModel.settings.language)
+                                            val optScan = utils.Localizer.get("option_scan", viewModel.settings.language)
+                                            val optCancel = utils.Localizer.get("option_cancel", viewModel.settings.language)
 
-                                        val options = arrayOf(optRestore, optScan, optCancel)
-                                        val choice = javax.swing.JOptionPane.showOptionDialog(
-                                            null,
-                                            message,
-                                            title,
-                                            javax.swing.JOptionPane.DEFAULT_OPTION,
-                                            javax.swing.JOptionPane.QUESTION_MESSAGE,
-                                            null,
-                                            options,
-                                            options[0]
-                                        )
-                                        when (choice) {
-                                            0 -> {
-                                                viewModel.plateCache = fit.PlateCacheManager.loadCache(videoPath)
-                                                viewModel.plateDetectionProgress = "Restored"
-                                                viewModel.onBlurLicensePlatesChanged(true, scope)
-                                            }
-                                            1 -> {
-                                                fit.PlateCacheManager.deleteCache(videoPath)
-                                                viewModel.plateCache = null
-                                                viewModel.onBlurLicensePlatesChanged(true, scope)
-                                            }
-                                            else -> {
-                                                // Cancel / Closed - do nothing
+                                            val options = arrayOf(optRestore, optScan, optCancel)
+                                            val choice = javax.swing.JOptionPane.showOptionDialog(
+                                                composeWindow ?: viewModel.composeWindow,
+                                                message,
+                                                title,
+                                                javax.swing.JOptionPane.DEFAULT_OPTION,
+                                                javax.swing.JOptionPane.QUESTION_MESSAGE,
+                                                null,
+                                                options,
+                                                options[0]
+                                            )
+                                            when (choice) {
+                                                0 -> {
+                                                    viewModel.plateCache = fit.PlateCacheManager.loadCache(videoPath)
+                                                    viewModel.plateDetectionProgress = "Restored"
+                                                    viewModel.onBlurLicensePlatesChanged(true, scope)
+                                                }
+                                                1 -> {
+                                                    fit.PlateCacheManager.deleteCache(videoPath)
+                                                    viewModel.plateCache = null
+                                                    viewModel.onBlurLicensePlatesChanged(true, scope)
+                                                }
+                                                else -> {
+                                                    // Cancel / Closed - do nothing
+                                                }
                                             }
                                         }
                                     } else {
@@ -3147,15 +3124,8 @@ fun FitTrimmerMainContent(
                                 statusText = if (viewModel.isBatchRunning) viewModel.statusText else statusText,
                                 encodingPreviewImage = encodingPreviewImage,
                                 showLivePreview = showLivePreview,
-                                isPaused = if (viewModel.isBatchRunning) viewModel.isPaused else isPaused,
+                                controlsEnabled = true,
                                 videoLengthMs = trimmedDurationMs,
-                                onPauseToggle = {
-                                    if (viewModel.isBatchRunning) {
-                                        viewModel.isPaused = !viewModel.isPaused
-                                    } else {
-                                        isPaused = !isPaused
-                                    }
-                                },
                                 onCancel = {
                                     if (viewModel.isBatchRunning) {
                                         viewModel.isCanceled = true

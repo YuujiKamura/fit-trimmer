@@ -24,6 +24,20 @@ import fit.VideoPlatesCache
 
 
 
+enum class EncodePhase {
+    Idle,
+    Preparing,
+    Encoding,
+    Merging,
+    Completed,
+    Failed,
+    Canceled;
+
+    val isActive: Boolean
+        get() = this == Preparing || this == Encoding || this == Merging
+}
+
+
 class AppViewModel(
 
     initialCache: utils.GuiPathCache?
@@ -718,9 +732,13 @@ class AppViewModel(
 
     var isAligningTelemetry by mutableStateOf(false)
 
-    var isEncoding by mutableStateOf(false)
+    var encodePhase by mutableStateOf(EncodePhase.Idle)
 
-    var isPaused by mutableStateOf(false)
+    var isEncoding: Boolean
+        get() = encodePhase.isActive
+        set(value) {
+            encodePhase = if (value) EncodePhase.Encoding else EncodePhase.Idle
+        }
 
     var isCanceled by mutableStateOf(false)
 
@@ -759,6 +777,52 @@ class AppViewModel(
     var isHudBurned by mutableStateOf(false)
 
     var appTempSpaceGB by mutableStateOf(0.0)
+
+    fun beginEncoding(sample: Boolean) {
+        encodingPreviewImage = null
+        isSampleEncoding = sample
+        isCanceled = false
+        progress = 0f
+        statusText = if (sample) "Preparing sample encode..." else "Preparing encode..."
+        encodePhase = EncodePhase.Preparing
+    }
+
+    fun updateEncodingProgress(prog: Float, status: String) {
+        progress = prog
+        statusText = status
+        encodePhase = if (status.contains("Merging", ignoreCase = true)) {
+            EncodePhase.Merging
+        } else {
+            EncodePhase.Encoding
+        }
+    }
+
+    fun completeEncoding(message: String) {
+        progress = 1f
+        statusText = message
+        isCanceled = false
+        isSampleEncoding = false
+        encodingSegmentStart = null
+        encodingSegmentEnd = null
+        encodePhase = EncodePhase.Completed
+    }
+
+    fun failEncoding(message: String) {
+        statusText = message
+        isSampleEncoding = false
+        encodingSegmentStart = null
+        encodingSegmentEnd = null
+        encodePhase = EncodePhase.Failed
+    }
+
+    fun cancelEncoding(message: String = "Encoding Canceled") {
+        statusText = message
+        isCanceled = true
+        isSampleEncoding = false
+        encodingSegmentStart = null
+        encodingSegmentEnd = null
+        encodePhase = EncodePhase.Canceled
+    }
 
 
 

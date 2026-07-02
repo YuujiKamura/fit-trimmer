@@ -716,9 +716,9 @@ class NativeHudEncoder(
             try {
                 val fitBytes = File(fitPath).readBytes()
                 val p = FitParser(fitBytes)
-                p.parse()
+                p.parse(cancelSupplier)
                 parser = p
-                p.getTelemetry()
+                p.getTelemetry(cancelSupplier)
             } catch (e: Exception) {
                 e.printStackTrace()
                 emptyList()
@@ -1145,7 +1145,8 @@ class NativeHudEncoder(
                     fallbackSourceHeight = fallbackSourceH,
                     targetWidth = exportWidth.toFloat(),
                     targetHeight = exportHeight.toFloat(),
-                    timeBufferMs = settings.plateMaskTimeBufferMs
+                    timeBufferMs = settings.plateMaskTimeBufferMs,
+                    sourceStartTimeMs = (actualTrimStart * 1000.0).toLong()
                 ) ?: emptyList()
                 val maskedFrameCount = planned.count { it.isNotEmpty() }
                 println("DEBUG: Precomputed plate mask plan: $maskedFrameCount/$totalFrames frames contain masks.")
@@ -1560,7 +1561,7 @@ class NativeHudEncoder(
                 try {
                     val fitStartUtcSeconds = startTimeAdjusted.epochSecond
                     val fitEndUtcSeconds = startTimeAdjusted.epochSecond + targetDurationSeconds
-                    val trimmedFitBytes = parser.trim(fitStartUtcSeconds, fitEndUtcSeconds)
+                    val trimmedFitBytes = parser.trim(fitStartUtcSeconds, fitEndUtcSeconds, cancelSupplier)
                     val trimmedFitFile = File(output.replace(Regex("""\.(mp4|mov)$""", RegexOption.IGNORE_CASE), ".fit"))
                     trimmedFitFile.writeBytes(trimmedFitBytes)
                     println("⚡ Trimmed FIT file exported to: ${trimmedFitFile.absolutePath}")
@@ -1707,7 +1708,8 @@ class NativeHudEncoder(
             fallbackSourceHeight = fallbackSourceH,
             targetWidth = exportWidth.toFloat(),
             targetHeight = exportHeight.toFloat(),
-            timeBufferMs = settings.plateMaskTimeBufferMs
+            timeBufferMs = settings.plateMaskTimeBufferMs,
+            sourceStartTimeMs = 0L
         )
 
         val maskVideoFile = File(jobDir, "plate_mask.mkv")

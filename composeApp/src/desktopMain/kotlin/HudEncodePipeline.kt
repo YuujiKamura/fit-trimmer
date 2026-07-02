@@ -20,20 +20,22 @@ typealias PlatePreScanner = suspend (
     adjustedStartUtc: String,
     onProgress: (Float) -> Unit,
     onCancel: () -> Boolean,
-    settings: HudSettings
+    settings: HudSettings,
+    scanRanges: List<Pair<Double, Double>>?
 ) -> VideoPlatesCache?
+
 object HudEncodePipeline {
 
-
-    private val defaultPlatePreScanner: PlatePreScanner = { videoPath, telemetryPoints, adjustedStartUtc, onProgress, onCancel, settings ->
+    private val defaultPlatePreScanner: PlatePreScanner = { videoPath, telemetryPoints, adjustedStartUtc, onProgress, onCancel, settings, scanRanges ->
         PlateDetectionManager.runDetection(
             videoPath = videoPath,
             telemetryPoints = telemetryPoints,
             adjustedStartUtc = adjustedStartUtc,
             onProgress = onProgress,
             onCancel = onCancel,
-            saveCache = true,
-            settings = settings
+            saveCache = false,
+            settings = settings,
+            scanRanges = scanRanges
         )
     }
 
@@ -42,6 +44,7 @@ object HudEncodePipeline {
         videoPath: String,
         telemetryPoints: List<FitParser.TelemetryPoint> = emptyList(),
         adjustedStartUtc: String = "",
+        ranges: List<Pair<Double, Double>> = emptyList(),
         onProgress: (progress: Float, statusText: String) -> Unit = { _, _ -> },
         cancelSupplier: () -> Boolean = { false },
         platePreScanner: PlatePreScanner = defaultPlatePreScanner
@@ -50,7 +53,11 @@ object HudEncodePipeline {
             return PlateCacheManager.loadCache(videoPath)
         }
 
-        PlateCacheManager.loadCache(videoPath)?.let { return it }
+        val requestedRanges = ranges.filter { it.second > it.first }
+        val existingCache = PlateCacheManager.loadCache(videoPath)
+        if (existingCache != null && (requestedRanges.isEmpty() || existingCache.coversRanges(requestedRanges))) {
+            return existingCache
+        }
         if (cancelSupplier()) throw Exception("Encoding Canceled")
 
         onProgress(0f, "Scanning license plates before encoding...")
@@ -62,7 +69,8 @@ object HudEncodePipeline {
                 onProgress(0f, "Scanning license plates before encoding: ${"%.1f".format(java.util.Locale.US, percent)}%")
             },
             cancelSupplier,
-            settings
+            settings,
+            requestedRanges.ifEmpty { null }
         )
 
         if (cancelSupplier()) throw Exception("Encoding Canceled")
@@ -70,9 +78,10 @@ object HudEncodePipeline {
             throw Exception("License plate blur is enabled, but plate scan cache could not be created.")
         }
 
-        PlateCacheManager.saveCache(videoPath, cache)
+        val mergedCache = existingCache?.mergedWith(cache) ?: cache
+        PlateCacheManager.saveCache(videoPath, mergedCache)
         onProgress(0f, "Plate scan complete. Starting encode...")
-        return cache
+        return mergedCache
     }
     suspend fun execute(
         s: HudSettings,
@@ -83,13 +92,13 @@ object HudEncodePipeline {
         ranges: List<Pair<Double, Double>>,
         destFiles: List<File>,
         isSample: Boolean = false,
+        sampleMaxDurationSeconds: Int = Int.MAX_VALUE,
         shouldResume: Boolean = false,
         moveOutputToSource: Boolean = false,
         plateTelemetryPoints: List<FitParser.TelemetryPoint> = emptyList(),
         platePreScanner: PlatePreScanner = defaultPlatePreScanner,
         onProgress: (progress: Float, statusText: String) -> Unit,
         onFrame: (BufferedImage) -> Unit,
-        pauseSupplier: () -> Boolean,
         cancelSupplier: () -> Boolean,
         showLivePreviewSupplier: () -> Boolean,
         onSegmentStart: (start: Double, end: Double) -> Unit = { _, _ -> }
@@ -132,6 +141,7 @@ object HudEncodePipeline {
                 videoPath = videoPath,
                 telemetryPoints = plateTelemetryPoints,
                 adjustedStartUtc = videoStartUtc,
+                ranges = ranges,
                 onProgress = onProgress,
                 cancelSupplier = cancelSupplier,
                 platePreScanner = platePreScanner
@@ -166,7 +176,6 @@ object HudEncodePipeline {
                         onProgress(overallProg.toFloat(), "[Part ${idx + 1}/${ranges.size}] $status")
                     },
                     onFrameRendered = onFrame,
-                    pauseSupplier = pauseSupplier,
                     cancelSupplier = cancelSupplier,
                     customRenderer = { canvas, point, allPoints, pBuf, progressRatio ->
                         proxy.renderFrame(canvas, point, allPoints, pBuf, progressRatio)
@@ -184,7 +193,7 @@ object HudEncodePipeline {
                 val partOutPath = File(outputDir, outputFileName).absolutePath
 
                 encoder.encode(fitPath, videoPath, partOutPath, videoStartUtc,
-                    maxDurationSeconds = if (isSample) 5 else -1,
+                    maxDurationSeconds = if (isSample) sampleMaxDurationSeconds.coerceAtLeast(1) else -1,
                     trimStartSeconds = pStart,
                     trimEndSeconds = pEnd,
                     shouldResume = shouldResume
