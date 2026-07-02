@@ -2988,51 +2988,22 @@ fun FitTrimmerMainContent(
                                     val isActiveEncoding = isEncoding || viewModel.isBatchRunning
                                     if (!isActiveEncoding) {
                                         Text("現在の設定でHUD付き動画を書き出します。サンプルは短い確認用、バッチは後でまとめて処理する待ち行列です。", color = Color(0xFF636366), fontSize = 10.sp, lineHeight = 13.sp)
-                                        Button(
-                                            onClick = onNativeEncodeClick,
-                                            modifier = Modifier.fillMaxWidth().height(40.dp),
-                                            enabled = hasEnoughSpace && fitPath.isNotEmpty() && videoPath.isNotEmpty(),
-                                            colors = ButtonDefaults.buttonColors(
-                                                backgroundColor = if (hasEnoughSpace) Color(0xFF007AFF) else Color(0xFFD1D1D6),
-                                                disabledBackgroundColor = Color(0xFFE5E5EA)
-                                            ),
-                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
-                                        ) {
-                                            Text(if (hasEnoughSpace) "エンコード開始" else "ディスク容量不足", color = if (hasEnoughSpace) Color.White else Color(0xFF8E8E93), fontWeight = FontWeight.Bold)
-                                        }
-                                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                                            val isSampleEnabled = hasEnoughSpaceForSample && fitPath.isNotEmpty() && videoPath.isNotEmpty()
-                                            OutlinedButton(
-                                                onClick = onSampleEncodeClick,
-                                                modifier = Modifier.weight(1f).height(36.dp),
-                                                enabled = isSampleEnabled,
-                                                colors = ButtonDefaults.outlinedButtonColors(
-                                                    contentColor = Color(0xFF007AFF),
-                                                    disabledContentColor = Color(0xFF8E8E93)
-                                                ),
-                                                border = BorderStroke(1.5.dp, if (isSampleEnabled) Color(0xFF007AFF) else Color(0xFFE5E5EA)),
-                                                shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
-                                            ) {
-                                                Text("サンプル", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                            }
-                                            val isQueueEnabled = fitPath.isNotEmpty() && videoPath.isNotEmpty()
-                                            OutlinedButton(
-                                                onClick = {
-                                                    viewModel.addToBatchQueue()
-                                                    statusText = "ジョブをキューに追加しました"
-                                                },
-                                                modifier = Modifier.weight(1f).height(36.dp),
-                                                enabled = isQueueEnabled,
-                                                colors = ButtonDefaults.outlinedButtonColors(
-                                                    contentColor = Color(0xFF34C759),
-                                                    disabledContentColor = Color(0xFF8E8E93)
-                                                ),
-                                                border = BorderStroke(1.5.dp, if (isQueueEnabled) Color(0xFF34C759) else Color(0xFFE5E5EA)),
-                                                shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
-                                            ) {
-                                                Text("バッチに追加", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                            }
-                                        }
+                                         val isQueueEnabled = fitPath.isNotEmpty() && videoPath.isNotEmpty()
+                                         Button(
+                                             onClick = {
+                                                 viewModel.addToBatchQueue()
+                                                 statusText = "ジョブをキューに追加しました"
+                                             },
+                                             modifier = Modifier.fillMaxWidth().height(40.dp),
+                                             enabled = isQueueEnabled && hasEnoughSpace,
+                                             colors = ButtonDefaults.buttonColors(
+                                                 backgroundColor = if (hasEnoughSpace) Color(0xFF007AFF) else Color(0xFFD1D1D6),
+                                                 disabledBackgroundColor = Color(0xFFE5E5EA)
+                                             ),
+                                             shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                                         ) {
+                                             Text(if (hasEnoughSpace) "バッチに追加" else "ディスク容量不足", color = if (hasEnoughSpace) Color.White else Color(0xFF8E8E93), fontWeight = FontWeight.Bold)
+                                         }
 
                                     } else {
                                         val currentStatusText = if (viewModel.isBatchRunning) viewModel.statusText else statusText
