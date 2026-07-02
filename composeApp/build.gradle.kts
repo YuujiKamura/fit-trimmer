@@ -133,3 +133,11 @@ val verifyNoFileLock = tasks.register("verifyNoFileLock") {
 tasks.named("clean") {
     dependsOn(verifyNoFileLock)
 }
+
+val desktopPlaybackSmoke = tasks.register<Exec>("desktopPlaybackSmoke") {
+    group = "verification"
+    description = "Runs the playback GUI smoke test using PowerShell."
+    workingDir = project.rootDir
+    commandLine("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts/desktop-playback-smoke.ps1")
+}
+
