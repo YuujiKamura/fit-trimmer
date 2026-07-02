@@ -1531,29 +1531,14 @@ fun FitTrimmerMainContent(
                                     shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
                                 ) { Text("選択", color = Color(0xFF1C1C1E), fontSize = 11.sp, fontWeight = FontWeight.Bold) }
                             }
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                                Button(
-                                    onClick = { viewModel.loadBatchFolderAndConfirm(scope) },
-                                    modifier = Modifier.weight(1f).height(36.dp),
-                                    enabled = !isEncoding && !viewModel.isBatchRunning && !viewModel.isBatchFolderLoading,
-                                    colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF007AFF), contentColor = Color.White),
-                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
-                                ) {
-                                    Text(if (viewModel.isBatchFolderLoading) "読込中" else "キューに読み込む", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                }
-                                OutlinedButton(
-                                    onClick = { viewModel.toggleBatchFolderWatcher(scope) },
-                                    modifier = Modifier.weight(1f).height(36.dp),
-                                    enabled = !isEncoding && !viewModel.isBatchRunning && !viewModel.isBatchFolderLoading,
-                                    colors = ButtonDefaults.outlinedButtonColors(
-                                        contentColor = if (viewModel.isBatchFolderWatching) Color(0xFFE02424) else Color(0xFF34C759),
-                                        disabledContentColor = Color(0xFF8E8E93)
-                                    ),
-                                    border = BorderStroke(1.5.dp, if (viewModel.isBatchFolderWatching) Color(0xFFE02424) else Color(0xFF34C759)),
-                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
-                                ) {
-                                    Text(if (viewModel.isBatchFolderWatching) "監視停止" else "監視開始", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                }
+                            Button(
+                                onClick = { viewModel.loadBatchFolderAndConfirm(scope) },
+                                modifier = Modifier.fillMaxWidth().height(36.dp),
+                                enabled = !isEncoding && !viewModel.isBatchRunning && !viewModel.isBatchFolderLoading,
+                                colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF007AFF), contentColor = Color.White),
+                                shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                            ) {
+                                Text(if (viewModel.isBatchFolderLoading) "読込中" else "キューに読み込む", fontSize = 10.sp, fontWeight = FontWeight.Bold)
                             }
                             if (viewModel.batchFolderStatusText.isNotEmpty()) {
                                 Text(viewModel.batchFolderStatusText, color = Color(0xFF636366), fontSize = 10.sp, lineHeight = 13.sp)
@@ -3427,7 +3412,7 @@ fun FitTrimmerMainContent(
                     ) {
                         Card(
                             modifier = Modifier
-                                .width(760.dp)
+                                .width(840.dp)
                                 .padding(16.dp),
                             shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
                             elevation = 8.dp

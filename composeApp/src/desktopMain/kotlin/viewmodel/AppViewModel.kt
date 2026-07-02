@@ -1162,18 +1162,6 @@ class AppViewModel(
 
     }
 
-    private fun buildQueuedOutputFileNames(): List<String> {
-        return buildQueuedOutputFileNamesFor(
-            jobSettings = settings,
-            jobVideoPath = videoPath,
-            jobVideoStartUtc = videoStartUtc,
-            jobTrimStartSeconds = trimStartSeconds,
-            jobTrimEndSeconds = trimEndSeconds,
-            jobSplitPoints = splitPoints.toList(),
-            jobDurationSeconds = videoLengthMs.takeIf { it > 0L }?.toDouble()?.div(1000.0)
-        )
-    }
-
     private fun createBatchJob(
         jobVideoPath: String,
         jobFitPath: String,
@@ -1268,68 +1256,6 @@ class AppViewModel(
     var batchFolderPath by mutableStateOf("F:\\Insta360\\20260702")
     var batchFolderStatusText by mutableStateOf("")
     var isBatchFolderLoading by mutableStateOf(false)
-    var isBatchFolderWatching by mutableStateOf(false)
-    private var batchFolderWatchJob: kotlinx.coroutines.Job? = null
-
-    suspend fun enqueueBatchFolder(
-        folderPath: String = batchFolderPath,
-        durationProvider: suspend (String) -> Long? = { utils.getVideoDuration(it) },
-        startUtcProvider: suspend (String) -> String? = { utils.getVideoStartUtc(it) }
-    ): Int {
-        val candidates = withContext(Dispatchers.IO) { discoverBatchFolderCandidates(folderPath) }
-        if (candidates.errorMessage != null) {
-            batchFolderStatusText = candidates.errorMessage
-            logBatch("folder load skipped: ${candidates.errorMessage}")
-            return 0
-        }
-        val fitFile = candidates.fitFile ?: run {
-            batchFolderStatusText = "FITファイルが見つかりません。"
-            logBatch("folder load skipped: no fit file in $folderPath")
-            return 0
-        }
-        if (candidates.videoFiles.isEmpty()) {
-            batchFolderStatusText = "投入対象の動画が見つかりません。"
-            logBatch("folder load skipped: no videos in $folderPath")
-            return 0
-        }
-
-        var added = 0
-        val skipped = mutableListOf<String>()
-        for (videoFile in candidates.videoFiles) {
-            if (batchQueue.any { File(it.videoPath).absolutePath.equals(videoFile.absolutePath, ignoreCase = true) }) {
-                skipped.add(videoFile.name)
-                continue
-            }
-            val durationMs = durationProvider(videoFile.absolutePath)
-            if (durationMs == null || durationMs <= 0L) {
-                skipped.add("${videoFile.name}(duration)")
-                continue
-            }
-            val startUtc = startUtcProvider(videoFile.absolutePath).orEmpty()
-            val durationSeconds = durationMs.toDouble() / 1000.0
-            val job = createBatchJob(
-                jobVideoPath = videoFile.absolutePath,
-                jobFitPath = fitFile.absolutePath,
-                jobVideoStartUtc = startUtc,
-                jobTrimStartSeconds = 0.0,
-                jobTrimEndSeconds = durationSeconds,
-                jobSplitPoints = emptyList(),
-                jobDurationSeconds = durationSeconds
-            )
-            batchQueue.add(job)
-            added++
-        }
-        batchFolderStatusText = if (added > 0) {
-            "${fitFile.name} と動画 ${added} 件をキューに追加しました。"
-        } else {
-            "新しく追加できる動画はありません。"
-        }
-        if (skipped.isNotEmpty()) {
-            logBatch("folder load skipped videos=${skipped.joinToString(",")}")
-        }
-        logBatchQueueSnapshot("folder load added=$added")
-        return added
-    }
 
     fun loadBatchFolderAndConfirm(coroutineScope: kotlinx.coroutines.CoroutineScope) {
         if (isBatchFolderLoading) return
@@ -1337,10 +1263,18 @@ class AppViewModel(
         batchFolderStatusText = "フォルダを読み込み中..."
         coroutineScope.launch {
             try {
-                val added = enqueueBatchFolder()
-                if (added > 0) {
+                val (jobs, status) = utils.BatchFolderLoader.loadJobs(
+                    folderPath = batchFolderPath,
+                    currentSettings = settings,
+                    autoDetectRoadCaptions = autoDetectRoadCaptionsOnEncode,
+                    timeOffsetMillis = timeOffsetState.millis.toLong(),
+                    existingVideoPaths = batchQueue.map { it.videoPath }
+                )
+                if (jobs.isNotEmpty()) {
+                    batchQueue.addAll(jobs)
                     requestBatchConfirmDialog("folder-loader")
                 }
+                batchFolderStatusText = status
             } catch (e: Exception) {
                 batchFolderStatusText = "フォルダ読み込みに失敗しました: ${e.message ?: e::class.simpleName}"
                 logBatch("folder load failed: ${e.message}")
@@ -1350,33 +1284,6 @@ class AppViewModel(
         }
     }
 
-    fun toggleBatchFolderWatcher(coroutineScope: kotlinx.coroutines.CoroutineScope) {
-        if (isBatchFolderWatching) {
-            batchFolderWatchJob?.cancel()
-            batchFolderWatchJob = null
-            isBatchFolderWatching = false
-            batchFolderStatusText = "フォルダ監視を停止しました。"
-            logBatch("folder watch stopped")
-            return
-        }
-        isBatchFolderWatching = true
-        batchFolderStatusText = "フォルダ監視を開始しました。"
-        logBatch("folder watch started path=$batchFolderPath")
-        batchFolderWatchJob = coroutineScope.launch {
-            while (isActive) {
-                try {
-                    val added = enqueueBatchFolder()
-                    if (added > 0) {
-                        requestBatchConfirmDialog("folder-watch")
-                    }
-                } catch (e: Exception) {
-                    batchFolderStatusText = "フォルダ監視でエラー: ${e.message ?: e::class.simpleName}"
-                    logBatch("folder watch error: ${e.message}")
-                }
-                delay(10_000)
-            }
-        }
-    }
 
     fun setBatchJobRoadCaptionDetection(jobId: String, enabled: Boolean) {
         val job = batchQueue.firstOrNull { it.id == jobId } ?: return
@@ -1535,29 +1442,5 @@ data class BatchJob(
         } else {
             "${outputFileNames.first()} (+${outputFileNames.size - 1})"
         }
-}
-
-data class BatchFolderCandidates(
-    val fitFile: File?,
-    val videoFiles: List<File>,
-    val errorMessage: String? = null
-)
-
-fun discoverBatchFolderCandidates(folderPath: String): BatchFolderCandidates {
-    val dir = File(folderPath.trim())
-    if (!dir.exists()) return BatchFolderCandidates(null, emptyList(), "フォルダが存在しません: ${dir.path}")
-    if (!dir.isDirectory) return BatchFolderCandidates(null, emptyList(), "フォルダではありません: ${dir.path}")
-    val files = dir.listFiles()?.filter { it.isFile }.orEmpty()
-    val fitFile = files
-        .filter { it.extension.equals("fit", ignoreCase = true) }
-        .maxByOrNull { it.lastModified() }
-    val videos = files
-        .filter { file ->
-            val ext = file.extension.lowercase()
-            val name = file.name
-            (ext == "mp4" || ext == "mov") && !name.startsWith("LRV_", ignoreCase = true)
-        }
-        .sortedWith(compareBy<File> { it.name }.thenBy { it.lastModified() })
-    return BatchFolderCandidates(fitFile, videos)
 }
 

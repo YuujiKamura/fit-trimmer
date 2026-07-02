@@ -9,6 +9,7 @@ import fit.VideoPlatesCache
 import kotlinx.coroutines.runBlocking
 import utils.GuiPathCache
 import java.io.File
+import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -481,7 +482,7 @@ class AppViewModelTest {
 
     @Test
     fun testBatchFolderDiscoveryUsesLatestFitAndSourceVideosOnly() {
-        val dir = createTempDir(prefix = "fittrimmer-batch-folder-")
+        val dir = createTempDirectory("fittrimmer-batch-folder-").toFile()
         try {
             val olderFit = File(dir, "Morning.fit").apply {
                 writeText("fit")
@@ -495,7 +496,7 @@ class AppViewModelTest {
             File(dir, "VID_20260702_170526_002.mov").writeText("video")
             File(dir, "LRV_20260702_163959_001.lrv").writeText("proxy")
 
-            val candidates = discoverBatchFolderCandidates(dir.absolutePath)
+            val candidates = utils.BatchFolderLoader.discoverCandidates(dir.absolutePath)
 
             assertEquals(latestFit.absolutePath, candidates.fitFile?.absolutePath)
             assertEquals(
@@ -510,7 +511,7 @@ class AppViewModelTest {
 
     @Test
     fun testEnqueueBatchFolderAddsVideosOnceAndReusesJobSettings() = runBlocking {
-        val dir = createTempDir(prefix = "fittrimmer-batch-enqueue-")
+        val dir = createTempDirectory("fittrimmer-batch-enqueue-").toFile()
         try {
             File(dir, "Afternoon_Ride.fit").writeText("fit")
             val video1 = File(dir, "VID_20260702_163959_001.mp4").apply { writeText("video") }
@@ -521,14 +522,29 @@ class AppViewModelTest {
             viewModel.autoDetectRoadCaptionsOnEncode = true
             viewModel.settings = viewModel.settings.copy(exportResolution = "720p", blurLicensePlates = true)
 
-            val added = viewModel.enqueueBatchFolder(
+            val (jobs1, status1) = utils.BatchFolderLoader.loadJobs(
+                folderPath = dir.absolutePath,
+                currentSettings = viewModel.settings,
+                autoDetectRoadCaptions = viewModel.autoDetectRoadCaptionsOnEncode,
+                timeOffsetMillis = viewModel.timeOffsetState.millis.toLong(),
+                existingVideoPaths = viewModel.batchQueue.map { it.videoPath },
                 durationProvider = { 120_000L },
                 startUtcProvider = { "2026-07-02T07:39:59Z" }
             )
-            val addedAgain = viewModel.enqueueBatchFolder(
+            viewModel.batchQueue.addAll(jobs1)
+            val added = jobs1.size
+
+            val (jobs2, status2) = utils.BatchFolderLoader.loadJobs(
+                folderPath = dir.absolutePath,
+                currentSettings = viewModel.settings,
+                autoDetectRoadCaptions = viewModel.autoDetectRoadCaptionsOnEncode,
+                timeOffsetMillis = viewModel.timeOffsetState.millis.toLong(),
+                existingVideoPaths = viewModel.batchQueue.map { it.videoPath },
                 durationProvider = { 120_000L },
                 startUtcProvider = { "2026-07-02T07:39:59Z" }
             )
+            viewModel.batchQueue.addAll(jobs2)
+            val addedAgain = jobs2.size
 
             assertEquals(2, added)
             assertEquals(0, addedAgain)
