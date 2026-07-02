@@ -32,6 +32,10 @@ interface HudCanvas {
 }
 
 class HudRenderer(val config: HudConfig) {
+    // Cache fields for heart rate zones
+    private var cachedZonesTotal: IntArray? = null
+    private var cachedZonesMaxTotal: Int = 1
+
     // Cache fields for datetime formatting L1 cache to avoid massive allocations
     private var lastTimestampSeconds = -1L
     private var lastFormattedDateTime = "----- --:--:--"
@@ -252,6 +256,16 @@ class HudRenderer(val config: HudConfig) {
                 cachedMinAlt = minAlt
                 cachedMaxAlt = maxAlt
                 cachedAltDiff = altDiff
+
+                val zonesTotal = IntArray(7)
+                for (pt in allPoints) {
+                    val zIdx = getHrZoneIndex(pt.heartRate)
+                    if (zIdx in 0..6) {
+                        zonesTotal[zIdx]++
+                    }
+                }
+                cachedZonesTotal = zonesTotal
+                cachedZonesMaxTotal = zonesTotal.maxOrNull()?.coerceAtLeast(1) ?: 1
             }
 
             // Draw colored terrain polygon segments
@@ -383,6 +397,65 @@ class HudRenderer(val config: HudConfig) {
             canvas.drawText(line, cx, eGy + graphH + 16f, infoSize, "#ffffff", bold = true)
         }
 
+        // 8.6. Heart Rate Zones Table with Butterfly Bar Graph (130 to 190 bpm)
+        if (isValid && allPoints.isNotEmpty()) {
+            val zonesCurrent = IntArray(7)
+            for (pt in allPoints) {
+                if (pt.timestamp > telemetry.timestamp) break
+                val zIdx = getHrZoneIndex(pt.heartRate)
+                if (zIdx in 0..6) {
+                    zonesCurrent[zIdx]++
+                }
+            }
+
+            val zoneCy = eGy + graphH + 42f
+            val isJa = config.language.lowercase().let { it == "ja" || it.startsWith("ja-") }
+            canvas.drawText(
+                if (isJa) "心拍ゾーン累積時間 / 総時間" else "HEART RATE ZONES (ACCUM vs TOTAL)",
+                cx, zoneCy, labelSize, "#e5e7eb", bold = true
+            )
+
+            val maxBarW = 90f
+            val maxTotal = (cachedZonesMaxTotal).toFloat()
+            val zones = listOf("190+", "180-189", "170-179", "160-169", "150-159", "140-149", "130-139")
+            val zoneIndices = listOf(6, 5, 4, 3, 2, 1, 0)
+
+            var rowY = zoneCy + labelSize + 6f
+            val rowH = 15f
+            val barH = 7f
+
+            for (idx in zoneIndices.indices) {
+                val zIdx = zoneIndices[idx]
+                val zoneLabel = zones[idx]
+                val totalSec = cachedZonesTotal?.get(zIdx) ?: 0
+                val currentSec = zonesCurrent[zIdx]
+
+                // Calculate widths based on maxTotal
+                val totalW = (totalSec.toFloat() / maxTotal) * maxBarW
+                val currentW = (currentSec.toFloat() / maxTotal) * maxBarW
+
+                val barY = rowY + (rowH - barH) / 2f
+
+                // 1. Draw Left Bar: Current accumulation (Solid Red #ef4444)
+                if (currentW > 0f) {
+                    val leftBarX = cx + 95f - currentW
+                    canvas.drawRect(leftBarX, barY, currentW, barH, "#ef4444", alpha = 1.0f)
+                }
+
+                // 2. Draw Center Label: e.g. "170-179" (White, bold, size=10f)
+                val labelW = canvas.getTextWidth(zoneLabel, 10f, bold = true)
+                val labelX = cx + 95f + (60f - labelW) / 2f
+                canvas.drawText(zoneLabel, labelX, rowY + 1f, 10f, "#ffffff", bold = true)
+
+                // 3. Draw Right Bar: Total Clip Time (Light Red #f87171 with 0.35 alpha)
+                if (totalW > 0f) {
+                    canvas.drawRect(cx + 155f, barY, totalW, barH, "#f87171", alpha = 0.35f)
+                }
+
+                rowY += rowH + 2f
+            }
+        }
+
         // Draw Road Caption overlay
         val currentSeconds = currentRatio.toDouble()
         val activeCaption = config.roadCaptions.find { 
@@ -473,5 +546,12 @@ class HudRenderer(val config: HudConfig) {
             "POWER TREND" -> if (isJa) "パワートレンド" else "POWER TREND"
             else -> key
         }
+    }
+
+    private fun getHrZoneIndex(hr: Double): Int {
+        val bpm = hr.roundToInt()
+        if (bpm < 130) return -1
+        if (bpm >= 190) return 6
+        return (bpm - 130) / 10
     }
 }
