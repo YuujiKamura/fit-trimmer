@@ -66,6 +66,12 @@ sealed class CpCommand {
 
     @Serializable @kotlinx.serialization.SerialName("set_live_preview_enabled")
     data class SetLivePreviewEnabled(val enabled: Boolean) : CpCommand()
+
+    @Serializable @kotlinx.serialization.SerialName("add_to_batch")
+    object AddToBatch : CpCommand()
+
+    @Serializable @kotlinx.serialization.SerialName("show_batch_confirm")
+    object ShowBatchConfirm : CpCommand()
 }
 
 @Serializable

@@ -11,6 +11,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.runtime.*
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -108,7 +112,6 @@ fun FitTrimmerMainContent(
     var ignoreNextStartUtcClear by remember { mutableStateOf(false) }
     var setupStep by remember { mutableStateOf(if (settings.language.isEmpty()) 1 else 0) }
     var tempSelectedLanguage by remember { mutableStateOf("en") }
-    var showBatchConfirmDialog by remember { mutableStateOf(false) }
     // Dynamic Hud Proxy & Hot Reload State
     val hudConfig = remember(settings) {
         fit.HudConfig(
@@ -921,6 +924,15 @@ fun FitTrimmerMainContent(
                                         videoCurrentTimeMs = timeMs
                                     }
                                 }
+                                CpCommand.AddToBatch -> {
+                                    scope.launch {
+                                        viewModel.addToBatchQueue()
+                                        statusText = "ジョブをキューに追加しました"
+                                    }
+                                }
+                                CpCommand.ShowBatchConfirm -> {
+                                    viewModel.requestBatchConfirmDialog("control-plane")
+                                }
                             }
                         } catch (e: Exception) {
                             e.printStackTrace()
@@ -1008,6 +1020,7 @@ fun FitTrimmerMainContent(
         MaterialTheme(colors = lightColors(primary = Color(0xFF007AFF))) {
             val isPreviewFullscreen = viewModel.isPreviewFullscreen
             val showSidebar = viewModel.isSidebarVisible && !isPreviewFullscreen
+            Box(modifier = Modifier.fillMaxSize()) {
             Row(modifier = Modifier.fillMaxSize().background(if (isPreviewFullscreen) Color.Black else Color.White)) {
                 var selectedTab by remember { mutableStateOf(0) }
                 val scrollStateTab0 = rememberScrollState()
@@ -1474,6 +1487,79 @@ fun FitTrimmerMainContent(
                             )
                         }
                     }
+                    Card(
+                        backgroundColor = Color.White,
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, Color(0xFFE5E5EA)),
+                        elevation = 1.dp,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text("バッチフォルダローダー", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 0.5.sp)
+                            Text("指定フォルダの最新FITと動画をまとめてバッチキューに入れ、確認画面を開きます。", color = Color(0xFF636366), fontSize = 10.sp, lineHeight = 13.sp)
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                OutlinedTextField(
+                                    value = viewModel.batchFolderPath,
+                                    onValueChange = { viewModel.batchFolderPath = it },
+                                    label = { Text("監視/読込フォルダ", color = Color(0xFF636366), fontSize = 10.sp) },
+                                    modifier = Modifier.weight(1f),
+                                    textStyle = TextStyle(color = Color(0xFF1C1C1E), fontSize = 11.sp),
+                                    singleLine = true,
+                                    enabled = !isEncoding && !viewModel.isBatchRunning && !viewModel.isBatchFolderLoading,
+                                    colors = TextFieldDefaults.outlinedTextFieldColors(
+                                        backgroundColor = Color(0xFFF2F2F7),
+                                        focusedBorderColor = Color(0xFF007AFF),
+                                        unfocusedBorderColor = Color(0xFFD1D1D6),
+                                        textColor = Color(0xFF1C1C1E),
+                                        disabledTextColor = Color(0xFF8E8E93)
+                                    )
+                                )
+                                Button(
+                                    onClick = {
+                                        val path = pickFolder("バッチ投入フォルダを選択")
+                                        if (path != null) viewModel.batchFolderPath = path
+                                    },
+                                    enabled = !isEncoding && !viewModel.isBatchRunning && !viewModel.isBatchFolderLoading,
+                                    modifier = Modifier.height(56.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        backgroundColor = Color(0xFFE5E5EA),
+                                        disabledBackgroundColor = Color(0xFFF2F2F7)
+                                    ),
+                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
+                                ) { Text("選択", color = Color(0xFF1C1C1E), fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                                Button(
+                                    onClick = { viewModel.loadBatchFolderAndConfirm(scope) },
+                                    modifier = Modifier.weight(1f).height(36.dp),
+                                    enabled = !isEncoding && !viewModel.isBatchRunning && !viewModel.isBatchFolderLoading,
+                                    colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF007AFF), contentColor = Color.White),
+                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                                ) {
+                                    Text(if (viewModel.isBatchFolderLoading) "読込中" else "キューに読み込む", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                }
+                                OutlinedButton(
+                                    onClick = { viewModel.toggleBatchFolderWatcher(scope) },
+                                    modifier = Modifier.weight(1f).height(36.dp),
+                                    enabled = !isEncoding && !viewModel.isBatchRunning && !viewModel.isBatchFolderLoading,
+                                    colors = ButtonDefaults.outlinedButtonColors(
+                                        contentColor = if (viewModel.isBatchFolderWatching) Color(0xFFE02424) else Color(0xFF34C759),
+                                        disabledContentColor = Color(0xFF8E8E93)
+                                    ),
+                                    border = BorderStroke(1.5.dp, if (viewModel.isBatchFolderWatching) Color(0xFFE02424) else Color(0xFF34C759)),
+                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                                ) {
+                                    Text(if (viewModel.isBatchFolderWatching) "監視停止" else "監視開始", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            if (viewModel.batchFolderStatusText.isNotEmpty()) {
+                                Text(viewModel.batchFolderStatusText, color = Color(0xFF636366), fontSize = 10.sp, lineHeight = 13.sp)
+                            }
+                        }
+                    }
                     // 2. Output configuration (Card C1)
                     Card(
                         backgroundColor = Color.White,
@@ -1714,156 +1800,6 @@ fun FitTrimmerMainContent(
                                       }
                                   }
 
-                                  // 4. BATCH JOB QUEUE
-                                  val batchQueue = viewModel.batchQueue
-                                  Spacer(Modifier.height(8.dp))
-                                  Card(
-                                      backgroundColor = Color.White,
-                                      shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
-                                      border = BorderStroke(1.dp, Color(0xFFE5E5EA)),
-                                      elevation = 1.dp,
-                                      modifier = Modifier.fillMaxWidth()
-                                  ) {
-                                      Column(
-                                          modifier = Modifier.padding(12.dp),
-                                          verticalArrangement = Arrangement.spacedBy(10.dp)
-                                      ) {
-                                          Row(
-                                              modifier = Modifier.fillMaxWidth(),
-                                              horizontalArrangement = Arrangement.SpaceBetween,
-                                              verticalAlignment = Alignment.CenterVertically
-                                          ) {
-                                              Text(
-                                                  text = "BATCH JOB QUEUE (${batchQueue.size})",
-                                                  color = Color(0xFF1C1C1E),
-                                                  fontWeight = FontWeight.Bold,
-                                                  fontSize = 12.sp,
-                                                  letterSpacing = 0.5.sp
-                                              )
-                                              if (!viewModel.isBatchRunning && batchQueue.isNotEmpty()) {
-                                                  Text(
-                                                      text = "CLEAR ALL",
-                                                      color = Color(0xFFE02424),
-                                                      fontWeight = FontWeight.Bold,
-                                                      fontSize = 10.sp,
-                                                      modifier = Modifier.clickable { viewModel.clearBatchQueue() }
-                                                  )
-                                              }
-                                          }
-                                          if (batchQueue.isEmpty()) {
-                                              Text(
-                                                  text = "キューは空です",
-                                                  fontSize = 10.sp,
-                                                  color = Color.Gray,
-                                                  modifier = Modifier.padding(vertical = 2.dp).fillMaxWidth()
-                                              )
-                                          } else {
-                                              Box(
-                                                  modifier = Modifier
-                                                      .fillMaxWidth()
-                                                      .heightIn(max = 150.dp)
-                                                      .verticalScroll(rememberScrollState())
-                                              ) {
-                                                  Column(
-                                                      verticalArrangement = Arrangement.spacedBy(4.dp),
-                                                      modifier = Modifier.fillMaxWidth()
-                                                  ) {
-                                                      batchQueue.forEach { job ->
-                                                          Row(
-                                                              modifier = Modifier
-                                                                  .fillMaxWidth()
-                                                                  .background(Color(0xFFF2F2F7), shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
-                                                                  .padding(horizontal = 6.dp, vertical = 4.dp),
-                                                              horizontalArrangement = Arrangement.SpaceBetween,
-                                                              verticalAlignment = Alignment.CenterVertically
-                                                          ) {
-                                                              Column(modifier = Modifier.weight(1f)) {
-                                                                  Text(
-                                                                      text = File(job.videoPath).name,
-                                                                      fontSize = 10.sp,
-                                                                      fontWeight = FontWeight.Bold,
-                                                                      color = Color(0xFF1C1C1E),
-                                                                      maxLines = 1,
-                                                                      overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                                                                  )
-                                                                  Text(
-                                                                      text = "Trim: %.1fs - %.1fs".format(job.trimStartSeconds, job.trimEndSeconds),
-                                                                      fontSize = 8.sp,
-                                                                      color = Color(0xFF636366)
-                                                                  )
-                                                                  if (job.status == BatchJobStatus.RUNNING) {
-                                                                      LinearProgressIndicator(
-                                                                          progress = job.progress,
-                                                                          modifier = Modifier.fillMaxWidth().height(4.dp).padding(top = 2.dp),
-                                                                          color = Color(0xFF007AFF)
-                                                                      )
-                                                                  }
-                                                                  if (job.status == BatchJobStatus.FAILED && !job.errorMessage.isNullOrEmpty()) {
-                                                                      Text(
-                                                                          text = "Error: ${job.errorMessage}",
-                                                                          fontSize = 8.sp,
-                                                                          color = Color(0xFFE02424),
-                                                                          fontWeight = FontWeight.SemiBold
-                                                                      )
-                                                                  }
-                                                              }
-                                                              Spacer(Modifier.width(8.dp))
-                                                              val statusLabel = when (job.status) {
-                                                                  BatchJobStatus.WAITING -> "待機中"
-                                                                  BatchJobStatus.RUNNING -> "処理中"
-                                                                  BatchJobStatus.COMPLETED -> "完了"
-                                                                  BatchJobStatus.FAILED -> "失敗"
-                                                              }
-                                                              val statusColor = when (job.status) {
-                                                                  BatchJobStatus.WAITING -> Color(0xFF8E8E93)
-                                                                  BatchJobStatus.RUNNING -> Color(0xFF007AFF)
-                                                                  BatchJobStatus.COMPLETED -> Color(0xFF34C759)
-                                                                  BatchJobStatus.FAILED -> Color(0xFFE02424)
-                                                              }
-                                                              Row(
-                                                                  verticalAlignment = Alignment.CenterVertically,
-                                                                  horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                                              ) {
-                                                                  Text(
-                                                                      text = statusLabel,
-                                                                      color = statusColor,
-                                                                      fontSize = 8.sp,
-                                                                      fontWeight = FontWeight.Bold
-                                                                  )
-                                                                  if (!viewModel.isBatchRunning && job.status != BatchJobStatus.RUNNING) {
-                                                                      Box(
-                                                                          modifier = Modifier
-                                                                              .size(16.dp)
-                                                                              .clickable { viewModel.removeFromBatchQueue(job.id) },
-                                                                          contentAlignment = Alignment.Center
-                                                                      ) {
-                                                                          Canvas(modifier = Modifier.size(8.dp)) {
-                                                                              val strokeWidth = 1.5.dp.toPx()
-                                                                              drawLine(
-                                                                                  color = Color(0xFFEF4444),
-                                                                                  start = Offset(0f, 0f),
-                                                                                  end = Offset(size.width, size.height),
-                                                                                  strokeWidth = strokeWidth,
-                                                                                  cap = androidx.compose.ui.graphics.StrokeCap.Round
-                                                                              )
-                                                                              drawLine(
-                                                                                  color = Color(0xFFEF4444),
-                                                                                  start = Offset(size.width, 0f),
-                                                                                  end = Offset(0f, size.height),
-                                                                                  strokeWidth = strokeWidth,
-                                                                                  cap = androidx.compose.ui.graphics.StrokeCap.Round
-                                                                              )
-                                                                          }
-                                                                      }
-                                                                  }
-                                                              }
-                                                          }
-                                                      }
-                                                  }
-                                              }
-                                          }
-                                      }
-                                  }
                                     }
                                     if (selectedTab == 2) {
 
@@ -3003,10 +2939,10 @@ fun FitTrimmerMainContent(
                                             Text(if (hasEnoughSpace) "エンコード開始" else "ディスク容量不足", color = if (hasEnoughSpace) Color.White else Color(0xFF8E8E93), fontWeight = FontWeight.Bold)
                                         }
                                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                                            val canStartBatch = viewModel.batchQueue.any { it.status == BatchJobStatus.WAITING || it.status == BatchJobStatus.FAILED }
+                                            val canStartBatch = viewModel.batchQueue.any { it.isRunnable }
                                             OutlinedButton(
                                                 onClick = {
-                                                    showBatchConfirmDialog = true
+                                                    viewModel.requestBatchConfirmDialog("sidebar-button")
                                                 },
                                                 modifier = Modifier.weight(1f).height(36.dp),
                                                 enabled = canStartBatch && !viewModel.isBatchRunning,
@@ -3480,7 +3416,8 @@ fun FitTrimmerMainContent(
                     }
                 }
                 
-                if (showBatchConfirmDialog) {
+                }
+                if (viewModel.showBatchConfirmDialog) {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -3490,7 +3427,7 @@ fun FitTrimmerMainContent(
                     ) {
                         Card(
                             modifier = Modifier
-                                .width(480.dp)
+                                .width(760.dp)
                                 .padding(16.dp),
                             shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
                             elevation = 8.dp
@@ -3517,7 +3454,7 @@ fun FitTrimmerMainContent(
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .heightIn(max = 240.dp)
+                                        .heightIn(max = 360.dp)
                                         .border(1.dp, Color(0xFFE5E5EA), androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
                                         .background(Color(0xFFF9F9F9))
                                         .padding(8.dp)
@@ -3527,7 +3464,8 @@ fun FitTrimmerMainContent(
                                     ) {
                                         items(viewModel.batchQueue.size) { idx ->
                                             val job = viewModel.batchQueue[idx]
-                                            val fileName = java.io.File(job.videoPath).name
+                                            val canEditJob = !viewModel.isBatchRunning
+                                            var entryNameDraft by remember(job.id, job.entryName) { mutableStateOf(job.entryName) }
                                             Row(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
@@ -3538,19 +3476,121 @@ fun FitTrimmerMainContent(
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
                                                 Column(modifier = Modifier.weight(1f)) {
-                                                    Text(
-                                                        text = fileName,
-                                                        fontSize = 11.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = Color(0xFF1C1C1E),
-                                                        maxLines = 1,
-                                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                                                    )
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        OutlinedTextField(
+                                                            value = entryNameDraft,
+                                                            onValueChange = { entryNameDraft = it },
+                                                            enabled = canEditJob,
+                                                            singleLine = true,
+                                                            textStyle = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Bold),
+                                                            modifier = Modifier.weight(1f).height(52.dp),
+                                                            colors = TextFieldDefaults.outlinedTextFieldColors(
+                                                                textColor = Color(0xFF1C1C1E),
+                                                                disabledTextColor = Color(0xFF636366),
+                                                                focusedBorderColor = Color(0xFF007AFF),
+                                                                unfocusedBorderColor = Color(0xFFE5E5EA)
+                                                            )
+                                                        )
+                                                        OutlinedButton(
+                                                            onClick = {
+                                                                viewModel.renameBatchJobEntry(job.id, entryNameDraft)
+                                                                entryNameDraft = job.entryName
+                                                            },
+                                                            enabled = canEditJob && entryNameDraft.trim().isNotEmpty() && entryNameDraft != job.entryName,
+                                                            modifier = Modifier.width(54.dp).height(36.dp),
+                                                            contentPadding = PaddingValues(0.dp)
+                                                        ) {
+                                                            Text("保存", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                                        }
+                                                    }
                                                     Text(
                                                         text = "トリミング範囲: %.1fs - %.1fs".format(job.trimStartSeconds, job.trimEndSeconds),
                                                         fontSize = 10.sp,
                                                         color = Color.Gray
                                                     )
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                                            Checkbox(
+                                                                checked = job.autoDetectRoadCaptionsOnEncode,
+                                                                onCheckedChange = { viewModel.setBatchJobRoadCaptionDetection(job.id, it) },
+                                                                enabled = canEditJob,
+                                                                modifier = Modifier.size(28.dp)
+                                                            )
+                                                            Text("路線テロップ", fontSize = 10.sp, color = Color(0xFF1C1C1E))
+                                                        }
+                                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                                            Checkbox(
+                                                                checked = job.settings.blurLicensePlates,
+                                                                onCheckedChange = { viewModel.setBatchJobPlateMasking(job.id, it) },
+                                                                enabled = canEditJob,
+                                                                modifier = Modifier.size(28.dp)
+                                                            )
+                                                            Text("マスキング", fontSize = 10.sp, color = Color(0xFF1C1C1E))
+                                                        }
+                                                    }
+                                                }
+                                                Spacer(Modifier.width(8.dp))
+                                                Row(
+                                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    OutlinedButton(
+                                                        onClick = { viewModel.moveBatchJobUp(job.id) },
+                                                        enabled = canEditJob && idx > 0,
+                                                        modifier = Modifier.size(34.dp),
+                                                        contentPadding = PaddingValues(0.dp),
+                                                        colors = ButtonDefaults.outlinedButtonColors(
+                                                            contentColor = Color(0xFF1C1C1E),
+                                                            disabledContentColor = Color(0xFFC7C7CC)
+                                                        )
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Filled.KeyboardArrowUp,
+                                                            contentDescription = "上へ移動",
+                                                            modifier = Modifier.size(22.dp)
+                                                        )
+                                                    }
+                                                    OutlinedButton(
+                                                        onClick = { viewModel.moveBatchJobDown(job.id) },
+                                                        enabled = canEditJob && idx < viewModel.batchQueue.lastIndex,
+                                                        modifier = Modifier.size(34.dp),
+                                                        contentPadding = PaddingValues(0.dp),
+                                                        colors = ButtonDefaults.outlinedButtonColors(
+                                                            contentColor = Color(0xFF1C1C1E),
+                                                            disabledContentColor = Color(0xFFC7C7CC)
+                                                        )
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Filled.KeyboardArrowDown,
+                                                            contentDescription = "下へ移動",
+                                                            modifier = Modifier.size(22.dp)
+                                                        )
+                                                    }
+                                                    OutlinedButton(
+                                                        onClick = { viewModel.removeFromBatchQueue(job.id) },
+                                                        enabled = canEditJob,
+                                                        modifier = Modifier.size(34.dp),
+                                                        contentPadding = PaddingValues(0.dp),
+                                                        colors = ButtonDefaults.outlinedButtonColors(
+                                                            contentColor = Color(0xFFE02424),
+                                                            disabledContentColor = Color(0xFFC7C7CC)
+                                                        ),
+                                                        border = BorderStroke(1.dp, if (canEditJob) Color(0xFFE02424) else Color(0xFFE5E5EA))
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Filled.Delete,
+                                                            contentDescription = "削除",
+                                                            modifier = Modifier.size(19.dp)
+                                                        )
+                                                    }
                                                 }
                                             }
                                         }
@@ -3564,7 +3604,7 @@ fun FitTrimmerMainContent(
                                 ) {
                                     OutlinedButton(
                                         onClick = {
-                                            showBatchConfirmDialog = false
+                                            viewModel.dismissBatchConfirmDialog("cancel-button")
                                         },
                                         modifier = Modifier.weight(1f).height(40.dp),
                                         colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF1C1C1E))
@@ -3573,14 +3613,8 @@ fun FitTrimmerMainContent(
                                     }
                                     Button(
                                         onClick = {
-                                            showBatchConfirmDialog = false
-                                            viewModel.batchQueue.forEach {
-                                                if (it.status == BatchJobStatus.FAILED || it.status == BatchJobStatus.COMPLETED) {
-                                                    it.status = BatchJobStatus.WAITING
-                                                    it.progress = 0f
-                                                    it.errorMessage = null
-                                                }
-                                            }
+                                            viewModel.dismissBatchConfirmDialog("start-button")
+                                            viewModel.prepareBatchQueueForStart()
                                             scope.launch(Dispatchers.Main) {
                                                 runBatchJobs(
                                                     viewModel = viewModel,
