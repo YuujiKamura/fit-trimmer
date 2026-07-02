@@ -11,7 +11,7 @@ $tempDir = Join-Path $env:TEMP "FitTrimmer_E2E_Temp"
 Write-Host "=== 1. Building MSI Package ===" -ForegroundColor Cyan
 # Stop any active Gradle Daemons to clear cached JVM properties, and run without daemon
 ./gradlew --stop
-./gradlew :composeApp:packageMsi --no-daemon
+./gradlew clean :composeApp:packageMsi --no-daemon
 
 # Find generated MSI file
 $msiPath = Get-ChildItem -Path "composeApp/build/compose/binaries/main/msi/" -Filter "*.msi" | Select-Object -First 1

@@ -779,7 +779,7 @@ fun FitTrimmerMainContent(
                                                     }
                                                 },
                                                 cancelSupplier = { isCanceled },
-                                                showLivePreviewSupplier = { showLivePreview },
+                                                showLivePreviewSupplier = { viewModel.showLivePreview },
                                                 onSegmentStart = { pStart, pEnd ->
                                                     viewModel.encodingSegmentStart = pStart
                                                     viewModel.encodingSegmentEnd = pEnd
@@ -1201,7 +1201,7 @@ fun FitTrimmerMainContent(
                                                 }
                                             },
                                             cancelSupplier = { isCanceled },
-                                            showLivePreviewSupplier = { showLivePreview },
+                                            showLivePreviewSupplier = { viewModel.showLivePreview },
                                             onSegmentStart = { pStart, pEnd ->
                                                 viewModel.encodingSegmentStart = pStart
                                                 viewModel.encodingSegmentEnd = pEnd
@@ -1296,7 +1296,7 @@ fun FitTrimmerMainContent(
                                                 }
                                             },
                                             cancelSupplier = { isCanceled },
-                                            showLivePreviewSupplier = { showLivePreview },
+                                            showLivePreviewSupplier = { viewModel.showLivePreview },
                                             onSegmentStart = { pStart, pEnd ->
                                                 viewModel.encodingSegmentStart = pStart
                                                 viewModel.encodingSegmentEnd = pEnd
@@ -3605,7 +3605,7 @@ fun FitTrimmerMainContent(
                                                     viewModel = viewModel,
                                                     outputDir = outputDir,
                                                     moveOutputToSource = moveOutputToSource,
-                                                    showLivePreview = showLivePreview,
+
                                                     onProgressUpdate = {}
                                                 )
                                             }

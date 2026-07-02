@@ -703,6 +703,73 @@ class EncoderIntegrationTest {
         assertEquals(20, lerped.elapsedSeconds)
     }
 
+    @Test
+    fun testLivePreviewTogglingDuringEncode() {
+        System.setProperty("FIT_TRIMMER_FORCE_CPU", "true")
+        val tempDir = File(System.getProperty("java.io.tmpdir"), "fit-trimmer-test-toggle-preview-${System.currentTimeMillis()}")
+        tempDir.mkdirs()
+
+        val inputFit = File(tempDir, "test_input.fit")
+        val inputMp4 = File(tempDir, "test_input.mp4")
+        val outputMp4 = File(tempDir, "test_output.mp4")
+
+        try {
+            inputFit.writeBytes(createProfileFit(1000000000L, seconds = 3))
+            
+            val ffmpegPath = try { findFfmpegPath() } catch (e: Exception) { "ffmpeg" }
+            val pbVideo = ProcessBuilder(
+                ffmpegPath, "-y",
+                "-f", "lavfi", "-i", "color=c=blue:s=128x128:d=3",
+                "-c:v", "libopenh264", "-pix_fmt", "yuv420p", "-r", "10", "-t", "3",
+                inputMp4.absolutePath
+            )
+            pbVideo.redirectErrorStream(true)
+            val pVideo = pbVideo.start()
+            pVideo.waitFor()
+
+            var livePreviewState = false
+            val renderedFrames = mutableListOf<java.awt.image.BufferedImage>()
+            var progressCalls = 0
+
+            val encoder = NativeHudEncoder(
+                settings = HudSettings(exportResolution = "360p"),
+                onProgress = { prog, _ ->
+                    progressCalls++
+                    if (progressCalls == 10) {
+                        livePreviewState = true
+                    }
+                },
+                onFrameRendered = { img ->
+                    synchronized(renderedFrames) {
+                        renderedFrames.add(img)
+                    }
+                },
+                showLivePreviewSupplier = { livePreviewState }
+            )
+
+            val fitEpochSec = 631065600L
+            val computedStartUtc = java.time.Instant.ofEpochSecond(1000000000L + fitEpochSec).toString()
+
+            encoder.encode(
+                fitPath = inputFit.absolutePath,
+                videoPath = inputMp4.absolutePath,
+                output = outputMp4.absolutePath,
+                startUtc = computedStartUtc,
+                maxDurationSeconds = 2,
+                trimStartSeconds = 0.0,
+                trimEndSeconds = 2.0
+            )
+
+            assertTrue(renderedFrames.isNotEmpty(), "Frames should be rendered after preview is toggled ON")
+            assertTrue(renderedFrames.size < 20, "No frames should be rendered before preview is toggled ON, so total frames must be less than 20")
+        } finally {
+            try { inputFit.delete() } catch (e: Exception) {}
+            try { inputMp4.delete() } catch (e: Exception) {}
+            try { outputMp4.delete() } catch (e: Exception) {}
+            try { tempDir.deleteRecursively() } catch (e: Exception) {}
+        }
+    }
+
     private fun createProfileFit(baseFitTimestamp: Long, seconds: Int): ByteArray {
         val headerSize = 14
         val recordsSize = 12 + (9 * seconds)

@@ -434,7 +434,6 @@ suspend fun runBatchJobs(
     viewModel: AppViewModel,
     outputDir: String,
     moveOutputToSource: Boolean,
-    showLivePreview: Boolean,
     onProgressUpdate: () -> Unit
 ) {
     if (viewModel.isBatchRunning) return
@@ -524,7 +523,7 @@ suspend fun runBatchJobs(
                         }
                     },
                     cancelSupplier = { viewModel.isCanceled },
-                    showLivePreviewSupplier = { showLivePreview },
+                    showLivePreviewSupplier = { viewModel.showLivePreview },
                     onSegmentStart = { pStart, pEnd ->
                         mainScope.launch {
                             viewModel.encodingSegmentStart = pStart
