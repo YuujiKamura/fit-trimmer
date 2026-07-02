@@ -2938,32 +2938,40 @@ fun FitTrimmerMainContent(
                                         }
                                         if (batchQueue.isEmpty()) {
                                             Text(
-                                                text = "キューは空です (動画・FITを選択して 'バッチに追加' でジョブがたまります)",
+                                                text = "キューは空です",
                                                 fontSize = 9.sp,
                                                 color = Color.Gray,
-                                                modifier = Modifier.padding(vertical = 4.dp).fillMaxWidth()
+                                                modifier = Modifier.padding(vertical = 2.dp).fillMaxWidth()
                                             )
                                         } else {
-                                            Column(
-                                                verticalArrangement = Arrangement.spacedBy(4.dp),
-                                                modifier = Modifier.fillMaxWidth()
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .heightIn(max = 120.dp)
+                                                    .verticalScroll(rememberScrollState())
                                             ) {
-                                                batchQueue.forEach { job ->
-                                                Row(
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .background(Color(0xFFF2F2F7), shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
-                                                        .padding(horizontal = 8.dp, vertical = 6.dp),
-                                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                                    verticalAlignment = Alignment.CenterVertically
+                                                Column(
+                                                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                                                    modifier = Modifier.fillMaxWidth()
                                                 ) {
-                                                    Column(modifier = Modifier.weight(1f)) {
-                                                        Text(
-                                                            text = File(job.videoPath).name,
-                                                            fontSize = 10.sp,
-                                                            fontWeight = FontWeight.Bold,
-                                                            color = Color(0xFF1C1C1E)
-                                                        )
+                                                    batchQueue.forEach { job ->
+                                                    Row(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .background(Color(0xFFF2F2F7), shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                                                            .padding(horizontal = 6.dp, vertical = 4.dp),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Column(modifier = Modifier.weight(1f)) {
+                                                            Text(
+                                                                text = File(job.videoPath).name,
+                                                                fontSize = 10.sp,
+                                                                fontWeight = FontWeight.Bold,
+                                                                color = Color(0xFF1C1C1E),
+                                                                maxLines = 1,
+                                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                                            )
                                                         Text(
                                                             text = "Trim: %.1fs - %.1fs".format(job.trimStartSeconds, job.trimEndSeconds),
                                                             fontSize = 8.sp,
@@ -3034,6 +3042,7 @@ fun FitTrimmerMainContent(
                                                                 }
                                                             }
                                                         }
+                                                    }
                                                     }
                                                 }
                                             }
