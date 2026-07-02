@@ -543,7 +543,7 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
                         setError("Error during SeekMedia for loop: ${e.message}")
                     }
                 } else {
-                    pause()
+                    settleAtEndOfMedia(instance)
                     break
                 }
             }
@@ -960,6 +960,19 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
             setError("$errorMessage: No player instance")
             false
         }
+    }
+
+    private fun settleAtEndOfMedia(instance: Pointer) {
+        suppressResizeFor(300)
+        val res = player.SetPlaybackState(instance, false, false)
+        if (res < 0) {
+            windowsLogger.e { "Failed to pause at EOF (hr=0x${res.toString(16)})" }
+        }
+        _isPlaying = false
+        _currentTime = _duration
+        _progress = 1f
+        isLoading = false
+        _error?.let { clearError() }
     }
 
     /**

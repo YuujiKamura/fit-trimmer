@@ -16,7 +16,11 @@ object TimelineMapper {
     ): Long {
         val isProxy = durationMs > 0L && fullVideoLengthMs > 0L && durationMs < (fullVideoLengthMs * 0.9).toLong()
         val currentDuration = if (isProxy) durationMs else (if (fullVideoLengthMs > 0L) fullVideoLengthMs else durationMs)
-        return ((sliderPos / 1000f) * currentDuration).toLong()
+        val normalizedSlider = sliderPos.coerceIn(0f, 1000f)
+        if (normalizedSlider >= 999.5f) {
+            return currentDuration
+        }
+        return ((normalizedSlider / 1000f) * currentDuration).toLong()
     }
 
     /**

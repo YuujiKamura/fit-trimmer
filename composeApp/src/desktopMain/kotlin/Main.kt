@@ -157,7 +157,7 @@ fun showSystemNotification(title: String, message: String) {
             trayIcon.isImageAutoSize = true
             tray.add(trayIcon)
             trayIcon.displayMessage(title, message, java.awt.TrayIcon.MessageType.INFO)
-            
+
             // Use simple lambda thread to clean up tray icon after 10s to avoid anonymous inner class file deletion issue
             val cleaner = java.lang.Thread {
                 try {
@@ -748,7 +748,7 @@ suspend fun detectRoadSegments(
         if (cancelCheck()) throw IllegalStateException("Encoding Canceled")
         val currentHeading = headings[s]
         if (currentHeading < 0.0) continue
-        
+
         // Speed guard: If moving too slow (< 5 km/h), GPS noise can cause fake turn detections.
         val targetFitTime = startFitTime + s
         val currentPoint = rangePoints.minByOrNull { kotlin.math.abs(it.timestamp - targetFitTime) }
@@ -1052,8 +1052,8 @@ fun ControlSlider(label: String, value: Float, min: Float, max: Float, enabled: 
             Text("%.1f".format(value), color = if (enabled) Color(0xFF007AFF) else Color(0xFF8E8E93), fontSize = 10.sp, fontWeight = FontWeight.Bold)
         }
         Slider(
-            value = value, 
-            onValueChange = onValueChange, 
+            value = value,
+            onValueChange = onValueChange,
             valueRange = min..max,
             enabled = enabled,
             modifier = Modifier.height(20.dp),
@@ -1123,7 +1123,7 @@ fun runE2ETest(args: Array<String>) {
                 fitPath = fitPath,
                 videoPath = videoPath,
                 output = outputPath,
-                startUtc = "2026-06-21T02:09:49Z", 
+                startUtc = "2026-06-21T02:09:49Z",
                 maxDurationSeconds = 3,
                 trimStartSeconds = 0.0,
                 trimEndSeconds = 3.0
@@ -1201,7 +1201,7 @@ fun runCli(args: Array<String>) {
                     print("\r$status")
                 }
             )
-            encoder.encode(fit, video, output, startUtc, 
+            encoder.encode(fit, video, output, startUtc,
                 maxDurationSeconds = duration,
                 trimStartSeconds = trimStart,
                 trimEndSeconds = trimEnd
