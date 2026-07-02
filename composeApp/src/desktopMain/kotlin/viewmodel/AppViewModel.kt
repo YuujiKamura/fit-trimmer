@@ -69,6 +69,12 @@ class AppViewModel(
 
 
 
+    // Batch Job Queue
+    val batchQueue = mutableStateListOf<BatchJob>()
+    var isBatchRunning by mutableStateOf(false)
+    var batchStatusText by mutableStateOf("")
+    var showBatchConfirmDialog by mutableStateOf(false)
+
     var isDetectingRoads by mutableStateOf(false)
 
     var roadDetectionProgressText by mutableStateOf("")
@@ -1022,9 +1028,36 @@ class AppViewModel(
 
 
     init {
-
         refreshAvailableCacheJobs()
-
+        try {
+            val savedJobs = utils.BatchQueueCache.load()
+            if (savedJobs.isNotEmpty()) {
+                val restored = savedJobs.map {
+                    val statusEnum = try { BatchJobStatus.valueOf(it.status) } catch(_: Exception) { BatchJobStatus.WAITING }
+                    val finalStatus = if (statusEnum == BatchJobStatus.RUNNING) BatchJobStatus.WAITING else statusEnum
+                    BatchJob(
+                        id = it.id,
+                        videoPath = it.videoPath,
+                        fitPath = it.fitPath,
+                        videoStartUtc = it.videoStartUtc,
+                        timeOffsetMillis = it.timeOffsetMillis,
+                        trimStartSeconds = it.trimStartSeconds,
+                        trimEndSeconds = it.trimEndSeconds,
+                        splitPoints = it.splitPoints,
+                        initialSettings = it.settings,
+                        initialAutoDetectRoadCaptionsOnEncode = it.autoDetectRoadCaptionsOnEncode,
+                        initialOutputFileNames = it.outputFileNames,
+                        initialStatus = finalStatus,
+                        initialProgress = it.progress,
+                        initialErrorMessage = it.errorMessage
+                    )
+                }
+                batchQueue.addAll(restored)
+                logBatch("Restored ${restored.size} batch jobs from cache")
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
 
@@ -1083,17 +1116,6 @@ class AppViewModel(
 
     var editingCaptionIndex by mutableStateOf<Int?>(null)
 
-
-
-    // Batch Job Queue
-
-    val batchQueue = mutableStateListOf<BatchJob>()
-
-    var isBatchRunning by mutableStateOf(false)
-
-    var batchStatusText by mutableStateOf("")
-    var showBatchConfirmDialog by mutableStateOf(false)
-
     private fun logBatch(message: String) {
         println("BATCH: $message")
     }
@@ -1136,6 +1158,7 @@ class AppViewModel(
             }
         }
         saveCurrentHistory()
+        saveBatchQueue()
         logBatchQueueSnapshot("starting confirmed batch")
     }
 
@@ -1156,6 +1179,7 @@ class AppViewModel(
 
             batchQueue.add(job)
             saveCurrentHistory()
+            saveBatchQueue()
             logBatchQueueSnapshot("added job")
         } else {
             logBatch("add skipped: videoPath is empty")
@@ -1270,6 +1294,28 @@ class AppViewModel(
         }
     }
 
+    fun saveBatchQueue() {
+        val serializedJobs = batchQueue.map {
+            utils.SerializedBatchJob(
+                id = it.id,
+                videoPath = it.videoPath,
+                fitPath = it.fitPath,
+                videoStartUtc = it.videoStartUtc,
+                timeOffsetMillis = it.timeOffsetMillis,
+                trimStartSeconds = it.trimStartSeconds,
+                trimEndSeconds = it.trimEndSeconds,
+                splitPoints = it.splitPoints,
+                settings = it.settings.copy(),
+                autoDetectRoadCaptionsOnEncode = it.autoDetectRoadCaptionsOnEncode,
+                outputFileNames = it.outputFileNames,
+                status = it.status.name,
+                progress = it.progress,
+                errorMessage = it.errorMessage
+            )
+        }
+        utils.BatchQueueCache.save(serializedJobs)
+    }
+
     private fun buildDateTagFromUtc(utc: String): String? {
         val date = utc.takeIf { it.length >= 10 }?.substring(0, 10) ?: return null
         if (!Regex("""\d{4}-\d{2}-\d{2}""").matches(date)) return null
@@ -1295,6 +1341,7 @@ class AppViewModel(
                 )
                 if (jobs.isNotEmpty()) {
                     batchQueue.addAll(jobs)
+                    saveBatchQueue()
                     requestBatchConfirmDialog("folder-loader")
                 }
                 batchFolderStatusText = status
@@ -1311,12 +1358,14 @@ class AppViewModel(
     fun setBatchJobRoadCaptionDetection(jobId: String, enabled: Boolean) {
         val job = batchQueue.firstOrNull { it.id == jobId } ?: return
         job.autoDetectRoadCaptionsOnEncode = enabled
+        saveBatchQueue()
         logBatchQueueSnapshot("road caption toggle id=${jobId.take(8)} enabled=$enabled")
     }
 
     fun setBatchJobPlateMasking(jobId: String, enabled: Boolean) {
         val job = batchQueue.firstOrNull { it.id == jobId } ?: return
         job.settings = job.settings.copy(blurLicensePlates = enabled)
+        saveBatchQueue()
         logBatchQueueSnapshot("plate masking toggle id=${jobId.take(8)} enabled=$enabled")
     }
 
@@ -1331,7 +1380,7 @@ class AppViewModel(
             logBatch("confirm dialog closed: no runnable jobs after remove")
         }
         logBatchQueueSnapshot("removed job")
-
+        saveBatchQueue()
     }
 
     fun moveBatchJobUp(jobId: String) {
@@ -1342,6 +1391,7 @@ class AppViewModel(
         }
         val job = batchQueue.removeAt(index)
         batchQueue.add(index - 1, job)
+        saveBatchQueue()
         logBatchQueueSnapshot("moved job up")
     }
 
@@ -1353,6 +1403,7 @@ class AppViewModel(
         }
         val job = batchQueue.removeAt(index)
         batchQueue.add(index + 1, job)
+        saveBatchQueue()
         logBatchQueueSnapshot("moved job down")
     }
 
@@ -1372,6 +1423,7 @@ class AppViewModel(
             updated[0] = normalized
         }
         job.outputFileNames = updated
+        saveBatchQueue()
         logBatchQueueSnapshot("renamed job")
     }
 
@@ -1392,6 +1444,7 @@ class AppViewModel(
         logBatchQueueSnapshot("clear requested")
         batchQueue.clear()
         showBatchConfirmDialog = false
+        saveBatchQueue()
         logBatch("queue cleared")
 
     }

@@ -16,8 +16,14 @@ import kotlin.test.assertTrue
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertNotNull
+import kotlin.test.BeforeTest
 
 class AppViewModelTest {
+
+    @BeforeTest
+    fun setUp() {
+        utils.BatchQueueCache.file.delete()
+    }
 
     @Test
     fun testInitializationWithNullCache() {
