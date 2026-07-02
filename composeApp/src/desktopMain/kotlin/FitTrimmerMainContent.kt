@@ -1482,7 +1482,7 @@ fun FitTrimmerMainContent(
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             Text("出力設定", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 0.5.sp)
-                            Text("書き出し先、画質、ライブプレビューを設定します。", color = Color(0xFF636366), fontSize = 10.sp, lineHeight = 13.sp)
+                            Text("書き出し先、画質を設定します。", color = Color(0xFF636366), fontSize = 10.sp, lineHeight = 13.sp)
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 OutlinedTextField(
                                     value = outputDir,
@@ -1539,43 +1539,6 @@ fun FitTrimmerMainContent(
                                      )
                                  )
                              }
-                             Spacer(modifier = Modifier.height(4.dp))
-                             Row(
-                                 modifier = Modifier
-                                     .fillMaxWidth()
-                                     .background(Color(0xFFF2F2F7), shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
-                                     .border(1.dp, Color(0xFFE5E5EA), shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
-                                     .clickable {
-                                         showLivePreview = !showLivePreview
-                                         if (!showLivePreview) {
-                                             encodingPreviewImage = null
-                                         }
-                                     }
-                                     .padding(horizontal = 10.dp, vertical = 8.dp),
-                                 horizontalArrangement = Arrangement.SpaceBetween,
-                                 verticalAlignment = Alignment.CenterVertically
-                              ) {
-                                  Column(modifier = Modifier.weight(1f)) {
-                                      Text("ライブプレビュー", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Medium, fontSize = 11.sp)
-                                      Text("オフにするとエンコードが少し軽くなります", color = Color(0xFF636366), fontSize = 9.sp)
-                                 }
-                                 Switch(
-                                     checked = showLivePreview,
-                                     onCheckedChange = {
-                                         showLivePreview = it
-                                         if (!it) {
-                                             encodingPreviewImage = null
-                                         }
-                                     },
-                                     colors = SwitchDefaults.colors(
-                                         checkedThumbColor = Color.White,
-                                         checkedTrackColor = Color(0xFF34C759),
-                                         uncheckedThumbColor = Color(0xFFE5E5EA),
-                                         uncheckedTrackColor = Color(0xFFD1D1D6)
-                                     )
-                                 )
-                             }
-                             Spacer(modifier = Modifier.height(4.dp))
                              // Export Resolution Selector
                              Column(
                                  modifier = Modifier
@@ -1633,7 +1596,7 @@ fun FitTrimmerMainContent(
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             Text("その他", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 0.5.sp)
-                            Text("更新確認、設定ファイル、アプリが自動保存する作業状態を扱います。", color = Color(0xFF636366), fontSize = 10.sp, lineHeight = 13.sp)
+                            Text("ライブプレビュー、更新確認、設定ファイル、作業状態を扱います。", color = Color(0xFF636366), fontSize = 10.sp, lineHeight = 13.sp)
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -1642,6 +1605,39 @@ fun FitTrimmerMainContent(
                                     .padding(horizontal = 10.dp, vertical = 8.dp),
                                 verticalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
+                                  Row(
+                                      modifier = Modifier
+                                          .fillMaxWidth()
+                                          .clickable {
+                                              showLivePreview = !showLivePreview
+                                              if (!showLivePreview) {
+                                                  encodingPreviewImage = null
+                                              }
+                                          },
+                                      horizontalArrangement = Arrangement.SpaceBetween,
+                                      verticalAlignment = Alignment.CenterVertically
+                                  ) {
+                                      Column(modifier = Modifier.weight(1f)) {
+                                          Text("ライブプレビュー", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                                          Text("オフにするとエンコードが少し軽くなります", color = Color(0xFF636366), fontSize = 8.sp)
+                                      }
+                                      Switch(
+                                          checked = showLivePreview,
+                                          onCheckedChange = {
+                                              showLivePreview = it
+                                              if (!it) {
+                                                  encodingPreviewImage = null
+                                              }
+                                          },
+                                          colors = SwitchDefaults.colors(
+                                              checkedThumbColor = Color.White,
+                                              checkedTrackColor = Color(0xFF34C759),
+                                              uncheckedThumbColor = Color(0xFFE5E5EA),
+                                              uncheckedTrackColor = Color(0xFFD1D1D6)
+                                          )
+                                      )
+                                  }
+                                  Divider(color = Color(0xFFE5E5EA))
                                   Row(
                                       modifier = Modifier.fillMaxWidth(),
                                       horizontalArrangement = Arrangement.SpaceBetween,
@@ -2444,6 +2440,248 @@ fun FitTrimmerMainContent(
                             }
                         }
                     }
+
+                    // 4. ROUTE CAPTIONS (Card C3)
+                    Card(
+                        backgroundColor = Color.White,
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, Color(0xFFE5E5EA)),
+                        elevation = 1.dp,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Text("ROUTE CAPTIONS (路線名テロップ)", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 0.5.sp)
+                            Text("動画上に道路の路線名を焼き込みます。", color = Color(0xFF636366), fontSize = 10.sp, lineHeight = 13.sp)
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(Color.White, shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                                    .border(0.5.dp, Color(0xFFE5E5EA), shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("エンコード前に自動再検出", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 9.sp)
+                                    Text("既存テロップをクリアしてGPSから再アサインします", color = Color(0xFF636366), fontSize = 8.sp)
+                                }
+                                Switch(
+                                    checked = autoDetectRoadCaptionsOnEncode,
+                                    onCheckedChange = { autoDetectRoadCaptionsOnEncode = it },
+                                    enabled = !isEncoding,
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = Color.White,
+                                        checkedTrackColor = Color(0xFF007AFF)
+                                    )
+                                )
+                            }
+                            if (isDetectingRoads) {
+                               Column(
+                                   modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                   verticalArrangement = Arrangement.spacedBy(4.dp),
+                                   horizontalAlignment = Alignment.CenterHorizontally
+                               ) {
+                                   CircularProgressIndicator(
+                                       modifier = Modifier.size(20.dp),
+                                       color = Color(0xFF007AFF),
+                                       strokeWidth = 2.dp
+                                   )
+                                   Text(roadDetectionStatus, fontSize = 9.sp, color = Color(0xFF1C1C1E))
+                                   OutlinedButton(
+                                       onClick = {
+                                           roadDetectionJob?.cancel()
+                                           isDetectingRoads = false
+                                       },
+                                       modifier = Modifier.height(20.dp),
+                                       contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                       colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.Red)
+                                   ) {
+                                       Text("キャンセル", fontSize = 8.sp)
+                                   }
+                               }
+                           } else {
+                               val captions = settings.roadCaptions
+                               if (captions.isEmpty()) {
+                                   Text("路線名データがありません。GPSログから自動検出できます。", fontSize = 9.sp, color = Color.Gray)
+                                   Button(
+                                       onClick = {
+                                           isDetectingRoads = true
+                                           roadDetectionStatus = "スキャン準備中..."
+                                           roadDetectionJob = scope.launch {
+                                               try {
+                                                   val durationSec = videoLengthMs / 1000.0
+                                                   val detected = detectRoadSegments(
+                                                       points = telemetryPoints,
+                                                       videoStartUtc = adjustedStartUtc.ifEmpty { videoStartUtc },
+                                                       timeOffsetMillis = timeOffsetState.millis.toLong(),
+                                                       videoDurationSeconds = durationSec,
+                                                       language = settings.language,
+                                                       onProgress = { progressText ->
+                                                           roadDetectionStatus = progressText
+                                                       }
+                                                   )
+                                                   settings = settings.copy(roadCaptions = detected)
+                                               } catch (e: Throwable) {
+                                                   e.printStackTrace()
+                                                   roadDetectionStatus = "エラーが発生しました: ${e.message}"
+                                               } finally {
+                                                   isDetectingRoads = false
+                                               }
+                                           }
+                                       },
+                                       colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFE0E0E0)),
+                                       modifier = Modifier.fillMaxWidth().height(28.dp),
+                                       shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
+                                   ) {
+                                       Text("GPSから路線名を自動検出", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1C1C1E))
+                                   }
+                               } else {
+                                   Column(
+                                       modifier = Modifier.fillMaxWidth().heightIn(max = 120.dp).verticalScroll(rememberScrollState()),
+                                       verticalArrangement = Arrangement.spacedBy(4.dp)
+                                   ) {
+                                       captions.forEachIndexed { index, segment ->
+                                           Row(
+                                               modifier = Modifier
+                                                   .fillMaxWidth()
+                                                   .background(Color.White, shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                                                   .border(0.5.dp, Color(0xFFE5E5EA), shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                                                   .padding(4.dp),
+                                               verticalAlignment = Alignment.CenterVertically
+                                           ) {
+                                               Checkbox(
+                                                   checked = segment.isEnabled,
+                                                   onCheckedChange = { checked ->
+                                                       val updated = captions.mapIndexed { idx, item ->
+                                                           if (idx == index) item.copy(isEnabled = checked) else item
+                                                       }
+                                                       settings = settings.copy(roadCaptions = updated)
+                                                   },
+                                                   modifier = Modifier.size(24.dp)
+                                               )
+                                               Spacer(Modifier.width(2.dp))
+                                               Column(modifier = Modifier.weight(1f)) {
+                                                   androidx.compose.foundation.text.BasicTextField(
+                                                       value = segment.text,
+                                                       onValueChange = { newText ->
+                                                           val updated = captions.mapIndexed { idx, item ->
+                                                               if (idx == index) item.copy(text = newText) else item
+                                                           }
+                                                           settings = settings.copy(roadCaptions = updated)
+                                                       },
+                                                       textStyle = TextStyle(fontSize = 10.sp, color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold),
+                                                       modifier = Modifier.fillMaxWidth().background(Color(0xFFF2F2F7)).padding(2.dp)
+                                                   )
+                                                   Spacer(modifier = Modifier.height(2.dp))
+                                                   Row(
+                                                       verticalAlignment = Alignment.CenterVertically,
+                                                       modifier = Modifier.fillMaxWidth()
+                                                   ) {
+                                                       Text(
+                                                           text = "${utils.formatTime((segment.startSeconds * 1000).toLong())} - ${utils.formatTime((segment.endSeconds * 1000).toLong())}",
+                                                           fontSize = 9.sp,
+                                                           color = Color.Gray
+                                                       )
+                                                       Spacer(Modifier.weight(1f))
+                                                       Button(
+                                                           onClick = {
+                                                               editingCaptionIndex = index
+                                                           },
+                                                           colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFE5E5EA)),
+                                                           contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                                                           shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp),
+                                                           modifier = Modifier.height(18.dp)
+                                                       ) {
+                                                           Text("⚙ 編集", fontSize = 8.sp, color = Color(0xFF1C1C1E))
+                                                       }
+                                                   }
+                                               }
+                                               Spacer(Modifier.width(2.dp))
+                                               IconButton(
+                                                   onClick = {
+                                                       val updated = captions.filterIndexed { idx, _ -> idx != index }
+                                                       settings = settings.copy(roadCaptions = updated)
+                                                   },
+                                                   modifier = Modifier.size(20.dp)
+                                               ) {
+                                                   Text("❌", fontSize = 8.sp)
+                                               }
+                                           }
+                                       }
+                                   }
+                                   Spacer(modifier = Modifier.height(2.dp))
+                                   Row(
+                                       modifier = Modifier.fillMaxWidth(),
+                                       horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                   ) {
+                                       Button(
+                                           onClick = {
+                                               val newSegment = RoadCaptionSegment(
+                                                   id = java.util.UUID.randomUUID().toString(),
+                                                   startSeconds = 0.0,
+                                                   endSeconds = videoLengthMs / 1000.0,
+                                                   text = "新しいテロップ",
+                                                   isEnabled = true
+                                               )
+                                               settings = settings.copy(roadCaptions = captions + newSegment)
+                                           },
+                                           colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFE5E5EA)),
+                                           contentPadding = PaddingValues(0.dp),
+                                           modifier = Modifier.weight(1f).height(20.dp)
+                                       ) {
+                                           Text("＋ 追加", fontSize = 9.sp, color = Color(0xFF1C1C1E))
+                                       }
+                                       Button(
+                                           onClick = {
+                                               isDetectingRoads = true
+                                               roadDetectionStatus = "スキャン準備中..."
+                                               roadDetectionJob = scope.launch {
+                                                   try {
+                                                       val durationSec = videoLengthMs / 1000.0
+                                                       val detected = detectRoadSegments(
+                                                           points = telemetryPoints,
+                                                           videoStartUtc = adjustedStartUtc.ifEmpty { videoStartUtc },
+                                                           timeOffsetMillis = timeOffsetState.millis.toLong(),
+                                                           videoDurationSeconds = durationSec,
+                                                           language = settings.language,
+                                                           onProgress = { progressText ->
+                                                               roadDetectionStatus = progressText
+                                                           }
+                                                       )
+                                                       settings = settings.copy(roadCaptions = detected)
+                                                   } catch (e: Throwable) {
+                                                       e.printStackTrace()
+                                                       roadDetectionStatus = "エラーが発生しました: ${e.message}"
+                                                   } finally {
+                                                       isDetectingRoads = false
+                                                   }
+                                               }
+                                           },
+                                           colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFE5E5EA)),
+                                           contentPadding = PaddingValues(0.dp),
+                                           modifier = Modifier.weight(1f).height(20.dp)
+                                       ) {
+                                           Text("🔄 再検出", fontSize = 9.sp, color = Color(0xFF1C1C1E))
+                                       }
+                                       Button(
+                                           onClick = {
+                                               settings = settings.copy(roadCaptions = emptyList())
+                                           },
+                                           colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFFFD6D6)),
+                                           contentPadding = PaddingValues(0.dp),
+                                           modifier = Modifier.weight(1f).height(20.dp)
+                                       ) {
+                                           Text("🗑 クリア", fontSize = 9.sp, color = Color.Red)
+                                       }
+                                   }
+                               }
+                           }
+                        }
+                    }
                                     }
                                 }
                                 VerticalScrollbar(
@@ -2513,8 +2751,9 @@ fun FitTrimmerMainContent(
                                                 Text("バッチに追加", fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                             }
                                         }
-                                         if (viewModel.availableCacheJobs.isNotEmpty()) {
-                                             Spacer(Modifier.height(8.dp))
+                                         if (true) {
+                                             if (viewModel.availableCacheJobs.isNotEmpty()) {
+                                                 Spacer(Modifier.height(8.dp))
                                              Divider(color = Color(0xFFE5E5EA))
                                              Spacer(Modifier.height(4.dp))
                                              Text(
@@ -2614,6 +2853,7 @@ fun FitTrimmerMainContent(
                                                  }
                                                  Spacer(Modifier.height(4.dp))
                                              }
+                                             }
                                          }
 
                                          if (viewModel.isSalvaging) {
@@ -2666,10 +2906,10 @@ fun FitTrimmerMainContent(
                                         }
                                     }
                                     val batchQueue = viewModel.batchQueue
-                                    if (batchQueue.isNotEmpty()) {
-                                        Spacer(modifier = Modifier.height(8.dp))
-                                        Divider(color = Color(0xFFE5E5EA))
-                                        Spacer(modifier = Modifier.height(8.dp))
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Divider(color = Color(0xFFE5E5EA))
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    if (true) {
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -2682,7 +2922,7 @@ fun FitTrimmerMainContent(
                                                 fontSize = 12.sp,
                                                 letterSpacing = 0.5.sp
                                             )
-                                            if (!viewModel.isBatchRunning) {
+                                            if (!viewModel.isBatchRunning && batchQueue.isNotEmpty()) {
                                                 Text(
                                                     text = "CLEAR ALL",
                                                     color = Color(0xFFE02424),
@@ -2692,11 +2932,19 @@ fun FitTrimmerMainContent(
                                                 )
                                             }
                                         }
-                                        Column(
-                                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) {
-                                            batchQueue.forEach { job ->
+                                        if (batchQueue.isEmpty()) {
+                                            Text(
+                                                text = "キューは空です (動画・FITを選択して 'バッチに追加' でジョブがたまります)",
+                                                fontSize = 9.sp,
+                                                color = Color.Gray,
+                                                modifier = Modifier.padding(vertical = 4.dp).fillMaxWidth()
+                                            )
+                                        } else {
+                                            Column(
+                                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                batchQueue.forEach { job ->
                                                 Row(
                                                     modifier = Modifier
                                                         .fillMaxWidth()
@@ -2786,6 +3034,7 @@ fun FitTrimmerMainContent(
                                                 }
                                             }
                                         }
+                                        }
                                         if (viewModel.isBatchRunning) {
                                             Column(
                                                 modifier = Modifier.fillMaxWidth().background(Color(0xFFFEF3C7)).padding(8.dp),
@@ -2805,7 +3054,7 @@ fun FitTrimmerMainContent(
                                                     Text("CANCEL BATCH", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                                 }
                                             }
-                                        } else {
+                                        } else if (batchQueue.isNotEmpty()) {
                                             val canStartBatch = batchQueue.any { it.status == BatchJobStatus.WAITING || it.status == BatchJobStatus.FAILED }
                                             Button(
                                                 onClick = {
