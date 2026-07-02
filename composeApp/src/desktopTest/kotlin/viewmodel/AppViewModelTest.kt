@@ -6,6 +6,7 @@ import fit.PlateBox
 import fit.PlateCacheManager
 import fit.PlateRecord
 import fit.VideoPlatesCache
+import kotlinx.coroutines.runBlocking
 import utils.GuiPathCache
 import java.io.File
 import kotlin.test.Test
@@ -451,6 +452,14 @@ class AppViewModelTest {
         assertEquals(listOf(30.0), job.splitPoints)
         assertEquals("720p", job.settings.exportResolution)
         assertTrue(job.autoDetectRoadCaptionsOnEncode)
+        assertEquals("video1_20260629_00m10s-00m30s_part1_KMP_HUD_orig.mp4 (+1)", job.entryName)
+        assertEquals(
+            listOf(
+                "video1_20260629_00m10s-00m30s_part1_KMP_HUD_orig.mp4",
+                "video1_20260629_00m30s-00m50s_part2_KMP_HUD_orig.mp4"
+            ),
+            job.outputFileNames
+        )
         assertEquals(BatchJobStatus.WAITING, job.status)
         
         // 3. Add second job (after changing state)
@@ -468,6 +477,191 @@ class AppViewModelTest {
         // 5. Clear queue
         viewModel.clearBatchQueue()
         assertTrue(viewModel.batchQueue.isEmpty())
+    }
+
+    @Test
+    fun testBatchFolderDiscoveryUsesLatestFitAndSourceVideosOnly() {
+        val dir = createTempDir(prefix = "fittrimmer-batch-folder-")
+        try {
+            val olderFit = File(dir, "Morning.fit").apply {
+                writeText("fit")
+                setLastModified(1000L)
+            }
+            val latestFit = File(dir, "Afternoon.fit").apply {
+                writeText("fit")
+                setLastModified(2000L)
+            }
+            File(dir, "VID_20260702_163959_001.mp4").writeText("video")
+            File(dir, "VID_20260702_170526_002.mov").writeText("video")
+            File(dir, "LRV_20260702_163959_001.lrv").writeText("proxy")
+
+            val candidates = discoverBatchFolderCandidates(dir.absolutePath)
+
+            assertEquals(latestFit.absolutePath, candidates.fitFile?.absolutePath)
+            assertEquals(
+                listOf("VID_20260702_163959_001.mp4", "VID_20260702_170526_002.mov"),
+                candidates.videoFiles.map { it.name }
+            )
+            assertTrue(olderFit.exists())
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun testEnqueueBatchFolderAddsVideosOnceAndReusesJobSettings() = runBlocking {
+        val dir = createTempDir(prefix = "fittrimmer-batch-enqueue-")
+        try {
+            File(dir, "Afternoon_Ride.fit").writeText("fit")
+            val video1 = File(dir, "VID_20260702_163959_001.mp4").apply { writeText("video") }
+            val video2 = File(dir, "VID_20260702_170526_002.mp4").apply { writeText("video") }
+            File(dir, "LRV_20260702_163959_001.lrv").writeText("proxy")
+            val viewModel = AppViewModel(null)
+            viewModel.batchFolderPath = dir.absolutePath
+            viewModel.autoDetectRoadCaptionsOnEncode = true
+            viewModel.settings = viewModel.settings.copy(exportResolution = "720p", blurLicensePlates = true)
+
+            val added = viewModel.enqueueBatchFolder(
+                durationProvider = { 120_000L },
+                startUtcProvider = { "2026-07-02T07:39:59Z" }
+            )
+            val addedAgain = viewModel.enqueueBatchFolder(
+                durationProvider = { 120_000L },
+                startUtcProvider = { "2026-07-02T07:39:59Z" }
+            )
+
+            assertEquals(2, added)
+            assertEquals(0, addedAgain)
+            assertEquals(2, viewModel.batchQueue.size)
+            assertEquals(video1.absolutePath, viewModel.batchQueue[0].videoPath)
+            assertEquals(video2.absolutePath, viewModel.batchQueue[1].videoPath)
+            assertEquals(120.0, viewModel.batchQueue[0].trimEndSeconds)
+            assertEquals("720p", viewModel.batchQueue[0].settings.exportResolution)
+            assertTrue(viewModel.batchQueue[0].settings.blurLicensePlates)
+            assertTrue(viewModel.batchQueue[0].autoDetectRoadCaptionsOnEncode)
+
+            viewModel.setBatchJobRoadCaptionDetection(viewModel.batchQueue[0].id, false)
+            viewModel.setBatchJobPlateMasking(viewModel.batchQueue[0].id, false)
+            assertFalse(viewModel.batchQueue[0].autoDetectRoadCaptionsOnEncode)
+            assertFalse(viewModel.batchQueue[0].settings.blurLicensePlates)
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun testBatchConfirmDialogRequiresRunnableJobs() {
+        val viewModel = AppViewModel(null)
+
+        assertFalse(viewModel.requestBatchConfirmDialog("test-empty"))
+        assertFalse(viewModel.showBatchConfirmDialog)
+        assertEquals("処理待ちのジョブがありません。", viewModel.batchStatusText)
+
+        viewModel.videoPath = "/path/to/video1.mp4"
+        viewModel.fitPath = "/path/to/fit1.fit"
+        viewModel.addToBatchQueue()
+
+        assertTrue(viewModel.requestBatchConfirmDialog("test-waiting"))
+        assertTrue(viewModel.showBatchConfirmDialog)
+
+        viewModel.dismissBatchConfirmDialog("test")
+        assertFalse(viewModel.showBatchConfirmDialog)
+    }
+
+    @Test
+    fun testPrepareBatchQueueForStartResetsFinishedJobs() {
+        val viewModel = AppViewModel(null)
+        viewModel.videoPath = "/path/to/video1.mp4"
+        viewModel.fitPath = "/path/to/fit1.fit"
+        viewModel.addToBatchQueue()
+        viewModel.videoPath = "/path/to/video2.mp4"
+        viewModel.addToBatchQueue()
+
+        viewModel.batchQueue[0].status = BatchJobStatus.COMPLETED
+        viewModel.batchQueue[0].progress = 1f
+        viewModel.batchQueue[1].status = BatchJobStatus.FAILED
+        viewModel.batchQueue[1].progress = 0.25f
+        viewModel.batchQueue[1].errorMessage = "boom"
+
+        viewModel.prepareBatchQueueForStart()
+
+        assertEquals(BatchJobStatus.WAITING, viewModel.batchQueue[0].status)
+        assertEquals(0f, viewModel.batchQueue[0].progress)
+        assertNull(viewModel.batchQueue[0].errorMessage)
+        assertEquals(BatchJobStatus.WAITING, viewModel.batchQueue[1].status)
+        assertEquals(0f, viewModel.batchQueue[1].progress)
+        assertNull(viewModel.batchQueue[1].errorMessage)
+    }
+
+    @Test
+    fun testBatchQueueReorderOperations() {
+        val viewModel = AppViewModel(null)
+        viewModel.videoPath = "/path/to/video1.mp4"
+        viewModel.addToBatchQueue()
+        viewModel.videoPath = "/path/to/video2.mp4"
+        viewModel.addToBatchQueue()
+        viewModel.videoPath = "/path/to/video3.mp4"
+        viewModel.addToBatchQueue()
+
+        val firstId = viewModel.batchQueue[0].id
+        val secondId = viewModel.batchQueue[1].id
+        val thirdId = viewModel.batchQueue[2].id
+
+        viewModel.moveBatchJobUp(thirdId)
+        assertEquals(listOf(firstId, thirdId, secondId), viewModel.batchQueue.map { it.id })
+
+        viewModel.moveBatchJobDown(firstId)
+        assertEquals(listOf(thirdId, firstId, secondId), viewModel.batchQueue.map { it.id })
+
+        viewModel.moveBatchJobUp(thirdId)
+        assertEquals(listOf(thirdId, firstId, secondId), viewModel.batchQueue.map { it.id })
+
+        viewModel.moveBatchJobDown(secondId)
+        assertEquals(listOf(thirdId, firstId, secondId), viewModel.batchQueue.map { it.id })
+    }
+
+    @Test
+    fun testRemovingLastRunnableJobClosesBatchConfirmDialog() {
+        val viewModel = AppViewModel(null)
+        viewModel.videoPath = "/path/to/video1.mp4"
+        viewModel.addToBatchQueue()
+
+        assertTrue(viewModel.requestBatchConfirmDialog("test"))
+        viewModel.removeFromBatchQueue(viewModel.batchQueue[0].id)
+
+        assertTrue(viewModel.batchQueue.isEmpty())
+        assertFalse(viewModel.showBatchConfirmDialog)
+    }
+
+    @Test
+    fun testRenameBatchJobEntryUpdatesOutputFileName() {
+        val viewModel = AppViewModel(null)
+        viewModel.videoPath = "/path/to/video1.mp4"
+        viewModel.fitPath = "/path/to/fit1.fit"
+        viewModel.addToBatchQueue()
+        val jobId = viewModel.batchQueue[0].id
+
+        viewModel.renameBatchJobEntry(jobId, "custom_name")
+
+        assertEquals("custom_name.mp4", viewModel.batchQueue[0].entryName)
+        assertEquals(listOf("custom_name.mp4"), viewModel.batchQueue[0].outputFileNames)
+    }
+
+    @Test
+    fun testBatchEntryNameDoesNotDuplicateDateAlreadyInSourceName() {
+        val viewModel = AppViewModel(null)
+        viewModel.videoPath = "/path/to/VID_20260630_174458_001.mp4"
+        viewModel.videoStartUtc = "2026-06-30T08:44:58Z"
+        viewModel.videoLengthMs = 1_799_130L
+        viewModel.trimStartSeconds = 197.465
+        viewModel.trimEndSeconds = 339.082
+
+        viewModel.addToBatchQueue()
+
+        assertEquals(
+            "VID_20260630_174458_001_03m17s-05m39s_KMP_HUD_2.7k.mp4",
+            viewModel.batchQueue[0].entryName
+        )
     }
 
     @Test

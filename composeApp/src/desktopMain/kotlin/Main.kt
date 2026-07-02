@@ -310,9 +310,28 @@ fun buildEncodeOutputFileName(
     videoPath: String,
     partIndex: Int = -1,
     numParts: Int = 1,
-    isSample: Boolean = false
+    isSample: Boolean = false,
+    trimStartSeconds: Double? = null,
+    trimEndSeconds: Double? = null,
+    dateTag: String? = null
 ): String {
-    return fit.CacheRegistry.buildEncodeOutputFileName(settings, videoPath, partIndex, numParts, isSample)
+    return fit.CacheRegistry.buildEncodeOutputFileName(
+        settings,
+        videoPath,
+        partIndex,
+        numParts,
+        isSample,
+        trimStartSeconds,
+        trimEndSeconds,
+        dateTag
+    )
+}
+
+fun hasTrimmedRange(trimStartSeconds: Double, trimEndSeconds: Double, videoDurationSeconds: Double?): Boolean {
+    val epsilon = 0.01
+    if (trimStartSeconds > epsilon) return true
+    if (videoDurationSeconds == null || videoDurationSeconds <= 0.0) return trimEndSeconds > epsilon
+    return trimEndSeconds > epsilon && trimEndSeconds < videoDurationSeconds - epsilon
 }
 
 fun buildEncodePlan(
@@ -321,16 +340,22 @@ fun buildEncodePlan(
     outputDir: String,
     moveOutputToSource: Boolean,
     ranges: List<Pair<Double, Double>>,
-    isSample: Boolean = false
+    isSample: Boolean = false,
+    includeTrimRangeInFileName: Boolean = false,
+    dateTag: String? = null,
+    outputFileNames: List<String>? = null
 ): EncodePlan {
     val videoFile = File(videoPath)
     val segments = ranges.mapIndexed { idx, (start, end) ->
-        val outputFileName = buildEncodeOutputFileName(
+        val outputFileName = outputFileNames?.getOrNull(idx) ?: buildEncodeOutputFileName(
             settings = settings,
             videoPath = videoPath,
             partIndex = idx,
             numParts = ranges.size,
-            isSample = isSample
+            isSample = isSample,
+            trimStartSeconds = if (includeTrimRangeInFileName) start else null,
+            trimEndSeconds = if (includeTrimRangeInFileName) end else null,
+            dateTag = if (includeTrimRangeInFileName) dateTag else null
         )
         val finalOutputFile = if (moveOutputToSource) {
             val parent = videoFile.parentFile
@@ -350,6 +375,12 @@ fun buildEncodePlan(
         )
     }
     return EncodePlan(settings = settings, segments = segments)
+}
+
+fun buildDateTagFromUtc(utc: String): String? {
+    val date = utc.takeIf { it.length >= 10 }?.substring(0, 10) ?: return null
+    if (!Regex("""\d{4}-\d{2}-\d{2}""").matches(date)) return null
+    return date.replace("-", "")
 }
 
 suspend fun prepareRoadCaptionSettingsForEncode(
@@ -422,11 +453,12 @@ suspend fun runBatchJobs(
             job.status = BatchJobStatus.RUNNING
             job.progress = 0f
             onProgressUpdate()
-            viewModel.batchStatusText = "[${jobIdx + 1}/${jobs.size}] ${File(job.videoPath).name} を処理中..."
+            viewModel.batchStatusText = "[${jobIdx + 1}/${jobs.size}] ${job.entryName} を処理中..."
+            val detectedVideoDurationSeconds = getVideoDuration(job.videoPath)?.toDouble()?.div(1000.0)
+            val videoDurationSeconds = (detectedVideoDurationSeconds ?: job.trimEndSeconds)
+                .coerceAtLeast(job.trimEndSeconds)
             val detectionContext = if (job.autoDetectRoadCaptionsOnEncode) {
                 val points = loadTelemetryPointsForRoadDetection(job.fitPath) { viewModel.isCanceled }
-                val videoDurationSeconds = (getVideoDuration(job.videoPath)?.toDouble()?.div(1000.0) ?: job.trimEndSeconds)
-                    .coerceAtLeast(job.trimEndSeconds)
                 RoadCaptionDetectionContext(
                     points = points,
                     videoStartUtc = job.videoStartUtc,
@@ -438,7 +470,7 @@ suspend fun runBatchJobs(
                     points = emptyList(),
                     videoStartUtc = job.videoStartUtc,
                     timeOffsetMillis = job.timeOffsetMillis,
-                    videoDurationSeconds = job.trimEndSeconds
+                    videoDurationSeconds = videoDurationSeconds
                 )
             }
             val encodeSettings = prepareRoadCaptionSettingsForEncode(
@@ -456,7 +488,14 @@ suspend fun runBatchJobs(
                 videoPath = job.videoPath,
                 outputDir = outputDir,
                 moveOutputToSource = moveOutputToSource,
-                ranges = ranges
+                ranges = ranges,
+                includeTrimRangeInFileName = hasTrimmedRange(
+                    trimStartSeconds = job.trimStartSeconds,
+                    trimEndSeconds = job.trimEndSeconds,
+                    videoDurationSeconds = detectedVideoDurationSeconds
+                ),
+                dateTag = buildDateTagFromUtc(job.videoStartUtc),
+                outputFileNames = job.outputFileNames
             )
             val destFiles = encodePlan.segments.map { it.finalOutputFile }
             try {
