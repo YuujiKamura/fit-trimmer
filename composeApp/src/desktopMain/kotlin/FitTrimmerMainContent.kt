@@ -108,6 +108,7 @@ fun FitTrimmerMainContent(
     var ignoreNextStartUtcClear by remember { mutableStateOf(false) }
     var setupStep by remember { mutableStateOf(if (settings.language.isEmpty()) 1 else 0) }
     var tempSelectedLanguage by remember { mutableStateOf("en") }
+    var showBatchConfirmDialog by remember { mutableStateOf(false) }
     // Dynamic Hud Proxy & Hot Reload State
     val hudConfig = remember(settings) {
         fit.HudConfig(
@@ -2987,7 +2988,7 @@ fun FitTrimmerMainContent(
                                     Text("エンコード", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 0.5.sp)
                                     val isActiveEncoding = isEncoding || viewModel.isBatchRunning
                                     if (!isActiveEncoding) {
-                                        Text("現在の設定でHUD付き動画を書き出します。サンプルは短い確認用、バッチは後でまとめて処理する待ち行列です。", color = Color(0xFF636366), fontSize = 10.sp, lineHeight = 13.sp)
+                                        Text("現在の設定でHUD付き動画を書き出します。複数の設定をキューに追加して、後でまとめて一括エンコードできます。", color = Color(0xFF636366), fontSize = 10.sp, lineHeight = 13.sp)
                                          val isQueueEnabled = fitPath.isNotEmpty() && videoPath.isNotEmpty()
                                         Button(
                                             onClick = onNativeEncodeClick,
@@ -3005,34 +3006,7 @@ fun FitTrimmerMainContent(
                                             val canStartBatch = viewModel.batchQueue.any { it.status == BatchJobStatus.WAITING || it.status == BatchJobStatus.FAILED }
                                             OutlinedButton(
                                                 onClick = {
-                                                    scope.launch(Dispatchers.Main) {
-                                                        val jobsListText = viewModel.batchQueue.joinToString("\n") { job ->
-                                                            "・\${File(job.videoPath).name} (Trim: %.1fs - %.1fs)".format(job.trimStartSeconds, job.trimEndSeconds)
-                                                        }
-                                                        val confirm = javax.swing.JOptionPane.showConfirmDialog(
-                                                            composeWindow ?: viewModel.composeWindow,
-                                                            "以下のバッチジョブ（計 \${viewModel.batchQueue.size} 件）のエンコードを開始しますか？\n\n\$jobsListText",
-                                                            "バッチエンコードの確認",
-                                                            javax.swing.JOptionPane.YES_NO_OPTION,
-                                                            javax.swing.JOptionPane.QUESTION_MESSAGE
-                                                        )
-                                                        if (confirm == javax.swing.JOptionPane.YES_OPTION) {
-                                                            viewModel.batchQueue.forEach {
-                                                                if (it.status == BatchJobStatus.FAILED || it.status == BatchJobStatus.COMPLETED) {
-                                                                    it.status = BatchJobStatus.WAITING
-                                                                    it.progress = 0f
-                                                                    it.errorMessage = null
-                                                                }
-                                                            }
-                                                            runBatchJobs(
-                                                                viewModel = viewModel,
-                                                                outputDir = outputDir,
-                                                                moveOutputToSource = moveOutputToSource,
-                                                                showLivePreview = showLivePreview,
-                                                                onProgressUpdate = {}
-                                                            )
-                                                        }
-                                                    }
+                                                    showBatchConfirmDialog = true
                                                 },
                                                 modifier = Modifier.weight(1f).height(36.dp),
                                                 enabled = canStartBatch && !viewModel.isBatchRunning,
@@ -3496,6 +3470,132 @@ fun FitTrimmerMainContent(
                                     ) {
                                         Text(
                                             text = utils.Localizer.get("privacy_agree", tempSelectedLanguage),
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                if (showBatchConfirmDialog) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.4f))
+                            .clickable(enabled = true, onClick = {}),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Card(
+                            modifier = Modifier
+                                .width(480.dp)
+                                .padding(16.dp),
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+                            elevation = 8.dp
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(24.dp),
+                                horizontalAlignment = Alignment.Start,
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Text(
+                                    text = "バッチエンコードの確認",
+                                    style = MaterialTheme.typography.h6,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF007AFF),
+                                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                                )
+                                Text(
+                                    text = "以下のバッチジョブ（計 ${viewModel.batchQueue.size} 件）のエンコードを開始しますか？",
+                                    fontSize = 12.sp,
+                                    color = Color(0xFF1C1C1E)
+                                )
+                                Divider(color = Color(0xFFE5E5EA))
+                                
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(max = 240.dp)
+                                        .border(1.dp, Color(0xFFE5E5EA), androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                                        .background(Color(0xFFF9F9F9))
+                                        .padding(8.dp)
+                                ) {
+                                    androidx.compose.foundation.lazy.LazyColumn(
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        items(viewModel.batchQueue.size) { idx ->
+                                            val job = viewModel.batchQueue[idx]
+                                            val fileName = java.io.File(job.videoPath).name
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .background(Color.White, androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                                                    .border(1.dp, Color(0xFFE5E5EA), androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                                                    .padding(8.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(
+                                                        text = fileName,
+                                                        fontSize = 11.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = Color(0xFF1C1C1E),
+                                                        maxLines = 1,
+                                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                                    )
+                                                    Text(
+                                                        text = "トリミング範囲: %.1fs - %.1fs".format(job.trimStartSeconds, job.trimEndSeconds),
+                                                        fontSize = 10.sp,
+                                                        color = Color.Gray
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                Divider(color = Color(0xFFE5E5EA))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    OutlinedButton(
+                                        onClick = {
+                                            showBatchConfirmDialog = false
+                                        },
+                                        modifier = Modifier.weight(1f).height(40.dp),
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF1C1C1E))
+                                    ) {
+                                        Text("キャンセル", fontSize = 12.sp)
+                                    }
+                                    Button(
+                                        onClick = {
+                                            showBatchConfirmDialog = false
+                                            viewModel.batchQueue.forEach {
+                                                if (it.status == BatchJobStatus.FAILED || it.status == BatchJobStatus.COMPLETED) {
+                                                    it.status = BatchJobStatus.WAITING
+                                                    it.progress = 0f
+                                                    it.errorMessage = null
+                                                }
+                                            }
+                                            scope.launch(Dispatchers.Main) {
+                                                runBatchJobs(
+                                                    viewModel = viewModel,
+                                                    outputDir = outputDir,
+                                                    moveOutputToSource = moveOutputToSource,
+                                                    showLivePreview = showLivePreview,
+                                                    onProgressUpdate = {}
+                                                )
+                                            }
+                                        },
+                                        modifier = Modifier.weight(2f).height(40.dp),
+                                        colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF007AFF), contentColor = Color.White)
+                                    ) {
+                                        Text(
+                                            text = "エンコード開始",
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.Bold
                                         )
