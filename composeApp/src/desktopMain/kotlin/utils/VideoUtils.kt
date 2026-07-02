@@ -261,7 +261,56 @@ suspend fun getVideoStartUtc(videoPath: String): String? = withContext(Dispatche
         }
     }
     
+    // Fallback: Try parsing date and time from the filename (e.g., VID_20260702_163959_001.mp4)
+    if (baseStartUtc == null) {
+        val fileName = File(videoPath).name
+        baseStartUtc = tryParseStartUtcFromFileName(fileName)
+        if (baseStartUtc != null) {
+            println("DEBUG: Resolved startUtc from file name fallback: $baseStartUtc")
+        }
+    }
+    
     baseStartUtc
+}
+
+fun tryParseStartUtcFromFileName(fileName: String): String? {
+    // 1. VID_20260702_163959_xxx.mp4 (Insta360 style)
+    val regexInsta = Regex("""VID_(\d{8})_(\d{6})""")
+    val matchInsta = regexInsta.find(fileName)
+    if (matchInsta != null) {
+        val datePart = matchInsta.groupValues[1]
+        val timePart = matchInsta.groupValues[2]
+        return convertLocalToUtcString(datePart, timePart)
+    }
+
+    // 2. 20260702_163959 (Generic date_time style)
+    val regexGen = Regex("""(\d{8})_(\d{6})""")
+    val matchGen = regexGen.find(fileName)
+    if (matchGen != null) {
+        val datePart = matchGen.groupValues[1]
+        val timePart = matchGen.groupValues[2]
+        return convertLocalToUtcString(datePart, timePart)
+    }
+
+    return null
+}
+
+private fun convertLocalToUtcString(datePart: String, timePart: String): String? {
+    return try {
+        val year = datePart.substring(0, 4).toInt()
+        val month = datePart.substring(4, 6).toInt()
+        val day = datePart.substring(6, 8).toInt()
+        val hour = timePart.substring(0, 2).toInt()
+        val minute = timePart.substring(2, 4).toInt()
+        val second = timePart.substring(4, 6).toInt()
+
+        val localDateTime = java.time.LocalDateTime.of(year, month, day, hour, minute, second)
+        // Assume system local time for camera naming, and convert to UTC Instant
+        val zonedDateTime = localDateTime.atZone(java.time.ZoneId.systemDefault())
+        zonedDateTime.toInstant().toString()
+    } catch (e: Exception) {
+        null
+    }
 }
 
 

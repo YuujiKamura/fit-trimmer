@@ -1135,6 +1135,7 @@ class AppViewModel(
                 it.errorMessage = null
             }
         }
+        saveCurrentHistory()
         logBatchQueueSnapshot("starting confirmed batch")
     }
 
@@ -1154,6 +1155,7 @@ class AppViewModel(
             )
 
             batchQueue.add(job)
+            saveCurrentHistory()
             logBatchQueueSnapshot("added job")
         } else {
             logBatch("add skipped: videoPath is empty")
@@ -1245,6 +1247,27 @@ class AppViewModel(
         if (startSeconds > epsilon) return true
         if (durationSeconds == null || durationSeconds <= 0.0) return endSeconds > epsilon
         return endSeconds > epsilon && endSeconds < durationSeconds - epsilon
+    }
+
+    fun saveCurrentHistory() {
+        val path = videoPath
+        if (path.isNotEmpty()) {
+            val currentCache = utils.GuiPathCache(
+                fitPath = fitPath,
+                videoPath = path,
+                videoStartUtc = videoStartUtc,
+                timeOffsetMillis = timeOffsetState.millis,
+                settings = settings.copy(),
+                moveOutputToSource = moveOutputToSource,
+                showLivePreview = showLivePreview,
+                previewQualityMode = previewQualityMode,
+                autoDetectRoadCaptionsOnEncode = autoDetectRoadCaptionsOnEncode,
+                trimStartSeconds = trimStartSeconds,
+                trimEndSeconds = trimEndSeconds,
+                splitPoints = splitPoints
+            )
+            utils.GuiCache.saveHistory(path, currentCache)
+        }
     }
 
     private fun buildDateTagFromUtc(utc: String): String? {
