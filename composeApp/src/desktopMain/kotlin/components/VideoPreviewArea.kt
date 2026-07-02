@@ -188,7 +188,13 @@ fun VideoPreviewArea(
                     previewScope.launch {
                         playerState.seekTo(0f)
                         onCurrentTimeChange(0L)
-                        delay(700)
+                        val start = System.currentTimeMillis()
+                        while (System.currentTimeMillis() - start < 2000) {
+                            if (playerState.sliderPos < 10f) { // sliderPos is 0 to 1000
+                                break
+                            }
+                            delay(50)
+                        }
                         println("DEBUG: togglePlayButton replaying from start")
                         playerState.play()
                     }
