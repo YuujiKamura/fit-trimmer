@@ -3,6 +3,7 @@ package utils
 import fit.findFfmpegPath
 import fit.VideoPlatesCache
 import fit.PlateRecord
+import fit.PlateScanRange
 import fit.PlateCacheManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -32,7 +33,8 @@ object PlateDetectionManager {
         onPartialResult: (VideoPlatesCache) -> Unit = {},
         maxRecords: Int? = null,
         saveCache: Boolean = true,
-        settings: fit.HudSettings = fit.HudSettings()
+        settings: fit.HudSettings = fit.HudSettings(),
+        scanRanges: List<Pair<Double, Double>>? = null
     ): VideoPlatesCache? = withContext(Dispatchers.IO) {
         val ffmpegPath = findFfmpegPath()
         val videoFile = File(videoPath)
@@ -166,11 +168,25 @@ object PlateDetectionManager {
         val startEpochSecond = startTimeAdjusted?.toEpochSecond() ?: 0L
         val totalFrames = (durationSec * effectiveDetectionFps).toLong()
         val fitEpoch = 631065600L
+        val normalizedScanRanges = (scanRanges ?: listOf(0.0 to durationSec))
+            .mapNotNull { (start, end) ->
+                val s = start.coerceIn(0.0, durationSec)
+                val e = end.coerceIn(0.0, durationSec)
+                if (e > s) PlateScanRange((s * 1000.0).toLong(), (e * 1000.0).toLong()) else null
+            }
+            .ifEmpty { listOf(PlateScanRange(0L, (durationSec * 1000.0).toLong())) }
+        fun isInRequestedRange(timeMs: Long): Boolean {
+            return normalizedScanRanges.any { timeMs in it.startMs..it.endMs }
+        }
 
         // 1. Determine raw scan requirement per frame (speed below configured threshold)
         val rawRequired = BooleanArray(totalFrames.toInt())
         for (f in 0 until totalFrames) {
             val timeMs = (f * 1000.0 / effectiveDetectionFps).toLong()
+            if (!isInRequestedRange(timeMs)) {
+                rawRequired[f.toInt()] = false
+                continue
+            }
             val currentSec = timeMs.toDouble() / 1000.0
             val currentUtcSeconds = startEpochSecond + currentSec
             val currentFitTs = currentUtcSeconds - fitEpoch
@@ -450,7 +466,8 @@ object PlateDetectionManager {
                         videoPath = videoPath,
                         records = records.toList(),
                         sourceWidth = videoWidth,
-                        sourceHeight = videoHeight
+                        sourceHeight = videoHeight,
+                        scanRanges = normalizedScanRanges
                     )
                     if (saveCache) {
                         PlateCacheManager.saveCache(videoPath, partialCache)
@@ -541,15 +558,17 @@ object PlateDetectionManager {
         if (onCancel()) {
             println("DEBUG: Scan canceled. Processed $frameIndex frames.")
             if (records.isNotEmpty()) {
+                val partialRange = PlateScanRange(
+                    records.minOf { it.timeMs },
+                    records.maxOf { it.timeMs }
+                )
                 val cache = VideoPlatesCache(
                     videoPath = videoPath,
                     records = records,
                     sourceWidth = videoWidth,
-                    sourceHeight = videoHeight
+                    sourceHeight = videoHeight,
+                    scanRanges = listOf(partialRange)
                 )
-                if (saveCache) {
-                    PlateCacheManager.saveCache(videoPath, cache)
-                }
                 cache
             } else {
                 null
@@ -562,7 +581,8 @@ object PlateDetectionManager {
                 videoPath = videoPath,
                 records = records,
                 sourceWidth = videoWidth,
-                sourceHeight = videoHeight
+                sourceHeight = videoHeight,
+                scanRanges = normalizedScanRanges
             )
             if (saveCache) {
                 PlateCacheManager.saveCache(videoPath, cache)

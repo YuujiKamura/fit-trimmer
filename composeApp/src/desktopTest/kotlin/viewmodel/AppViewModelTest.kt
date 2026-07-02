@@ -36,6 +36,47 @@ class AppViewModelTest {
     }
 
     @Test
+    fun testEncodingPhaseTransitionsKeepCompletionSeparateFromActiveEncoding() {
+        val viewModel = AppViewModel(null)
+
+        viewModel.beginEncoding(sample = false)
+        assertEquals(EncodePhase.Preparing, viewModel.encodePhase)
+        assertTrue(viewModel.isEncoding)
+        assertFalse(viewModel.isSampleEncoding)
+        assertFalse(viewModel.isCanceled)
+
+        viewModel.updateEncodingProgress(0.5f, "Merging video segments...")
+        assertEquals(EncodePhase.Merging, viewModel.encodePhase)
+        assertTrue(viewModel.isEncoding)
+        assertEquals(0.5f, viewModel.progress)
+
+        viewModel.completeEncoding("Finished")
+        assertEquals(EncodePhase.Completed, viewModel.encodePhase)
+        assertFalse(viewModel.isEncoding)
+        assertEquals(1.0f, viewModel.progress)
+        assertEquals("Finished", viewModel.statusText)
+    }
+
+    @Test
+    fun testEncodingPhaseTransitionsPreserveFailureAndCancelAsInactiveStates() {
+        val viewModel = AppViewModel(null)
+
+        viewModel.beginEncoding(sample = true)
+        assertTrue(viewModel.isSampleEncoding)
+        viewModel.failEncoding("boom")
+        assertEquals(EncodePhase.Failed, viewModel.encodePhase)
+        assertFalse(viewModel.isEncoding)
+        assertFalse(viewModel.isSampleEncoding)
+        assertEquals("boom", viewModel.statusText)
+
+        viewModel.beginEncoding(sample = false)
+        viewModel.cancelEncoding()
+        assertEquals(EncodePhase.Canceled, viewModel.encodePhase)
+        assertFalse(viewModel.isEncoding)
+        assertTrue(viewModel.isCanceled)
+    }
+
+    @Test
     fun testResetPlateDetectionClearsStateAndDeletesCache() {
         val videoFile = File(System.getProperty("java.io.tmpdir"), "fittrimmer-reset-plate-test.mp4")
         videoFile.writeText("placeholder")

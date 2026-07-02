@@ -35,7 +35,13 @@ class FitParser(private val bytes: ByteArray) {
     val records = mutableListOf<FitRecord>()
     private var lastTimestamp: Long = 0L
 
-    fun parse() {
+    private fun checkCanceled(cancelCheck: (() -> Boolean)?) {
+        if (cancelCheck?.invoke() == true) {
+            throw IllegalStateException("Encoding Canceled")
+        }
+    }
+
+    fun parse(cancelCheck: (() -> Boolean)? = null) {
         var offset = headerSize
         val endOffset = headerSize + recordsSize.toInt()
         lastTimestamp = 0L
@@ -43,6 +49,7 @@ class FitParser(private val bytes: ByteArray) {
         definitions.clear()
 
         while (offset < endOffset && offset < bytes.size) {
+            checkCanceled(cancelCheck)
             val recordStart = offset
             if (offset >= bytes.size) {
                 throw IllegalArgumentException("Truncated FIT file: reached end of bytes before finishing records.")
@@ -76,6 +83,7 @@ class FitParser(private val bytes: ByteArray) {
                 val parsedFields = mutableMapOf<Int, ParsedField>()
 
                 for (f in def.fields) {
+                    checkCanceled(cancelCheck)
                     val fieldStart = currentOffset
                     currentOffset += f.size
                     var valObj: Long? = null
@@ -161,6 +169,7 @@ class FitParser(private val bytes: ByteArray) {
                     var currentOffset = recordStart + 1
                     val parsedFields = mutableMapOf<Int, ParsedField>()
                     for (f in def.fields) {
+                        checkCanceled(cancelCheck)
                         val fieldStart = currentOffset
                         currentOffset += f.size
                         var valObj: Long? = null
@@ -204,9 +213,10 @@ class FitParser(private val bytes: ByteArray) {
         val elapsedSeconds: Int = 0
     )
 
-    fun getTelemetry(): List<TelemetryPoint> {
+    fun getTelemetry(cancelCheck: (() -> Boolean)? = null): List<TelemetryPoint> {
         val list = mutableListOf<TelemetryPoint>()
         for (r in records) {
+            checkCanceled(cancelCheck)
             if (r is FitRecord.Data && r.globalMessageNumber == 20) {
                 val fields = r.data.fields
                 val ts = fields[253]?.value?.toDouble() ?: continue
@@ -236,6 +246,7 @@ class FitParser(private val bytes: ByteArray) {
         if (!hasGrade && list.isNotEmpty()) {
             val window = 5 // 5 seconds half-window
             for (i in list.indices) {
+                checkCanceled(cancelCheck)
                 val startIdx = maxOf(0, i - window)
                 val endIdx = minOf(list.size - 1, i + window)
                 val startPt = list[startIdx]
@@ -246,6 +257,7 @@ class FitParser(private val bytes: ByteArray) {
                     val dElev = endPt.elevation - startPt.elevation
                     var sumSpeed = 0.0
                     for (j in startIdx..endIdx) {
+                        checkCanceled(cancelCheck)
                         sumSpeed += list[j].speed / 3.6 // m/s
                     }
                     val avgSpeedMs = sumSpeed / (endIdx - startIdx + 1)
@@ -266,6 +278,7 @@ class FitParser(private val bytes: ByteArray) {
             
             var accumulatedDist = 0.0
             val precomputed = list.mapIndexed { idx, pt ->
+                checkCanceled(cancelCheck)
                 val elapsed = (pt.timestamp - startTs).toInt()
                 val dist = if (hasDistance) {
                     maxOf(0.0, pt.distance - startDist)
@@ -287,7 +300,11 @@ class FitParser(private val bytes: ByteArray) {
         return list
     }
 
-    fun trim(videoStartUtcSeconds: Long, videoEndUtcSeconds: Long): ByteArray {
+    fun trim(
+        videoStartUtcSeconds: Long,
+        videoEndUtcSeconds: Long,
+        cancelCheck: (() -> Boolean)? = null
+    ): ByteArray {
         val fitEpochSec = 631065600L
         val videoStartFit = videoStartUtcSeconds - fitEpochSec
         val videoEndFit = videoEndUtcSeconds - fitEpochSec
@@ -295,6 +312,7 @@ class FitParser(private val bytes: ByteArray) {
         val recordMessagesInRange = mutableListOf<DataRecord>()
 
         for (r in records) {
+            checkCanceled(cancelCheck)
             when (r) {
                 is FitRecord.Definition -> filteredRecords.add(r)
                 is FitRecord.Data -> {

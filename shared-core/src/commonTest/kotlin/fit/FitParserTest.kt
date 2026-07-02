@@ -2,6 +2,7 @@ package fit
 
 import crc.Crc16
 import kotlin.test.Test
+import kotlin.test.assertFailsWith
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
@@ -545,6 +546,73 @@ class FitParserTest {
             assertTrue(percentageDiff < 0.2, "Accumulated speed distance is too far from actual FIT distance ($accumulatedDist vs $actualDiff)")
         }
     }
-}
 
+    @Test
+    fun testParseHonorsCancelCheck() {
+        val parser = FitParser(buildCancelableFitBytes())
+        var calls = 0
+
+        assertFailsWith<IllegalStateException> {
+            parser.parse {
+                calls++
+                calls >= 2
+            }
+        }
+
+        assertTrue(calls >= 2)
+    }
+
+    private fun buildCancelableFitBytes(): ByteArray {
+        val headerSize = 14
+        val recordsSize = 39
+        val totalSize = headerSize + recordsSize + 2
+        val bytes = ByteArray(totalSize)
+
+        bytes[0] = headerSize.toByte()
+        bytes[1] = 32
+        bytes[2] = 0xDC.toByte()
+        bytes[3] = 0x07.toByte()
+        bytes[4] = 0x27.toByte()
+        bytes[5] = 0x00.toByte()
+        bytes[6] = 0x00.toByte()
+        bytes[7] = 0x00.toByte()
+        ".FIT".encodeToByteArray().copyInto(bytes, 8)
+
+        var offset = headerSize
+        bytes[offset] = 0x40.toByte()
+        bytes[offset + 1] = 0
+        bytes[offset + 2] = 0
+        bytes[offset + 3] = 0x14.toByte()
+        bytes[offset + 4] = 0x00.toByte()
+        bytes[offset + 5] = 2
+        bytes[offset + 6] = 253.toByte()
+        bytes[offset + 7] = 4.toByte()
+        bytes[offset + 8] = 0x86.toByte()
+        bytes[offset + 9] = 5.toByte()
+        bytes[offset + 10] = 4.toByte()
+        bytes[offset + 11] = 0x86.toByte()
+        offset += 12
+
+        repeat(3) { idx ->
+            bytes[offset] = 0x00.toByte()
+            val ts = 1000000000 + idx * 10
+            val dist = (idx + 1) * 10000
+            bytes[offset + 1] = (ts and 0xFF).toByte()
+            bytes[offset + 2] = ((ts shr 8) and 0xFF).toByte()
+            bytes[offset + 3] = ((ts shr 16) and 0xFF).toByte()
+            bytes[offset + 4] = ((ts shr 24) and 0xFF).toByte()
+            bytes[offset + 5] = (dist and 0xFF).toByte()
+            bytes[offset + 6] = ((dist shr 8) and 0xFF).toByte()
+            bytes[offset + 7] = ((dist shr 16) and 0xFF).toByte()
+            bytes[offset + 8] = ((dist shr 24) and 0xFF).toByte()
+            offset += 9
+        }
+
+        val headerCrc = Crc16.calculate(bytes, offset = 0, length = 12)
+        FitParser.setUShort(bytes, 12, headerCrc, true)
+        val fileCrc = Crc16.calculate(bytes, offset = 0, length = headerSize + recordsSize)
+        FitParser.setUShort(bytes, headerSize + recordsSize, fileCrc, true)
+        return bytes
+    }
+}
 

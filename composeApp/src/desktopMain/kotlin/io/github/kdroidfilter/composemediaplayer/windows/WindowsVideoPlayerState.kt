@@ -26,6 +26,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock
 import kotlin.concurrent.read
 import kotlin.concurrent.write
 import kotlin.math.min
+import utils.DesktopLog
 
 /**
  * Logger for Windows video player implementation
@@ -240,6 +241,7 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
 
                 isInitialized = true
             } catch (e: Exception) {
+                DesktopLog.exception("Exception during initialization", e)
                 setError("Exception during initialization: ${e.message}")
             }
         }
@@ -501,6 +503,7 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
                     }
 
                 } catch (e: Exception) {
+                    DesktopLog.exception("Error while opening media", e)
                     setError("Error while opening media: ${e.message}")
                     _hasMedia = false
                 } finally {
@@ -627,6 +630,7 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
             } catch (e: CancellationException) {
                 break
             } catch (e: Exception) {
+                DesktopLog.exception("Error while reading a frame", e)
                 if (scope.isActive && _hasMedia) {
                     setError("Error while reading a frame: ${e.message}")
                 }
@@ -694,6 +698,7 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
             } catch (e: CancellationException) {
                 break
             } catch (e: Exception) {
+                DesktopLog.exception("Error while processing a frame", e)
                 if (scope.isActive && _hasMedia) {
                     setError("Error while processing a frame: ${e.message}")
                 }
@@ -835,6 +840,7 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
 
                     delay(8)
                 } catch (e: Exception) {
+                    DesktopLog.exception("Error during seek", e)
                     setError("Error during seek: ${e.message}")
                 } finally {
                     isLoading = false
@@ -1011,6 +1017,7 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
                 try {
                     block()
                 } catch (e: Exception) {
+                    DesktopLog.exception("Error during $operation", e)
                     setError("Error during $operation: ${e.message}")
                 }
             }

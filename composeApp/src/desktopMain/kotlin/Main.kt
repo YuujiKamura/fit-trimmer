@@ -58,6 +58,9 @@ private const val PLAYBACK_PREVIEW_INTERVAL_MS = 250L
 const val MAX_ROAD_SNAP_DISTANCE_METERS = 15.0
 @OptIn(ExperimentalTextApi::class)
 fun main(args: Array<String>) {
+    Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+        DesktopLog.exception("Uncaught exception on ${thread.name}", throwable)
+    }
     Runtime.getRuntime().addShutdownHook(Thread {
         try {
             fit.globalActiveJobDir?.let {
@@ -145,25 +148,42 @@ fun main(args: Array<String>) {
 }
 fun showSystemNotification(title: String, message: String) {
     if (!java.awt.SystemTray.isSupported()) return
-    try {
-        val tray = java.awt.SystemTray.getSystemTray()
-        val image = java.awt.image.BufferedImage(16, 16, java.awt.image.BufferedImage.TYPE_INT_ARGB)
-        val trayIcon = java.awt.TrayIcon(image, "HUD エンコーダー")
-        trayIcon.isImageAutoSize = true
-        tray.add(trayIcon)
-        trayIcon.displayMessage(title, message, java.awt.TrayIcon.MessageType.INFO)
-        val timer = java.util.Timer()
-        timer.schedule(object : java.util.TimerTask() {
-            override fun run() {
+    java.awt.EventQueue.invokeLater {
+        var trayIcon: java.awt.TrayIcon? = null
+        try {
+            val tray = java.awt.SystemTray.getSystemTray()
+            val image = java.awt.image.BufferedImage(16, 16, java.awt.image.BufferedImage.TYPE_INT_ARGB)
+            trayIcon = java.awt.TrayIcon(image, "HUD エンコーダー")
+            trayIcon.isImageAutoSize = true
+            tray.add(trayIcon)
+            trayIcon.displayMessage(title, message, java.awt.TrayIcon.MessageType.INFO)
+            
+            // Use simple lambda thread to clean up tray icon after 10s to avoid anonymous inner class file deletion issue
+            val cleaner = java.lang.Thread {
                 try {
-                    tray.remove(trayIcon)
-                } catch (e: Exception) {
-                    e.printStackTrace()
+                    java.lang.Thread.sleep(10000)
+                    java.awt.EventQueue.invokeLater {
+                        try {
+                            trayIcon?.let { tray.remove(it) }
+                        } catch (t: Throwable) {
+                            println("WARNING: Failed to remove tray notification icon: ${t.message}")
+                        }
+                    }
+                } catch (e: InterruptedException) {
+                    // Ignore
                 }
             }
-        }, 10000)
-    } catch (e: Exception) {
-        e.printStackTrace()
+            cleaner.isDaemon = true
+            cleaner.start()
+        } catch (t: Throwable) {
+            trayIcon?.let {
+                try {
+                    java.awt.SystemTray.getSystemTray().remove(it)
+                } catch (_: Throwable) {
+                }
+            }
+            println("WARNING: Failed to show system notification: ${t.message}")
+        }
     }
 }
 @OptIn(ExperimentalTextApi::class)
@@ -212,12 +232,11 @@ fun startGui(args: Array<String>) = application {
         }
         var lastPercent by remember { mutableStateOf(-1) }
         var lastState by remember { mutableStateOf<java.awt.Taskbar.State?>(null) }
-        LaunchedEffect(viewModel.isEncoding, viewModel.progress, viewModel.isPaused, viewModel.statusText) {
+        LaunchedEffect(viewModel.isEncoding, viewModel.progress, viewModel.statusText) {
             if (taskbar != null && isProgressSupported) {
                 try {
                     val targetState = when {
                         !viewModel.isEncoding -> java.awt.Taskbar.State.OFF
-                        viewModel.isPaused -> java.awt.Taskbar.State.PAUSED
                         viewModel.statusText.contains("Merging", ignoreCase = true) -> java.awt.Taskbar.State.INDETERMINATE
                         else -> java.awt.Taskbar.State.NORMAL
                     }
@@ -226,7 +245,7 @@ fun startGui(args: Array<String>) = application {
                         taskbar.setWindowProgressState(window, targetState)
                         lastState = targetState
                     }
-                    if (targetState == java.awt.Taskbar.State.NORMAL || targetState == java.awt.Taskbar.State.PAUSED) {
+                    if (targetState == java.awt.Taskbar.State.NORMAL) {
                         if (targetPercent != lastPercent) {
                             taskbar.setWindowProgressValue(window, targetPercent)
                             lastPercent = targetPercent
@@ -337,6 +356,7 @@ suspend fun prepareRoadCaptionSettingsForEncode(
     baseSettings: HudSettings,
     autoDetectRoadCaptionsOnEncode: Boolean,
     context: RoadCaptionDetectionContext,
+    cancelCheck: () -> Boolean = { false },
     onStatus: (String) -> Unit,
     onSettingsPrepared: (HudSettings) -> Unit = {}
 ): HudSettings {
@@ -344,6 +364,7 @@ suspend fun prepareRoadCaptionSettingsForEncode(
     val clearedSettings = baseSettings.copy(roadCaptions = emptyList())
     onSettingsPrepared(clearedSettings)
     onStatus("路線名テロップをクリアして再検出中...")
+    if (cancelCheck()) throw IllegalStateException("Encoding Canceled")
     val detected = detectRoadSegments(
         points = context.points,
         videoStartUtc = context.videoStartUtc,
@@ -351,6 +372,7 @@ suspend fun prepareRoadCaptionSettingsForEncode(
         videoDurationSeconds = context.videoDurationSeconds,
         language = baseSettings.language,
         enableRoadDetection = baseSettings.enableRoadDetection,
+        cancelCheck = cancelCheck,
         onProgress = onStatus
     )
     val updatedSettings = clearedSettings.copy(roadCaptions = detected)
@@ -359,13 +381,19 @@ suspend fun prepareRoadCaptionSettingsForEncode(
     return updatedSettings
 }
 
-suspend fun loadTelemetryPointsForRoadDetection(fitPath: String): List<FitParser.TelemetryPoint> = withContext(Dispatchers.IO) {
+suspend fun loadTelemetryPointsForRoadDetection(
+    fitPath: String,
+    cancelCheck: () -> Boolean = { false }
+): List<FitParser.TelemetryPoint> = withContext(Dispatchers.IO) {
     if (fitPath.isEmpty()) return@withContext emptyList()
     try {
         val parser = FitParser(File(fitPath).readBytes())
-        parser.parse()
-        parser.getTelemetry()
+        if (cancelCheck()) throw IllegalStateException("Encoding Canceled")
+        parser.parse(cancelCheck)
+        if (cancelCheck()) throw IllegalStateException("Encoding Canceled")
+        parser.getTelemetry(cancelCheck)
     } catch (e: Exception) {
+        if (cancelCheck()) throw e
         e.printStackTrace()
         emptyList()
     }
@@ -379,10 +407,10 @@ suspend fun runBatchJobs(
     onProgressUpdate: () -> Unit
 ) {
     if (viewModel.isBatchRunning) return
+    val mainScope = kotlinx.coroutines.CoroutineScope(Dispatchers.Main.immediate)
     viewModel.isBatchRunning = true
     viewModel.batchStatusText = "バッチ処理を開始します..."
     viewModel.isCanceled = false
-    viewModel.isPaused = false
     try {
         val jobs = viewModel.batchQueue.filter { it.status == BatchJobStatus.WAITING }
         if (jobs.isEmpty()) {
@@ -396,7 +424,7 @@ suspend fun runBatchJobs(
             onProgressUpdate()
             viewModel.batchStatusText = "[${jobIdx + 1}/${jobs.size}] ${File(job.videoPath).name} を処理中..."
             val detectionContext = if (job.autoDetectRoadCaptionsOnEncode) {
-                val points = loadTelemetryPointsForRoadDetection(job.fitPath)
+                val points = loadTelemetryPointsForRoadDetection(job.fitPath) { viewModel.isCanceled }
                 val videoDurationSeconds = (getVideoDuration(job.videoPath)?.toDouble()?.div(1000.0) ?: job.trimEndSeconds)
                     .coerceAtLeast(job.trimEndSeconds)
                 RoadCaptionDetectionContext(
@@ -417,6 +445,7 @@ suspend fun runBatchJobs(
                 baseSettings = job.settings,
                 autoDetectRoadCaptionsOnEncode = job.autoDetectRoadCaptionsOnEncode,
                 context = detectionContext,
+                cancelCheck = { viewModel.isCanceled },
                 onStatus = { progressText ->
                     viewModel.batchStatusText = "[${jobIdx + 1}/${jobs.size}] $progressText"
                 }
@@ -443,23 +472,25 @@ suspend fun runBatchJobs(
                     shouldResume = false,
                     moveOutputToSource = moveOutputToSource,
                     onProgress = { prog, status ->
-                        job.progress = prog
-                        viewModel.progress = prog
-                        viewModel.statusText = status
-                        onProgressUpdate()
-                    },
-                    onFrame = { bufferedImg ->
-                        val bitmap = bufferedImg.toComposeImageBitmap()
-                        javax.swing.SwingUtilities.invokeLater {
-                            viewModel.encodingPreviewImage = bitmap
+                        mainScope.launch {
+                            job.progress = prog
+                            viewModel.progress = prog
+                            viewModel.statusText = status
+                            onProgressUpdate()
                         }
                     },
-                    pauseSupplier = { viewModel.isPaused },
+                    onFrame = { bufferedImg ->
+                        mainScope.launch {
+                            viewModel.encodingPreviewImage = bufferedImg.toComposeImageBitmap()
+                        }
+                    },
                     cancelSupplier = { viewModel.isCanceled },
                     showLivePreviewSupplier = { showLivePreview },
                     onSegmentStart = { pStart, pEnd ->
-                        viewModel.encodingSegmentStart = pStart
-                        viewModel.encodingSegmentEnd = pEnd
+                        mainScope.launch {
+                            viewModel.encodingSegmentStart = pStart
+                            viewModel.encodingSegmentEnd = pEnd
+                        }
                     }
                 )
                 job.status = BatchJobStatus.COMPLETED
@@ -488,7 +519,13 @@ suspend fun runBatchJobs(
     }
 }
 
-suspend fun queryRoadName(lat: Double, lon: Double, heading: Double? = null, language: String = ""): String? {
+suspend fun queryRoadName(
+    lat: Double,
+    lon: Double,
+    heading: Double? = null,
+    language: String = "",
+    cancelCheck: () -> Boolean = { false }
+): String? {
     return withContext(Dispatchers.IO) {
         try {
             val client = java.net.http.HttpClient.newBuilder()
@@ -505,7 +542,10 @@ suspend fun queryRoadName(lat: Double, lon: Double, heading: Double? = null, lan
                     .header("User-Agent", "FitTrimmerApp/1.0")
                     .timeout(java.time.Duration.ofSeconds(5))
                     .build()
-                val gsiResponse = client.send(gsiRequest, java.net.http.HttpResponse.BodyHandlers.ofString())
+                val gsiResponse = awaitHttpResponse(
+                    client.sendAsync(gsiRequest, java.net.http.HttpResponse.BodyHandlers.ofString()),
+                    cancelCheck = cancelCheck
+                )
                 if (gsiResponse.statusCode() == 200) {
                     val roadInfo = fit.GsiRoadDetector.findClosestRoad(lat, lon, gsiResponse.body(), carHeading = heading, maxDistanceMeters = MAX_ROAD_SNAP_DISTANCE_METERS)
                     if (roadInfo != null && roadInfo.distanceMeters <= 50.0) {
@@ -513,9 +553,10 @@ suspend fun queryRoadName(lat: Double, lon: Double, heading: Double? = null, lan
                         gsiRoadName = roadInfo.name ?: roadInfo.comName
                     }
                 }
-            } catch (e: Exception) {
-                println("⚠️ Failed to query GSI vector tile: ${e.message}")
-            }
+        } catch (e: Exception) {
+            if (cancelCheck()) throw e
+            println("⚠️ Failed to query GSI vector tile: ${e.message}")
+        }
             // 2. Fetch OSM Nominatim for local area and road names
             val langParam = if (language.isEmpty()) "ja" else language
             val url = "https://nominatim.openstreetmap.org/reverse?lat=$lat&lon=$lon&format=json&accept-language=$langParam&addressdetails=1&extratags=1"
@@ -524,7 +565,10 @@ suspend fun queryRoadName(lat: Double, lon: Double, heading: Double? = null, lan
                 .header("User-Agent", "FitTrimmerApp/1.0 (yuuji@kamura.jp)")
                 .timeout(java.time.Duration.ofSeconds(5))
                 .build()
-            val response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString())
+            val response = awaitHttpResponse(
+                client.sendAsync(request, java.net.http.HttpResponse.BodyHandlers.ofString()),
+                cancelCheck = cancelCheck
+            )
             if (response.statusCode() == 200) {
                 val body = response.body()
                 val road = extractJsonValue(body, "road")
@@ -560,11 +604,33 @@ suspend fun queryRoadName(lat: Double, lon: Double, heading: Double? = null, lan
                 )
             }
         } catch (e: Exception) {
+            if (cancelCheck()) throw e
             e.printStackTrace()
         }
         null
     }
 }
+
+suspend fun <T> awaitHttpResponse(
+    future: java.util.concurrent.CompletableFuture<T>,
+    cancelCheck: () -> Boolean
+): T {
+    while (true) {
+        if (cancelCheck()) {
+            future.cancel(true)
+            throw IllegalStateException("Encoding Canceled")
+        }
+        if (future.isDone) {
+            return try {
+                future.get()
+            } catch (e: java.util.concurrent.ExecutionException) {
+                throw (e.cause ?: e)
+            }
+        }
+        kotlinx.coroutines.delay(50)
+    }
+}
+
 fun extractJsonValue(json: String, key: String): String? {
     val regex = Regex("""\"$key\"\s*:\s*\"([^\"]+)\"""")
     val match = regex.find(json)
@@ -621,10 +687,12 @@ suspend fun detectRoadSegments(
     videoDurationSeconds: Double,
     language: String = "",
     enableRoadDetection: Boolean = true,
+    cancelCheck: () -> Boolean = { false },
     onProgress: (String) -> Unit
 ): List<RoadCaptionSegment> {
     if (!enableRoadDetection) return emptyList()
     if (points.isEmpty() || videoStartUtc.isEmpty()) return emptyList()
+    if (cancelCheck()) throw IllegalStateException("Encoding Canceled")
     val fitEpoch = java.time.Instant.parse("1989-12-31T00:00:00Z").epochSecond
     val videoStartInstant = try {
         java.time.Instant.parse(videoStartUtc).plusMillis(timeOffsetMillis)
@@ -655,6 +723,7 @@ suspend fun detectRoadSegments(
         return (brng + 360.0) % 360.0
     }
     for (s in 0..numSecs) {
+        if (cancelCheck()) throw IllegalStateException("Encoding Canceled")
         headings[s] = getHeadingAtSeconds(s.toDouble()) ?: -1.0
     }
     // Helper to compute absolute heading difference
@@ -676,6 +745,7 @@ suspend fun detectRoadSegments(
         }
     }
     for (s in 1..numSecs) {
+        if (cancelCheck()) throw IllegalStateException("Encoding Canceled")
         val currentHeading = headings[s]
         if (currentHeading < 0.0) continue
         
@@ -723,14 +793,24 @@ suspend fun detectRoadSegments(
     var segmentStartSeconds = 0.0
     val totalQueries = cleanQueryOffsets.size
     for ((index, currentOffset) in cleanQueryOffsets.withIndex()) {
+        if (cancelCheck()) throw IllegalStateException("Encoding Canceled")
         val targetFitTime = startFitTime + currentOffset
         val point = rangePoints.minByOrNull { kotlin.math.abs(it.timestamp - targetFitTime) } ?: continue
         val progressPercent = ((index.toDouble() / totalQueries) * 100).toInt()
         onProgress("GPS解析中 (${progressPercent}%): 座標 (${"%.4f".format(point.lat)}, ${"%.4f".format(point.lon)}) 付近で道路判定中...")
         // Safe rate limiting (1s wait) only for active queries
-        kotlinx.coroutines.delay(1000)
+        repeat(20) {
+            if (cancelCheck()) throw IllegalStateException("Encoding Canceled")
+            kotlinx.coroutines.delay(50)
+        }
         val headingVal = headings.getOrNull(currentOffset.toInt()) ?: -1.0
-        val roadName = queryRoadName(point.lat, point.lon, if (headingVal >= 0.0) headingVal else null, language = language)
+        val roadName = queryRoadName(
+            point.lat,
+            point.lon,
+            if (headingVal >= 0.0) headingVal else null,
+            language = language,
+            cancelCheck = cancelCheck
+        )
         if (roadName != null && roadName.isNotEmpty()) {
             if (currentRoadName == null) {
                 currentRoadName = roadName

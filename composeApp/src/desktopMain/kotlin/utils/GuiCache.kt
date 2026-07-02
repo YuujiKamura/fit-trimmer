@@ -4,6 +4,9 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.File
+import java.io.PrintWriter
+import java.io.StringWriter
+import java.time.Instant
 import fit.HudSettings
 
 @Serializable
@@ -85,4 +88,44 @@ object GuiCache {
         }
         return null
     }
+}
+
+object DesktopLog {
+    private val logDir = File(System.getProperty("user.home"), ".fittrimmer_logs")
+    private val logFile = File(logDir, "desktop.log")
+
+    @Synchronized
+    fun info(message: String) = write("INFO", message, null)
+
+    @Synchronized
+    fun warn(message: String, throwable: Throwable? = null) = write("WARN", message, throwable)
+
+    @Synchronized
+    fun error(message: String, throwable: Throwable? = null) = write("ERROR", message, throwable)
+
+    @Synchronized
+    fun exception(message: String, throwable: Throwable) = write("ERROR", message, throwable)
+
+    private fun write(level: String, message: String, throwable: Throwable?) {
+        val ts = Instant.now().toString()
+        val body = buildString {
+            append('[').append(ts).append("] ").append(level).append(' ').append(message).append('\n')
+            if (throwable != null) {
+                val sw = StringWriter()
+                throwable.printStackTrace(PrintWriter(sw))
+                append(sw.toString())
+            }
+        }
+        try {
+            logDir.mkdirs()
+            logFile.appendText(body)
+        } catch (_: Exception) {
+        }
+        when (level) {
+            "ERROR" -> System.err.print(body)
+            else -> println(body)
+        }
+    }
+
+    fun logPath(): String = logFile.absolutePath
 }

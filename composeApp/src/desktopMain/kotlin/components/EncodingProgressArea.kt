@@ -25,9 +25,8 @@ fun EncodingProgressArea(
     statusText: String,
     encodingPreviewImage: ImageBitmap?,
     showLivePreview: Boolean,
-    isPaused: Boolean,
+    controlsEnabled: Boolean,
     videoLengthMs: Long,
-    onPauseToggle: () -> Unit,
     onCancel: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -104,15 +103,6 @@ fun EncodingProgressArea(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Button(
-                onClick = onPauseToggle,
-                colors = ButtonDefaults.buttonColors(
-                    backgroundColor = if (isPaused) Color(0xFF10B981) else Color(0xFFF59E0B)
-                )
-            ) {
-                Text(if (isPaused) "▶ RESUME" else "⏸ PAUSE", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
-            }
-
             Text(
                 text = "${formatTime(currentMs)} / ${formatTime(videoLengthMs)} (${(progress * 100).toInt()}%)",
                 color = Color(0xFF1C1C1E),
@@ -130,9 +120,13 @@ fun EncodingProgressArea(
 
             Button(
                 onClick = onCancel,
-                colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFEF4444))
+                enabled = controlsEnabled,
+                colors = ButtonDefaults.buttonColors(
+                    backgroundColor = Color(0xFFEF4444),
+                    disabledBackgroundColor = Color(0xFFE5E5EA)
+                )
             ) {
-                Text("⏹ CANCEL", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                Text("⏹ CANCEL", color = if (controlsEnabled) Color.White else Color(0xFF8E8E93), fontWeight = FontWeight.Bold, fontSize = 11.sp)
             }
         }
 

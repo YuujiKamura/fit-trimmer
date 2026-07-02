@@ -9,12 +9,53 @@ data class PlateBox(val x1: Int, val y1: Int, val x2: Int, val y2: Int)
 data class PlateRecord(val timeMs: Long, val boxes: List<PlateBox>)
 
 @Serializable
+data class PlateScanRange(val startMs: Long, val endMs: Long)
+
+@Serializable
 data class VideoPlatesCache(
     val videoPath: String,
     val records: List<PlateRecord>,
     val sourceWidth: Int = 0,
-    val sourceHeight: Int = 0
+    val sourceHeight: Int = 0,
+    val scanRanges: List<PlateScanRange> = emptyList()
 ) {
+    fun coversRange(startSeconds: Double, endSeconds: Double): Boolean {
+        if (scanRanges.isEmpty()) return true
+        val startMs = (startSeconds * 1000.0).toLong()
+        val endMs = (endSeconds * 1000.0).toLong()
+        return scanRanges.any { it.startMs <= startMs && it.endMs >= endMs }
+    }
+
+    fun coversRanges(ranges: List<Pair<Double, Double>>): Boolean {
+        return ranges.all { (start, end) -> coversRange(start, end) }
+    }
+
+    fun mergedWith(other: VideoPlatesCache): VideoPlatesCache {
+        val mergedRecords = (records + other.records)
+            .groupBy { it.timeMs }
+            .map { (timeMs, recordsAtTime) ->
+                PlateRecord(timeMs, recordsAtTime.flatMap { it.boxes }.distinct())
+            }
+            .sortedBy { it.timeMs }
+        val mergedRanges = (scanRanges + other.scanRanges)
+            .sortedBy { it.startMs }
+            .fold(mutableListOf<PlateScanRange>()) { acc, range ->
+                val last = acc.lastOrNull()
+                if (last != null && range.startMs <= last.endMs + 1L) {
+                    acc[acc.lastIndex] = PlateScanRange(last.startMs, maxOf(last.endMs, range.endMs))
+                } else {
+                    acc.add(range)
+                }
+                acc
+            }
+        return copy(
+            records = mergedRecords,
+            sourceWidth = sourceWidth.takeIf { it > 0 } ?: other.sourceWidth,
+            sourceHeight = sourceHeight.takeIf { it > 0 } ?: other.sourceHeight,
+            scanRanges = mergedRanges
+        )
+    }
+
     fun findNeighborRecords(targetTimeMs: Long): Pair<PlateRecord?, PlateRecord?> {
         if (records.isEmpty()) return Pair(null, null)
         
@@ -182,7 +223,8 @@ fun VideoPlatesCache.buildMappedMaskFrames(
     fallbackSourceHeight: Int,
     targetWidth: Float,
     targetHeight: Float,
-    timeBufferMs: Long = 300L
+    timeBufferMs: Long = 300L,
+    sourceStartTimeMs: Long = 0L
 ): List<List<MappedPlateBox>> {
     if (!isBlurEnabled || records.isEmpty() || totalFrames <= 0 || fps <= 0.0) {
         return List(totalFrames.coerceAtLeast(0)) { emptyList() }
@@ -191,7 +233,7 @@ fun VideoPlatesCache.buildMappedMaskFrames(
     var prevIndex = -1
     var nextIndex = 0
     return List(totalFrames) { frame ->
-        val targetTimeMs = (frame * 1000.0 / fps).toLong()
+        val targetTimeMs = sourceStartTimeMs + (frame * 1000.0 / fps).toLong()
         while (nextIndex < records.size && records[nextIndex].timeMs < targetTimeMs) {
             prevIndex = nextIndex
             nextIndex++

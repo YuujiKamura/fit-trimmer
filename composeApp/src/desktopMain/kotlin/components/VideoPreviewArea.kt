@@ -60,6 +60,7 @@ class ComposeHudCanvas(
                 Color.White
             }
         } catch (e: Exception) {
+            DesktopLog.exception("Failed to parse preview color", e)
             Color.White
         }
     }
@@ -172,17 +173,17 @@ fun VideoPreviewArea(
 
 
 
-    val togglePlay = {
+    val togglePlayButton = {
         if (!isEncoding && !isDetectingPlates) {
-            println("DEBUG: togglePlay called. current isPlaying=${playerState.isPlaying}")
+            println("DEBUG: togglePlayButton called. current isPlaying=${playerState.isPlaying}")
             if (playerState.isPlaying) {
-                println("DEBUG: togglePlay calling playerState.pause()")
+                println("DEBUG: togglePlayButton calling playerState.pause()")
                 playerState.pause()
             } else {
                 if (videoCurrentTimeMs >= videoLengthMs) {
                     playerState.seekTo(0f)
                 }
-                println("DEBUG: togglePlay calling playerState.play()")
+                println("DEBUG: togglePlayButton calling playerState.play()")
                 playerState.play()
             }
         }
@@ -300,6 +301,7 @@ fun VideoPreviewArea(
                 null
             }
         } catch (e: Exception) {
+            DesktopLog.exception("Failed to materialize LRV proxy", e)
             e.printStackTrace()
             null
         }
@@ -347,6 +349,7 @@ fun VideoPreviewArea(
                         targetVideoPath = File(junctionFolder, File(targetVideoPath).name).absolutePath
                     }
                 } catch (e: Exception) {
+                    DesktopLog.exception("Failed to build junction for preview media", e)
                     e.printStackTrace()
                 }
             }
@@ -430,6 +433,7 @@ fun VideoPreviewArea(
                 }
                 Pair(lerpedPoint, targetIdx)
             } catch (e: Exception) {
+                DesktopLog.exception("Failed while resolving current point", e)
                 e.printStackTrace()
                 null
             }
@@ -484,7 +488,7 @@ fun VideoPreviewArea(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Button(
-                    onClick = togglePlay,
+                    onClick = togglePlayButton,
                     enabled = !isEncoding && !isDetectingPlates,
                     modifier = Modifier.size(34.dp),
                     contentPadding = PaddingValues(0.dp),
@@ -668,9 +672,7 @@ fun VideoPreviewArea(
                         modifier = Modifier
                             .fillMaxSize()
                             .clickable {
-                                if (!isEncoding && !isDetectingPlates) {
-                                    togglePlay()
-                                }
+                                togglePlayButton()
                             }
                             .testTag("VideoPreviewAreaCanvas")
                             .semantics {
