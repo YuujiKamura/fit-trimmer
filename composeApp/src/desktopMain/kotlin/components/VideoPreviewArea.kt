@@ -162,7 +162,8 @@ fun VideoPreviewArea(
     isFullscreen: Boolean = false,
     onFullscreenToggle: (() -> Unit)? = null,
     plateCache: fit.VideoPlatesCache? = null,
-    videoRotation: Int = 0
+    videoRotation: Int = 0,
+    renderVideoSurface: Boolean = true
 ) {
     val previewScope = rememberCoroutineScope()
     var isPlaying by remember { mutableStateOf(false) }
@@ -675,7 +676,7 @@ fun VideoPreviewArea(
                 }
 
                 Box(modifier = frameModifier) {
-                    if (videoPath.isNotEmpty()) {
+                    if (videoPath.isNotEmpty() && renderVideoSurface) {
                         VideoPlayerSurface(
                             playerState = playerState,
                             modifier = Modifier.fillMaxSize()
