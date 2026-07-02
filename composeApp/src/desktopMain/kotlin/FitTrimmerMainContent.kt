@@ -1668,7 +1668,7 @@ fun FitTrimmerMainContent(
                                                               scope.launch(Dispatchers.Main) {
                                                                   val confirm = javax.swing.JOptionPane.showConfirmDialog(
                                                                       composeWindow ?: viewModel.composeWindow,
-                                                                      "レンダリングをスキップし、既存の ${job.partsCount} 個のキャッシュを結合して $uniqueFileName を作成しますか？\n(無劣化・高速結合処理になります)",
+                                                                      "レンダリングをスキップし、既存 of ${job.partsCount} 個のキャッシュを結合して $uniqueFileName を作成しますか？\n(無劣化・高速結合処理になります)",
                                                                       "キャッシュのサルベージ結合",
                                                                       javax.swing.JOptionPane.YES_NO_OPTION
                                                                   )
@@ -1863,7 +1863,7 @@ fun FitTrimmerMainContent(
                                           }
                                       }
                                   }
-                                  } // selectedTab == 0 の閉じ
+                                    }
                                     if (selectedTab == 2) {
 
                     Card(
@@ -3000,24 +3000,41 @@ fun FitTrimmerMainContent(
                                         ) {
                                             Text(if (hasEnoughSpace) "エンコード開始" else "ディスク容量不足", color = if (hasEnoughSpace) Color.White else Color(0xFF8E8E93), fontWeight = FontWeight.Bold)
                                         }
-                                         val isQueueEnabled = fitPath.isNotEmpty() && videoPath.isNotEmpty()
-                                         OutlinedButton(
-                                             onClick = {
-                                                 viewModel.addToBatchQueue()
-                                                 statusText = "ジョブをキューに追加しました"
-                                             },
-                                             modifier = Modifier.fillMaxWidth().height(40.dp),
-                                             enabled = isQueueEnabled,
-                                             colors = ButtonDefaults.outlinedButtonColors(
-                                                 contentColor = Color(0xFF34C759),
-                                                 disabledContentColor = Color(0xFF8E8E93)
-                                             ),
-                                             border = BorderStroke(1.5.dp, if (isQueueEnabled) Color(0xFF34C759) else Color(0xFFE5E5EA)),
-                                             shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
-                                         ) {
-                                             Text("バッチに追加", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                         }
-                                     } else {
+                                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                                            val isSampleEnabled = hasEnoughSpaceForSample && fitPath.isNotEmpty() && videoPath.isNotEmpty()
+                                            OutlinedButton(
+                                                onClick = onSampleEncodeClick,
+                                                modifier = Modifier.weight(1f).height(36.dp),
+                                                enabled = isSampleEnabled,
+                                                colors = ButtonDefaults.outlinedButtonColors(
+                                                    contentColor = Color(0xFF007AFF),
+                                                    disabledContentColor = Color(0xFF8E8E93)
+                                                ),
+                                                border = BorderStroke(1.5.dp, if (isSampleEnabled) Color(0xFF007AFF) else Color(0xFFE5E5EA)),
+                                                shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                                            ) {
+                                                Text("サンプル", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                            val isQueueEnabled = fitPath.isNotEmpty() && videoPath.isNotEmpty()
+                                            OutlinedButton(
+                                                onClick = {
+                                                    viewModel.addToBatchQueue()
+                                                    statusText = "ジョブをキューに追加しました"
+                                                },
+                                                modifier = Modifier.weight(1f).height(36.dp),
+                                                enabled = isQueueEnabled,
+                                                colors = ButtonDefaults.outlinedButtonColors(
+                                                    contentColor = Color(0xFF34C759),
+                                                    disabledContentColor = Color(0xFF8E8E93)
+                                                ),
+                                                border = BorderStroke(1.5.dp, if (isQueueEnabled) Color(0xFF34C759) else Color(0xFFE5E5EA)),
+                                                shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                                            ) {
+                                                Text("バッチに追加", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+
+                                    } else {
                                         val currentStatusText = if (viewModel.isBatchRunning) viewModel.statusText else statusText
                                         val currentProgress = if (viewModel.isBatchRunning) viewModel.progress else progress
                                         if (currentStatusText.contains("Merging", ignoreCase = true)) {
@@ -3098,7 +3115,6 @@ fun FitTrimmerMainContent(
                                                 Text("START BATCH ENCODE", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                             }
                                         }
-                                    }
                                 }
                             }
 
@@ -3487,4 +3503,5 @@ fun FitTrimmerMainContent(
                 }
             }
         }
+}
 
