@@ -14,7 +14,7 @@
 
 動画上にスピード、ケイデンス、心拍数、パワー、斜度、獲得標高グラフなどのメーター情報（HUD: Heads-Up Display）を直接オーバーレイして動画を合成・出力できます。
 
-<img width="933" height="661" alt="image" src="https://github.com/user-attachments/assets/262e6c73-4157-4f45-8bd5-33f983e46707" />
+<img width="1922" height="1082" alt="image" src="https://github.com/user-attachments/assets/cfc774b1-9c2f-46ec-a39f-461dc9e5b32d" />
 
 ### 🌟 主な特徴
 - **走行データの自動同期**: 動画内に時刻データを保有する場合は、FITデータの手動トリミングが不要。サイコンとの内部時計のズレについては加速度センサーデータを利用して自動補正できます。ひとつのFIT走行データに対し、複数の動画ファイルがある場合、バッチ登録することで一気通貫に直列エンコードできます。
