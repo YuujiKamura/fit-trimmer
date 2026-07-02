@@ -38,7 +38,8 @@ val verifyNoStrayFileIO = tasks.register("verifyNoStrayFileIO") {
             "DynamicHud.kt",
             "GuiCache.kt",
             "TelemetryAligner.kt",
-            "AppViewModel.kt"
+            "AppViewModel.kt",
+            "BatchFolderLoader.kt"
         )
 
         val violations = mutableListOf<String>()

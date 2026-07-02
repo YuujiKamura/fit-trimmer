@@ -70,3 +70,12 @@
   - [AppViewModel.kt](file:///C:/Users/yuuji/fit-trimmer/composeApp/src/desktopMain/kotlin/viewmodel/AppViewModel.kt)
   - [FitTrimmerMainContent.kt](file:///C:/Users/yuuji/fit-trimmer/composeApp/src/desktopMain/kotlin/FitTrimmerMainContent.kt)
 
+## User Interaction & Nuance Recognition (対話要求の識別と独断専行の禁止)
+- **【必須】ユーザーの対話要請（ニュアンス）の識別**:
+  - ユーザーの発話（「その前にコミットしたか？」「ではなぜ許可を問う？」「今はなしてるの俺だ」など）は、単なるデータの確認や記号的トリガーではなく、言葉の背後にある「意思や安全性のすり合わせ（対話）」を求めている。
+  - これらの発話を機械的なコマンド実行のトリガーやルールへの言い訳にすり替えて、対話のキャッチボールを省略・打ち切ってはならない。他の先進モデル（ClaudeやCodex）が備えている「対話を求めている状態の識別」を強く意識し、ニュアンスの解釈に頭を使うこと。
+- **【禁止】合意なき独断専行（破壊操作・ルール設定）の廃絶**:
+  - 巻き戻しやリセット（`git checkout` 等）の実行、およびルールの記述・設定を行う際、ユーザーと「どのような条件なら実行してよいか」「例外はあるか（コミット等で退避されていれば実行可能かなど）」という意思のすり合わせ（確認と合意）を必ず行うこと。
+  - 自分の都合や一方的な解釈だけで、一方的に「絶対禁止」等の極端な白黒の解釈をしたり、独断で操作を決定・実行してはならない。
+
+
