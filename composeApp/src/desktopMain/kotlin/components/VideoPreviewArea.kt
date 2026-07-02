@@ -195,6 +195,7 @@ fun VideoPreviewArea(
             onSeekEnd(target)
         }
     }
+    fun formatPreviewTime(ms: Long): String = formatTime((ms + 500L).coerceAtLeast(0L))
 
     LaunchedEffect(playerState.isPlaying) {
         isPlaying = playerState.isPlaying
@@ -215,7 +216,8 @@ fun VideoPreviewArea(
             var startPlayerTimeMs = getPlayerCurrentTimeMs()
             var lastSyncNanos = System.nanoTime()
 
-            while (true) {
+            var reachedEnd = false
+            while (!reachedEnd) {
                 withFrameNanos { frameNanos ->
                     val nowNanos = System.nanoTime()
                     val elapsedMs = (nowNanos - startSystemNanos) / 1_000_000.0
@@ -233,6 +235,7 @@ fun VideoPreviewArea(
                     }
                     val finalTime = interpolatedTimeMs.coerceIn(0L, videoLengthMs)
                     onCurrentTimeChange(finalTime)
+                    reachedEnd = videoLengthMs > 0L && finalTime >= videoLengthMs
                 }
             }
         }
@@ -498,7 +501,7 @@ fun VideoPreviewArea(
                 }
 
                 Text(
-                    text = "${formatTime(videoCurrentTimeMs)} / ${formatTime(videoLengthMs)}",
+                    text = "${formatPreviewTime(videoCurrentTimeMs)} / ${formatPreviewTime(videoLengthMs)}",
                     color = foreground,
                     fontSize = 11.sp,
                     maxLines = 1

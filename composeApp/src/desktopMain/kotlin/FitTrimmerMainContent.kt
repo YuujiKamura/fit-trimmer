@@ -1498,10 +1498,10 @@ fun FitTrimmerMainContent(
                                      Divider(color = Color(0xFFE5E5EA))
                                      Spacer(Modifier.height(4.dp))
                                      Text(
-                                         "未完了のエンコードキャッシュ検出:", 
-                                         color = Color(0xFF1C1C1E), 
-                                         fontWeight = FontWeight.Bold, 
-                                         fontSize = 10.sp, 
+                                         "未完了のエンコードキャッシュ検出:",
+                                         color = Color(0xFF1C1C1E),
+                                         fontWeight = FontWeight.Bold,
+                                         fontSize = 10.sp,
                                          letterSpacing = 0.5.sp
                                      )
                                      Spacer(Modifier.height(2.dp))
@@ -1515,7 +1515,7 @@ fun FitTrimmerMainContent(
                                      viewModel.availableCacheJobs.forEach { job ->
                                          val formattedTime = java.time.format.DateTimeFormatter.ofPattern("MM-dd HH:mm")
                                              .format(java.time.LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(job.lastModified), java.time.ZoneId.systemDefault()))
-                                         
+
                                          Row(
                                              modifier = Modifier
                                                  .fillMaxWidth()
@@ -1533,7 +1533,7 @@ fun FitTrimmerMainContent(
                                                  Text("・最終アクティブ: $formattedTime", fontSize = 9.sp, color = Color(0xFF1C1C1E))
                                              }
                                              Spacer(Modifier.width(8.dp))
-                                             
+
                                              Button(
                                                  onClick = {
                                                      scope.launch(Dispatchers.Main) {
@@ -1563,7 +1563,7 @@ fun FitTrimmerMainContent(
                                                      val salvageOutFile = fit.CacheRegistry.getSalvageOutputPath(videoPath, outputDir, settings)
                                                       val uniqueFileName = salvageOutFile.name
                                                       val salvageOutPath = salvageOutFile.absolutePath
-                                                     
+
                                                      scope.launch(Dispatchers.Main) {
                                                          val confirm = javax.swing.JOptionPane.showConfirmDialog(
                                                              composeWindow ?: viewModel.composeWindow,

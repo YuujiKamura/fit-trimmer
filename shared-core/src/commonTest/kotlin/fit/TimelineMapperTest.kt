@@ -49,6 +49,21 @@ class TimelineMapperTest {
     }
 
     @Test
+    fun testTimelineSnapsExactEndToDuration() {
+        val calculatedTimeMs = TimelineMapper.calculateCurrentTimeMs(
+            sliderPos = 1000f,
+            durationMs = 7974L,
+            fullVideoLengthMs = 8000L
+        )
+
+        assertEquals(
+            8000L,
+            calculatedTimeMs,
+            "At EOF the playhead must display the session duration, not the decoder's final timestamp."
+        )
+    }
+
+    @Test
     fun testTimelineSyncAtArbitrarySeekPosition() {
         val fullVideoLengthMs = 1800000L // 30 minutes
         
@@ -63,4 +78,3 @@ class TimelineMapperTest {
         kotlin.test.assertTrue(isFullLengthValid, "Full-length stream-copy proxy must be marked as VALID.")
     }
 }
-
