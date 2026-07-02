@@ -4,7 +4,7 @@
 
 サイクリング動画に走行データ（GPSログ）をメーター風に重ね合わせて表示するHUD動画などを作成する際、**「動画と走行ログのスタート位置を同期してトリミングする作業」**を自動化・効率化するツールです。
 
-*   **デスクトップアプリ版 (Windows / HUDエンコーダー搭載) [メイン]**: [Releases](https://github.com/YuujiKamura/fit-trimmer/releases) ページからビルド済みバイナリをダウンロードして使用できます。スピードやパワー、心拍数などのHUDメーター情報を重ね合わせた動画を直接エンコード出力できます。
+*   **デスクトップアプリ版 (Windows専用 / HUDエンコーダー搭載) [メイン]**: [Releases](https://github.com/YuujiKamura/fit-trimmer/releases) ページからビルド済みバイナリをダウンロードして使用できます。**※動画プレビュー再生等に Windows Media Foundation API を使用する関係上、Windows 専用となります（macOS / Linux には非対応です）**。スピードやパワー、心拍数などのHUDメーター情報を重ね合わせた動画を直接エンコード出力できます。
 *   **Webアプリ版 (トリミングのみ / GitHub Pages)**: [https://yuujikamura.github.io/fit-trimmer/](https://yuujikamura.github.io/fit-trimmer/)
 *   **100% ローカル処理**: ファイルをサーバーにアップロードしないため、個人情報の保護はもちろん、巨大な動画ファイルでも通信データ量を消費せず超高速で処理できます。
 
@@ -15,6 +15,10 @@
 動画上にスピード、ケイデンス、心拍数、パワー、斜度、獲得標高グラフなどのメーター情報（HUD: Heads-Up Display）を直接オーバーレイして動画を合成・出力できます。
 
 <img width="1922" height="1082" alt="image" src="https://github.com/user-attachments/assets/cfc774b1-9c2f-46ec-a39f-461dc9e5b32d" />
+
+> [!IMPORTANT]
+> **対応プラットフォームについて**
+> 本デスクトップアプリ版は **Windows 専用** です。動画プレビュー再生部分に Windows Native メディアプレイヤー（Windows Media Foundation）を使用しているため、macOS および Linux 環境での実行・パッケージングには対応していません。
 
 ### 🌟 主な特徴
 - **走行データの自動同期**: 動画内に時刻データを保有する場合は、FITデータの手動トリミングが不要。サイコンとの内部時計のズレについては加速度センサーデータを利用して自動補正できます。ひとつのFIT走行データに対し、複数の動画ファイルがある場合、バッチ登録することで一気通貫に直列エンコードできます。
