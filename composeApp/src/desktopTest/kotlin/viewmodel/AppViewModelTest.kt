@@ -998,4 +998,23 @@ class AppViewModelTest {
             jobDir.delete()
         }
     }
+
+    @Test
+    fun testParseStartUtcFromFileName() {
+        val fileName1 = "VID_20260702_163959_001.mp4"
+        val parsed1 = utils.tryParseStartUtcFromFileName(fileName1)
+        assertNotNull(parsed1)
+        assertTrue(parsed1!!.endsWith("Z"))
+        assertTrue(parsed1.contains("2026-07-02"))
+
+        val fileName2 = "20260630_154458.mov"
+        val parsed2 = utils.tryParseStartUtcFromFileName(fileName2)
+        assertNotNull(parsed2)
+        assertTrue(parsed2!!.endsWith("Z"))
+        assertTrue(parsed2.contains("2026-06-30"))
+
+        val fileNameInvalid = "GH010234.MP4"
+        val parsedInvalid = utils.tryParseStartUtcFromFileName(fileNameInvalid)
+        assertNull(parsedInvalid)
+    }
 }
