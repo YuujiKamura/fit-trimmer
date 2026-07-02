@@ -12,6 +12,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.material.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -1002,15 +1005,19 @@ fun FitTrimmerMainContent(
             val isPreviewFullscreen = viewModel.isPreviewFullscreen
             val showSidebar = viewModel.isSidebarVisible && !isPreviewFullscreen
             Row(modifier = Modifier.fillMaxSize().background(if (isPreviewFullscreen) Color.Black else Color.White)) {
-                val sidebarScrollState = rememberScrollState()
+                var selectedTab by remember { mutableStateOf(0) }
+                val scrollStateTab0 = rememberScrollState()
+                val scrollStateTab1 = rememberScrollState()
+                val scrollStateTab2 = rememberScrollState()
+
                 val sidebarWidth = if (showSidebar) 320.dp else 0.dp
                 Box(modifier = Modifier.width(sidebarWidth).fillMaxHeight()) {
+                    if (showSidebar) {
                     Column(
-                        modifier = Modifier.fillMaxSize().background(Color(0xFFF5F5F7))
-                            .verticalScroll(sidebarScrollState).padding(
-                                horizontal = if (showSidebar) 16.dp else 0.dp,
-                                vertical = if (showSidebar) 16.dp else 0.dp
-                            ),
+                        modifier = Modifier.fillMaxSize().background(Color(0xFFF5F5F7)).padding(
+                            horizontal = if (showSidebar) 16.dp else 0.dp,
+                            vertical = if (showSidebar) 16.dp else 0.dp
+                        ),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                     val onNativeEncodeClick = remember(settings, fitPath, videoPath, videoStartUtc, adjustedStartUtc, isVideoInFitRange, outputDir, moveOutputToSource, showLivePreview, autoDetectRoadCaptionsOnEncode, telemetryPoints, videoLengthMs, timeOffsetState.millis, viewModel.splitPoints) {
@@ -1313,17 +1320,70 @@ fun FitTrimmerMainContent(
                             Unit
                         }
                     }
-                    if (args.contains("--auto-sample")) {
-                        LaunchedEffect(isLoaded) {
-                            if (isLoaded) {
-                                // Wait for UI to render
-                                kotlinx.coroutines.delay(1000)
-                                println("🚀 Auto-sample test triggered")
-                                onSampleEncodeClick()
-                            }
+                        // 3つのタブに対応する ScrollState を決定
+                        val currentScrollState = when (selectedTab) {
+                            0 -> scrollStateTab0
+                            1 -> scrollStateTab1
+                            else -> scrollStateTab2
                         }
-                    }
-                    // 1. Source file selection
+
+                        // タブ選択 UI
+                        TabRow(
+                            selectedTabIndex = selectedTab,
+                            backgroundColor = Color.White,
+                            contentColor = Color(0xFF007AFF),
+                            indicator = { tabPositions ->
+                                TabRowDefaults.Indicator(
+                                    Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
+                                    color = Color(0xFF007AFF)
+                                )
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(36.dp)
+                                .border(BorderStroke(1.dp, Color(0xFFE5E5EA)), androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                                .clip(androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                        ) {
+                            Tab(
+                                selected = selectedTab == 0,
+                                onClick = { selectedTab = 0 },
+                                text = { Text("同期", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                            )
+                            Tab(
+                                selected = selectedTab == 1,
+                                onClick = { selectedTab = 1 },
+                                text = { Text("HUD", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                            )
+                            Tab(
+                                selected = selectedTab == 2,
+                                onClick = { selectedTab = 2 },
+                                text = { Text("設定", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                            )
+                        }
+
+                        // スクロール可能な領域
+                        Box(
+                            modifier = Modifier.weight(1f).fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .verticalScroll(currentScrollState)
+                                    .padding(end = 6.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                if (selectedTab == 0) {
+                                    if (args.contains("--auto-sample")) {
+                                        LaunchedEffect(isLoaded) {
+                                            if (isLoaded) {
+                                                // Wait for UI to render
+                                                kotlinx.coroutines.delay(1000)
+                                                println("🚀 Auto-sample test triggered")
+                                                onSampleEncodeClick()
+                                            }
+                                        }
+                                    }
+                                    // 1. Source file selection
                     Card(
                         backgroundColor = Color.White,
                         shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
@@ -1441,389 +1501,9 @@ fun FitTrimmerMainContent(
                             }
                         }
                     )
-                    // 3. Primary encode actions
-                    Card(
-                        backgroundColor = Color.White,
-                        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
-                        border = BorderStroke(1.dp, Color(0xFFE5E5EA)),
-                        elevation = 1.dp,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Text("エンコード", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 0.5.sp)
-                            val isActiveEncoding = isEncoding || viewModel.isBatchRunning
-                            if (!isActiveEncoding) {
-                                Text("現在の設定でHUD付き動画を書き出します。サンプルは短い確認用、バッチは後でまとめて処理する待ち行列です。", color = Color(0xFF636366), fontSize = 10.sp, lineHeight = 13.sp)
-                                Button(
-                                    onClick = onNativeEncodeClick,
-                                    modifier = Modifier.fillMaxWidth().height(40.dp),
-                                    enabled = hasEnoughSpace && fitPath.isNotEmpty() && videoPath.isNotEmpty(),
-                                    colors = ButtonDefaults.buttonColors(
-                                        backgroundColor = if (hasEnoughSpace) Color(0xFF007AFF) else Color(0xFFD1D1D6),
-                                        disabledBackgroundColor = Color(0xFFE5E5EA)
-                                    ),
-                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
-                                ) {
-                                    Text(if (hasEnoughSpace) "エンコード開始" else "ディスク容量不足", color = if (hasEnoughSpace) Color.White else Color(0xFF8E8E93), fontWeight = FontWeight.Bold)
-                                }
-                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                                    val isSampleEnabled = hasEnoughSpaceForSample && fitPath.isNotEmpty() && videoPath.isNotEmpty()
-                                    OutlinedButton(
-                                        onClick = onSampleEncodeClick,
-                                        modifier = Modifier.weight(1f).height(36.dp),
-                                        enabled = isSampleEnabled,
-                                        colors = ButtonDefaults.outlinedButtonColors(
-                                            contentColor = Color(0xFF007AFF),
-                                            disabledContentColor = Color(0xFF8E8E93)
-                                        ),
-                                        border = BorderStroke(1.5.dp, if (isSampleEnabled) Color(0xFF007AFF) else Color(0xFFE5E5EA)),
-                                        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
-                                    ) {
-                                        Text("5秒サンプル", fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                     }
-                                    val isQueueEnabled = fitPath.isNotEmpty() && videoPath.isNotEmpty()
-                                    OutlinedButton(
-                                        onClick = {
-                                            viewModel.addToBatchQueue()
-                                            statusText = "ジョブをキューに追加しました"
-                                        },
-                                        modifier = Modifier.weight(1f).height(36.dp),
-                                        enabled = isQueueEnabled,
-                                        colors = ButtonDefaults.outlinedButtonColors(
-                                            contentColor = Color(0xFF34C759),
-                                            disabledContentColor = Color(0xFF8E8E93)
-                                        ),
-                                        border = BorderStroke(1.5.dp, if (isQueueEnabled) Color(0xFF34C759) else Color(0xFFE5E5EA)),
-                                        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
-                                    ) {
-                                        Text("バッチに追加", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                }
-                                 if (viewModel.availableCacheJobs.isNotEmpty()) {
-                                     Spacer(Modifier.height(8.dp))
-                                     Divider(color = Color(0xFFE5E5EA))
-                                     Spacer(Modifier.height(4.dp))
-                                     Text(
-                                         "未完了のエンコードキャッシュ検出:",
-                                         color = Color(0xFF1C1C1E),
-                                         fontWeight = FontWeight.Bold,
-                                         fontSize = 10.sp,
-                                         letterSpacing = 0.5.sp
-                                     )
-                                     Spacer(Modifier.height(2.dp))
-                                     Text(
-                                         "※レンダリング（動画描画）をスキップし、作成済みのパーツを直接結合して完成動画を高速出力（復元）できます。",
-                                         color = Color(0xFFE02424),
-                                         fontSize = 9.sp,
-                                         lineHeight = 11.sp
-                                     )
-                                     Spacer(Modifier.height(4.dp))
-                                     viewModel.availableCacheJobs.forEach { job ->
-                                         val formattedTime = java.time.format.DateTimeFormatter.ofPattern("MM-dd HH:mm")
-                                             .format(java.time.LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(job.lastModified), java.time.ZoneId.systemDefault()))
+                                    if (selectedTab == 2) {
 
-                                         Row(
-                                             modifier = Modifier
-                                                 .fillMaxWidth()
-                                                 .border(BorderStroke(1.dp, Color(0xFFE5E5EA)), androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
-                                                 .background(Color.White)
-                                                 .padding(8.dp),
-                                             horizontalArrangement = Arrangement.SpaceBetween,
-                                             verticalAlignment = Alignment.CenterVertically
-                                         ) {
-                                             Column(modifier = Modifier.weight(1f)) {
-                                                 Text("種別: 分割動画パーツの直接結合", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1C1C1E))
-                                                 Spacer(Modifier.height(2.dp))
-                                                 Text("・キャッシュ数: ${job.partsCount} 個のTSファイル", fontSize = 9.sp, color = Color(0xFF1C1C1E))
-                                                 Text("・ボカシマスク: ${if (job.hasMaskVideo) "あり" else "なし"}", fontSize = 9.sp, color = Color(0xFF1C1C1E))
-                                                 Text("・最終アクティブ: $formattedTime", fontSize = 9.sp, color = Color(0xFF1C1C1E))
-                                             }
-                                             Spacer(Modifier.width(8.dp))
-
-                                             Button(
-                                                 onClick = {
-                                                     scope.launch(Dispatchers.Main) {
-                                                         val confirm = javax.swing.JOptionPane.showConfirmDialog(
-                                                             composeWindow ?: viewModel.composeWindow,
-                                                              "この未完了キャッシュ（パーツ数: ${job.partsCount} 個）を物理的に削除しますか？\n(削除すると二度と復元できなくなります)",
-                                                             "キャッシュの削除",
-                                                             javax.swing.JOptionPane.YES_NO_OPTION,
-                                                             javax.swing.JOptionPane.WARNING_MESSAGE
-                                                         )
-                                                         if (confirm == javax.swing.JOptionPane.YES_OPTION) {
-                                                             viewModel.deleteCacheJob(job)
-                                                         }
-                                                     }
-                                                 },
-                                                 enabled = !isEncoding && !viewModel.isSalvaging,
-                                                 colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFFF3B30), contentColor = Color.White),
-                                                 modifier = Modifier.height(26.dp),
-                                                 shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp),
-                                                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp)
-                                                 ) {
-                                                     Text("削除", fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                                                 }
-                                                 Spacer(Modifier.width(6.dp))
-                                             Button(
-                                                 onClick = {
-                                                     val salvageOutFile = fit.CacheRegistry.getSalvageOutputPath(videoPath, outputDir, settings)
-                                                      val uniqueFileName = salvageOutFile.name
-                                                      val salvageOutPath = salvageOutFile.absolutePath
-
-                                                     scope.launch(Dispatchers.Main) {
-                                                         val confirm = javax.swing.JOptionPane.showConfirmDialog(
-                                                             composeWindow ?: viewModel.composeWindow,
-                                                             "レンダリングをスキップし、既存の ${job.partsCount} 個のキャッシュを結合して $uniqueFileName を作成しますか？\n(無劣化・高速結合処理になります)",
-                                                             "キャッシュのサルベージ結合",
-                                                             javax.swing.JOptionPane.YES_NO_OPTION
-                                                         )
-                                                         if (confirm == javax.swing.JOptionPane.YES_OPTION) {
-                                                             viewModel.runSalvage(
-                                                                 jobInfo = job,
-                                                                 outputPath = salvageOutPath,
-                                                                 coroutineScope = scope,
-                                                                 onComplete = { successMsg ->
-                                                                     javax.swing.JOptionPane.showMessageDialog(null, successMsg, "サルベージ成功", javax.swing.JOptionPane.INFORMATION_MESSAGE)
-                                                                 }
-                                                             )
-                                                         }
-                                                     }
-                                                 },
-                                                 enabled = !isEncoding && !viewModel.isSalvaging,
-                                                 colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF007AFF), contentColor = Color.White),
-                                                 modifier = Modifier.height(26.dp),
-                                                 shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp),
-                                                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp)
-                                             ) {
-                                                 Text("結合して復元", fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                                             }
-                                         }
-                                         Spacer(Modifier.height(4.dp))
-                                     }
-                                 }
-
-                                 if (viewModel.isSalvaging) {
-                                     Spacer(Modifier.height(4.dp))
-                                     LinearProgressIndicator(
-                                         progress = viewModel.salvageProgress,
-                                         modifier = Modifier.fillMaxWidth().height(4.dp),
-                                         color = Color(0xFF007AFF)
-                                     )
-                                     Text(
-                                         text = viewModel.salvageStatusText,
-                                         color = Color(0xFF1C1C1E),
-                                         fontSize = 9.sp,
-                                         modifier = Modifier.padding(top = 2.dp)
-                                     )
-                                 }
-                            } else {
-                                val currentStatusText = if (viewModel.isBatchRunning) viewModel.statusText else statusText
-                                val currentProgress = if (viewModel.isBatchRunning) viewModel.progress else progress
-                                if (currentStatusText.contains("Merging", ignoreCase = true)) {
-                                    LinearProgressIndicator(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        color = Color(0xFF34C759),
-                                        backgroundColor = Color(0xFFE5E5EA)
-                                    )
-                                } else {
-                                    LinearProgressIndicator(
-                                        progress = currentProgress,
-                                        modifier = Modifier.fillMaxWidth(),
-                                        color = Color(0xFF007AFF),
-                                        backgroundColor = Color(0xFFE5E5EA)
-                                    )
-                                }
-                                Text(currentStatusText, color = Color(0xFF1C1C1E), fontSize = 11.sp, lineHeight = 14.sp)
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Button(
-                                        onClick = {
-                                            if (viewModel.isBatchRunning) {
-                                                viewModel.isCanceled = true
-                                            } else {
-                                                isCanceled = true
-                                            }
-                                        },
-                                        modifier = Modifier.weight(1f).height(32.dp),
-                                        colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFEF4444)),
-                                        shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
-                                    ) {
-                                        Text("CANCEL", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                }
-                            }
-                            val batchQueue = viewModel.batchQueue
-                            if (batchQueue.isNotEmpty()) {
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Divider(color = Color(0xFFE5E5EA))
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = "BATCH JOB QUEUE (${batchQueue.size})",
-                                        color = Color(0xFF1C1C1E),
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 12.sp,
-                                        letterSpacing = 0.5.sp
-                                    )
-                                    if (!viewModel.isBatchRunning) {
-                                        Text(
-                                            text = "CLEAR ALL",
-                                            color = Color(0xFFE02424),
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 10.sp,
-                                            modifier = Modifier.clickable { viewModel.clearBatchQueue() }
-                                        )
-                                    }
-                                }
-                                Column(
-                                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    batchQueue.forEach { job ->
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .background(Color(0xFFF2F2F7), shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
-                                                .padding(horizontal = 8.dp, vertical = 6.dp),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Column(modifier = Modifier.weight(1f)) {
-                                                Text(
-                                                    text = File(job.videoPath).name,
-                                                    fontSize = 10.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = Color(0xFF1C1C1E)
-                                                )
-                                                Text(
-                                                    text = "Trim: %.1fs - %.1fs".format(job.trimStartSeconds, job.trimEndSeconds),
-                                                    fontSize = 8.sp,
-                                                    color = Color(0xFF636366)
-                                                )
-                                                if (job.status == BatchJobStatus.RUNNING) {
-                                                    LinearProgressIndicator(
-                                                        progress = job.progress,
-                                                        modifier = Modifier.fillMaxWidth().height(4.dp).padding(top = 2.dp),
-                                                        color = Color(0xFF007AFF)
-                                                    )
-                                                }
-                                                if (job.status == BatchJobStatus.FAILED && !job.errorMessage.isNullOrEmpty()) {
-                                                    Text(
-                                                        text = "Error: ${job.errorMessage}",
-                                                        fontSize = 8.sp,
-                                                        color = Color(0xFFE02424),
-                                                        fontWeight = FontWeight.SemiBold
-                                                    )
-                                                }
-                                            }
-                                            Spacer(Modifier.width(8.dp))
-                                            val statusLabel = when (job.status) {
-                                                BatchJobStatus.WAITING -> "待機中"
-                                                BatchJobStatus.RUNNING -> "処理中"
-                                                BatchJobStatus.COMPLETED -> "完了"
-                                                BatchJobStatus.FAILED -> "失敗"
-                                            }
-                                            val statusColor = when (job.status) {
-                                                BatchJobStatus.WAITING -> Color(0xFF8E8E93)
-                                                BatchJobStatus.RUNNING -> Color(0xFF007AFF)
-                                                BatchJobStatus.COMPLETED -> Color(0xFF34C759)
-                                                BatchJobStatus.FAILED -> Color(0xFFE02424)
-                                            }
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                            ) {
-                                                Text(
-                                                    text = statusLabel,
-                                                    color = statusColor,
-                                                    fontSize = 8.sp,
-                                                    fontWeight = FontWeight.Bold
-                                                )
-                                                if (!viewModel.isBatchRunning && job.status != BatchJobStatus.RUNNING) {
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .size(16.dp)
-                                                            .clickable { viewModel.removeFromBatchQueue(job.id) },
-                                                        contentAlignment = Alignment.Center
-                                                    ) {
-                                                        Canvas(modifier = Modifier.size(8.dp)) {
-                                                            val strokeWidth = 1.5.dp.toPx()
-                                                            drawLine(
-                                                                color = Color(0xFFEF4444),
-                                                                start = Offset(0f, 0f),
-                                                                end = Offset(size.width, size.height),
-                                                                strokeWidth = strokeWidth,
-                                                                cap = androidx.compose.ui.graphics.StrokeCap.Round
-                                                            )
-                                                            drawLine(
-                                                                color = Color(0xFFEF4444),
-                                                                start = Offset(size.width, 0f),
-                                                                end = Offset(0f, size.height),
-                                                                strokeWidth = strokeWidth,
-                                                                cap = androidx.compose.ui.graphics.StrokeCap.Round
-                                                            )
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                                if (viewModel.isBatchRunning) {
-                                    Column(
-                                        modifier = Modifier.fillMaxWidth().background(Color(0xFFFEF3C7)).padding(8.dp),
-                                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                                    ) {
-                                        Text(
-                                            text = viewModel.batchStatusText,
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color(0xFFD97706)
-                                        )
-                                        Button(
-                                            onClick = { isCanceled = true },
-                                            modifier = Modifier.fillMaxWidth().height(28.dp),
-                                            colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFE02424))
-                                        ) {
-                                            Text("CANCEL BATCH", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                        }
-                                    }
-                                } else {
-                                    val canStartBatch = batchQueue.any { it.status == BatchJobStatus.WAITING || it.status == BatchJobStatus.FAILED }
-                                    Button(
-                                        onClick = {
-                                            scope.launch {
-                                                batchQueue.forEach {
-                                                    if (it.status == BatchJobStatus.FAILED || it.status == BatchJobStatus.COMPLETED) {
-                                                        it.status = BatchJobStatus.WAITING
-                                                        it.progress = 0f
-                                                    }
-                                                }
-                                                runBatchJobs(
-                                                    viewModel = viewModel,
-                                                    outputDir = outputDir,
-                                                    moveOutputToSource = moveOutputToSource,
-                                                    showLivePreview = showLivePreview,
-                                                    onProgressUpdate = {}
-                                                )
-                                            }
-                                        },
-                                        enabled = canStartBatch,
-                                        modifier = Modifier.fillMaxWidth().height(36.dp),
-                                        colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF34C759))
-                                    ) {
-                                        Text("START BATCH ENCODE", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                }
-                            }
-                        }
-                    }
                     // 4. Output and less frequently changed options
                     Card(
                         backgroundColor = Color.White,
@@ -2587,7 +2267,8 @@ fun FitTrimmerMainContent(
 
                         }
                     }
-
+                                    }
+                                    if (selectedTab == 1) {
 
                     Divider(color = Color(0xFFE5E5EA))
                     // 4. HUD LAYOUT CONFIG Card
@@ -3071,12 +2752,399 @@ fun FitTrimmerMainContent(
                             }
                         }
                     }
-                    }
-                    if (showSidebar) {
-                        VerticalScrollbar(
-                            adapter = rememberScrollbarAdapter(sidebarScrollState),
-                            modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight()
-                        )
+                                    }
+                                }
+                                VerticalScrollbar(
+                                    adapter = rememberScrollbarAdapter(currentScrollState),
+                                    modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight()
+                                )
+                            } // Box(scrollable) 閉じ
+
+                            // 7. Sticky に下部固定する Primary encode actions Card （バッチジョブキュー表示を含む）
+                            Card(
+                                backgroundColor = Color.White,
+                                shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                                border = BorderStroke(1.dp, Color(0xFFE5E5EA)),
+                                elevation = 1.dp,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text("エンコード", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 0.5.sp)
+                                    val isActiveEncoding = isEncoding || viewModel.isBatchRunning
+                                    if (!isActiveEncoding) {
+                                        Text("現在の設定でHUD付き動画を書き出します。サンプルは短い確認用、バッチは後でまとめて処理する待ち行列です。", color = Color(0xFF636366), fontSize = 10.sp, lineHeight = 13.sp)
+                                        Button(
+                                            onClick = onNativeEncodeClick,
+                                            modifier = Modifier.fillMaxWidth().height(40.dp),
+                                            enabled = hasEnoughSpace && fitPath.isNotEmpty() && videoPath.isNotEmpty(),
+                                            colors = ButtonDefaults.buttonColors(
+                                                backgroundColor = if (hasEnoughSpace) Color(0xFF007AFF) else Color(0xFFD1D1D6),
+                                                disabledBackgroundColor = Color(0xFFE5E5EA)
+                                            ),
+                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                                        ) {
+                                            Text(if (hasEnoughSpace) "エンコード開始" else "ディスク容量不足", color = if (hasEnoughSpace) Color.White else Color(0xFF8E8E93), fontWeight = FontWeight.Bold)
+                                        }
+                                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                                            val isSampleEnabled = hasEnoughSpaceForSample && fitPath.isNotEmpty() && videoPath.isNotEmpty()
+                                            OutlinedButton(
+                                                onClick = onSampleEncodeClick,
+                                                modifier = Modifier.weight(1f).height(36.dp),
+                                                enabled = isSampleEnabled,
+                                                colors = ButtonDefaults.outlinedButtonColors(
+                                                    contentColor = Color(0xFF007AFF),
+                                                    disabledContentColor = Color(0xFF8E8E93)
+                                                ),
+                                                border = BorderStroke(1.5.dp, if (isSampleEnabled) Color(0xFF007AFF) else Color(0xFFE5E5EA)),
+                                                shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                                            ) {
+                                                Text("5秒サンプル", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                            val isQueueEnabled = fitPath.isNotEmpty() && videoPath.isNotEmpty()
+                                            OutlinedButton(
+                                                onClick = {
+                                                    viewModel.addToBatchQueue()
+                                                    statusText = "ジョブをキューに追加しました"
+                                                },
+                                                modifier = Modifier.weight(1f).height(36.dp),
+                                                enabled = isQueueEnabled,
+                                                colors = ButtonDefaults.outlinedButtonColors(
+                                                    contentColor = Color(0xFF34C759),
+                                                    disabledContentColor = Color(0xFF8E8E93)
+                                                ),
+                                                border = BorderStroke(1.5.dp, if (isQueueEnabled) Color(0xFF34C759) else Color(0xFFE5E5EA)),
+                                                shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                                            ) {
+                                                Text("バッチに追加", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                         if (viewModel.availableCacheJobs.isNotEmpty()) {
+                                             Spacer(Modifier.height(8.dp))
+                                             Divider(color = Color(0xFFE5E5EA))
+                                             Spacer(Modifier.height(4.dp))
+                                             Text(
+                                                 "未完了のエンコードキャッシュ検出:",
+                                                 color = Color(0xFF1C1C1E),
+                                                 fontWeight = FontWeight.Bold,
+                                                 fontSize = 10.sp,
+                                                 letterSpacing = 0.5.sp
+                                             )
+                                             Spacer(Modifier.height(2.dp))
+                                             Text(
+                                                 "※レンダリング（動画描画）をスキップし、作成済みのパーツを直接結合して完成動画を高速出力（復元）できます。",
+                                                 color = Color(0xFFE02424),
+                                                 fontSize = 9.sp,
+                                                 lineHeight = 11.sp
+                                             )
+                                             Spacer(Modifier.height(4.dp))
+                                             viewModel.availableCacheJobs.forEach { job ->
+                                                 val formattedTime = java.time.format.DateTimeFormatter.ofPattern("MM-dd HH:mm")
+                                                     .format(java.time.LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(job.lastModified), java.time.ZoneId.systemDefault()))
+
+                                                 Row(
+                                                     modifier = Modifier
+                                                         .fillMaxWidth()
+                                                         .border(BorderStroke(1.dp, Color(0xFFE5E5EA)), androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                                                         .background(Color.White)
+                                                         .padding(8.dp),
+                                                     horizontalArrangement = Arrangement.SpaceBetween,
+                                                     verticalAlignment = Alignment.CenterVertically
+                                                 ) {
+                                                     Column(modifier = Modifier.weight(1f)) {
+                                                         Text("種別: 分割動画パーツの直接結合", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1C1C1E))
+                                                         Spacer(Modifier.height(2.dp))
+                                                         Text("・キャッシュ数: ${job.partsCount} 個のTSファイル", fontSize = 9.sp, color = Color(0xFF1C1C1E))
+                                                         Text("・ボカシマスク: ${if (job.hasMaskVideo) "あり" else "なし"}", fontSize = 9.sp, color = Color(0xFF1C1C1E))
+                                                         Text("・最終アクティブ: $formattedTime", fontSize = 9.sp, color = Color(0xFF1C1C1E))
+                                                     }
+                                                     Spacer(Modifier.width(8.dp))
+
+                                                     Button(
+                                                         onClick = {
+                                                             scope.launch(Dispatchers.Main) {
+                                                                 val confirm = javax.swing.JOptionPane.showConfirmDialog(
+                                                                     composeWindow ?: viewModel.composeWindow,
+                                                                      "この未完了キャッシュ（パーツ数: ${job.partsCount} 個）を物理的に削除しますか？\n(削除すると二度と復元できなくなります)",
+                                                                     "キャッシュの削除",
+                                                                     javax.swing.JOptionPane.YES_NO_OPTION,
+                                                                     javax.swing.JOptionPane.WARNING_MESSAGE
+                                                                 )
+                                                                 if (confirm == javax.swing.JOptionPane.YES_OPTION) {
+                                                                     viewModel.deleteCacheJob(job)
+                                                                 }
+                                                             }
+                                                         },
+                                                         enabled = !isEncoding && !viewModel.isSalvaging,
+                                                         colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFFF3B30), contentColor = Color.White),
+                                                         modifier = Modifier.height(26.dp),
+                                                         shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp),
+                                                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp)
+                                                         ) {
+                                                             Text("削除", fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                                         }
+                                                         Spacer(Modifier.width(6.dp))
+                                                     Button(
+                                                         onClick = {
+                                                             val salvageOutFile = fit.CacheRegistry.getSalvageOutputPath(videoPath, outputDir, settings)
+                                                              val uniqueFileName = salvageOutFile.name
+                                                              val salvageOutPath = salvageOutFile.absolutePath
+
+                                                             scope.launch(Dispatchers.Main) {
+                                                                 val confirm = javax.swing.JOptionPane.showConfirmDialog(
+                                                                     composeWindow ?: viewModel.composeWindow,
+                                                                     "レンダリングをスキップし、既存の ${job.partsCount} 個のキャッシュを結合して $uniqueFileName を作成しますか？\n(無劣化・高速結合処理になります)",
+                                                                     "キャッシュのサルベージ結合",
+                                                                     javax.swing.JOptionPane.YES_NO_OPTION
+                                                                 )
+                                                                 if (confirm == javax.swing.JOptionPane.YES_OPTION) {
+                                                                     viewModel.runSalvage(
+                                                                         jobInfo = job,
+                                                                         outputPath = salvageOutPath,
+                                                                         coroutineScope = scope,
+                                                                         onComplete = { successMsg ->
+                                                                             javax.swing.JOptionPane.showMessageDialog(null, successMsg, "サルベージ成功", javax.swing.JOptionPane.INFORMATION_MESSAGE)
+                                                                         }
+                                                                     )
+                                                                 }
+                                                             }
+                                                         },
+                                                         enabled = !isEncoding && !viewModel.isSalvaging,
+                                                         colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF007AFF), contentColor = Color.White),
+                                                         modifier = Modifier.height(26.dp),
+                                                         shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp),
+                                                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp)
+                                                     ) {
+                                                         Text("結合して復元", fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                                     }
+                                                 }
+                                                 Spacer(Modifier.height(4.dp))
+                                             }
+                                         }
+
+                                         if (viewModel.isSalvaging) {
+                                             Spacer(Modifier.height(4.dp))
+                                             LinearProgressIndicator(
+                                                 progress = viewModel.salvageProgress,
+                                                 modifier = Modifier.fillMaxWidth().height(4.dp),
+                                                 color = Color(0xFF007AFF)
+                                             )
+                                             Text(
+                                                 text = viewModel.salvageStatusText,
+                                                 color = Color(0xFF1C1C1E),
+                                                 fontSize = 9.sp,
+                                                 modifier = Modifier.padding(top = 2.dp)
+                                             )
+                                         }
+                                    } else {
+                                        val currentStatusText = if (viewModel.isBatchRunning) viewModel.statusText else statusText
+                                        val currentProgress = if (viewModel.isBatchRunning) viewModel.progress else progress
+                                        if (currentStatusText.contains("Merging", ignoreCase = true)) {
+                                            LinearProgressIndicator(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                color = Color(0xFF34C759),
+                                                backgroundColor = Color(0xFFE5E5EA)
+                                            )
+                                        } else {
+                                            LinearProgressIndicator(
+                                                progress = currentProgress,
+                                                modifier = Modifier.fillMaxWidth(),
+                                                color = Color(0xFF007AFF),
+                                                backgroundColor = Color(0xFFE5E5EA)
+                                            )
+                                        }
+                                        Text(currentStatusText, color = Color(0xFF1C1C1E), fontSize = 11.sp, lineHeight = 14.sp)
+                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Button(
+                                                onClick = {
+                                                    if (viewModel.isBatchRunning) {
+                                                        viewModel.isCanceled = true
+                                                    } else {
+                                                        isCanceled = true
+                                                    }
+                                                },
+                                                modifier = Modifier.weight(1f).height(32.dp),
+                                                colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFEF4444)),
+                                                shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
+                                            ) {
+                                                Text("CANCEL", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+                                    val batchQueue = viewModel.batchQueue
+                                    if (batchQueue.isNotEmpty()) {
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Divider(color = Color(0xFFE5E5EA))
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "BATCH JOB QUEUE (${batchQueue.size})",
+                                                color = Color(0xFF1C1C1E),
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 12.sp,
+                                                letterSpacing = 0.5.sp
+                                            )
+                                            if (!viewModel.isBatchRunning) {
+                                                Text(
+                                                    text = "CLEAR ALL",
+                                                    color = Color(0xFFE02424),
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 10.sp,
+                                                    modifier = Modifier.clickable { viewModel.clearBatchQueue() }
+                                                )
+                                            }
+                                        }
+                                        Column(
+                                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            batchQueue.forEach { job ->
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .background(Color(0xFFF2F2F7), shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                                                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Column(modifier = Modifier.weight(1f)) {
+                                                        Text(
+                                                            text = File(job.videoPath).name,
+                                                            fontSize = 10.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = Color(0xFF1C1C1E)
+                                                        )
+                                                        Text(
+                                                            text = "Trim: %.1fs - %.1fs".format(job.trimStartSeconds, job.trimEndSeconds),
+                                                            fontSize = 8.sp,
+                                                            color = Color(0xFF636366)
+                                                        )
+                                                        if (job.status == BatchJobStatus.RUNNING) {
+                                                            LinearProgressIndicator(
+                                                                progress = job.progress,
+                                                                modifier = Modifier.fillMaxWidth().height(4.dp).padding(top = 2.dp),
+                                                                color = Color(0xFF007AFF)
+                                                            )
+                                                        }
+                                                        if (job.status == BatchJobStatus.FAILED && !job.errorMessage.isNullOrEmpty()) {
+                                                            Text(
+                                                                text = "Error: ${job.errorMessage}",
+                                                                fontSize = 8.sp,
+                                                                color = Color(0xFFE02424),
+                                                                fontWeight = FontWeight.SemiBold
+                                                            )
+                                                        }
+                                                    }
+                                                    Spacer(Modifier.width(8.dp))
+                                                    val statusLabel = when (job.status) {
+                                                        BatchJobStatus.WAITING -> "待機中"
+                                                        BatchJobStatus.RUNNING -> "処理中"
+                                                        BatchJobStatus.COMPLETED -> "完了"
+                                                        BatchJobStatus.FAILED -> "失敗"
+                                                    }
+                                                    val statusColor = when (job.status) {
+                                                        BatchJobStatus.WAITING -> Color(0xFF8E8E93)
+                                                        BatchJobStatus.RUNNING -> Color(0xFF007AFF)
+                                                        BatchJobStatus.COMPLETED -> Color(0xFF34C759)
+                                                        BatchJobStatus.FAILED -> Color(0xFFE02424)
+                                                    }
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                    ) {
+                                                        Text(
+                                                            text = statusLabel,
+                                                            color = statusColor,
+                                                            fontSize = 8.sp,
+                                                            fontWeight = FontWeight.Bold
+                                                        )
+                                                        if (!viewModel.isBatchRunning && job.status != BatchJobStatus.RUNNING) {
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .size(16.dp)
+                                                                    .clickable { viewModel.removeFromBatchQueue(job.id) },
+                                                                contentAlignment = Alignment.Center
+                                                            ) {
+                                                                Canvas(modifier = Modifier.size(8.dp)) {
+                                                                    val strokeWidth = 1.5.dp.toPx()
+                                                                    drawLine(
+                                                                        color = Color(0xFFEF4444),
+                                                                        start = Offset(0f, 0f),
+                                                                        end = Offset(size.width, size.height),
+                                                                        strokeWidth = strokeWidth,
+                                                                        cap = androidx.compose.ui.graphics.StrokeCap.Round
+                                                                    )
+                                                                    drawLine(
+                                                                        color = Color(0xFFEF4444),
+                                                                        start = Offset(size.width, 0f),
+                                                                        end = Offset(0f, size.height),
+                                                                        strokeWidth = strokeWidth,
+                                                                        cap = androidx.compose.ui.graphics.StrokeCap.Round
+                                                                    )
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        if (viewModel.isBatchRunning) {
+                                            Column(
+                                                modifier = Modifier.fillMaxWidth().background(Color(0xFFFEF3C7)).padding(8.dp),
+                                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                Text(
+                                                    text = viewModel.batchStatusText,
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color(0xFFD97706)
+                                                )
+                                                Button(
+                                                    onClick = { isCanceled = true },
+                                                    modifier = Modifier.fillMaxWidth().height(28.dp),
+                                                    colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFE02424))
+                                                ) {
+                                                    Text("CANCEL BATCH", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                                }
+                                            }
+                                        } else {
+                                            val canStartBatch = batchQueue.any { it.status == BatchJobStatus.WAITING || it.status == BatchJobStatus.FAILED }
+                                            Button(
+                                                onClick = {
+                                                    scope.launch {
+                                                        batchQueue.forEach {
+                                                            if (it.status == BatchJobStatus.FAILED || it.status == BatchJobStatus.COMPLETED) {
+                                                                it.status = BatchJobStatus.WAITING
+                                                                it.progress = 0f
+                                                            }
+                                                        }
+                                                        runBatchJobs(
+                                                            viewModel = viewModel,
+                                                            outputDir = outputDir,
+                                                            moveOutputToSource = moveOutputToSource,
+                                                            showLivePreview = showLivePreview,
+                                                            onProgressUpdate = {}
+                                                        )
+                                                    }
+                                                },
+                                                enabled = canStartBatch,
+                                                modifier = Modifier.fillMaxWidth().height(36.dp),
+                                                colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF34C759))
+                                            ) {
+                                                Text("START BATCH ENCODE", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                        }
                     }
                 }
                 Box(
