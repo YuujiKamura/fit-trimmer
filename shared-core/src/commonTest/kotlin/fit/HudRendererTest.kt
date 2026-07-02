@@ -261,5 +261,46 @@ class HudRendererTest {
         assertTrue(canvas.drawnTexts.contains("SPEED"), "HUD should keep SPEED in English")
         assertTrue(canvas.drawnTexts.contains("ELEVATION"), "HUD should keep ELEVATION in English")
     }
+
+    @Test
+    fun testHeartRateZonesRendering() {
+        val config = HudConfig(
+            valSize = 40f, tightness = 1f, spacing = 20f,
+            xOffset = 40f, yOffset = 100f, graphH = 60f, graphW = 300f,
+            captionPosition = "bottom_center"
+        )
+        val renderer = HudRenderer(config)
+
+        val p1 = FitParser.TelemetryPoint(
+            timestamp = 1000.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 135.0, elevation = 50.0, grade = 2.0
+        )
+        val p2 = FitParser.TelemetryPoint(
+            timestamp = 1001.0, speed = 12.0, power = 110.0, cadence = 82.0, heartRate = 145.0, elevation = 52.0, grade = 2.2
+        )
+        val p3 = FitParser.TelemetryPoint(
+            timestamp = 1002.0, speed = 11.0, power = 120.0, cadence = 81.0, heartRate = 175.0, elevation = 51.0, grade = 2.1
+        )
+        val allPoints = listOf(p1, p2, p3)
+
+        val canvas = TestHudCanvas()
+        renderer.renderFrame(
+            canvas,
+            p2, // Current frame is p2
+            allPoints,
+            emptyList(),
+            1.0f,
+            isValid = true
+        )
+
+        // Check if the HEART RATE ZONES header is drawn
+        val hasHeader = canvas.drawnTexts.any { it.contains("HEART RATE ZONES") }
+        assertTrue(hasHeader, "HUD should draw HEART RATE ZONES header")
+
+        // Check if specific zone labels are present
+        assertTrue(canvas.drawnTexts.contains("130-139"), "Zone 130-139 should be drawn")
+        assertTrue(canvas.drawnTexts.contains("140-149"), "Zone 140-149 should be drawn")
+        assertTrue(canvas.drawnTexts.contains("170-179"), "Zone 170-179 should be drawn")
+        assertTrue(canvas.drawnTexts.contains("190+"), "Zone 190+ should be drawn")
+    }
 }
 
