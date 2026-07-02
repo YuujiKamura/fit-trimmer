@@ -443,10 +443,13 @@ fun FitTrimmerMainContent(
         val gibBytes = 1024.0 * 1024.0 * 1024.0
         return (sizeBytes * safetyMultiplier) / gibBytes + bufferGiB
     }
-    val sampleRequiredSpaceGB = remember(videoPath, videoLengthMs) {
+    val sampleRequiredSpaceGB = remember(videoPath, videoLengthMs, trimStartSeconds, trimEndSeconds) {
         val f = File(videoPath)
         if (f.exists() && videoLengthMs > 0) {
-            val ratio = minOf(1.0, 5.0 / (videoLengthMs / 1000.0))
+            val totalLengthSec = videoLengthMs / 1000.0
+            val trimEnd = if (trimEndSeconds <= 0.0 || trimEndSeconds > totalLengthSec) totalLengthSec else trimEndSeconds
+            val trimDuration = (trimEnd - trimStartSeconds).coerceAtLeast(0.0)
+            val ratio = minOf(1.0, trimDuration / totalLengthSec)
             estimateRequiredSpaceGiB((f.length() * ratio).toLong())
         } else {
             2.0
@@ -1222,7 +1225,7 @@ fun FitTrimmerMainContent(
                             Unit
                         }
                     }
-                    val onSampleEncodeClick = remember(settings, fitPath, videoPath, videoStartUtc, adjustedStartUtc, isVideoInFitRange, outputDir, moveOutputToSource, showLivePreview, autoDetectRoadCaptionsOnEncode, telemetryPoints, videoLengthMs, timeOffsetState.millis) {
+                    val onSampleEncodeClick = remember(settings, fitPath, videoPath, videoStartUtc, adjustedStartUtc, isVideoInFitRange, outputDir, moveOutputToSource, showLivePreview, autoDetectRoadCaptionsOnEncode, telemetryPoints, videoLengthMs, timeOffsetState.millis, trimStartSeconds, trimEndSeconds) {
                         {
                             val targetVideoPath = videoPath
                             var proceed = true
@@ -1246,12 +1249,13 @@ fun FitTrimmerMainContent(
                                     isCanceled = false
                                     try {
                                         val encodeSettings = prepareSettingsForEncode(settings)
+                                        val endSec = if (trimEndSeconds <= 0.0) videoLengthMs / 1000.0 else trimEndSeconds
                                         val samplePlan = buildEncodePlan(
                                             settings = encodeSettings,
                                             videoPath = targetVideoPath,
                                             outputDir = outputDir,
                                             moveOutputToSource = moveOutputToSource,
-                                            ranges = listOf(Pair(trimStartSeconds, trimStartSeconds + 5.0)),
+                                            ranges = listOf(Pair(trimStartSeconds, endSec)),
                                             isSample = true
                                         )
                                         val destFile = samplePlan.segments.first().finalOutputFile
@@ -1261,7 +1265,7 @@ fun FitTrimmerMainContent(
                                             videoPath = targetVideoPath,
                                             outputDir = outputDir,
                                             videoStartUtc = adjustedStartUtc,
-                                            ranges = listOf(Pair(trimStartSeconds, trimStartSeconds + 5.0)),
+                                            ranges = listOf(Pair(trimStartSeconds, endSec)),
                                             destFiles = listOf(destFile),
                                             isSample = true,
                                             shouldResume = false,
@@ -2731,7 +2735,7 @@ fun FitTrimmerMainContent(
                                                 border = BorderStroke(1.5.dp, if (isSampleEnabled) Color(0xFF007AFF) else Color(0xFFE5E5EA)),
                                                 shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
                                             ) {
-                                                Text("5秒サンプル", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                                Text("サンプル", fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                             }
                                             val isQueueEnabled = fitPath.isNotEmpty() && videoPath.isNotEmpty()
                                             OutlinedButton(
