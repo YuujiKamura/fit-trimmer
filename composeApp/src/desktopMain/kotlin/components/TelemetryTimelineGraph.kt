@@ -278,9 +278,9 @@ fun TelemetryTimelineGraph(
                                 if (vDuration > 0) {
                                     val w = size.width.toFloat()
                                     if (w > 0f) {
-                                        val xStart = (currentTrimStartSeconds / vDuration) * w
-                                        val xEnd = (currentTrimEndSeconds / vDuration) * w
-                                        val xPlayhead = (currentVideoCurrentTimeMs / 1000.0 / vDuration) * w
+                                        val xStart = if (vDuration > 0.0) ((currentTrimStartSeconds / vDuration) * w).takeIf { it.isFinite() } ?: 0.0 else 0.0
+                                        val xEnd = if (vDuration > 0.0) ((currentTrimEndSeconds / vDuration) * w).takeIf { it.isFinite() } ?: w.toDouble() else w.toDouble()
+                                        val xPlayhead = if (vDuration > 0.0) ((currentVideoCurrentTimeMs / 1000.0 / vDuration) * w).takeIf { it.isFinite() } ?: 0.0 else 0.0
                                         
                                         val threshold = 20.dp.toPx()
                                         activeDragHandle = when {
@@ -524,8 +524,10 @@ fun TelemetryTimelineGraph(
                     }
 
                     // 6. Draw Trim Boundary Excluded Overlays
-                    val xStart = ((trimStartSeconds / videoDurationSec) * w).toFloat()
-                    val xEnd = ((trimEndSeconds / videoDurationSec) * w).toFloat()
+                     val safeTrimStart = if (trimStartSeconds.isNaN() || trimStartSeconds.isInfinite()) 0.0 else trimStartSeconds
+                     val safeTrimEnd = if (trimEndSeconds.isNaN() || trimEndSeconds.isInfinite()) videoDurationSec else trimEndSeconds
+                     val xStart = if (videoDurationSec > 0.0) (((safeTrimStart / videoDurationSec) * w).toFloat().takeIf { it.isFinite() } ?: 0f) else 0f
+                     val xEnd = if (videoDurationSec > 0.0) (((safeTrimEnd / videoDurationSec) * w).toFloat().takeIf { it.isFinite() } ?: w) else w
 
                     drawRect(
                         color = Color(0x77000000),
@@ -578,7 +580,7 @@ fun TelemetryTimelineGraph(
                     // 7.5. Draw Split Points (Purple dashed lines)
                     splitPoints.forEach { splitSec ->
                         if (splitSec in trimStartSeconds..trimEndSeconds) {
-                            val xSplit = ((splitSec / videoDurationSec) * w).toFloat()
+                            val xSplit = if (videoDurationSec > 0.0) (((splitSec / videoDurationSec) * w).toFloat().takeIf { it.isFinite() } ?: 0f) else 0f
                             drawLine(
                                 color = Color(0xFFAF52DE), // System Purple
                                 start = Offset(xSplit, 0f),
@@ -595,7 +597,7 @@ fun TelemetryTimelineGraph(
                     val w = size.width
                     val h = size.height
                     if (videoDurationSec > 0 && !sampledPoints.isEmpty()) {
-                        val xPlayhead = ((videoCurrentTimeMs / 1000.0 / videoDurationSec) * w).toFloat()
+                        val xPlayhead = if (videoDurationSec > 0.0) (((videoCurrentTimeMs / 1000.0 / videoDurationSec) * w).toFloat().takeIf { it.isFinite() } ?: 0f) else 0f
                         // Draw Playhead (Blue)
                         drawLine(
                             color = Color(0xFF007AFF),
