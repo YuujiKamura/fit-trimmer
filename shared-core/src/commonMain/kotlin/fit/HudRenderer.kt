@@ -451,37 +451,103 @@ class HudRenderer(val config: HudConfig) {
                 canvas.drawRect(startPt.first - 2.5f, startPt.second - 2.5f, 5f, 5f, "#ffffff", alpha = 1.0f)
                 canvas.drawRect(endPt.first - 2.5f, endPt.second - 2.5f, 5f, 5f, "#ffffff", alpha = 1.0f)
                 
-                // Draw start and end elevation text labels
+                // 16-direction calculation
+                var startBearingStr = ""
+                for (i in 0 until drawPoints.size - 1) {
+                    val b = calculateBearing(drawPoints[i], drawPoints[i + 1])
+                    if (b != null) {
+                        startBearingStr = " (${get16Direction(b)})"
+                        break
+                    }
+                }
+                
+                var endBearingStr = ""
+                for (i in drawPoints.size - 1 downTo 1) {
+                    val b = calculateBearing(drawPoints[i - 1], drawPoints[i])
+                    if (b != null) {
+                        endBearingStr = " (${get16Direction(b)})"
+                        break
+                    }
+                }
+
+                val isJa = config.language == "ja"
+                val startLabel = if (isJa) "起点 " else "START "
+                val endLabel = if (isJa) "終点 " else "END "
+                val peakLabel = if (isJa) "最高 " else "MAX "
+                val valleyLabel = if (isJa) "最低 " else "MIN "
+
                 val startAlt = elevGraphPoints.first().elevation
                 val endAlt = elevGraphPoints.last().elevation
-                val startText = if (config.useImperialUnits) {
+                val startText = startLabel + (if (config.useImperialUnits) {
                     "${(startAlt * 3.28084).roundToInt()}ft"
                 } else {
                     "${startAlt.roundToInt()}m"
-                }
-                val endText = if (config.useImperialUnits) {
+                }) + startBearingStr
+                
+                val endText = endLabel + (if (config.useImperialUnits) {
                     "${(endAlt * 3.28084).roundToInt()}ft"
                 } else {
                     "${endAlt.roundToInt()}m"
-                }
+                }) + endBearingStr
                 
                 val graphLabelSize = 9f
                 canvas.drawText(startText, startPt.first, startPt.second - 4f, graphLabelSize, "#ffffff", bold = true, anchor = "bottom-left")
                 canvas.drawText(endText, endPt.first, endPt.second - 4f, graphLabelSize, "#ffffff", bold = true, anchor = "bottom-right")
 
-                // 8.3. Peak Elevation Marker and Label (Draw peak in the middle of the graph if not start/end)
+                // 8.3. Peak Elevation Marker and Label
                 val peakIdx = drawPoints.indexOfFirst { it.elevation == maxAlt }
                 val isPeakInMiddle = peakIdx > 0 && peakIdx < drawPoints.size - 1
                 if (isPeakInMiddle) {
                     val peakPt = pts[peakIdx]
                     canvas.drawRect(peakPt.first - 2.5f, peakPt.second - 2.5f, 5f, 5f, "#ef4444", alpha = 1.0f)
                     
-                    val peakText = if (config.useImperialUnits) {
+                    var peakBearingStr = ""
+                    val b = (calculateBearing(drawPoints[peakIdx], drawPoints[peakIdx + 1])
+                        ?: if (peakIdx > 0) calculateBearing(drawPoints[peakIdx - 1], drawPoints[peakIdx]) else null)
+                    if (b != null) {
+                        peakBearingStr = " (${get16Direction(b)})"
+                    }
+
+                    val peakText = peakLabel + (if (config.useImperialUnits) {
                         "${(maxAlt * 3.28084).roundToInt()}ft"
                     } else {
                         "${maxAlt.roundToInt()}m"
+                    }) + peakBearingStr
+                    
+                    val peakAnchor = when {
+                        peakPt.first - cx < 50f -> "bottom-left"
+                        cx + graphW - peakPt.first < 50f -> "bottom-right"
+                        else -> "bottom-center"
                     }
-                    canvas.drawText(peakText, peakPt.first, peakPt.second - 4f, graphLabelSize, "#ef4444", bold = true, anchor = "bottom-center")
+                    canvas.drawText(peakText, peakPt.first, peakPt.second - 4f, graphLabelSize, "#ffffff", bold = true, anchor = peakAnchor)
+                }
+
+                // 8.4. Valley (Lowest Elevation) Marker and Label
+                val valleyIdx = drawPoints.indexOfFirst { it.elevation == minAlt }
+                val isValleyInMiddle = valleyIdx > 0 && valleyIdx < drawPoints.size - 1
+                if (isValleyInMiddle) {
+                    val valleyPt = pts[valleyIdx]
+                    canvas.drawRect(valleyPt.first - 2.5f, valleyPt.second - 2.5f, 5f, 5f, "#3b82f6", alpha = 1.0f)
+                    
+                    var valleyBearingStr = ""
+                    val b = (calculateBearing(drawPoints[valleyIdx], drawPoints[valleyIdx + 1])
+                        ?: if (valleyIdx > 0) calculateBearing(drawPoints[valleyIdx - 1], drawPoints[valleyIdx]) else null)
+                    if (b != null) {
+                        valleyBearingStr = " (${get16Direction(b)})"
+                    }
+
+                    val valleyText = valleyLabel + (if (config.useImperialUnits) {
+                        "${(minAlt * 3.28084).roundToInt()}ft"
+                    } else {
+                        "${minAlt.roundToInt()}m"
+                    }) + valleyBearingStr
+
+                    val valleyAnchor = when {
+                        valleyPt.first - cx < 50f -> "top-left"
+                        cx + graphW - valleyPt.first < 50f -> "top-right"
+                        else -> "top-center"
+                    }
+                    canvas.drawText(valleyText, valleyPt.first, valleyPt.second + 4f, graphLabelSize, "#ffffff", bold = true, anchor = valleyAnchor)
                 }
             }
 
@@ -725,5 +791,35 @@ class HudRenderer(val config: HudConfig) {
         if (bpm < 130) return -1
         if (bpm >= 190) return 6
         return (bpm - 130) / 10
+    }
+
+    private fun calculateBearing(p1: FitParser.TelemetryPoint, p2: FitParser.TelemetryPoint): Double? {
+        if (p1.lat == 0.0 && p1.lon == 0.0) return null
+        if (p2.lat == 0.0 && p2.lon == 0.0) return null
+        val lat1 = p1.lat
+        val lon1 = p1.lon
+        val lat2 = p2.lat
+        val lon2 = p2.lon
+        if (kotlin.math.abs(lat1 - lat2) < 1e-7 && kotlin.math.abs(lon1 - lon2) < 1e-7) return null
+        
+        val phi1 = lat1 * kotlin.math.PI / 180.0
+        val phi2 = lat2 * kotlin.math.PI / 180.0
+        val deltaLambda = (lon2 - lon1) * kotlin.math.PI / 180.0
+
+        val y = kotlin.math.sin(deltaLambda) * kotlin.math.cos(phi2)
+        val x = kotlin.math.cos(phi1) * kotlin.math.sin(phi2) - kotlin.math.sin(phi1) * kotlin.math.cos(phi2) * kotlin.math.cos(deltaLambda)
+        val bearingRad = kotlin.math.atan2(y, x)
+        return (bearingRad * 180.0 / kotlin.math.PI + 360.0) % 360.0
+    }
+
+    private fun get16Direction(bearing: Double): String {
+        val directions16 = arrayOf(
+            "N", "NNE", "NE", "ENE",
+            "E", "ESE", "SE", "SSE",
+            "S", "SSW", "SW", "WSW",
+            "W", "WNW", "NW", "NNW"
+        )
+        val index = (((bearing + 11.25) / 22.5).toInt()) % 16
+        return directions16[index]
     }
 }
