@@ -1023,4 +1023,70 @@ class AppViewModelTest {
         val parsedInvalid = utils.tryParseStartUtcFromFileName(fileNameInvalid)
         assertNull(parsedInvalid)
     }
+
+    @Test
+    fun testBatchRestoreDialogScenarios() {
+        val dummyJobs = listOf(
+            utils.SerializedBatchJob(
+                id = "job-1",
+                videoPath = "video1.mp4",
+                fitPath = "fit1.fit",
+                videoStartUtc = "2026-07-02T10:00:00Z",
+                timeOffsetMillis = 0L,
+                trimStartSeconds = 10.0,
+                trimEndSeconds = 20.0,
+                splitPoints = emptyList(),
+                settings = HudSettings(),
+                autoDetectRoadCaptionsOnEncode = false,
+                outputFileNames = listOf("video1.mp4"),
+                status = "COMPLETED", // Should be ignored during restore
+                progress = 1.0f,
+                errorMessage = null
+            ),
+            utils.SerializedBatchJob(
+                id = "job-2",
+                videoPath = "video2.mp4",
+                fitPath = "fit1.fit",
+                videoStartUtc = "2026-07-02T10:00:00Z",
+                timeOffsetMillis = 0L,
+                trimStartSeconds = 30.0,
+                trimEndSeconds = 50.0,
+                splitPoints = emptyList(),
+                settings = HudSettings(),
+                autoDetectRoadCaptionsOnEncode = false,
+                outputFileNames = listOf("video2.mp4"),
+                status = "WAITING", // Unfinished, should be restored
+                progress = 0f,
+                errorMessage = null
+            )
+        )
+        utils.BatchQueueCache.save(dummyJobs)
+
+        val viewModel = AppViewModel(null)
+
+        // Verify restoration dialog is shown, and only the WAITING job is in pending list
+        assertTrue(viewModel.showBatchRestoreDialog, "Dialog must be shown when unfinished jobs exist")
+        assertEquals(1, viewModel.pendingRestorableJobs.size)
+        assertEquals("job-2", viewModel.pendingRestorableJobs[0].id)
+        assertTrue(viewModel.batchQueue.isEmpty(), "Batch queue must remain empty until explicitly restored")
+
+        // 1. Confirm restore
+        viewModel.restorePendingBatchJobs()
+        assertFalse(viewModel.showBatchRestoreDialog)
+        assertEquals(1, viewModel.batchQueue.size)
+        assertEquals("job-2", viewModel.batchQueue[0].id)
+        assertTrue(viewModel.pendingRestorableJobs.isEmpty())
+
+        // 2. Clear queue and verify discard
+        viewModel.clearBatchQueue()
+        utils.BatchQueueCache.save(dummyJobs) // Reload dummy jobs to disk cache
+        val viewModel2 = AppViewModel(null)
+        assertTrue(viewModel2.showBatchRestoreDialog)
+
+        viewModel2.discardPendingBatchJobs()
+        assertFalse(viewModel2.showBatchRestoreDialog)
+        assertTrue(viewModel2.batchQueue.isEmpty())
+        assertTrue(viewModel2.pendingRestorableJobs.isEmpty())
+        assertTrue(utils.BatchQueueCache.load().isEmpty(), "Disk cache must be cleared on discard")
+    }
 }

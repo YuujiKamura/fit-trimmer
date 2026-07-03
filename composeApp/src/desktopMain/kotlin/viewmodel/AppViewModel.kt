@@ -75,6 +75,10 @@ class AppViewModel(
     var batchStatusText by mutableStateOf("")
     var showBatchConfirmDialog by mutableStateOf(false)
 
+    // Restorable pending jobs from crash/interruption
+    val pendingRestorableJobs = mutableStateListOf<BatchJob>()
+    var showBatchRestoreDialog by mutableStateOf(false)
+
     var isDetectingRoads by mutableStateOf(false)
 
     var roadDetectionProgressText by mutableStateOf("")
@@ -1029,6 +1033,40 @@ class AppViewModel(
 
     init {
         refreshAvailableCacheJobs()
+        try {
+            val savedJobs = utils.BatchQueueCache.load()
+            val unfinished = savedJobs.filter {
+                val statusEnum = try { BatchJobStatus.valueOf(it.status) } catch(_: Exception) { BatchJobStatus.WAITING }
+                statusEnum == BatchJobStatus.WAITING || statusEnum == BatchJobStatus.FAILED || statusEnum == BatchJobStatus.RUNNING
+            }
+            if (unfinished.isNotEmpty()) {
+                val restored = unfinished.map {
+                    val statusEnum = try { BatchJobStatus.valueOf(it.status) } catch(_: Exception) { BatchJobStatus.WAITING }
+                    val finalStatus = if (statusEnum == BatchJobStatus.RUNNING) BatchJobStatus.WAITING else statusEnum
+                    BatchJob(
+                        id = it.id,
+                        videoPath = it.videoPath,
+                        fitPath = it.fitPath,
+                        videoStartUtc = it.videoStartUtc,
+                        timeOffsetMillis = it.timeOffsetMillis,
+                        trimStartSeconds = it.trimStartSeconds,
+                        trimEndSeconds = it.trimEndSeconds,
+                        splitPoints = it.splitPoints,
+                        initialSettings = it.settings,
+                        initialAutoDetectRoadCaptionsOnEncode = it.autoDetectRoadCaptionsOnEncode,
+                        initialOutputFileNames = it.outputFileNames,
+                        initialStatus = finalStatus,
+                        initialProgress = it.progress,
+                        initialErrorMessage = it.errorMessage
+                    )
+                }
+                pendingRestorableJobs.addAll(restored)
+                showBatchRestoreDialog = true
+                logBatch("Detected ${restored.size} unfinished batch jobs for restoration")
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
 
@@ -1285,6 +1323,21 @@ class AppViewModel(
             )
         }
         utils.BatchQueueCache.save(serializedJobs)
+    }
+
+    fun restorePendingBatchJobs() {
+        if (pendingRestorableJobs.isNotEmpty()) {
+            batchQueue.addAll(pendingRestorableJobs)
+            saveBatchQueue()
+            pendingRestorableJobs.clear()
+        }
+        showBatchRestoreDialog = false
+    }
+
+    fun discardPendingBatchJobs() {
+        pendingRestorableJobs.clear()
+        utils.BatchQueueCache.save(emptyList()) // Clear disk cache
+        showBatchRestoreDialog = false
     }
 
     private fun buildDateTagFromUtc(utc: String): String? {
