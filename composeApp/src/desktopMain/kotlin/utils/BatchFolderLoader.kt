@@ -26,7 +26,10 @@ object BatchFolderLoader {
             .filter { file ->
                 val ext = file.extension.lowercase()
                 val name = file.name
-                (ext == "mp4" || ext == "mov") && !name.startsWith("LRV_", ignoreCase = true)
+                (ext == "mp4" || ext == "mov") &&
+                        !name.startsWith("LRV_", ignoreCase = true) &&
+                        !name.contains("_lrv", ignoreCase = true) &&
+                        !name.contains("_KMP_HUD", ignoreCase = true)
             }
             .sortedWith(compareBy<File> { it.name }.thenBy { it.lastModified() })
         return BatchFolderCandidates(fitFile, videos)
