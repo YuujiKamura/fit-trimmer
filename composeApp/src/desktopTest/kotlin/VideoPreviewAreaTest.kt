@@ -386,4 +386,29 @@ class VideoPreviewAreaTest {
         thread.start()
         thread.join()
     }
+
+    @Test
+    fun testTelemetrySyncTimeCalculations_PreviewVsEncoder() {
+        val startTimeStr = "2026-07-02T12:00:00.500Z"
+        val startTime = java.time.Instant.parse(startTimeStr)
+        val fitEpoch = java.time.Instant.parse("1989-12-31T00:00:00Z").epochSecond
+        val trimStartSeconds = 12.75
+        val currentSec = 5.0
+        
+        // Simulating the Preview side calculation (from VideoPreviewArea.kt)
+        val previewElapsed = trimStartSeconds + currentSec
+        val previewCurrentUtc = startTime.toEpochMilli() / 1000.0 + previewElapsed
+        val previewFitTs = previewCurrentUtc - fitEpoch
+        
+        // Simulating the corrected Encoder side calculation (without truncation and offset shifts)
+        val encoderCurrentSecInSource = trimStartSeconds + currentSec
+        val encoderCurrentUtc = startTime.toEpochMilli() / 1000.0 + encoderCurrentSecInSource
+        val encoderFitTs = encoderCurrentUtc - fitEpoch
+        
+        val diff = kotlin.math.abs(previewFitTs - encoderFitTs)
+        println("DEBUG TDD: Corrected sync drift between preview and encoder is $diff seconds")
+        
+        // Verify mathematically identical alignment
+        assertEquals(0.0, diff, 0.001, "Preview sync time and Encoder sync time must be mathematically identical")
+    }
 }

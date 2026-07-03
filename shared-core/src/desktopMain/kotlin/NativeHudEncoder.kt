@@ -927,10 +927,10 @@ class NativeHudEncoder(
         val startTime = try { Instant.parse(startUtc) } catch(e: Exception) { Instant.EPOCH }
         val fitEpoch = Instant.parse("1989-12-31T00:00:00Z").epochSecond
 
-        val startTimeAdjusted = startTime.plusSeconds(actualTrimStart.toLong())
-        val videoStartFit = startTimeAdjusted.epochSecond - fitEpoch
-        val videoEndFit = (startTimeAdjusted.epochSecond + targetDurationSeconds) - fitEpoch
-        val trimmedTelemetryRaw = telemetry.filter { it.timestamp in videoStartFit.toDouble()..videoEndFit.toDouble() }
+        val startUtcSeconds = startTime.toEpochMilli() / 1000.0
+        val videoStartFit = startUtcSeconds + actualTrimStart - fitEpoch
+        val videoEndFit = startUtcSeconds + actualTrimEnd - fitEpoch
+        val trimmedTelemetryRaw = telemetry.filter { it.timestamp in videoStartFit..videoEndFit }
         val trimmedTelemetry = if (trimmedTelemetryRaw.isNotEmpty()) trimmedTelemetryRaw else telemetry
 
         val config = HudConfig(
@@ -1461,11 +1461,11 @@ class NativeHudEncoder(
                 val prefillStart = maxOf(0, resumeSeconds - settings.powerTrendSpanSeconds)
                 for (preSec in prefillStart until resumeSeconds) {
                     val preSecInSource = if (settings.speedSegments.isEmpty()) {
-                        preSec.toDouble()
+                        actualTrimStart + preSec.toDouble()
                     } else {
-                        SpeedMapper.mapTargetToSource(targetStart + preSec, settings.speedSegments) - actualTrimStart
+                        SpeedMapper.mapTargetToSource(targetStart + preSec, settings.speedSegments)
                     }
-                    val preUtc = startTimeAdjusted.plusSeconds(preSecInSource.toLong()).epochSecond
+                    val preUtc = (startTime.toEpochMilli() / 1000.0) + preSecInSource
                     val preFitTs = preUtc - fitEpoch
                     val pt = telemetry.find { it.timestamp >= preFitTs } ?: telemetry.last()
                     pBuf.add(pt.power)
@@ -1495,12 +1495,12 @@ class NativeHudEncoder(
                     val loopStart = System.currentTimeMillis()
                     val currentSec = f / fpsDouble
                     val currentSecInSource = if (settings.speedSegments.isEmpty()) {
-                        currentSec
+                        actualTrimStart + currentSec
                     } else {
-                        SpeedMapper.mapTargetToSource(targetStart + currentSec, settings.speedSegments) - actualTrimStart
+                        SpeedMapper.mapTargetToSource(targetStart + currentSec, settings.speedSegments)
                     }
-                    val currentUtcSeconds = startTimeAdjusted.epochSecond + currentSecInSource
-                    val currentFitTs = currentUtcSeconds - fitEpoch
+                    val currentUtc = (startTime.toEpochMilli() / 1000.0) + currentSecInSource
+                    val currentFitTs = currentUtc - fitEpoch
 
                     val telemetryStartNs = System.nanoTime()
                     val point = findTelemetryLerp(telemetry, currentFitTs)
@@ -1662,8 +1662,8 @@ class NativeHudEncoder(
             // Export trimmed FIT file
             if (hasTelemetry && parser != null) {
                 try {
-                    val fitStartUtcSeconds = startTimeAdjusted.epochSecond
-                    val fitEndUtcSeconds = startTimeAdjusted.epochSecond + targetDurationSeconds
+                    val fitStartUtcSeconds = (startTime.toEpochMilli() / 1000.0 + actualTrimStart).toLong()
+                    val fitEndUtcSeconds = (startTime.toEpochMilli() / 1000.0 + actualTrimEnd).toLong()
                     val trimmedFitBytes = parser.trim(fitStartUtcSeconds, fitEndUtcSeconds, cancelSupplier)
                     val trimmedFitFile = File(output.replace(Regex("""\.(mp4|mov)$""", RegexOption.IGNORE_CASE), ".fit"))
                     trimmedFitFile.writeBytes(trimmedFitBytes)
@@ -2000,9 +2000,9 @@ class NativeHudEncoder(
 
                 val startTime = try { Instant.parse(startUtc) } catch(e: Exception) { Instant.EPOCH }
                 val fitEpoch = Instant.parse("1989-12-31T00:00:00Z").epochSecond
-                val startTimeAdjusted = startTime.plusSeconds(actualTrimStart.toLong())
-                val videoStartFit = startTimeAdjusted.epochSecond - fitEpoch
-                val videoEndFit = (startTimeAdjusted.epochSecond + targetDurationSeconds) - fitEpoch
+                val startUtcSeconds = startTime.toEpochMilli() / 1000.0
+                val videoStartFit = startUtcSeconds + actualTrimStart - fitEpoch
+                val videoEndFit = startUtcSeconds + actualTrimEnd - fitEpoch
                 
                 // read telemetry
                 val hasTelemetry = fitPath.isNotEmpty() && File(fitPath).exists()
@@ -2016,7 +2016,7 @@ class NativeHudEncoder(
                         emptyList()
                     }
                 } else emptyList()
-                val trimmedTelemetryRaw = telemetry.filter { it.timestamp in videoStartFit.toDouble()..videoEndFit.toDouble() }
+                val trimmedTelemetryRaw = telemetry.filter { it.timestamp in videoStartFit..videoEndFit }
                 val trimmedTelemetry = if (trimmedTelemetryRaw.isNotEmpty()) trimmedTelemetryRaw else telemetry
 
                 val config = HudConfig(
