@@ -58,6 +58,9 @@ private const val PLAYBACK_PREVIEW_INTERVAL_MS = 250L
 const val MAX_ROAD_SNAP_DISTANCE_METERS = 15.0
 @OptIn(ExperimentalTextApi::class)
 fun main(args: Array<String>) {
+    if (args.contains("--test-e2e") || args.contains("--auto-sample") || args.contains("--no-cache")) {
+        utils.GuiCache.useTestCache = true
+    }
     Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
         DesktopLog.exception("Uncaught exception on ${thread.name}", throwable)
     }
