@@ -950,10 +950,8 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
      * Called when the player surface is resized
      * Temporarily pauses frame processing to avoid artifacts during resize
      */
-    fun onResized() {
-        if (!isInitialized || !_hasMedia) return
-        if (System.nanoTime() < suppressResizeUntilNanos.get()) return
-        if (!scope.isActive) return
+    private val resizeRunnable = Runnable {
+        if (!scope.isActive) return@Runnable
         isResizing.set(true)
         scope.launch {
             try {
@@ -968,6 +966,13 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
                 }
             }
         }
+    }
+
+    fun onResized() {
+        if (!isInitialized || !_hasMedia) return
+        if (System.nanoTime() < suppressResizeUntilNanos.get()) return
+        if (!scope.isActive) return
+        javax.swing.SwingUtilities.invokeLater(resizeRunnable)
     }
 
     /**
