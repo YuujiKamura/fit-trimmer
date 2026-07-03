@@ -77,6 +77,9 @@ class HudRenderer(val config: HudConfig) {
         currentRatio: Float,
         isValid: Boolean = true
     ) {
+        // Dynamic scale factor based on configured valSize (relative to base size 40f)
+        val sf = (config.valSize / 40.0).toFloat().coerceAtLeast(0.5f)
+
         // Draw Date & Time overlay in the top-left corner
         val timeX = 40f
         val timeY = 40f
@@ -90,7 +93,7 @@ class HudRenderer(val config: HudConfig) {
         val dtBoxH = dtTextHeight + dtPadY * 2f
         
         canvas.drawRect(timeX, timeY, dtBoxW, dtBoxH, "#000000", alpha = 0.5f)
-        canvas.drawText(dtText, timeX + dtPadX, timeY + dtPadY, dtTextSize, "#ffffff", bold = true)
+        drawShadowedText(canvas, dtText, timeX + dtPadX, timeY + dtPadY, dtTextSize, "#ffffff", bold = true, sf = sf)
 
         val allPoints = if (originalPoints.isEmpty()) listOf(telemetry) else originalPoints
         val videoPoints = if (trimmedPoints.isEmpty()) allPoints else trimmedPoints
@@ -126,17 +129,17 @@ class HudRenderer(val config: HudConfig) {
 
         fun drawCell(label: String, value: String, unit: String, color: String) {
             // 1. Label (Light grey #e5e7eb)
-            canvas.drawText(label, cx, cy, labelSize, "#e5e7eb", bold = true)
+            drawShadowedText(canvas, label, cx, cy, labelSize, "#e5e7eb", bold = true, sf = sf)
             
             // 2. Value (White #ffffff)
             val valY = cy + labelSize + tightness
-            canvas.drawText(value, cx, valY, valSize, "#ffffff", bold = true)
+            drawShadowedText(canvas, value, cx, valY, valSize, "#ffffff", bold = true, sf = sf)
             
             // 3. Unit (Color specified)
             val valW = canvas.getTextWidth(value, valSize, true)
             val unitX = cx + valW + 8f
             val unitY = valY + (valSize - unitSize)
-            canvas.drawText(unit, unitX, unitY, unitSize, color, bold = true)
+            drawShadowedText(canvas, unit, unitX, unitY, unitSize, color, bold = true, sf = sf)
             
             // Increment cy for the next cell
             cy += labelSize + tightness + valSize + itemSpacing
@@ -161,13 +164,13 @@ class HudRenderer(val config: HudConfig) {
             val hrStr = if (isValid) telemetry.heartRate.roundToInt().toString() else "-"
             
             // 3.1. Draw standard HEART RATE label and value
-            canvas.drawText(getLabel("HEART RATE"), cx, cy, labelSize, "#e5e7eb", bold = true)
+            drawShadowedText(canvas, getLabel("HEART RATE"), cx, cy, labelSize, "#e5e7eb", bold = true, sf = sf)
             val valY = cy + labelSize + tightness
-            canvas.drawText(hrStr, cx, valY, valSize, "#ffffff", bold = true)
+            drawShadowedText(canvas, hrStr, cx, valY, valSize, "#ffffff", bold = true, sf = sf)
             val valW = canvas.getTextWidth(hrStr, valSize, true)
             val unitX = cx + valW + 8f
             val unitY = valY + (valSize - unitSize)
-            canvas.drawText("bpm", unitX, unitY, unitSize, "#ffffff", bold = true)
+            drawShadowedText(canvas, "bpm", unitX, unitY, unitSize, "#ffffff", bold = true, sf = sf)
             
             // 3.2. Draw Zone accumulation bar and text immediately below the value
             val subCy = valY + valSize + 6f
@@ -191,7 +194,7 @@ class HudRenderer(val config: HudConfig) {
                     
                     // Draw text: e.g. "ZONE 170-179: 12:34"
                     val zoneText = "ZONE $zoneLabel: $minSecText"
-                    canvas.drawText(zoneText, cx, subCy, 12f, "#ffffff", bold = true)
+                    drawShadowedText(canvas, zoneText, cx, subCy, 12f, "#ffffff", bold = true, sf = sf)
                     
                     // Draw 1 single bar representing current zone accumulation progress relative to total zone time
                     val barY = subCy + 15f
@@ -210,12 +213,12 @@ class HudRenderer(val config: HudConfig) {
                         canvas.drawRect(cx, barY, progressW, barH, "#ef4444", alpha = 1.0f)
                     }
                 } else {
-                    canvas.drawText("ZONE -: --:--", cx, subCy, 12f, "#9ca3af", bold = true)
+                    drawShadowedText(canvas, "ZONE -: --:--", cx, subCy, 12f, "#9ca3af", bold = true, sf = sf)
                     val barY = subCy + 15f
                     canvas.drawRect(cx, barY, 120f, 6f, "#e5e7eb", alpha = 0.15f)
                 }
             } else {
-                canvas.drawText("ZONE -: --:--", cx, subCy, 12f, "#9ca3af", bold = true)
+                drawShadowedText(canvas, "ZONE -: --:--", cx, subCy, 12f, "#9ca3af", bold = true, sf = sf)
                 val barY = subCy + 15f
                 canvas.drawRect(cx, barY, 120f, 6f, "#e5e7eb", alpha = 0.15f)
             }
@@ -247,7 +250,7 @@ class HudRenderer(val config: HudConfig) {
             } else {
                 "${config.powerTrendSpanSeconds}s"
             }
-            canvas.drawText("${getLabel("POWER TREND")} ($spanText, 1s)", cx, cy, labelSize, "#e5e7eb", bold = true)
+            drawShadowedText(canvas, "${getLabel("POWER TREND")} ($spanText, 1s)", cx, cy, labelSize, "#e5e7eb", bold = true, sf = sf)
             val pGy = cy + labelSize + 4f
             
             if (isValid && pBuf.isNotEmpty()) {
@@ -295,7 +298,7 @@ class HudRenderer(val config: HudConfig) {
                     // Centered time label (e.g., -1m, -10s)
                     val label = if (t >= 60) "-${t / 60}m" else "-${t}s"
                     val labelW = canvas.getTextWidth(label, tickLabelSize, false)
-                    canvas.drawText(label, tickX - labelW / 2f, pGy + graphH + 2f, tickLabelSize, "#9ca3af")
+                    drawShadowedText(canvas, label, tickX - labelW / 2f, pGy + graphH + 2f, tickLabelSize, "#9ca3af", sf = sf)
                 }
                 t += tickIntervalSeconds
             }
@@ -311,7 +314,7 @@ class HudRenderer(val config: HudConfig) {
 
         // 8. ELEVATION (Line graph with terrain and pin)
         if (config.showElevation) {
-            canvas.drawText(getLabel("ELEVATION"), cx, cy, labelSize, "#e5e7eb", bold = true)
+            drawShadowedText(canvas, getLabel("ELEVATION"), cx, cy, labelSize, "#e5e7eb", bold = true, sf = sf)
             val eGy = cy + labelSize + 4f + 16f
             
             if (elevGraphPoints.size > 1) {
@@ -491,8 +494,8 @@ class HudRenderer(val config: HudConfig) {
                 }) + endBearingStr
                 
                 val graphLabelSize = 9f
-                canvas.drawText(startText, startPt.first, startPt.second - 4f, graphLabelSize, "#ffffff", bold = true, anchor = "bottom-left")
-                canvas.drawText(endText, endPt.first, endPt.second - 4f, graphLabelSize, "#ffffff", bold = true, anchor = "bottom-right")
+                drawShadowedText(canvas, startText, startPt.first, startPt.second - 4f, graphLabelSize, "#ffffff", bold = true, anchor = "bottom-left", sf = sf)
+                drawShadowedText(canvas, endText, endPt.first, endPt.second - 4f, graphLabelSize, "#ffffff", bold = true, anchor = "bottom-right", sf = sf)
 
                 // 8.3. Peak Elevation Marker and Label
                 val peakIdx = drawPoints.indexOfFirst { it.elevation == maxAlt }
@@ -522,7 +525,7 @@ class HudRenderer(val config: HudConfig) {
                         cx + graphW - peakPt.first < 50f -> "bottom-right"
                         else -> "bottom-center"
                     }
-                    canvas.drawText(peakText, peakPt.first, peakPt.second - 4f, graphLabelSize, "#ffffff", bold = true, anchor = peakAnchor)
+                    drawShadowedText(canvas, peakText, peakPt.first, peakPt.second - 4f, graphLabelSize, "#ffffff", bold = true, anchor = peakAnchor, sf = sf)
                 }
 
                 // 8.4. Valley (Lowest Elevation) Marker and Label
@@ -553,12 +556,12 @@ class HudRenderer(val config: HudConfig) {
                         cx + graphW - valleyPt.first < 50f -> "top-right"
                         else -> "top-center"
                     }
-                    canvas.drawText(valleyText, valleyPt.first, valleyPt.second + 4f, graphLabelSize, "#ffffff", bold = true, anchor = valleyAnchor)
+                    drawShadowedText(canvas, valleyText, valleyPt.first, valleyPt.second + 4f, graphLabelSize, "#ffffff", bold = true, anchor = valleyAnchor, sf = sf)
                 }
             }
 
             // 8.4.5. Mini Route Map in top-right
-            drawMiniMap(canvas, videoPoints, telemetry, isValid)
+            drawMiniMap(canvas, videoPoints, telemetry, isValid, sf)
 
             // 8.5. Real-time Distance & Elapsed Time below Elevation Graph
             if (config.showDistanceTime && isValid && allPoints.isNotEmpty()) {
@@ -605,7 +608,7 @@ class HudRenderer(val config: HudConfig) {
                     "Distance: $videoDistText   Time: $videoTimeText"
                 }
                 
-                canvas.drawText(line, cx, eGy + graphH + 16f, infoSize, "#ffffff", bold = true)
+                drawShadowedText(canvas, line, cx, eGy + graphH + 16f, infoSize, "#ffffff", bold = true, sf = sf)
                 cy = eGy + graphH + 16f + infoSize + itemSpacing
             } else {
                 cy = eGy + graphH + itemSpacing
@@ -656,7 +659,7 @@ class HudRenderer(val config: HudConfig) {
                     "Distance: $videoDistText   Time: $videoTimeText"
                 }
                 
-                canvas.drawText(line, cx, cy, infoSize, "#ffffff", bold = true)
+                drawShadowedText(canvas, line, cx, cy, infoSize, "#ffffff", bold = true, sf = sf)
                 cy += infoSize + itemSpacing
             }
         }
@@ -689,7 +692,7 @@ class HudRenderer(val config: HudConfig) {
             }
             
             canvas.drawRect(boxX, boxY, boxW, boxH, "#000000", alpha = 0.65f)
-            canvas.drawText(capText, boxX + boxW / 2f, boxY + padY + capHeight / 2f, capSize, "#ffffff", bold = true, anchor = "center")
+            drawShadowedText(canvas, capText, boxX + boxW / 2f, boxY + padY + capHeight / 2f, capSize, "#ffffff", bold = true, anchor = "center", sf = sf)
         }
 
         // Draw Custom Caption overlays
@@ -716,14 +719,16 @@ class HudRenderer(val config: HudConfig) {
                 val boxY = y - boxH / 2f
                 
                 canvas.drawRect(boxX, boxY, boxW, boxH, segment.backgroundColor, alpha = segment.backgroundAlpha)
-                canvas.drawText(
+                drawShadowedText(
+                    canvas,
                     capText, 
                     boxX + boxW / 2f, 
                     boxY + padY + capHeight / 2f, 
                     capSize, 
                     segment.textColor, 
                     bold = true, 
-                    anchor = "center"
+                    anchor = "center",
+                    sf = sf
                 )
             }
         }
@@ -836,17 +841,15 @@ class HudRenderer(val config: HudConfig) {
         canvas: HudCanvas,
         videoPoints: List<FitParser.TelemetryPoint>,
         telemetry: FitParser.TelemetryPoint,
-        isValid: Boolean
+        isValid: Boolean,
+        sf: Float
     ) {
         // Filter out invalid GPS coordinates (0.0, 0.0)
         val validRoutePoints = videoPoints.filter { it.lat != 0.0 || it.lon != 0.0 }
         if (validRoutePoints.size < 2) return
 
-        // Dynamic scale factor based on configured valSize (relative to base size 40f)
-        val sf = (config.valSize / 40.0).toFloat().coerceAtLeast(0.5f)
-
         // 1. Layout parameters (Scaled & Enlarged for high fidelity)
-        val R = 75f * sf // 円の半径 (R) - コンパクト化 (直径150px相当)
+        val R = 68f * sf // 円の半径 (R) - コンパクト化 (直径136px相当、外側に文字スペースを確保)
         val marginX = 45f * sf
         val marginY = 40f * sf
         val mcx = canvas.width - marginX - R // 円の中心 X
@@ -876,7 +879,7 @@ class HudRenderer(val config: HudConfig) {
         val L = kotlin.math.sqrt(dx * dx + dy * dy)
         
         // Target path length on the map is 2 * padR to leave padding inside circle
-        val padR = R - 28f * sf // Increased safety margin (28f) for NESW spacing
+        val padR = R - 10f * sf // Compass texts are now outside, so route can utilize more circle space safely
 
         // Heading angle (Start to End) in degrees for compass rotation
         val pathBearing = calculateBearing(startPt, endPt) ?: 0.0
@@ -971,8 +974,8 @@ class HudRenderer(val config: HudConfig) {
         val startDistText = "0.0"
         val distTextSize = 10.5f * sf
         
-        canvas.drawText(startDistText, startMapPt.first, startMapPt.second + 4f * sf, distTextSize, "#ffffff", bold = true, anchor = "top-center")
-        canvas.drawText(totalDistText, endMapPt.first, endMapPt.second - (distTextSize + 4f * sf), distTextSize, "#ffffff", bold = true, anchor = "bottom-center")
+        drawShadowedText(canvas, startDistText, startMapPt.first, startMapPt.second + 4f * sf, distTextSize, "#ffffff", bold = true, anchor = "top-center", sf = sf)
+        drawShadowedText(canvas, totalDistText, endMapPt.first, endMapPt.second - (distTextSize + 4f * sf), distTextSize, "#ffffff", bold = true, anchor = "bottom-center", sf = sf)
 
         // 6. Draw Current Location Pin (Scaled pin size)
         if (isValid && telemetry.lat != 0.0 && telemetry.lon != 0.0) {
@@ -996,14 +999,31 @@ class HudRenderer(val config: HudConfig) {
             "W" to (angleN + 270.0)
         )
         
-        val compR = R - 16f * sf // circle inner radius to align nicely (16f offset from outer border)
-        val compassTextSize = 10.5f * sf
+        val compR = R + 10f * sf // Position compass labels strictly OUTSIDE the circle boundary (R + 10f)
+        val compassTextSize = 10f * sf
         for ((label, angleDeg) in compassPoints) {
             val angleRad = angleDeg * kotlin.math.PI / 180.0
             val tx = mcx + compR * kotlin.math.cos(angleRad).toFloat()
             val ty = mcy + compR * kotlin.math.sin(angleRad).toFloat()
-            canvas.drawText(label, tx, ty, compassTextSize, "#ffffff", bold = true, anchor = "center")
+            drawShadowedText(canvas, label, tx, ty, compassTextSize, "#ffffff", bold = true, anchor = "center", sf = sf)
         }
+    }
+
+    private fun drawShadowedText(
+        canvas: HudCanvas,
+        text: String,
+        x: Float,
+        y: Float,
+        size: Float,
+        color: String,
+        bold: Boolean = false,
+        anchor: String = "left-center",
+        sf: Float
+    ) {
+        val shadowOffset = 1.2f * sf
+        val shadowColor = "#111827" // Dark gray shadow
+        canvas.drawText(text, x + shadowOffset, y + shadowOffset, size, shadowColor, bold = true, anchor = anchor)
+        canvas.drawText(text, x, y, size, color, bold = bold, anchor = anchor)
     }
 }
 // Hotreload forced trigger
