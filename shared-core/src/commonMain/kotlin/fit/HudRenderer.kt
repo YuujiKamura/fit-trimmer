@@ -154,10 +154,10 @@ class HudRenderer(val config: HudConfig) {
                 val zoneTimeText = formatMinSec(currentSec)
                 
                 canvas.drawText("ZONE $zoneLabel", cx + 180f, hrCy, labelSize, "#e5e7eb", bold = true)
-                canvas.drawText(zoneTimeText, cx + 180f, hrCy + labelSize + tightness, valSize, "#ef4444", bold = true)
+                canvas.drawText(zoneTimeText, cx + 180f, hrCy + labelSize + tightness, 20f, "#ffffff", bold = true)
             } else {
                 canvas.drawText("ZONE -", cx + 180f, hrCy, labelSize, "#e5e7eb", bold = true)
-                canvas.drawText("--:--", cx + 180f, hrCy + labelSize + tightness, valSize, "#9ca3af", bold = true)
+                canvas.drawText("--:--", cx + 180f, hrCy + labelSize + tightness, 20f, "#9ca3af", bold = true)
             }
         }
 
