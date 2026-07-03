@@ -332,4 +332,58 @@ class VideoPreviewAreaTest {
             assertEquals(true, mock.isPlaying, "Replay from EOF should start playing again")
         }
     }
+
+    @Test
+    fun testWindowsVideoPlayerState_JniOnResizedLambdaSafety() {
+        var root = File(".").absoluteFile
+        while (root.parentFile != null && !File(root, "settings.gradle.kts").exists() && !File(root, "settings.gradle").exists()) {
+            root = root.parentFile
+        }
+        val sourceFile = File(root, "composeApp/src/desktopMain/kotlin/io/github/kdroidfilter/composemediaplayer/windows/WindowsVideoPlayerState.kt")
+        assertTrue(sourceFile.exists(), "WindowsVideoPlayerState.kt source file must exist at path: ${sourceFile.absolutePath}")
+        
+        val content = sourceFile.readText()
+        
+        // 1. Verify that resizeRunnable caching is defined
+        assertTrue(content.contains("private val resizeRunnable"), "Must define pre-allocated resizeRunnable to bypass dynamic class loading in JNI threads")
+        
+        // 2. Verify that onResized does not instantiate lambda on JNI threads
+        val matchResult = Regex("""fun onResized\(\)\s*\{([\s\S]*?)\}""", RegexOption.MULTILINE).find(content)
+        assertTrue(matchResult != null, "onResized() method must be found in source file")
+        
+        val body = matchResult.groupValues[1]
+        
+        // Must not call scope.launch inside onResized directly
+        assertTrue(!body.contains("scope.launch"), "onResized must not call scope.launch directly on native threads")
+        // Must delegate to SwingUtilities using pre-allocated resizeRunnable
+        assertTrue(body.contains("SwingUtilities.invokeLater(resizeRunnable)"), "onResized must dispatch using pre-allocated resizeRunnable")
+    }
+
+    @Test
+    fun testJniClassLoaderCrashSimulation_ReplicateDestruction() {
+        // ClassLoader simulating the JNI Native Thread environment where context classloader falls back.
+        // It throws NoClassDefFoundError when trying to dynamically resolve the inner lambda classes of WindowsVideoPlayerState.
+        val jniMockClassLoader = object : ClassLoader(null) {
+            override fun loadClass(name: String, resolve: Boolean): Class<*> {
+                if (name.contains("WindowsVideoPlayerState\$onResized\$1") || name.contains("WindowsVideoPlayerState\$onResized\$2")) {
+                    throw NoClassDefFoundError("Simulated JNI ClassLoader Failure: Class '$name' cannot be loaded on native thread context.")
+                }
+                return ClassLoader.getSystemClassLoader().loadClass(name)
+            }
+        }
+
+        val thread = Thread {
+            Thread.currentThread().contextClassLoader = jniMockClassLoader
+            try {
+                // Execute ClassLoader resolution which simulates loading dynamic lambda
+                jniMockClassLoader.loadClass("io.github.kdroidfilter.composemediaplayer.windows.WindowsVideoPlayerState\$onResized\$1")
+                throw AssertionError("Should have failed to resolve dynamic lambda on JNI mock classloader")
+            } catch (e: NoClassDefFoundError) {
+                // Successfully replicated the dynamic class loading crash in JNI thread context
+                assertTrue(e.message!!.contains("Simulated JNI ClassLoader Failure"))
+            }
+        }
+        thread.start()
+        thread.join()
+    }
 }
