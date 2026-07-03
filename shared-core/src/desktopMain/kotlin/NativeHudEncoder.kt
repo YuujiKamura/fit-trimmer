@@ -175,7 +175,7 @@ fun findFfmpegPath(): String {
                             var entry = zip.nextEntry
                             var len = -1L
                             while (entry != null) {
-                                if (entry.name == "ffmpeg.exe" || entry.name == "ffmpeg") {
+                                if (entry.name.endsWith("ffmpeg.exe") || entry.name.endsWith("ffmpeg")) {
                                     len = entry.size
                                     break
                                 }
@@ -207,7 +207,7 @@ fun findFfmpegPath(): String {
                         java.util.zip.ZipInputStream(stream).use { zipStream ->
                             var entry = zipStream.nextEntry
                             while (entry != null) {
-                                if (entry.name == "ffmpeg.exe" || entry.name == "ffmpeg") {
+                                if (entry.name.endsWith("ffmpeg.exe") || entry.name.endsWith("ffmpeg")) {
                                     FileOutputStream(destFile).use { output ->
                                         zipStream.copyTo(output)
                                     }
