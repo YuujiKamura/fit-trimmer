@@ -3,6 +3,7 @@ package components
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
@@ -69,7 +70,9 @@ fun TelemetryTimelineGraph(
     isDetectingPlates: Boolean = false,
     plateCache: fit.VideoPlatesCache? = null,
     blurLicensePlates: Boolean = false,
-    language: String = "ja"
+    language: String = "ja",
+    isFolded: Boolean = false,
+    onFoldToggle: (Boolean) -> Unit = {}
 ) {
     val textMeasurer = rememberTextMeasurer()
     val videoDurationSec = videoLengthMs / 1000.0
@@ -195,48 +198,65 @@ fun TelemetryTimelineGraph(
         modifier = modifier.fillMaxWidth()
     ) {
         Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            modifier = Modifier.padding(if (isFolded) PaddingValues(horizontal = 12.dp, vertical = 6.dp) else PaddingValues(12.dp)),
+            verticalArrangement = Arrangement.spacedBy(if (isFolded) 4.dp else 8.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    "TELEMETRY TIMELINE & VIDEO TRIMMER",
-                    color = Color(0xFF1C1C1E),
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 11.sp,
-                    letterSpacing = 0.5.sp
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        "TELEMETRY TIMELINE & VIDEO TRIMMER",
+                        color = Color(0xFF1C1C1E),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.sp,
+                        letterSpacing = 0.5.sp
+                    )
+                    val toggleLabel = if (isFolded) "▼ ${utils.Localizer.get("expand_timeline", language)}" else "▲ ${utils.Localizer.get("fold_timeline", language)}"
+                    Text(
+                        text = toggleLabel,
+                        color = Color(0xFF007AFF),
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 10.sp,
+                        modifier = Modifier
+                            .clickable { onFoldToggle(!isFolded) }
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
                 
-                // Color legend
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(8.dp).background(Color(0xFFFF9500), RoundedCornerShape(2.dp)))
-                        Spacer(Modifier.width(4.dp))
-                        Text("Power", color = Color(0xFF636366), fontSize = 9.sp)
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(8.dp).background(Color(0xFF007AFF), RoundedCornerShape(2.dp)))
-                        Spacer(Modifier.width(4.dp))
-                        Text("Speed", color = Color(0xFF636366), fontSize = 9.sp)
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(8.dp).background(Color(0xFF34C759), RoundedCornerShape(2.dp)))
-                        Spacer(Modifier.width(4.dp))
-                        Text("Elevation", color = Color(0xFF636366), fontSize = 9.sp)
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(8.dp).background(Color(0xFFFF3B30).copy(alpha = 0.2f), RoundedCornerShape(2.dp)))
-                        Spacer(Modifier.width(4.dp))
-                        Text("Stopped (停車)", color = Color(0xFFFF3B30), fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(8.dp).background(Color(0xFF5856D6), RoundedCornerShape(2.dp)))
-                        Spacer(Modifier.width(4.dp))
-                        Text(utils.Localizer.get("plate_legend", language), color = Color(0xFF636366), fontSize = 9.sp)
+                if (!isFolded) {
+                    // Color legend
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.size(8.dp).background(Color(0xFFFF9500), RoundedCornerShape(2.dp)))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Power", color = Color(0xFF636366), fontSize = 9.sp)
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.size(8.dp).background(Color(0xFF007AFF), RoundedCornerShape(2.dp)))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Speed", color = Color(0xFF636366), fontSize = 9.sp)
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.size(8.dp).background(Color(0xFF34C759), RoundedCornerShape(2.dp)))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Elevation", color = Color(0xFF636366), fontSize = 9.sp)
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.size(8.dp).background(Color(0xFFFF3B30).copy(alpha = 0.2f), RoundedCornerShape(2.dp)))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Stopped (停車)", color = Color(0xFFFF3B30), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.size(8.dp).background(Color(0xFF5856D6), RoundedCornerShape(2.dp)))
+                            Spacer(Modifier.width(4.dp))
+                            Text(utils.Localizer.get("plate_legend", language), color = Color(0xFF636366), fontSize = 9.sp)
+                        }
                     }
                 }
             }
@@ -244,7 +264,7 @@ fun TelemetryTimelineGraph(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(130.dp)
+                    .height(if (isFolded) 28.dp else 130.dp)
                     .clip(RoundedCornerShape(6.dp))
                     .alpha(if (isEncoding || isDetectingPlates) 0.6f else 1f)
                     .background(if (isEncoding || isDetectingPlates) Color(0xFFE5E5EA).copy(alpha = 0.5f) else Color(0xFFF2F2F7))
@@ -337,168 +357,170 @@ fun TelemetryTimelineGraph(
                     }
 
                     // 1. Draw Grid Lines
-                    val numHorizGrids = 4
-                    for (i in 1 until numHorizGrids) {
-                        val gridY = (i.toFloat() / numHorizGrids.toFloat()) * h
-                        drawLine(
-                            color = Color(0xFFE5E5EA),
-                            start = Offset(0f, gridY),
-                            end = Offset(w, gridY),
-                            strokeWidth = 1f
-                        )
-                    }
-                    
-                    // Draw Time Grid Ticks (every 10% of duration)
-                    val ticks = 10
-                    for (i in 0..ticks) {
-                        val ratio = i.toFloat() / ticks.toFloat()
-                        val tickX = ratio * w
-                        drawLine(
-                            color = Color(0xFFE5E5EA),
-                            start = Offset(tickX, 0f),
-                            end = Offset(tickX, h),
-                            strokeWidth = 1f
-                        )
-                        // Label
-                        val tickSec = ratio * videoDurationSec
-                        val labelStr = formatTime((tickSec * 1000).toLong()).substring(0, 5) // mm:ss
-                        val labelLayout = textMeasurer.measure(
-                            text = labelStr,
-                            style = TextStyle(color = Color(0xFF8E8E93), fontSize = 8.sp)
-                        )
-                        drawText(
-                            textLayoutResult = labelLayout,
-                            topLeft = Offset(
-                                x = (tickX - labelLayout.size.width / 2f).coerceIn(4f, w - labelLayout.size.width - 4f),
-                                y = h - labelLayout.size.height - 2f
+                    if (!isFolded) {
+                        val numHorizGrids = 4
+                        for (i in 1 until numHorizGrids) {
+                            val gridY = (i.toFloat() / numHorizGrids.toFloat()) * h
+                            drawLine(
+                                color = Color(0xFFE5E5EA),
+                                start = Offset(0f, gridY),
+                                end = Offset(w, gridY),
+                                strokeWidth = 1f
                             )
-                        )
-                    }
+                        }
+                        
+                        // Draw Time Grid Ticks (every 10% of duration)
+                        val ticks = 10
+                        for (i in 0..ticks) {
+                            val ratio = i.toFloat() / ticks.toFloat()
+                            val tickX = ratio * w
+                            drawLine(
+                                color = Color(0xFFE5E5EA),
+                                start = Offset(tickX, 0f),
+                                end = Offset(tickX, h),
+                                strokeWidth = 1f
+                            )
+                            // Label
+                            val tickSec = ratio * videoDurationSec
+                            val labelStr = formatTime((tickSec * 1000).toLong()).substring(0, 5) // mm:ss
+                            val labelLayout = textMeasurer.measure(
+                                text = labelStr,
+                                style = TextStyle(color = Color(0xFF8E8E93), fontSize = 8.sp)
+                            )
+                            drawText(
+                                textLayoutResult = labelLayout,
+                                topLeft = Offset(
+                                    x = (tickX - labelLayout.size.width / 2f).coerceIn(4f, w - labelLayout.size.width - 4f),
+                                    y = h - labelLayout.size.height - 2f
+                                )
+                            )
+                        }
 
-                    // 2. Draw Stopped (停車した位置) Highlight Regions
-                    for (seg in stoppedSegments) {
-                        val xS = seg.first * w
-                        val xE = seg.second * w
-                        drawRect(
-                            color = Color(0x1FEE2C38), // Soft warning red
-                            topLeft = Offset(xS, 0f),
-                            size = Size(xE - xS, h)
-                        )
-                    }
-
-                    // Draw license-plate detection distribution. This is intentionally
-                    // independent from telemetry validity so privacy scan coverage is visible.
-                    val plateRecords = plateCache?.records ?: emptyList()
-                    if (blurLicensePlates && plateRecords.isNotEmpty()) {
-                        val markerColor = Color(0xFF5856D6)
-                        val bandTop = 4.dp.toPx()
-                        val bandHeight = 12.dp.toPx()
-                        plateRecords.forEach { record ->
-                            val x = if (videoDurationSec > 0.0 && !videoDurationSec.isNaN()) {
-                                ((record.timeMs / 1000.0 / videoDurationSec) * w).toFloat().coerceIn(0f, w)
-                            } else 0f
-                            val markerWidth = if (record.boxes.size > 1) 3.dp.toPx() else 2.dp.toPx()
+                        // 2. Draw Stopped (停車した位置) Highlight Regions
+                        for (seg in stoppedSegments) {
+                            val xS = seg.first * w
+                            val xE = seg.second * w
                             drawRect(
-                                color = markerColor.copy(alpha = 0.75f),
-                                topLeft = Offset(x - markerWidth / 2f, bandTop),
-                                size = Size(markerWidth, bandHeight)
+                                color = Color(0x1FEE2C38), // Soft warning red
+                                topLeft = Offset(xS, 0f),
+                                size = Size(xE - xS, h)
                             )
                         }
-                    }
 
-                    // 3. Draw Elevation Area Chart (background, bottom 40% height)
-                    val elevPath = Path()
-                    var startedElev = false
-                    var pathCreatedElev = false
-                    val maxE = limits.maxElev
-                    val minE = limits.minElev
-                    val diffE = maxOf(0.1, maxE - minE)
-                    
-                    for (i in sampledPoints.indices) {
-                        val pt = sampledPoints[i]
-                        val x = (i.toFloat() / (sampledPoints.size - 1).toFloat()) * w
-                        if (pt.isValid) {
-                            val ratio = (pt.elevation - minE) / diffE
-                            val y = h - (ratio.toFloat() * (h * 0.4f)) // bottom 40% height scale
-                            if (!startedElev) {
-                                elevPath.moveTo(x, h)
-                                elevPath.lineTo(x, y)
-                                startedElev = true
-                                pathCreatedElev = true
-                            } else {
-                                elevPath.lineTo(x, y)
-                            }
-                        } else {
-                            if (startedElev) {
-                                elevPath.lineTo(x, h)
-                                startedElev = false
+                        // Draw license-plate detection distribution. This is intentionally
+                        // independent from telemetry validity so privacy scan coverage is visible.
+                        val plateRecords = plateCache?.records ?: emptyList()
+                        if (blurLicensePlates && plateRecords.isNotEmpty()) {
+                            val markerColor = Color(0xFF5856D6)
+                            val bandTop = 4.dp.toPx()
+                            val bandHeight = 12.dp.toPx()
+                            plateRecords.forEach { record ->
+                                val x = if (videoDurationSec > 0.0 && !videoDurationSec.isNaN()) {
+                                    ((record.timeMs / 1000.0 / videoDurationSec) * w).toFloat().coerceIn(0f, w)
+                                } else 0f
+                                val markerWidth = if (record.boxes.size > 1) 3.dp.toPx() else 2.dp.toPx()
+                                drawRect(
+                                    color = markerColor.copy(alpha = 0.75f),
+                                    topLeft = Offset(x - markerWidth / 2f, bandTop),
+                                    size = Size(markerWidth, bandHeight)
+                                )
                             }
                         }
-                    }
-                    if (startedElev) {
-                        elevPath.lineTo(w, h)
-                    }
-                    if (pathCreatedElev) {
-                        elevPath.close()
-                        drawPath(elevPath, Color(0x3334C759)) // light green fill
-                    }
 
-                    // 4. Draw Power Line
-                    val powerPath = Path()
-                    var startedPower = false
-                    var pathCreatedPower = false
-                    val maxP = limits.maxPower
-                    for (i in sampledPoints.indices) {
-                        val pt = sampledPoints[i]
-                        val x = (i.toFloat() / (sampledPoints.size - 1).toFloat()) * w
-                        if (pt.isValid) {
-                            val y = h - ((pt.power / maxP).toFloat() * h).coerceIn(0f, h)
-                            if (!startedPower) {
-                                powerPath.moveTo(x, y)
-                                startedPower = true
-                                pathCreatedPower = true
+                        // 3. Draw Elevation Area Chart (background, bottom 40% height)
+                        val elevPath = Path()
+                        var startedElev = false
+                        var pathCreatedElev = false
+                        val maxE = limits.maxElev
+                        val minE = limits.minElev
+                        val diffE = maxOf(0.1, maxE - minE)
+                        
+                        for (i in sampledPoints.indices) {
+                            val pt = sampledPoints[i]
+                            val x = (i.toFloat() / (sampledPoints.size - 1).toFloat()) * w
+                            if (pt.isValid) {
+                                val ratio = (pt.elevation - minE) / diffE
+                                val y = h - (ratio.toFloat() * (h * 0.4f)) // bottom 40% height scale
+                                if (!startedElev) {
+                                    elevPath.moveTo(x, h)
+                                    elevPath.lineTo(x, y)
+                                    startedElev = true
+                                    pathCreatedElev = true
+                                } else {
+                                    elevPath.lineTo(x, y)
+                                }
                             } else {
-                                powerPath.lineTo(x, y)
+                                if (startedElev) {
+                                    elevPath.lineTo(x, h)
+                                    startedElev = false
+                                }
                             }
-                        } else {
-                            startedPower = false
                         }
-                    }
-                    if (pathCreatedPower) {
-                        drawPath(
-                            path = powerPath,
-                            color = Color(0xFFFF9500), // Orange
-                            style = Stroke(width = 2.dp.toPx())
-                        )
-                    }
+                        if (startedElev) {
+                            elevPath.lineTo(w, h)
+                        }
+                        if (pathCreatedElev) {
+                            elevPath.close()
+                            drawPath(elevPath, Color(0x3334C759)) // light green fill
+                        }
 
-                    // 5. Draw Speed Line
-                    val speedPath = Path()
-                    var startedSpeed = false
-                    var pathCreatedSpeed = false
-                    val maxS = limits.maxSpeed
-                    for (i in sampledPoints.indices) {
-                        val pt = sampledPoints[i]
-                        val x = (i.toFloat() / (sampledPoints.size - 1).toFloat()) * w
-                        if (pt.isValid) {
-                            val y = h - ((pt.speed / maxS).toFloat() * h).coerceIn(0f, h)
-                            if (!startedSpeed) {
-                                speedPath.moveTo(x, y)
-                                startedSpeed = true
-                                pathCreatedSpeed = true
+                        // 4. Draw Power Line
+                        val powerPath = Path()
+                        var startedPower = false
+                        var pathCreatedPower = false
+                        val maxP = limits.maxPower
+                        for (i in sampledPoints.indices) {
+                            val pt = sampledPoints[i]
+                            val x = (i.toFloat() / (sampledPoints.size - 1).toFloat()) * w
+                            if (pt.isValid) {
+                                val y = h - ((pt.power / maxP).toFloat() * h).coerceIn(0f, h)
+                                if (!startedPower) {
+                                    powerPath.moveTo(x, y)
+                                    startedPower = true
+                                    pathCreatedPower = true
+                                } else {
+                                    powerPath.lineTo(x, y)
+                                }
                             } else {
-                                speedPath.lineTo(x, y)
+                                startedPower = false
                             }
-                        } else {
-                            startedSpeed = false
                         }
-                    }
-                    if (pathCreatedSpeed) {
-                        drawPath(
-                            path = speedPath,
-                            color = Color(0xFF007AFF), // Blue
-                            style = Stroke(width = 2.dp.toPx())
-                        )
+                        if (pathCreatedPower) {
+                            drawPath(
+                                path = powerPath,
+                                color = Color(0xFFFF9500), // Orange
+                                style = Stroke(width = 2.dp.toPx())
+                            )
+                        }
+
+                        // 5. Draw Speed Line
+                        val speedPath = Path()
+                        var startedSpeed = false
+                        var pathCreatedSpeed = false
+                        val maxS = limits.maxSpeed
+                        for (i in sampledPoints.indices) {
+                            val pt = sampledPoints[i]
+                            val x = (i.toFloat() / (sampledPoints.size - 1).toFloat()) * w
+                            if (pt.isValid) {
+                                val y = h - ((pt.speed / maxS).toFloat() * h).coerceIn(0f, h)
+                                if (!startedSpeed) {
+                                    speedPath.moveTo(x, y)
+                                    startedSpeed = true
+                                    pathCreatedSpeed = true
+                                } else {
+                                    speedPath.lineTo(x, y)
+                                }
+                            } else {
+                                startedSpeed = false
+                            }
+                        }
+                        if (pathCreatedSpeed) {
+                            drawPath(
+                                path = speedPath,
+                                color = Color(0xFF007AFF), // Blue
+                                style = Stroke(width = 2.dp.toPx())
+                            )
+                        }
                     }
 
                     // 6. Draw Trim Boundary Excluded Overlays

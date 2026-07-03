@@ -185,4 +185,107 @@ class NativeHudEncoderTest {
             if (outFile.exists()) outFile.delete()
         }
     }
+
+    @Test
+    fun testHudRendererScopeConfigRules() {
+        // Create dummy telemetry points for testing scope behavior
+        val ptStart = FitParser.TelemetryPoint(timestamp = 100.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 10.0, grade = 0.0)
+        val ptMid = FitParser.TelemetryPoint(timestamp = 200.0, speed = 15.0, power = 150.0, cadence = 85.0, heartRate = 160.0, elevation = 50.0, grade = 2.0)
+        val ptEnd = FitParser.TelemetryPoint(timestamp = 300.0, speed = 12.0, power = 120.0, cadence = 82.0, heartRate = 140.0, elevation = 20.0, grade = -1.0)
+        
+        val fullList = listOf(ptStart, ptMid, ptEnd)
+        val trimmedList = listOf(ptMid, ptEnd) // Simulation of trimmed video scope
+        
+        // Define canvas mock to intercept text draw calls
+        val textDrawn = mutableListOf<String>()
+        val mockCanvas = object : HudCanvas {
+            override val width = 1920f
+            override val height = 1080f
+            override fun drawText(text: String, x: Float, y: Float, size: Float, color: String, bold: Boolean, anchor: String) {
+                textDrawn.add(text)
+            }
+            override fun drawRect(x: Float, y: Float, w: Float, h: Float, color: String, alpha: Float, outline: Boolean) {}
+            override fun drawLine(points: List<Pair<Float, Float>>, color: String, width: Float, alpha: Float) {}
+            override fun drawPolygon(points: List<Pair<Float, Float>>, color: String, alpha: Float) {}
+            override fun getTextWidth(text: String, size: Float, bold: Boolean) = text.length * 10f
+        }
+
+        // Case 1: scope = "video" for elevation, "activity" for heart rate (Default setup)
+        val config1 = HudConfig(
+            valSize = 50f, tightness = 0f, spacing = 10f, xOffset = 0f, yOffset = 0f, graphH = 100f, graphW = 200f,
+            elevationGraphScope = "video",
+            heartRateAccumulationScope = "activity"
+        )
+        val renderer1 = HudRenderer(config1)
+        textDrawn.clear()
+        renderer1.renderFrame(mockCanvas, ptEnd, fullList, trimmedList, emptyList(), 1.0f, true)
+        
+        // When elevationGraphScope is "video", start alt should be ptMid.elevation (50.0m -> "50m") and end alt ptEnd.elevation (20.0m -> "20m")
+        assertTrue(textDrawn.contains("50m"), "Should draw start elevation from the video trimmed range (50m)")
+        assertTrue(textDrawn.contains("20m"), "Should draw end elevation from the video trimmed range (20m)")
+        assertFalse(textDrawn.contains("10m"), "Should NOT draw start elevation from the activity range when scope is video")
+
+        // Case 2: scope = "activity" for elevation
+        val config2 = HudConfig(
+            valSize = 50f, tightness = 0f, spacing = 10f, xOffset = 0f, yOffset = 0f, graphH = 100f, graphW = 200f,
+            elevationGraphScope = "activity",
+            heartRateAccumulationScope = "activity"
+        )
+        val renderer2 = HudRenderer(config2)
+        textDrawn.clear()
+        renderer2.renderFrame(mockCanvas, ptEnd, fullList, trimmedList, emptyList(), 1.0f, true)
+        
+        // When elevationGraphScope is "activity", start alt should be ptStart.elevation (10.0m -> "10m")
+        assertTrue(textDrawn.contains("10m"), "Should draw start elevation from the full activity range (10m)")
+        assertTrue(textDrawn.contains("20m"), "Should draw end elevation from the full activity range (20m)")
+        assertFalse(textDrawn.contains("50m") && !textDrawn.contains("10m"), "Should contain full range alt, not just trimmed")
+    }
+
+    @Test
+    fun testHudRendererComponentVisibilityAndWeightConfigRules() {
+        val pt = FitParser.TelemetryPoint(
+            timestamp = 100.0, speed = 10.0, power = 180.0, cadence = 80.0, heartRate = 120.0, elevation = 10.0, grade = 0.0
+        )
+        val list = listOf(pt)
+        val textDrawn = mutableListOf<String>()
+        val mockCanvas = object : HudCanvas {
+            override val width = 1920f
+            override val height = 1080f
+            override fun drawText(text: String, x: Float, y: Float, size: Float, color: String, bold: Boolean, anchor: String) {
+                textDrawn.add(text)
+            }
+            override fun drawRect(x: Float, y: Float, w: Float, h: Float, color: String, alpha: Float, outline: Boolean) {}
+            override fun drawLine(points: List<Pair<Float, Float>>, color: String, width: Float, alpha: Float) {}
+            override fun drawPolygon(points: List<Pair<Float, Float>>, color: String, alpha: Float) {}
+            override fun getTextWidth(text: String, size: Float, bold: Boolean) = text.length * 10f
+        }
+
+        // Case 1: All items shown, bodyWeightKg = 60.0. 180W / 60kg = 3.0 w/kg.
+        val config1 = HudConfig(
+            valSize = 50f, tightness = 0f, spacing = 10f, xOffset = 0f, yOffset = 0f, graphH = 100f, graphW = 200f,
+            showSpeed = true, showCadence = true, showHeartRate = true, showPower = true, showWkg = true, showGrade = true, showElevation = true,
+            bodyWeightKg = 60.0
+        )
+        val renderer1 = HudRenderer(config1)
+        textDrawn.clear()
+        renderer1.renderFrame(mockCanvas, pt, list, list, emptyList(), 1.0f, true)
+        
+        assertTrue(textDrawn.contains("SPEED"), "Should draw Speed label")
+        assertTrue(textDrawn.contains("W/KG"), "Should draw W/KG label")
+        assertTrue(textDrawn.contains("3.0"), "Should draw 3.0 w/kg based on 180W / 60kg")
+
+        // Case 2: W/KG and Cadence hidden
+        val config2 = HudConfig(
+            valSize = 50f, tightness = 0f, spacing = 10f, xOffset = 0f, yOffset = 0f, graphH = 100f, graphW = 200f,
+            showSpeed = true, showCadence = false, showHeartRate = true, showPower = true, showWkg = false, showGrade = true, showElevation = true,
+            bodyWeightKg = 60.0
+        )
+        val renderer2 = HudRenderer(config2)
+        textDrawn.clear()
+        renderer2.renderFrame(mockCanvas, pt, list, list, emptyList(), 1.0f, true)
+        
+        assertTrue(textDrawn.contains("SPEED"), "Should still draw Speed")
+        assertFalse(textDrawn.contains("W/KG"), "Should NOT draw W/KG when showWkg is false")
+        assertFalse(textDrawn.contains("CADENCE"), "Should NOT draw Cadence when showCadence is false")
+    }
 }

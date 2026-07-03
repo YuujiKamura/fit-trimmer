@@ -127,10 +127,23 @@ fun FitTrimmerMainContent(
             roadCaptions = settings.roadCaptions,
             powerTrendSpanSeconds = settings.powerTrendSpanSeconds,
             useImperialUnits = settings.useImperialUnits,
-            language = settings.language
+            language = settings.language,
+            elevationGraphScope = settings.elevationGraphScope,
+            heartRateAccumulationScope = settings.heartRateAccumulationScope,
+            showSpeed = settings.showSpeed,
+            showCadence = settings.showCadence,
+            showHeartRate = settings.showHeartRate,
+            showPower = settings.showPower,
+            showWkg = settings.showWkg,
+            showPowerTrend = settings.showPowerTrend,
+            showGrade = settings.showGrade,
+            showElevation = settings.showElevation,
+            showDistanceTime = settings.showDistanceTime,
+            bodyWeightKg = settings.bodyWeightKg
         )
     }
     var reloadTrigger by remember { mutableStateOf(0) }
+    var isTimelineFolded by remember { mutableStateOf(false) }
     val rendererProxy = remember(reloadTrigger) { fit.DynamicRendererProxy(hudConfig) }
     LaunchedEffect(hudConfig) {
         rendererProxy.updateConfig(hudConfig)
@@ -2288,6 +2301,140 @@ fun FitTrimmerMainContent(
                                     fontWeight = FontWeight.Medium
                                 )
                             }
+                            Spacer(Modifier.height(4.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth().clickable(enabled = !isEncoding) {
+                                    val newScope = if (settings.elevationGraphScope == "video") "activity" else "video"
+                                    settings = settings.copy(elevationGraphScope = newScope)
+                                },
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Checkbox(
+                                    checked = settings.elevationGraphScope == "video",
+                                    onCheckedChange = { checked ->
+                                        if (!isEncoding) {
+                                            settings = settings.copy(elevationGraphScope = if (checked) "video" else "activity")
+                                        }
+                                    },
+                                    enabled = !isEncoding,
+                                    colors = CheckboxDefaults.colors(checkedColor = Color(0xFF007AFF))
+                                )
+                                Text(
+                                    text = utils.Localizer.get("elevation_graph_crop_to_video", settings.language),
+                                    fontSize = 11.sp,
+                                    color = Color(0xFF1C1C1E),
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                            Spacer(Modifier.height(4.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth().clickable(enabled = !isEncoding) {
+                                    val newScope = if (settings.heartRateAccumulationScope == "activity") "video" else "activity"
+                                    settings = settings.copy(heartRateAccumulationScope = newScope)
+                                },
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Checkbox(
+                                    checked = settings.heartRateAccumulationScope == "activity",
+                                    onCheckedChange = { checked ->
+                                        if (!isEncoding) {
+                                            settings = settings.copy(heartRateAccumulationScope = if (checked) "activity" else "video")
+                                        }
+                                    },
+                                    enabled = !isEncoding,
+                                    colors = CheckboxDefaults.colors(checkedColor = Color(0xFF007AFF))
+                                )
+                                Text(
+                                    text = utils.Localizer.get("heart_rate_accum_from_start", settings.language),
+                                    fontSize = 11.sp,
+                                    color = Color(0xFF1C1C1E),
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            Divider(color = Color(0xFFE5E5EA), thickness = 1.dp)
+                            Spacer(Modifier.height(8.dp))
+                            
+                            // Body Weight Input
+                            Text(
+                                text = utils.Localizer.get("body_weight_kg", settings.language),
+                                fontSize = 11.sp,
+                                color = Color.Gray,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            var weightInputText by remember(settings.bodyWeightKg) { mutableStateOf(settings.bodyWeightKg.toString()) }
+                            OutlinedTextField(
+                                value = weightInputText,
+                                onValueChange = { newValue ->
+                                    if (!isEncoding) {
+                                        weightInputText = newValue
+                                        val parsed = newValue.toDoubleOrNull()
+                                        if (parsed != null && parsed > 0.0) {
+                                            settings = settings.copy(bodyWeightKg = parsed)
+                                        }
+                                    }
+                                },
+                                enabled = !isEncoding,
+                                modifier = Modifier.fillMaxWidth().height(48.dp),
+                                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp),
+                                colors = TextFieldDefaults.outlinedTextFieldColors(
+                                    focusedBorderColor = Color(0xFF007AFF),
+                                    unfocusedBorderColor = Color(0xFFE5E5EA)
+                                ),
+                                singleLine = true
+                            )
+                            
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                text = utils.Localizer.get("visible_hud_items", settings.language),
+                                fontSize = 11.sp,
+                                color = Color.Gray,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            
+                            val toggles = listOf(
+                                Triple("show_speed", settings.showSpeed) { v: Boolean -> settings = settings.copy(showSpeed = v) },
+                                Triple("show_cadence", settings.showCadence) { v: Boolean -> settings = settings.copy(showCadence = v) },
+                                Triple("show_heart_rate", settings.showHeartRate) { v: Boolean -> settings = settings.copy(showHeartRate = v) },
+                                Triple("show_power", settings.showPower) { v: Boolean -> settings = settings.copy(showPower = v) },
+                                Triple("show_wkg", settings.showWkg) { v: Boolean -> settings = settings.copy(showWkg = v) },
+                                Triple("show_power_trend", settings.showPowerTrend) { v: Boolean -> settings = settings.copy(showPowerTrend = v) },
+                                Triple("show_grade", settings.showGrade) { v: Boolean -> settings = settings.copy(showGrade = v) },
+                                Triple("show_elevation", settings.showElevation) { v: Boolean -> settings = settings.copy(showElevation = v) },
+                                Triple("show_distance_time", settings.showDistanceTime) { v: Boolean -> settings = settings.copy(showDistanceTime = v) }
+                            )
+                            
+                            toggles.forEach { (labelKey, isChecked, onToggle) ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().clickable(enabled = !isEncoding) {
+                                        onToggle(!isChecked)
+                                    },
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Checkbox(
+                                        checked = isChecked,
+                                        onCheckedChange = { checked ->
+                                            if (!isEncoding) {
+                                                onToggle(checked)
+                                            }
+                                        },
+                                        enabled = !isEncoding,
+                                        colors = CheckboxDefaults.colors(checkedColor = Color(0xFF007AFF))
+                                    )
+                                    Text(
+                                        text = utils.Localizer.get(labelKey, settings.language),
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF1C1C1E),
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                                Spacer(Modifier.height(2.dp))
+                            }
                             val handleRoadDetectionToggle = { checked: Boolean ->
                                 if (!isEncoding) {
                                     val history = if (videoPath.isNotEmpty()) utils.GuiCache.loadHistory(videoPath) else null
@@ -3183,10 +3330,12 @@ fun FitTrimmerMainContent(
                                 onSeekEnd = { if (!isEncoding) onSeekEnd(it) },
                                 plateCache = viewModel.plateCache,
                                 blurLicensePlates = settings.blurLicensePlates,
-                                modifier = Modifier.fillMaxWidth().height(140.dp),
+                                modifier = Modifier.fillMaxWidth().height(if (isTimelineFolded) 46.dp else 140.dp),
                                 isEncoding = isEncoding,
                                 isDetectingPlates = viewModel.isDetectingPlates,
-                                language = settings.language
+                                language = settings.language,
+                                isFolded = isTimelineFolded,
+                                onFoldToggle = { isTimelineFolded = it }
                             )
                             val previewLabel = when (settings.exportResolution) {
                                 "360p" -> "360p (640x360) Overlay Preview"
