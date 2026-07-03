@@ -767,13 +767,15 @@ fun VideoPreviewArea(
                         )
                         val pBuf = currentTrendPoints.map { it }
                         val composeCanvas = ComposeHudCanvas(this, textMeasurer, scale, density)
+                        val isValid = currentPoint != null
                         rendererProxy.renderFrame(
                             composeCanvas,
                             telemetryPoint,
                             telemetryPoints,
                             trimmedTelemetryPoints,
                             pBuf,
-                            currentSeconds
+                            currentSeconds,
+                            isValid
                         )
                     }
                 }

@@ -72,7 +72,8 @@ class DynamicRendererProxy(@Volatile private var config: HudConfig) {
                 List::class.java, // originalPoints
                 List::class.java, // trimmedPoints
                 List::class.java, // powerBuffer
-                Float::class.java // progressRatio
+                Float::class.javaPrimitiveType ?: java.lang.Float.TYPE, // progressRatio
+                Boolean::class.javaPrimitiveType ?: java.lang.Boolean.TYPE // isValid
             )
             println("✅ Hot reloaded HudRenderer successfully!")
             
@@ -96,11 +97,19 @@ class DynamicRendererProxy(@Volatile private var config: HudConfig) {
         }
     }
 
-    fun renderFrame(canvas: HudCanvas, point: TelemetryPoint, allPoints: List<TelemetryPoint>, trimmedPoints: List<TelemetryPoint>, powerBuffer: List<Double>, progressRatio: Float) {
+    fun renderFrame(
+        canvas: HudCanvas, 
+        point: TelemetryPoint, 
+        allPoints: List<TelemetryPoint>, 
+        trimmedPoints: List<TelemetryPoint>, 
+        powerBuffer: List<Double>, 
+        progressRatio: Float,
+        isValid: Boolean = true
+    ) {
         synchronized(this) {
             if (delegate != null && renderMethod != null) {
                 try {
-                    renderMethod?.invoke(delegate, canvas, point, allPoints, trimmedPoints, powerBuffer, progressRatio)
+                    renderMethod?.invoke(delegate, canvas, point, allPoints, trimmedPoints, powerBuffer, progressRatio, isValid)
                     return
                 } catch (e: Exception) {
                     println("⚠️ Failed to invoke hot-reloaded renderer, falling back to static renderer: ${e.message}")
@@ -109,7 +118,7 @@ class DynamicRendererProxy(@Volatile private var config: HudConfig) {
             if (fallbackRenderer == null) {
                 fallbackRenderer = HudRenderer(config)
             }
-            fallbackRenderer?.renderFrame(canvas, point, allPoints, trimmedPoints, powerBuffer, progressRatio)
+            fallbackRenderer?.renderFrame(canvas, point, allPoints, trimmedPoints, powerBuffer, progressRatio, isValid)
         }
     }
 }

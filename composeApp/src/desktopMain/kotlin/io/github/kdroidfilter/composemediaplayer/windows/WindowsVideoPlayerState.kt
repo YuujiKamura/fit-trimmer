@@ -491,42 +491,46 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
 
                     // Retrieve and render the first frame as a poster frame
                     posterJob = scope.launch {
-                        val currentInstance = videoPlayerInstance ?: return@launch
-                        val ptrRef = PointerByReference()
-                        val sizeRef = IntByReference()
-                        val readResult = player.ReadVideoFrame(currentInstance, ptrRef, sizeRef)
-                        var needsUnlock = false
                         try {
-                            if (readResult >= 0 && ptrRef.value != null && sizeRef.value > 0) {
-                                needsUnlock = true
-                                val sharedBuffer = sharedFrameBuffer ?: ByteArray(frameBufferSize).also { sharedFrameBuffer = it }
-                                val buffer = ptrRef.value.getByteBuffer(0, sizeRef.value.toLong())
-                                val copySize = java.lang.Math.min(sizeRef.value, frameBufferSize)
-                                if (buffer != null && copySize > 0) {
-                                    buffer.get(sharedBuffer, 0, copySize)
-                                }
+                            val currentInstance = videoPlayerInstance ?: return@launch
+                            val ptrRef = PointerByReference()
+                            val sizeRef = IntByReference()
+                            val readResult = player.ReadVideoFrame(currentInstance, ptrRef, sizeRef)
+                            var needsUnlock = false
+                            try {
+                                if (readResult >= 0 && ptrRef.value != null && sizeRef.value > 0) {
+                                    needsUnlock = true
+                                    val sharedBuffer = sharedFrameBuffer ?: ByteArray(frameBufferSize).also { sharedFrameBuffer = it }
+                                    val buffer = ptrRef.value.getByteBuffer(0, sizeRef.value.toLong())
+                                    val copySize = java.lang.Math.min(sizeRef.value, frameBufferSize)
+                                    if (buffer != null && copySize > 0) {
+                                        buffer.get(sharedBuffer, 0, copySize)
+                                    }
 
-                                val bitmap = Bitmap().apply {
-                                    allocPixels(createVideoImageInfo())
+                                    val bitmap = Bitmap().apply {
+                                        allocPixels(createVideoImageInfo())
+                                    }
+                                    bitmap.installPixels(
+                                        createVideoImageInfo(),
+                                        sharedBuffer,
+                                        videoWidth * 4
+                                    )
+                                    bitmapLock.write {
+                                        _currentFrame?.let { old -> old.close() }
+                                        _currentFrame = bitmap
+                                        currentFrameState.value = bitmap.asComposeImageBitmap()
+                                        frameTicks++
+                                    }
                                 }
-                                bitmap.installPixels(
-                                    createVideoImageInfo(),
-                                    sharedBuffer,
-                                    videoWidth * 4
-                                )
-                                bitmapLock.write {
-                                    _currentFrame?.let { old -> old.close() }
-                                    _currentFrame = bitmap
-                                    currentFrameState.value = bitmap.asComposeImageBitmap()
-                                    frameTicks++
+                            } catch (e: Exception) {
+                                windowsLogger.e { "Failed to read initial poster frame: ${e.message}" }
+                            } finally {
+                                if (needsUnlock) {
+                                    player.UnlockVideoFrame(currentInstance)
                                 }
                             }
-                        } catch (e: Exception) {
-                            windowsLogger.e { "Failed to read initial poster frame: ${e.message}" }
-                        } finally {
-                            if (needsUnlock) {
-                                player.UnlockVideoFrame(currentInstance)
-                            }
+                        } catch (t: Throwable) {
+                            windowsLogger.e { "JNI Error while reading poster frame: ${t.message}" }
                         }
                     }
 
