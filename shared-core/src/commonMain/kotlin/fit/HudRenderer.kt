@@ -31,7 +31,8 @@ data class HudConfig(
     val showElevation: Boolean = true,
     val showDistanceTime: Boolean = true,
     val bodyWeightKg: Double = 0.0,
-    val customCaptions: List<CustomCaptionSegment> = emptyList()
+    val customCaptions: List<CustomCaptionSegment> = emptyList(),
+    val trimStartSeconds: Double = 0.0
 )
 
 interface HudCanvas {
@@ -678,9 +679,13 @@ class HudRenderer(val config: HudConfig) {
             }
         }
 
-        // Draw Custom Caption overlays
         config.customCaptions.forEach { segment ->
-            if (segment.isEnabled && currentSeconds >= segment.startSeconds && currentSeconds <= segment.endSeconds && segment.text.isNotEmpty()) {
+            val frameTime = if (segment.isAbsoluteTime) {
+                currentSeconds + config.trimStartSeconds
+            } else {
+                currentSeconds
+            }
+            if (segment.isEnabled && frameTime >= segment.startSeconds && frameTime <= segment.endSeconds && segment.text.isNotEmpty()) {
                 val capText = segment.text
                 val capSize = segment.fontSize
                 val padX = 20f

@@ -15,5 +15,6 @@ data class CustomCaptionSegment(
     val backgroundAlpha: Float = 0.65f,
     val positionX: Float = 0.5f,
     val positionY: Float = 0.8f,
-    val align: String = "center" // "left", "center", "right"
+    val align: String = "center", // "left", "center", "right"
+    val isAbsoluteTime: Boolean = false
 )
