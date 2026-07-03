@@ -272,7 +272,7 @@ class HudRenderer(val config: HudConfig) {
 
         // 8. ELEVATION (Line graph with terrain and pin)
         canvas.drawText(getLabel("ELEVATION"), cx, cy, labelSize, "#e5e7eb", bold = true)
-        val eGy = cy + labelSize + 4f
+        val eGy = cy + labelSize + 4f + 16f
         
         if (allPoints.size > 1) {
             val pts: List<Pair<Float, Float>>
@@ -314,9 +314,14 @@ class HudRenderer(val config: HudConfig) {
                     }
                 }
 
+                val actualAltDiff = max(maxAlt - minAlt, 10.0)
+                val buffer = actualAltDiff * 0.15
+                val minAltAdj = minAlt - buffer
+                val altDiffAdj = actualAltDiff + (buffer * 2.0)
+
                 pts = drawPoints.mapIndexed { idx, pt ->
                     val px = cx + (idx.toFloat() / (drawPoints.size - 1)) * graphW
-                    val py = (eGy + graphH - ((pt.elevation - minAlt) / altDiff) * graphH).toFloat()
+                    val py = (eGy + graphH - ((pt.elevation - minAltAdj) / altDiffAdj) * graphH).toFloat()
                     px to py
                 }
                 
@@ -366,6 +371,11 @@ class HudRenderer(val config: HudConfig) {
             // White terrain border line
             canvas.drawLine(pts, "#ffffff", 1f, alpha = 0.5f)
 
+            val actualAltDiff = max(maxAlt - minAlt, 10.0)
+            val buffer = actualAltDiff * 0.15
+            val minAltAdj = minAlt - buffer
+            val altDiffAdj = actualAltDiff + (buffer * 2.0)
+
             // Current position marker pin and vertical guide line
             if (isValid) {
                 var currentIdx = allPoints.binarySearch {
@@ -378,7 +388,7 @@ class HudRenderer(val config: HudConfig) {
 
                 val progress = currentIdx.toFloat() / (allPoints.size - 1)
                 val currX = cx + progress * graphW
-                val currY = (eGy + graphH - ((telemetry.elevation - minAlt) / altDiff) * graphH).toFloat()
+                val currY = (eGy + graphH - ((telemetry.elevation - minAltAdj) / altDiffAdj) * graphH).toFloat()
 
                 // Vertical guide line
                 canvas.drawLine(listOf(currX to eGy, currX to eGy + graphH), "#ffffff", 1f, alpha = 0.3f)
@@ -416,6 +426,21 @@ class HudRenderer(val config: HudConfig) {
             val graphLabelSize = 9f
             canvas.drawText(startText, startPt.first, startPt.second - 4f, graphLabelSize, "#ffffff", bold = true, anchor = "bottom-left")
             canvas.drawText(endText, endPt.first, endPt.second - 4f, graphLabelSize, "#ffffff", bold = true, anchor = "bottom-right")
+
+            // 8.3. Peak Elevation Marker and Label (Draw peak in the middle of the graph if not start/end)
+            val peakIdx = drawPoints.indexOfFirst { it.elevation == maxAlt }
+            val isPeakInMiddle = peakIdx > 0 && peakIdx < drawPoints.size - 1
+            if (isPeakInMiddle) {
+                val peakPt = pts[peakIdx]
+                canvas.drawRect(peakPt.first - 2.5f, peakPt.second - 2.5f, 5f, 5f, "#ef4444", alpha = 1.0f)
+                
+                val peakText = if (config.useImperialUnits) {
+                    "${(maxAlt * 3.28084).roundToInt()}ft"
+                } else {
+                    "${maxAlt.roundToInt()}m"
+                }
+                canvas.drawText(peakText, peakPt.first, peakPt.second - 4f, graphLabelSize, "#ef4444", bold = true, anchor = "bottom-center")
+            }
         }
 
         // 8.5. Real-time Distance & Elapsed Time below Elevation Graph
