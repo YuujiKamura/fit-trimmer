@@ -3624,6 +3624,69 @@ fun FitTrimmerMainContent(
                         }
                     }
                 }
+                
+                if (viewModel.showBatchRestoreDialog) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.4f))
+                            .clickable(enabled = true, onClick = {}),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Card(
+                            modifier = Modifier
+                                .width(460.dp)
+                                .padding(16.dp),
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+                            elevation = 8.dp
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(24.dp),
+                                horizontalAlignment = Alignment.Start,
+                                verticalArrangement = Arrangement.spacedBy(16.dp)
+                            ) {
+                                Text(
+                                    text = "未完了タスクの復元",
+                                    style = MaterialTheme.typography.h6,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF007AFF),
+                                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                                )
+                                Text(
+                                    text = "前回のバッチ処理で中断、または未完了のジョブが ${viewModel.pendingRestorableJobs.size} 件残っています。復元してキューに追加しますか？",
+                                    fontSize = 12.sp,
+                                    color = Color(0xFF1C1C1E),
+                                    lineHeight = 16.sp
+                                )
+                                Divider(color = Color(0xFFE5E5EA))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    OutlinedButton(
+                                        onClick = {
+                                            viewModel.discardPendingBatchJobs()
+                                        },
+                                        modifier = Modifier.weight(1f).height(38.dp),
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFE02424)),
+                                        border = BorderStroke(1.dp, Color(0xFFE02424))
+                                    ) {
+                                        Text("破棄する", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                    Button(
+                                        onClick = {
+                                            viewModel.restorePendingBatchJobs()
+                                        },
+                                        modifier = Modifier.weight(1.5f).height(38.dp),
+                                        colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF007AFF), contentColor = Color.White)
+                                    ) {
+                                        Text("復元する", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 }

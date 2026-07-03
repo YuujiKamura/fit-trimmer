@@ -551,6 +551,9 @@ suspend fun runBatchJobs(
         viewModel.batchStatusText = if (viewModel.isCanceled) "バッチ処理をキャンセルしました" else "✨ すべてのバッチ処理が完了しました！"
         if (!viewModel.isCanceled) {
             showSystemNotification("HUD エンコーダー", "すべてのバッチエンコードが完了しました！")
+            // Clear successfully completed jobs from queue to keep it temporary
+            viewModel.batchQueue.removeAll { it.status == BatchJobStatus.COMPLETED }
+            viewModel.saveBatchQueue()
         }
     } finally {
         viewModel.isBatchRunning = false
