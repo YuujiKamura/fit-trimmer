@@ -1020,9 +1020,15 @@ class HudRenderer(val config: HudConfig) {
         anchor: String = "left-center",
         sf: Float
     ) {
-        val shadowOffset = 1.2f * sf
+        val shadowOffset = 1.6f * sf
         val shadowColor = "#111827" // Dark gray shadow
+        
+        // Render 4-directional shadows to form a thick, solid outline
+        canvas.drawText(text, x - shadowOffset, y - shadowOffset, size, shadowColor, bold = true, anchor = anchor)
+        canvas.drawText(text, x + shadowOffset, y - shadowOffset, size, shadowColor, bold = true, anchor = anchor)
+        canvas.drawText(text, x - shadowOffset, y + shadowOffset, size, shadowColor, bold = true, anchor = anchor)
         canvas.drawText(text, x + shadowOffset, y + shadowOffset, size, shadowColor, bold = true, anchor = anchor)
+        
         canvas.drawText(text, x, y, size, color, bold = bold, anchor = anchor)
     }
 }
