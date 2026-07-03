@@ -526,36 +526,75 @@ suspend fun runBatchJobs(
                             onProgressUpdate()
                         }
                         
-                        BatchJobPhaseType.HUD_ENCODE -> {
-                            viewModel.batchStatusText = "[${jobIdx + 1}/${jobs.size}] HUDエンコードを実行中..."
-                            val detectedVideoDurationSeconds = getVideoDuration(job.videoPath)?.toDouble()?.div(1000.0)
-                            val videoDurationSeconds = (detectedVideoDurationSeconds ?: job.trimEndSeconds).coerceAtLeast(job.trimEndSeconds)
-                            
-                            val detectionContext = if (job.autoDetectRoadCaptionsOnEncode) {
-                                val points = loadTelemetryPointsForRoadDetection(job.fitPath) { viewModel.isCanceled }
-                                RoadCaptionDetectionContext(
-                                    points = points,
-                                    videoStartUtc = job.videoStartUtc,
-                                    timeOffsetMillis = job.timeOffsetMillis,
-                                    videoDurationSeconds = videoDurationSeconds
-                                )
-                            } else {
-                                RoadCaptionDetectionContext(
-                                    points = emptyList(),
-                                    videoStartUtc = job.videoStartUtc,
-                                    timeOffsetMillis = job.timeOffsetMillis,
-                                    videoDurationSeconds = videoDurationSeconds
-                                )
+                        BatchJobPhaseType.ROAD_SCAN -> {
+                            viewModel.batchStatusText = "[${jobIdx + 1}/${jobs.size}] 路線名検出を実行中..."
+                            val trimDuration = job.trimEndSeconds - job.trimStartSeconds
+                            val trimStartUtc = try {
+                                if (job.videoStartUtc.isNotEmpty()) {
+                                    java.time.Instant.parse(job.videoStartUtc).plusMillis((job.trimStartSeconds * 1000).toLong()).toString()
+                                } else ""
+                            } catch (e: Exception) {
+                                job.videoStartUtc
                             }
+                            val detectionContext = RoadCaptionDetectionContext(
+                                points = loadTelemetryPointsForRoadDetection(job.fitPath) { viewModel.isCanceled },
+                                videoStartUtc = trimStartUtc,
+                                timeOffsetMillis = job.timeOffsetMillis,
+                                videoDurationSeconds = trimDuration
+                            )
                             val encodeSettings = prepareRoadCaptionSettingsForEncode(
                                 baseSettings = job.settings,
-                                autoDetectRoadCaptionsOnEncode = job.autoDetectRoadCaptionsOnEncode,
+                                autoDetectRoadCaptionsOnEncode = true,
                                 context = detectionContext,
                                 cancelCheck = { viewModel.isCanceled },
                                 onStatus = { progressText ->
                                     viewModel.batchStatusText = "[${jobIdx + 1}/${jobs.size}] $progressText"
+                                },
+                                onSettingsPrepared = { updated ->
+                                    job.settings = updated
+                                    viewModel.saveBatchQueue()
                                 }
                             )
+                            phase.status = BatchJobPhaseStatus.COMPLETED
+                            phase.progress = 1.0f
+                            viewModel.saveBatchQueue()
+                            onProgressUpdate()
+                        }
+                        
+                        BatchJobPhaseType.HUD_ENCODE -> {
+                            viewModel.batchStatusText = "[${jobIdx + 1}/${jobs.size}] HUDエンコードを実行中..."
+                            val detectedVideoDurationSeconds = getVideoDuration(job.videoPath)?.toDouble()?.div(1000.0)
+                            
+                            val runRoadDetection = job.autoDetectRoadCaptionsOnEncode &&
+                                    job.phases.none { it.type == BatchJobPhaseType.ROAD_SCAN && it.enabled && it.status == BatchJobPhaseStatus.COMPLETED }
+                            
+                            val encodeSettings = if (runRoadDetection) {
+                                val trimDuration = job.trimEndSeconds - job.trimStartSeconds
+                                val trimStartUtc = try {
+                                    if (job.videoStartUtc.isNotEmpty()) {
+                                        java.time.Instant.parse(job.videoStartUtc).plusMillis((job.trimStartSeconds * 1000).toLong()).toString()
+                                    } else ""
+                                } catch (e: Exception) {
+                                    job.videoStartUtc
+                                }
+                                val detectionContext = RoadCaptionDetectionContext(
+                                    points = loadTelemetryPointsForRoadDetection(job.fitPath) { viewModel.isCanceled },
+                                    videoStartUtc = trimStartUtc,
+                                    timeOffsetMillis = job.timeOffsetMillis,
+                                    videoDurationSeconds = trimDuration
+                                )
+                                prepareRoadCaptionSettingsForEncode(
+                                    baseSettings = job.settings,
+                                    autoDetectRoadCaptionsOnEncode = true,
+                                    context = detectionContext,
+                                    cancelCheck = { viewModel.isCanceled },
+                                    onStatus = { progressText ->
+                                        viewModel.batchStatusText = "[${jobIdx + 1}/${jobs.size}] $progressText"
+                                    }
+                                )
+                            } else {
+                                job.settings
+                            }
                             val ranges = buildEncodeRanges(job.trimStartSeconds, job.trimEndSeconds, job.splitPoints)
                             val encodePlan = buildEncodePlan(
                                 settings = encodeSettings,

@@ -1240,6 +1240,7 @@ class AppViewModel(
         } else {
             listOf(
                 BatchJobPhase(BatchJobPhaseType.PLATE_SCAN, initialEnabled = jobSettings.blurLicensePlates),
+                BatchJobPhase(BatchJobPhaseType.ROAD_SCAN, initialEnabled = jobAutoDetectRoadCaptionsOnEncode),
                 BatchJobPhase(BatchJobPhaseType.HUD_ENCODE, initialEnabled = true),
                 BatchJobPhase(BatchJobPhaseType.CONCAT_MERGE, initialEnabled = true)
             )
@@ -1544,6 +1545,7 @@ enum class BatchJobStatus {
 
 enum class BatchJobPhaseType {
     PLATE_SCAN,
+    ROAD_SCAN,
     HUD_ENCODE,
     CONCAT_MERGE,
     FAST_TRIM
