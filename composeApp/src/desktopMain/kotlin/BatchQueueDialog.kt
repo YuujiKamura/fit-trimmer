@@ -336,6 +336,10 @@ fun BatchQueueDialog(
                                                         job.phases.forEach { p ->
                                                             when (p.type) {
                                                                 BatchJobPhaseType.PLATE_SCAN -> p.enabled = false
+                                                                BatchJobPhaseType.ROAD_SCAN -> {
+                                                                    p.enabled = false
+                                                                    p.status = BatchJobPhaseStatus.COMPLETED
+                                                                }
                                                                 BatchJobPhaseType.HUD_ENCODE -> {
                                                                     p.enabled = false
                                                                     p.status = BatchJobPhaseStatus.COMPLETED
@@ -386,8 +390,9 @@ fun BatchQueueDialog(
                                             val canEditPhase = canEditJob && phase.type != BatchJobPhaseType.FAST_TRIM
                                             val phaseLabel = when (phase.type) {
                                                 BatchJobPhaseType.PLATE_SCAN -> "① プレート検出"
-                                                BatchJobPhaseType.HUD_ENCODE -> "② HUDエンコード"
-                                                BatchJobPhaseType.CONCAT_MERGE -> "③ 結合マージ"
+                                                BatchJobPhaseType.ROAD_SCAN -> "② 路線名検出"
+                                                BatchJobPhaseType.HUD_ENCODE -> "③ HUDエンコード"
+                                                BatchJobPhaseType.CONCAT_MERGE -> "④ 結合マージ"
                                                 BatchJobPhaseType.FAST_TRIM -> "⚡ 高速トリミング"
                                             }
                                             val phaseStatusColor = when (phase.status) {
