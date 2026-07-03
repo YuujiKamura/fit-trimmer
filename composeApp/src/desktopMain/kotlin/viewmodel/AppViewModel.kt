@@ -1620,6 +1620,17 @@ data class BatchJob(
         } else {
             "${outputFileNames.first()} (+${outputFileNames.size - 1})"
         }
+
+    val adjustedStartUtc: String
+        get() = try {
+            if (videoStartUtc.isNotEmpty()) {
+                java.time.Instant.parse(videoStartUtc).plusMillis(timeOffsetMillis).toString()
+            } else {
+                ""
+            }
+        } catch (e: Exception) {
+            videoStartUtc
+        }
 }
 
 
