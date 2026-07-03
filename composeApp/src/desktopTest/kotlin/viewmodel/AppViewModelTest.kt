@@ -1108,5 +1108,56 @@ class AppViewModelTest {
         val duration = System.currentTimeMillis() - startTime
         assertTrue(duration < 2500, "dispose() took too long ($duration ms), potential deadlock detected")
     }
+
+    @Test
+    fun testBatchJobPhasesAutoInitialization() {
+        val viewModel = AppViewModel(null)
+        viewModel.videoPath = "/path/to/video1.mp4"
+        viewModel.fitPath = "/path/to/fit1.fit"
+        
+        // Scenario 1: Blur License Plates is true
+        viewModel.settings = viewModel.settings.copy(blurLicensePlates = true)
+        viewModel.addToBatchQueue()
+        val jobWithBlur = viewModel.batchQueue.last()
+        
+        val plateScanPhase = jobWithBlur.phases.find { it.type == BatchJobPhaseType.PLATE_SCAN }
+        val hudEncodePhase = jobWithBlur.phases.find { it.type == BatchJobPhaseType.HUD_ENCODE }
+        val concatMergePhase = jobWithBlur.phases.find { it.type == BatchJobPhaseType.CONCAT_MERGE }
+        
+        assertNotNull(plateScanPhase)
+        assertTrue(plateScanPhase.enabled, "Plate scan should be enabled when blurLicensePlates is true")
+        assertNotNull(hudEncodePhase)
+        assertTrue(hudEncodePhase.enabled)
+        assertNotNull(concatMergePhase)
+        assertTrue(concatMergePhase.enabled)
+        
+        // Scenario 2: Blur License Plates is false
+        viewModel.clearBatchQueue()
+        viewModel.settings = viewModel.settings.copy(blurLicensePlates = false)
+        viewModel.addToBatchQueue()
+        val jobWithoutBlur = viewModel.batchQueue.last()
+        
+        val plateScanPhase2 = jobWithoutBlur.phases.find { it.type == BatchJobPhaseType.PLATE_SCAN }
+        assertNotNull(plateScanPhase2)
+        assertFalse(plateScanPhase2.enabled, "Plate scan should be disabled when blurLicensePlates is false")
+
+        // Scenario 3: FIT path is empty (Fast Trim mode)
+        viewModel.clearBatchQueue()
+        viewModel.fitPath = ""
+        viewModel.addToBatchQueue()
+        val jobFastTrim = viewModel.batchQueue.last()
+        
+        val fastTrimPhase = jobFastTrim.phases.find { it.type == BatchJobPhaseType.FAST_TRIM }
+        val plateScanPhase3 = jobFastTrim.phases.find { it.type == BatchJobPhaseType.PLATE_SCAN }
+        val hudEncodePhase3 = jobFastTrim.phases.find { it.type == BatchJobPhaseType.HUD_ENCODE }
+        val concatMergePhase3 = jobFastTrim.phases.find { it.type == BatchJobPhaseType.CONCAT_MERGE }
+        
+        assertNotNull(fastTrimPhase, "Fast Trim phase should be created when FIT path is empty")
+        assertTrue(fastTrimPhase.enabled, "Fast Trim should be enabled when FIT path is empty")
+        assertTrue(plateScanPhase3 == null || !plateScanPhase3.enabled, "Plate scan should be disabled/absent in Fast Trim mode")
+        assertTrue(hudEncodePhase3 == null || !hudEncodePhase3.enabled, "HUD encode should be disabled/absent in Fast Trim mode")
+        assertTrue(concatMergePhase3 == null || !concatMergePhase3.enabled, "Concat Merge should be disabled/absent in Fast Trim mode")
+    }
 }
+
 
