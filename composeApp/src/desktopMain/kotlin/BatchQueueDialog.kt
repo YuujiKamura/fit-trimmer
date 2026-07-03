@@ -28,7 +28,7 @@ import viewmodel.AppViewModel
 import viewmodel.BatchJobStatus
 import viewmodel.BatchJobPhaseStatus
 import viewmodel.BatchJobPhaseType
-import java.io.File
+import utils.openFolderInExplorer
 
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
@@ -562,6 +562,7 @@ fun BatchQueueDialog(
                                 Text("処理を停止", fontSize = 14.sp, fontWeight = FontWeight.Bold)
                             }
                         } else {
+                            val hasCompletedJobs = viewModel.batchQueue.any { it.status == BatchJobStatus.COMPLETED }
                             OutlinedButton(
                                 onClick = {
                                     viewModel.dismissBatchConfirmDialog("cancel-button")
@@ -571,6 +572,23 @@ fun BatchQueueDialog(
                             ) {
                                 Text("閉じる", fontSize = 14.sp, fontWeight = FontWeight.Bold)
                             }
+                            
+                            if (hasCompletedJobs) {
+                                OutlinedButton(
+                                    onClick = {
+                                        openFolderInExplorer(outputDir)
+                                    },
+                                    modifier = Modifier.weight(1.5f).height(44.dp),
+                                    colors = ButtonDefaults.outlinedButtonColors(
+                                        contentColor = Color(0xFF34C759)
+                                    ),
+                                    border = BorderStroke(1.5.dp, Color(0xFF34C759)),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Text("出力フォルダを開く", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            
                             Button(
                                 onClick = {
                                     viewModel.prepareBatchQueueForStart()

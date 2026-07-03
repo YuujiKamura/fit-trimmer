@@ -16,24 +16,44 @@ import java.io.RandomAccessFile
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
-fun pickFile(title: String, extensions: List<String>): String? {
+fun pickFile(title: String, extensions: List<String>, initialPath: String? = null): String? {
     val dialog = FileDialog(null as Frame?, title, FileDialog.LOAD)
+    if (!initialPath.isNullOrEmpty()) {
+        val file = File(initialPath)
+        val dir = if (file.isDirectory) file else file.parentFile
+        if (dir != null && dir.exists()) {
+            dialog.directory = dir.absolutePath
+        }
+    }
     dialog.isVisible = true
     return if (dialog.file != null) File(dialog.directory, dialog.file).absolutePath else null
 }
 
-fun saveFile(title: String, defaultName: String): String? {
+fun saveFile(title: String, defaultName: String, initialPath: String? = null): String? {
     val dialog = FileDialog(null as Frame?, title, FileDialog.SAVE)
     dialog.file = defaultName
+    if (!initialPath.isNullOrEmpty()) {
+        val file = File(initialPath)
+        val dir = if (file.isDirectory) file else file.parentFile
+        if (dir != null && dir.exists()) {
+            dialog.directory = dir.absolutePath
+        }
+    }
     dialog.isVisible = true
     return if (dialog.file != null) File(dialog.directory, dialog.file).absolutePath else null
 }
 
-
-fun pickFolder(title: String): String? {
+fun pickFolder(title: String, initialPath: String? = null): String? {
     val chooser = javax.swing.JFileChooser()
     chooser.dialogTitle = title
     chooser.fileSelectionMode = javax.swing.JFileChooser.DIRECTORIES_ONLY
+    if (!initialPath.isNullOrEmpty()) {
+        val file = File(initialPath)
+        val dir = if (file.isDirectory) file else file.parentFile
+        if (dir != null && dir.exists()) {
+            chooser.currentDirectory = dir
+        }
+    }
     return if (chooser.showOpenDialog(null) == javax.swing.JFileChooser.APPROVE_OPTION) {
         chooser.selectedFile.absolutePath
     } else null
@@ -779,6 +799,21 @@ suspend fun checkIfHudBurned(videoPath: String): Boolean = withContext(Dispatche
         e.printStackTrace()
     }
     false
+}
+
+fun openFolderInExplorer(dirPath: String) {
+    val dir = File(dirPath)
+    if (dir.exists()) {
+        try {
+            if (System.getProperty("os.name").lowercase().contains("win")) {
+                ProcessBuilder("explorer.exe", dir.absolutePath).start()
+            } else {
+                java.awt.Desktop.getDesktop().open(dir)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
 }
 
 
