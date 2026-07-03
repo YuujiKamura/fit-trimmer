@@ -56,22 +56,9 @@ data class EncodeProfileReport(
 
     fun appendToHistory(label: String) {
         try {
-            var rootDir = java.io.File(".").absoluteFile
-            var foundRoot = false
-            while (rootDir.parentFile != null) {
-                if (java.io.File(rootDir, "settings.gradle.kts").exists() || java.io.File(rootDir, "settings.gradle").exists()) {
-                    foundRoot = true
-                    break
-                }
-                rootDir = rootDir.parentFile
-            }
-            val scratchDir = if (foundRoot) {
-                java.io.File(rootDir, "composeApp/scratch")
-            } else {
-                java.io.File("composeApp/scratch")
-            }
-            if (!scratchDir.exists()) scratchDir.mkdirs()
-            val historyFile = java.io.File(scratchDir, "encode_profile_history.csv")
+            val historyDir = java.io.File(System.getProperty("user.home"), ".fittrimmer_history")
+            if (!historyDir.exists()) historyDir.mkdirs()
+            val historyFile = java.io.File(historyDir, "encode_profile_history.csv")
             val isNewFile = !historyFile.exists() || historyFile.length() == 0L
             
             java.io.FileWriter(historyFile, true).use { writer ->
@@ -1636,6 +1623,11 @@ class NativeHudEncoder(
         } finally {
             val report = profiler.report()
             println(report.toMetricLine())
+            try {
+                report.appendToHistory("encode")
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
             try {
                 profileSink?.invoke(report)
             } catch (e: Exception) {
