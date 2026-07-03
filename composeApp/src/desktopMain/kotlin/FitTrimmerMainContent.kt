@@ -1302,7 +1302,7 @@ fun FitTrimmerMainContent(
                                 )
                                 Button(
                                     onClick = {
-                                        val path = pickFile("ソースファイルの選択 - FIT / GPSログ", listOf("*.fit"))
+                                        val path = pickFile("ソースファイルの選択 - FIT / GPSログ", listOf("*.fit"), initialPath = fitPath.takeIf { it.isNotEmpty() } ?: videoPath)
                                         if (path != null) fitPath = path
                                     },
                                     enabled = !isEncoding,
@@ -1333,7 +1333,7 @@ fun FitTrimmerMainContent(
                                 )
                                 Button(
                                     onClick = {
-                                        val path = pickFile("ソースファイルの選択 - 動画ファイル", listOf("*.mp4", "*.mov"))
+                                        val path = pickFile("ソースファイルの選択 - 動画ファイル", listOf("*.mp4", "*.mov"), initialPath = videoPath.takeIf { it.isNotEmpty() } ?: fitPath)
                                         if (path != null) videoPath = path
                                     },
                                     enabled = !isEncoding,
@@ -1387,7 +1387,7 @@ fun FitTrimmerMainContent(
                                 )
                                 Button(
                                     onClick = {
-                                        val path = pickFolder("バッチ投入フォルダを選択")
+                                        val path = pickFolder("バッチ投入フォルダを選択", initialPath = viewModel.batchFolderPath.takeIf { it.isNotEmpty() } ?: videoPath)
                                         if (path != null) viewModel.batchFolderPath = path
                                     },
                                     enabled = !isEncoding && !viewModel.isBatchRunning && !viewModel.isBatchFolderLoading,
@@ -1446,7 +1446,7 @@ fun FitTrimmerMainContent(
                                 )
                                 Button(
                                     onClick = {
-                                        val path = pickFolder("出力先フォルダの選択")
+                                        val path = pickFolder("出力先フォルダの選択", initialPath = outputDir.takeIf { it.isNotEmpty() } ?: videoPath)
                                         if (path != null) outputDir = path
                                     },
                                     enabled = !isEncoding,
@@ -1802,7 +1802,7 @@ fun FitTrimmerMainContent(
                                 ) {
                                     Button(
                                         onClick = {
-                                            val path = pickFile("設定JSONを読み込む", listOf("*.json"))
+                                            val path = pickFile("設定JSONを読み込む", listOf("*.json"), initialPath = videoPath)
                                             if (path != null) {
                                                 scope.launch {
                                                     try {
@@ -1860,7 +1860,7 @@ fun FitTrimmerMainContent(
                                     }
                                     Button(
                                         onClick = {
-                                            val path = saveFile("設定JSONを書き出す", "fit_trimmer_settings.json")
+                                            val path = saveFile("設定JSONを書き出す", "fit_trimmer_settings.json", initialPath = videoPath)
                                             if (path != null) {
                                                 try {
                                                     val cacheToSave = utils.GuiPathCache(
