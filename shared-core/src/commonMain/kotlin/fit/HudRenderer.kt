@@ -136,11 +136,11 @@ class HudRenderer(val config: HudConfig) {
         // 3.1. Draw standard HEART RATE label and value
         canvas.drawText(getLabel("HEART RATE"), cx, cy, labelSize, "#e5e7eb", bold = true)
         val valY = cy + labelSize + tightness
-        canvas.drawText(hrStr, cx, valY, valSize, "#ef4444", bold = true)
+        canvas.drawText(hrStr, cx, valY, valSize, "#ffffff", bold = true)
         val valW = canvas.getTextWidth(hrStr, valSize, true)
         val unitX = cx + valW + 8f
         val unitY = valY + (valSize - unitSize)
-        canvas.drawText("bpm", unitX, unitY, unitSize, "#ef4444", bold = true)
+        canvas.drawText("bpm", unitX, unitY, unitSize, "#ffffff", bold = true)
         
         // 3.2. Draw Zone accumulation bar and text immediately below the value
         val subCy = valY + valSize + 6f
