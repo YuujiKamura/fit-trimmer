@@ -771,6 +771,7 @@ fun VideoPreviewArea(
                             composeCanvas,
                             telemetryPoint,
                             telemetryPoints,
+                            trimmedTelemetryPoints,
                             pBuf,
                             currentSeconds
                         )

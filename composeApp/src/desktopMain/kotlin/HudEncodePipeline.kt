@@ -177,8 +177,8 @@ object HudEncodePipeline {
                     },
                     onFrameRendered = onFrame,
                     cancelSupplier = cancelSupplier,
-                    customRenderer = { canvas, point, allPoints, pBuf, progressRatio ->
-                        proxy.renderFrame(canvas, point, allPoints, pBuf, progressRatio)
+                    customRenderer = { canvas, point, allPoints, trimmedPoints, pBuf, progressRatio ->
+                        proxy.renderFrame(canvas, point, allPoints, trimmedPoints, pBuf, progressRatio)
                     },
                     showLivePreviewSupplier = showLivePreviewSupplier
                 )

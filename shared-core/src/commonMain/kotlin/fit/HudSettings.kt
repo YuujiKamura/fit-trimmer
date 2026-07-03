@@ -34,5 +34,17 @@ data class HudSettings(
     val platePaddingSeconds: Double = 2.0,
     val plateMergeGapSeconds: Double = 5.0,
     val plateMaskExpandRatio: Double = 0.2,
-    val plateMaskTimeBufferMs: Long = 300L
+    val plateMaskTimeBufferMs: Long = 300L,
+    val elevationGraphScope: String = "video", // "video" or "activity"
+    val heartRateAccumulationScope: String = "activity", // "video" or "activity"
+    val showSpeed: Boolean = true,
+    val showCadence: Boolean = true,
+    val showHeartRate: Boolean = true,
+    val showPower: Boolean = true,
+    val showWkg: Boolean = true,
+    val showPowerTrend: Boolean = true,
+    val showGrade: Boolean = true,
+    val showElevation: Boolean = true,
+    val showDistanceTime: Boolean = true,
+    val bodyWeightKg: Double = 70.0
 )

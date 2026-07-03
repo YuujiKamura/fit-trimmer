@@ -69,9 +69,10 @@ class DynamicRendererProxy(@Volatile private var config: HudConfig) {
             renderMethod = clazz.getDeclaredMethod("renderFrame", 
                 HudCanvas::class.java, 
                 TelemetryPoint::class.java, 
-                List::class.java, 
-                List::class.java, 
-                Float::class.java
+                List::class.java, // originalPoints
+                List::class.java, // trimmedPoints
+                List::class.java, // powerBuffer
+                Float::class.java // progressRatio
             )
             println("✅ Hot reloaded HudRenderer successfully!")
             
@@ -95,11 +96,11 @@ class DynamicRendererProxy(@Volatile private var config: HudConfig) {
         }
     }
 
-    fun renderFrame(canvas: HudCanvas, point: TelemetryPoint, allPoints: List<TelemetryPoint>, powerBuffer: List<Double>, progressRatio: Float) {
+    fun renderFrame(canvas: HudCanvas, point: TelemetryPoint, allPoints: List<TelemetryPoint>, trimmedPoints: List<TelemetryPoint>, powerBuffer: List<Double>, progressRatio: Float) {
         synchronized(this) {
             if (delegate != null && renderMethod != null) {
                 try {
-                    renderMethod?.invoke(delegate, canvas, point, allPoints, powerBuffer, progressRatio)
+                    renderMethod?.invoke(delegate, canvas, point, allPoints, trimmedPoints, powerBuffer, progressRatio)
                     return
                 } catch (e: Exception) {
                     println("⚠️ Failed to invoke hot-reloaded renderer, falling back to static renderer: ${e.message}")
@@ -108,7 +109,7 @@ class DynamicRendererProxy(@Volatile private var config: HudConfig) {
             if (fallbackRenderer == null) {
                 fallbackRenderer = HudRenderer(config)
             }
-            fallbackRenderer?.renderFrame(canvas, point, allPoints, powerBuffer, progressRatio)
+            fallbackRenderer?.renderFrame(canvas, point, allPoints, trimmedPoints, powerBuffer, progressRatio)
         }
     }
 }

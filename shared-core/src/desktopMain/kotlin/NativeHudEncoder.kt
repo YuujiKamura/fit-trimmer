@@ -374,7 +374,7 @@ class NativeHudEncoder(
     val onFrameRendered: (BufferedImage) -> Unit = {},
     val pauseSupplier: () -> Boolean = { false },
     val cancelSupplier: () -> Boolean = { false },
-    val customRenderer: ((HudCanvas, fit.FitParser.TelemetryPoint, List<fit.FitParser.TelemetryPoint>, List<Double>, Float) -> Unit)? = null,
+    val customRenderer: ((HudCanvas, fit.FitParser.TelemetryPoint, List<fit.FitParser.TelemetryPoint>, List<fit.FitParser.TelemetryPoint>, List<Double>, Float) -> Unit)? = null,
     val showLivePreviewSupplier: () -> Boolean = { true },
     val profileSink: ((EncodeProfileReport) -> Unit)? = null
 ) {
@@ -891,10 +891,8 @@ class NativeHudEncoder(
         val startTimeAdjusted = startTime.plusSeconds(actualTrimStart.toLong())
         val videoStartFit = startTimeAdjusted.epochSecond - fitEpoch
         val videoEndFit = (startTimeAdjusted.epochSecond + targetDurationSeconds) - fitEpoch
-        val trimmedTelemetry = telemetry.filter { it.timestamp in videoStartFit.toDouble()..videoEndFit.toDouble() }
-        if (trimmedTelemetry.isNotEmpty()) {
-            telemetry = trimmedTelemetry
-        }
+        val trimmedTelemetryRaw = telemetry.filter { it.timestamp in videoStartFit.toDouble()..videoEndFit.toDouble() }
+        val trimmedTelemetry = if (trimmedTelemetryRaw.isNotEmpty()) trimmedTelemetryRaw else telemetry
 
         val config = HudConfig(
             valSize = settings.valSize, tightness = settings.tightness, spacing = settings.spacing,
@@ -903,7 +901,19 @@ class NativeHudEncoder(
             roadCaptions = settings.roadCaptions,
             powerTrendSpanSeconds = settings.powerTrendSpanSeconds,
             useImperialUnits = settings.useImperialUnits,
-            language = settings.language
+            language = settings.language,
+            elevationGraphScope = settings.elevationGraphScope,
+            heartRateAccumulationScope = settings.heartRateAccumulationScope,
+            showSpeed = settings.showSpeed,
+            showCadence = settings.showCadence,
+            showHeartRate = settings.showHeartRate,
+            showPower = settings.showPower,
+            showWkg = settings.showWkg,
+            showPowerTrend = settings.showPowerTrend,
+            showGrade = settings.showGrade,
+            showElevation = settings.showElevation,
+            showDistanceTime = settings.showDistanceTime,
+            bodyWeightKg = settings.bodyWeightKg
         )
         println("DEBUG: NativeHudEncoder.encode config=$config, videoWidth=$videoWidth, videoHeight=$videoHeight")
         val renderer = HudRenderer(config)
@@ -1411,9 +1421,9 @@ class NativeHudEncoder(
                     val canvas = DesktopHudCanvas(gHud, scale, exportWidth.toFloat() / scale, exportHeight.toFloat() / scale)
                     val hudStartNs = System.nanoTime()
                     if (customRenderer != null) {
-                        customRenderer.invoke(canvas, point, telemetry, pBuf, currentSec.toFloat())
+                        customRenderer.invoke(canvas, point, telemetry, trimmedTelemetry, pBuf, currentSec.toFloat())
                     } else {
-                        renderer.renderFrame(canvas, point, telemetry, pBuf, currentSec.toFloat(), isValid)
+                        renderer.renderFrame(canvas, point, telemetry, trimmedTelemetry, pBuf, currentSec.toFloat(), isValid)
                     }
                     profiler.addHudRender(System.nanoTime() - hudStartNs)
                     gHud.dispose()
@@ -1826,10 +1836,8 @@ class NativeHudEncoder(
                         emptyList()
                     }
                 } else emptyList()
-                val trimmedTelemetry = telemetry.filter { it.timestamp in videoStartFit.toDouble()..videoEndFit.toDouble() }
-                if (trimmedTelemetry.isNotEmpty()) {
-                    telemetry = trimmedTelemetry
-                }
+                val trimmedTelemetryRaw = telemetry.filter { it.timestamp in videoStartFit.toDouble()..videoEndFit.toDouble() }
+                val trimmedTelemetry = if (trimmedTelemetryRaw.isNotEmpty()) trimmedTelemetryRaw else telemetry
 
                 val config = HudConfig(
                     valSize = settings.valSize, tightness = settings.tightness, spacing = settings.spacing,
@@ -1838,7 +1846,19 @@ class NativeHudEncoder(
                     roadCaptions = settings.roadCaptions,
                     powerTrendSpanSeconds = settings.powerTrendSpanSeconds,
                     useImperialUnits = settings.useImperialUnits,
-                    language = settings.language
+                    language = settings.language,
+                    elevationGraphScope = settings.elevationGraphScope,
+                    heartRateAccumulationScope = settings.heartRateAccumulationScope,
+                    showSpeed = settings.showSpeed,
+                    showCadence = settings.showCadence,
+                    showHeartRate = settings.showHeartRate,
+                    showPower = settings.showPower,
+                    showWkg = settings.showWkg,
+                    showPowerTrend = settings.showPowerTrend,
+                    showGrade = settings.showGrade,
+                    showElevation = settings.showElevation,
+                    showDistanceTime = settings.showDistanceTime,
+                    bodyWeightKg = settings.bodyWeightKg
                 )
 
                 val (exportWidth, exportHeight) = when (settings.exportResolution) {
