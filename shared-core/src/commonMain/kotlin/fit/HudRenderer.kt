@@ -451,10 +451,10 @@ class HudRenderer(val config: HudConfig) {
                 canvas.drawRect(startPt.first - 2.5f, startPt.second - 2.5f, 5f, 5f, "#ffffff", alpha = 1.0f)
                 canvas.drawRect(endPt.first - 2.5f, endPt.second - 2.5f, 5f, 5f, "#ffffff", alpha = 1.0f)
                 
-                // 16-direction calculation
+                // 16-direction calculation from raw videoPoints (trimmed range)
                 var startBearingStr = ""
-                for (i in 0 until drawPoints.size - 1) {
-                    val b = calculateBearing(drawPoints[i], drawPoints[i + 1])
+                for (i in 0 until videoPoints.size - 1) {
+                    val b = calculateBearing(videoPoints[i], videoPoints[i + 1])
                     if (b != null) {
                         startBearingStr = " (${get16Direction(b)})"
                         break
@@ -462,8 +462,8 @@ class HudRenderer(val config: HudConfig) {
                 }
                 
                 var endBearingStr = ""
-                for (i in drawPoints.size - 1 downTo 1) {
-                    val b = calculateBearing(drawPoints[i - 1], drawPoints[i])
+                for (i in videoPoints.size - 1 downTo 1) {
+                    val b = calculateBearing(videoPoints[i - 1], videoPoints[i])
                     if (b != null) {
                         endBearingStr = " (${get16Direction(b)})"
                         break
@@ -502,10 +502,13 @@ class HudRenderer(val config: HudConfig) {
                     canvas.drawRect(peakPt.first - 2.5f, peakPt.second - 2.5f, 5f, 5f, "#ef4444", alpha = 1.0f)
                     
                     var peakBearingStr = ""
-                    val b = (calculateBearing(drawPoints[peakIdx], drawPoints[peakIdx + 1])
-                        ?: if (peakIdx > 0) calculateBearing(drawPoints[peakIdx - 1], drawPoints[peakIdx]) else null)
-                    if (b != null) {
-                        peakBearingStr = " (${get16Direction(b)})"
+                    val rawPeakIdx = videoPoints.indexOfFirst { it.elevation == maxAlt }
+                    if (rawPeakIdx >= 0) {
+                        val b = (if (rawPeakIdx < videoPoints.size - 1) calculateBearing(videoPoints[rawPeakIdx], videoPoints[rawPeakIdx + 1]) else null)
+                            ?: if (rawPeakIdx > 0) calculateBearing(videoPoints[rawPeakIdx - 1], videoPoints[rawPeakIdx]) else null
+                        if (b != null) {
+                            peakBearingStr = " (${get16Direction(b)})"
+                        }
                     }
 
                     val peakText = peakLabel + (if (config.useImperialUnits) {
@@ -530,10 +533,13 @@ class HudRenderer(val config: HudConfig) {
                     canvas.drawRect(valleyPt.first - 2.5f, valleyPt.second - 2.5f, 5f, 5f, "#3b82f6", alpha = 1.0f)
                     
                     var valleyBearingStr = ""
-                    val b = (calculateBearing(drawPoints[valleyIdx], drawPoints[valleyIdx + 1])
-                        ?: if (valleyIdx > 0) calculateBearing(drawPoints[valleyIdx - 1], drawPoints[valleyIdx]) else null)
-                    if (b != null) {
-                        valleyBearingStr = " (${get16Direction(b)})"
+                    val rawValleyIdx = videoPoints.indexOfFirst { it.elevation == minAlt }
+                    if (rawValleyIdx >= 0) {
+                        val b = (if (rawValleyIdx < videoPoints.size - 1) calculateBearing(videoPoints[rawValleyIdx], videoPoints[rawValleyIdx + 1]) else null)
+                            ?: if (rawValleyIdx > 0) calculateBearing(videoPoints[rawValleyIdx - 1], videoPoints[rawValleyIdx]) else null
+                        if (b != null) {
+                            valleyBearingStr = " (${get16Direction(b)})"
+                        }
                     }
 
                     val valleyText = valleyLabel + (if (config.useImperialUnits) {
@@ -832,12 +838,18 @@ class HudRenderer(val config: HudConfig) {
         telemetry: FitParser.TelemetryPoint,
         isValid: Boolean
     ) {
-        if (videoPoints.size < 2) return
+        // Filter out invalid GPS coordinates (0.0, 0.0)
+        val validRoutePoints = videoPoints.filter { it.lat != 0.0 || it.lon != 0.0 }
+        if (validRoutePoints.size < 2) return
 
-        // 1. Layout parameters
-        val R = 60f // 円の半径 (R)
-        val mcx = canvas.width - 40f - R // 円の中心 X
-        val mcy = 40f + R // 円の中心 Y
+        // Dynamic scale factor based on configured valSize (relative to base size 40f)
+        val sf = (config.valSize / 40.0).toFloat().coerceAtLeast(0.5f)
+
+        // 1. Layout parameters (Scaled)
+        val R = 75f * sf // 円の半径 (R) - 少し大きめに拡大
+        val margin = 40f * sf
+        val mcx = canvas.width - margin - R // 円の中心 X
+        val mcy = margin + R // 円の中心 Y
 
         // 2. Draw black semi-transparent circle background (32-sided polygon)
         val circlePoints = (0..32).map { i ->
@@ -847,14 +859,11 @@ class HudRenderer(val config: HudConfig) {
             px to py
         }
         canvas.drawPolygon(circlePoints, "#000000", alpha = 0.5f)
-        canvas.drawLine(circlePoints, "#ffffff", width = 1.5f, alpha = 0.7f)
+        canvas.drawLine(circlePoints, "#ffffff", width = 1.5f * sf, alpha = 0.7f)
 
         // 3. Coordinate alignment (Path-up projection)
-        val startPt = videoPoints.first()
-        val endPt = videoPoints.last()
-        
-        if (startPt.lat == 0.0 && startPt.lon == 0.0) return
-        if (endPt.lat == 0.0 && endPt.lon == 0.0) return
+        val startPt = validRoutePoints.first()
+        val endPt = validRoutePoints.last()
 
         // Calculate aspect ratio correction cos(lat)
         val meanLat = (startPt.lat + endPt.lat) / 2.0
@@ -866,8 +875,8 @@ class HudRenderer(val config: HudConfig) {
         val L = kotlin.math.sqrt(dx * dx + dy * dy)
         if (L < 1e-7) return
 
-        // Target path length on the map is 2 * (R - 12f) to leave padding inside circle
-        val padR = R - 12f
+        // Target path length on the map is 2 * (R - 12f * sf) to leave padding inside circle
+        val padR = R - 12f * sf
         val scale = (2.0 * padR) / L
 
         // Heading angle (Start to End) in degrees for compass rotation
@@ -885,7 +894,7 @@ class HudRenderer(val config: HudConfig) {
             
             // Clamp to circle boundary to prevent visual overflow
             val d = kotlin.math.sqrt(lx * lx + ly * ly)
-            val limit = R - 2f
+            val limit = R - 2f * sf
             return if (d > limit) {
                 val clampedLx = lx * (limit / d)
                 val clampedLy = ly * (limit / d)
@@ -897,27 +906,29 @@ class HudRenderer(val config: HudConfig) {
 
         // 4. Downsample route points for drawing performance (max 100 points)
         val maxMapPoints = 100
-        val drawPoints = if (videoPoints.size <= maxMapPoints) {
-            videoPoints
+        val drawPoints = if (validRoutePoints.size <= maxMapPoints) {
+            validRoutePoints
         } else {
-            val step = (videoPoints.size - 1).toFloat() / (maxMapPoints - 1)
+            val step = (validRoutePoints.size - 1).toFloat() / (maxMapPoints - 1)
             (0 until maxMapPoints).map { i ->
-                val index = (i * step).roundToInt().coerceIn(videoPoints.indices)
-                videoPoints[index]
+                val index = (i * step).roundToInt().coerceIn(validRoutePoints.indices)
+                validRoutePoints[index]
             }
         }
 
-        // Draw route line
+        // Draw route line (with scaled line width)
         val routeLinePoints = drawPoints.map { projectPoint(it) }
-        canvas.drawLine(routeLinePoints, "#ffffff", width = 2.0f, alpha = 0.6f)
+        canvas.drawLine(routeLinePoints, "#ffffff", width = 2.5f * sf, alpha = 0.6f)
 
-        // 5. Draw Start/End Markers
+        // 5. Draw Start/End Markers (Scaled)
         val startMapPt = projectPoint(startPt)
         val endMapPt = projectPoint(endPt)
-        canvas.drawRect(startMapPt.first - 3f, startMapPt.second - 3f, 6f, 6f, "#ffffff", alpha = 1.0f)
-        canvas.drawRect(endMapPt.first - 3f, endMapPt.second - 3f, 6f, 6f, "#ffffff", alpha = 1.0f)
+        val mSize = 6f * sf
+        val hmSize = mSize / 2f
+        canvas.drawRect(startMapPt.first - hmSize, startMapPt.second - hmSize, mSize, mSize, "#ffffff", alpha = 1.0f)
+        canvas.drawRect(endMapPt.first - hmSize, endMapPt.second - hmSize, mSize, mSize, "#ffffff", alpha = 1.0f)
 
-        // Draw distance labels near start/end
+        // Draw distance labels near start/end (Scaled font size)
         val totalDist = endPt.distance - startPt.distance
         val totalDistText = if (config.useImperialUnits) {
             "${formatOneDecimal(totalDist * 0.000621371)} mi"
@@ -925,23 +936,25 @@ class HudRenderer(val config: HudConfig) {
             "${formatOneDecimal(totalDist / 1000.0)} km"
         }
         val startDistText = "0.0"
+        val distTextSize = 9f * sf
         
-        canvas.drawText(startDistText, startMapPt.first, startMapPt.second + 4f, 8f, "#ffffff", bold = true, anchor = "top-center")
-        canvas.drawText(totalDistText, endMapPt.first, endMapPt.second - 11f, 8f, "#ffffff", bold = true, anchor = "bottom-center")
+        canvas.drawText(startDistText, startMapPt.first, startMapPt.second + 4f * sf, distTextSize, "#ffffff", bold = true, anchor = "top-center")
+        canvas.drawText(totalDistText, endMapPt.first, endMapPt.second - (distTextSize + 2f * sf), distTextSize, "#ffffff", bold = true, anchor = "bottom-center")
 
-        // 6. Draw Current Location Pin
-        if (isValid) {
+        // 6. Draw Current Location Pin (Scaled pin size)
+        if (isValid && telemetry.lat != 0.0 && telemetry.lon != 0.0) {
             val currentMapPt = projectPoint(telemetry)
+            val pSize = 7f * sf
             // Draw red triangle pin pointing to current position
             val pinPoly = listOf(
-                currentMapPt.first - 6f to currentMapPt.second - 6f,
-                currentMapPt.first + 6f to currentMapPt.second - 6f,
+                currentMapPt.first - pSize to currentMapPt.second - pSize,
+                currentMapPt.first + pSize to currentMapPt.second - pSize,
                 currentMapPt.first to currentMapPt.second
             )
             canvas.drawPolygon(pinPoly, "#ef4444", alpha = 1.0f)
         }
 
-        // 7. Draw 4 Directions (N, E, S, W) along the inner circle margin
+        // 7. Draw 4 Directions (N, E, S, W) along the inner circle margin (Scaled)
         val angleN = -90.0 - pathBearing
         val compassPoints = mapOf(
             "N" to angleN,
@@ -950,12 +963,13 @@ class HudRenderer(val config: HudConfig) {
             "W" to (angleN + 270.0)
         )
         
-        val compR = R - 8f // circle inner radius
+        val compR = R - 8f * sf // circle inner radius
+        val compassTextSize = 8.5f * sf
         for ((label, angleDeg) in compassPoints) {
             val angleRad = angleDeg * kotlin.math.PI / 180.0
             val tx = mcx + compR * kotlin.math.cos(angleRad).toFloat()
             val ty = mcy + compR * kotlin.math.sin(angleRad).toFloat()
-            canvas.drawText(label, tx, ty - 4f, 7.5f, "#ffffff", bold = true, anchor = "bottom-center")
+            canvas.drawText(label, tx, ty - 4f * sf, compassTextSize, "#ffffff", bold = true, anchor = "bottom-center")
         }
     }
 }
