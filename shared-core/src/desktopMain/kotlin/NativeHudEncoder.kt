@@ -648,8 +648,16 @@ class NativeHudEncoder(
             if (testEncoder(ffmpegPath, "hevc_amf", "auto")) {
                 return Pair("auto", "hevc_amf")
             }
-            // CPU fallback HEVC
-            return Pair(null, "libx265")
+            // CPU fallback HEVC (check if libx265 is available)
+            if (testEncoder(ffmpegPath, "libx265", null)) {
+                return Pair(null, "libx265")
+            }
+            // If libx265 is not supported, fall back to H.264 software encoder
+            println("⚠️ libx265 not supported in this FFmpeg build. Falling back to libx264 for encoding...")
+            if (testEncoder(ffmpegPath, "libx264", null)) {
+                return Pair(null, "libx264")
+            }
+            return Pair(null, "libopenh264")
         } else {
             if (!forceCpu) {
                 // Test NVIDIA NVENC H.264
