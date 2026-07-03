@@ -1045,7 +1045,7 @@ class HudRenderer(val config: HudConfig) {
         sf: Float
     ) {
         val shadowOffset = 1.6f * sf
-        val shadowColor = "#111827" // Dark gray shadow
+        val shadowColor = "#787878" // Moderate gray shadow (RGB 120, 120, 120)
         
         // Render 4-directional shadows to form a thick, solid outline
         canvas.drawText(text, x - shadowOffset, y - shadowOffset, size, shadowColor, bold = true, anchor = anchor)
