@@ -297,6 +297,51 @@ class HudRendererTest {
     }
 
     @Test
+    fun testMiniMap_DisplaysRouteAndCompassOrientations() {
+        val config = HudConfig(
+            valSize = 40f, tightness = 1f, spacing = 20f,
+            xOffset = 40f, yOffset = 100f, graphH = 60f, graphW = 300f,
+            language = "ja"
+        )
+        val renderer = HudRenderer(config)
+        
+        // Setup 4 telemetry points with distinct lat/lon to build a path direction
+        // P1: Start (lat=35.0, lon=135.0) -> P2: lat=35.01, lon=135.01
+        val p1 = FitParser.TelemetryPoint(
+            timestamp = 1000.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 50.0, grade = 2.0,
+            distance = 1000.0, elapsedSeconds = 10, lat = 35.0, lon = 135.0
+        )
+        val p2 = FitParser.TelemetryPoint(
+            timestamp = 1010.0, speed = 12.0, power = 110.0, cadence = 82.0, heartRate = 122.0, elevation = 52.0, grade = 2.2,
+            distance = 2500.0, elapsedSeconds = 20, lat = 35.01, lon = 135.01
+        )
+        val allPoints = listOf(p1, p2)
+        
+        val canvas = TestHudCanvas()
+        renderer.renderFrame(
+            canvas,
+            p2,
+            allPoints,
+            emptyList(),
+            emptyList(),
+            100.0f,
+            isValid = true
+        )
+        
+        val texts = canvas.drawnTexts
+        
+        // Check Compass headings N, E, S, W exist
+        assertTrue(texts.contains("N"), "Mini-map compass should draw 'N' (got $texts)")
+        assertTrue(texts.contains("E"), "Mini-map compass should draw 'E' (got $texts)")
+        assertTrue(texts.contains("S"), "Mini-map compass should draw 'S' (got $texts)")
+        assertTrue(texts.contains("W"), "Mini-map compass should draw 'W' (got $texts)")
+        
+        // Check Distance labels: start distance "0.0" and total distance "1.5 km"
+        assertTrue(texts.contains("0.0"), "Mini-map should label start distance '0.0' (got $texts)")
+        assertTrue(texts.any { it.contains("1.5") && it.contains("km") }, "Mini-map should draw total distance (got $texts)")
+    }
+
+    @Test
     fun testHudLocalizationEnglishFallback() {
         val config = HudConfig(
             valSize = 40f, tightness = 1f, spacing = 20f,
