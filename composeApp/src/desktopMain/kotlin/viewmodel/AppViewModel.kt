@@ -1029,35 +1029,6 @@ class AppViewModel(
 
     init {
         refreshAvailableCacheJobs()
-        try {
-            val savedJobs = utils.BatchQueueCache.load()
-            if (savedJobs.isNotEmpty()) {
-                val restored = savedJobs.map {
-                    val statusEnum = try { BatchJobStatus.valueOf(it.status) } catch(_: Exception) { BatchJobStatus.WAITING }
-                    val finalStatus = if (statusEnum == BatchJobStatus.RUNNING) BatchJobStatus.WAITING else statusEnum
-                    BatchJob(
-                        id = it.id,
-                        videoPath = it.videoPath,
-                        fitPath = it.fitPath,
-                        videoStartUtc = it.videoStartUtc,
-                        timeOffsetMillis = it.timeOffsetMillis,
-                        trimStartSeconds = it.trimStartSeconds,
-                        trimEndSeconds = it.trimEndSeconds,
-                        splitPoints = it.splitPoints,
-                        initialSettings = it.settings,
-                        initialAutoDetectRoadCaptionsOnEncode = it.autoDetectRoadCaptionsOnEncode,
-                        initialOutputFileNames = it.outputFileNames,
-                        initialStatus = finalStatus,
-                        initialProgress = it.progress,
-                        initialErrorMessage = it.errorMessage
-                    )
-                }
-                batchQueue.addAll(restored)
-                logBatch("Restored ${restored.size} batch jobs from cache")
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
     }
 
 
