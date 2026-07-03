@@ -1243,7 +1243,7 @@ fun FitTrimmerMainContent(
                             Tab(
                                 selected = selectedTab == 3,
                                 onClick = { selectedTab = 3 },
-                                text = { Text("キャプション", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                                text = { Text("テロップ", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
                             )
                         }
 
@@ -3168,12 +3168,12 @@ fun FitTrimmerMainContent(
                                                 modifier = Modifier.padding(12.dp),
                                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                                             ) {
-                                                Text("手動カスタムキャプション設定", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 0.5.sp)
+                                                Text("手動カスタムテロップ設定", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 0.5.sp)
                                                 Text("動画上の任意の時間帯に文字テロップを表示します。", color = Color(0xFF636366), fontSize = 10.sp, lineHeight = 13.sp)
                                                 
                                                 val captions = settings.customCaptions
                                                 if (captions.isEmpty()) {
-                                                    Text("設定されているカスタムキャプションはありません。", color = Color.Gray, fontSize = 11.sp, modifier = Modifier.padding(vertical = 4.dp))
+                                                    Text("設定されているカスタムテロップはありません。", color = Color.Gray, fontSize = 11.sp, modifier = Modifier.padding(vertical = 4.dp))
                                                 } else {
                                                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                                         captions.sortedBy { it.startSeconds }.forEach { cap ->
@@ -3230,10 +3230,11 @@ fun FitTrimmerMainContent(
                                                 OutlinedTextField(
                                                     value = capText,
                                                     onValueChange = { capText = it },
-                                                    label = { Text("キャプションテキスト", fontSize = 10.sp) },
+                                                    label = { Text("テロップテキスト (改行可)", fontSize = 10.sp) },
                                                     modifier = Modifier.fillMaxWidth(),
                                                     textStyle = TextStyle(fontSize = 11.sp),
-                                                    singleLine = true,
+                                                    singleLine = false,
+                                                    maxLines = 3,
                                                     enabled = !isEncoding
                                                 )
                                                 
@@ -3357,7 +3358,7 @@ fun FitTrimmerMainContent(
                                                         contentColor = Color.White
                                                     )
                                                 ) {
-                                                    Text("キャプションを追加", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                    Text("テロップを追加", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                                 }
                                             }
                                         }

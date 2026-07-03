@@ -648,13 +648,16 @@ class HudRenderer(val config: HudConfig) {
         if (activeCaption != null && activeCaption.text.isNotEmpty()) {
             val capText = activeCaption.text
             val capSize = 24f
-            val capWidth = canvas.getTextWidth(capText, capSize, bold = true)
-            val capHeight = capSize
             val padX = 20f
             val padY = 10f
             
-            val boxW = capWidth + padX * 2f
-            val boxH = capHeight + padY * 2f
+            val lines = capText.split("\n")
+            val maxLineWidth = lines.maxOfOrNull { canvas.getTextWidth(it, capSize, bold = true) } ?: 0f
+            val lineHeight = capSize * 1.25f
+            val totalLinesHeight = capSize + (lines.size - 1) * lineHeight
+            
+            val boxW = maxLineWidth + padX * 2f
+            val boxH = totalLinesHeight + padY * 2f
             
             val margin = 40f
             val (boxX, boxY) = when (config.captionPosition) {
@@ -668,7 +671,11 @@ class HudRenderer(val config: HudConfig) {
             }
             
             canvas.drawRect(boxX, boxY, boxW, boxH, "#000000", alpha = 0.65f)
-            drawShadowedText(canvas, capText, boxX + boxW / 2f, boxY + padY + capHeight / 2f, capSize, "#ffffff", bold = true, anchor = "center", sf = sf)
+            
+            lines.forEachIndexed { i, line ->
+                val lineY = boxY + padY + i * lineHeight + capSize / 2f
+                drawShadowedText(canvas, line, boxX + boxW / 2f, lineY, capSize, "#ffffff", bold = true, anchor = "center", sf = sf)
+            }
         }
 
         // Draw Custom Caption overlays
@@ -676,13 +683,16 @@ class HudRenderer(val config: HudConfig) {
             if (segment.isEnabled && currentSeconds >= segment.startSeconds && currentSeconds <= segment.endSeconds && segment.text.isNotEmpty()) {
                 val capText = segment.text
                 val capSize = segment.fontSize
-                val capWidth = canvas.getTextWidth(capText, capSize, bold = true)
-                val capHeight = capSize
                 val padX = 20f
                 val padY = 10f
                 
-                val boxW = capWidth + padX * 2f
-                val boxH = capHeight + padY * 2f
+                val lines = capText.split("\n")
+                val maxLineWidth = lines.maxOfOrNull { canvas.getTextWidth(it, capSize, bold = true) } ?: 0f
+                val lineHeight = capSize * 1.25f
+                val totalLinesHeight = capSize + (lines.size - 1) * lineHeight
+                
+                val boxW = maxLineWidth + padX * 2f
+                val boxH = totalLinesHeight + padY * 2f
                 
                 val x = segment.positionX * canvas.width
                 val y = segment.positionY * canvas.height
@@ -695,17 +705,21 @@ class HudRenderer(val config: HudConfig) {
                 val boxY = y - boxH / 2f
                 
                 canvas.drawRect(boxX, boxY, boxW, boxH, segment.backgroundColor, alpha = segment.backgroundAlpha)
-                drawShadowedText(
-                    canvas,
-                    capText, 
-                    boxX + boxW / 2f, 
-                    boxY + padY + capHeight / 2f, 
-                    capSize, 
-                    segment.textColor, 
-                    bold = true, 
-                    anchor = "center",
-                    sf = sf
-                )
+                
+                lines.forEachIndexed { i, line ->
+                    val lineY = boxY + padY + i * lineHeight + capSize / 2f
+                    drawShadowedText(
+                        canvas,
+                        line, 
+                        boxX + boxW / 2f, 
+                        lineY, 
+                        capSize, 
+                        segment.textColor, 
+                        bold = true, 
+                        anchor = "center",
+                        sf = sf
+                    )
+                }
             }
         }
     }
