@@ -1045,13 +1045,14 @@ class HudRenderer(val config: HudConfig) {
         sf: Float
     ) {
         val shadowOffset = 1.6f * sf
-        val shadowColor = "#787878" // Moderate gray shadow (RGB 120, 120, 120)
+        val shadowColor = "#787878" // Base color for width check
+        val transparentShadowColor = "#7F787878" // 50% translucent gray shadow for actual rendering
         
-        // Render 4-directional shadows to form a thick, solid outline
-        canvas.drawText(text, x - shadowOffset, y - shadowOffset, size, shadowColor, bold = true, anchor = anchor)
-        canvas.drawText(text, x + shadowOffset, y - shadowOffset, size, shadowColor, bold = true, anchor = anchor)
-        canvas.drawText(text, x - shadowOffset, y + shadowOffset, size, shadowColor, bold = true, anchor = anchor)
-        canvas.drawText(text, x + shadowOffset, y + shadowOffset, size, shadowColor, bold = true, anchor = anchor)
+        // Render 4-directional shadows to form a thick, translucent outline
+        canvas.drawText(text, x - shadowOffset, y - shadowOffset, size, transparentShadowColor, bold = true, anchor = anchor)
+        canvas.drawText(text, x + shadowOffset, y - shadowOffset, size, transparentShadowColor, bold = true, anchor = anchor)
+        canvas.drawText(text, x - shadowOffset, y + shadowOffset, size, transparentShadowColor, bold = true, anchor = anchor)
+        canvas.drawText(text, x + shadowOffset, y + shadowOffset, size, transparentShadowColor, bold = true, anchor = anchor)
         
         canvas.drawText(text, x, y, size, color, bold = bold, anchor = anchor)
     }
