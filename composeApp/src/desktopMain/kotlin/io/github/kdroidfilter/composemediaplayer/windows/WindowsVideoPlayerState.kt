@@ -265,7 +265,7 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
     }
 
     override fun dispose() {
-        scope.launch {
+        val job = scope.launch(kotlinx.coroutines.Dispatchers.Default) {
             try {
                 mediaOperationMutex.withLock {
                     // Stop playing if active
@@ -300,7 +300,18 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
                 // Mark player as uninitialized
                 isInitialized = false
                 _hasMedia = false
-                scope.cancel()  // Cancel the scope to clean up any remaining jobs
+            }
+        }
+        // Wait synchronously for up to 2 seconds to guarantee clean native disposal
+        kotlinx.coroutines.runBlocking {
+            try {
+                kotlinx.coroutines.withTimeout(2000) {
+                    job.join()
+                }
+            } catch (e: Exception) {
+                job.cancel()
+            } finally {
+                scope.cancel()
             }
         }
     }
@@ -314,7 +325,7 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
         isResizing.set(false)
 
         // Ensure the frame channel is emptied
-        runBlocking { clearFrameChannel() }
+        clearFrameChannel()
 
         // Free bitmaps and frame buffers
         bitmapLock.write {
