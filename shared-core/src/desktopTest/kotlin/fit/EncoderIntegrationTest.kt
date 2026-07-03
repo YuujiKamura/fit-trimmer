@@ -770,6 +770,106 @@ class EncoderIntegrationTest {
         }
     }
 
+    @Test
+    fun testEncodingWithSpeedSegments() {
+        System.setProperty("FIT_TRIMMER_FORCE_CPU", "true")
+        val tempDir = File(System.getProperty("java.io.tmpdir"), "fit-trimmer-speed-test-${System.currentTimeMillis()}")
+        tempDir.mkdirs()
+
+        val inputFit = File(tempDir, "speed_input.fit")
+        val inputMp4 = File(tempDir, "speed_input.mp4")
+        val outputMp4 = File(tempDir, "speed_output.mp4")
+
+        try {
+            val baseFitTimestamp = 1000000000L
+            inputFit.writeBytes(createProfileFit(baseFitTimestamp, seconds = 10))
+
+            val ffmpegPath = try { findFfmpegPath() } catch (e: Exception) { "ffmpeg" }
+            val pbVideo = ProcessBuilder(
+                ffmpegPath, "-y",
+                "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=10:duration=6",
+                "-c:v", "libopenh264", "-pix_fmt", "yuv420p", "-r", "10", "-t", "6",
+                inputMp4.absolutePath
+            )
+            pbVideo.redirectErrorStream(true)
+            val pVideo = pbVideo.start()
+            val videoOutput = pVideo.inputStream.bufferedReader().readText()
+            assertTrue(pVideo.waitFor(15000, java.util.concurrent.TimeUnit.MILLISECONDS), "Speed test video generation should finish.")
+            assertEquals(0, pVideo.exitValue(), "Speed test video generation failed:\n$videoOutput")
+
+            val speedSeg = SpeedSegment(
+                id = "speed-seg-1",
+                startSeconds = 1.0,
+                endSeconds = 3.0,
+                speedFactor = 2.0
+            )
+
+            val settings = HudSettings(
+                exportResolution = "360p",
+                speedSegments = listOf(speedSeg)
+            )
+
+            val renderedFrames = mutableListOf<java.awt.image.BufferedImage>()
+
+            val encoder = NativeHudEncoder(settings,
+                onProgress = { prog, status ->
+                    println("Encoding speed Progress: ${(prog * 100).toInt()}% - $status")
+                },
+                onFrameRendered = { img ->
+                    val copy = java.awt.image.BufferedImage(img.width, img.height, img.type)
+                    val g = copy.createGraphics()
+                    g.drawImage(img, 0, 0, null)
+                    g.dispose()
+                    synchronized(renderedFrames) {
+                        renderedFrames.add(copy)
+                    }
+                }
+            )
+
+            val fitEpochSec = 631065600L
+            val computedStartUtc = java.time.Instant.ofEpochSecond(baseFitTimestamp + fitEpochSec).toString()
+
+            encoder.encode(
+                fitPath = inputFit.absolutePath,
+                videoPath = inputMp4.absolutePath,
+                output = outputMp4.absolutePath,
+                startUtc = computedStartUtc,
+                maxDurationSeconds = 6,
+                trimStartSeconds = 0.0,
+                trimEndSeconds = 6.0
+            )
+
+            assertTrue(outputMp4.exists(), "Output video file must be generated")
+            assertTrue(outputMp4.length() > 0, "Output video file must not be empty")
+            
+            val frameCount = renderedFrames.size
+            println("📷 Sped-up video rendered frames: $frameCount (expected: 50)")
+            assertTrue(frameCount in 48..52, "Sped-up output frame count should be around 50, but was $frameCount")
+
+        } catch (e: Exception) {
+            val workDir = File(tempDir, "temp_work")
+            val logFile = File(workDir, "ffmpeg_log.txt")
+            if (logFile.exists()) {
+                println("=== FFMPEG LOG ===")
+                println(logFile.readText())
+                println("==================")
+            } else {
+                val fallbackLog = File(File(System.getProperty("user.dir")).parentFile ?: File(System.getProperty("user.dir")), "temp_work/ffmpeg_log.txt")
+                if (fallbackLog.exists()) {
+                    println("=== FFMPEG LOG (FALLBACK) ===")
+                    println(fallbackLog.readText())
+                    println("=============================")
+                }
+            }
+            throw e
+        } finally {
+            try { inputFit.delete() } catch (e: Exception) {}
+            try { inputMp4.delete() } catch (e: Exception) {}
+            try { outputMp4.delete() } catch (e: Exception) {}
+            try { tempDir.deleteRecursively() } catch (e: Exception) {}
+        }
+    }
+
     private fun createProfileFit(baseFitTimestamp: Long, seconds: Int): ByteArray {
         val headerSize = 14
         val recordsSize = 12 + (9 * seconds)

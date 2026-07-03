@@ -720,6 +720,7 @@ class NativeHudEncoder(
         var videoFps = "30" // default to 30
         var originalCodec = "h264"
         var videoRotation = 0
+        var hasAudioStream = false
         try {
             // Run ffmpeg -i to gather duration and resolution via stderr stream to avoid missing ffprobe dependency
             val pb = ProcessBuilder(ffmpegPath, "-i", localVideoPath)
@@ -764,6 +765,10 @@ class NativeHudEncoder(
                 videoRotation = rotateMatch.groupValues[1].toIntOrNull() ?: 0
                 println("DEBUG: NativeHudEncoder rotation parsed: $videoRotation degrees")
             }
+            if (outputInfo.contains("Audio:")) {
+                hasAudioStream = true
+                println("DEBUG: NativeHudEncoder audio stream detected")
+            }
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -801,6 +806,31 @@ class NativeHudEncoder(
             minOf(trimDurationSeconds, maxDurationSeconds)
         } else {
             trimDurationSeconds
+        }
+
+        val activeSegments = settings.speedSegments.mapNotNull { seg ->
+            val sShifted = seg.startSeconds - actualTrimStart
+            val eShifted = seg.endSeconds - actualTrimStart
+            val sCropped = maxOf(0.0, sShifted)
+            val eCropped = minOf(targetDurationSeconds.toDouble(), eShifted)
+            if (sCropped < eCropped) {
+                SpeedSegment(
+                    id = seg.id,
+                    startSeconds = sCropped,
+                    endSeconds = eCropped,
+                    speedFactor = seg.speedFactor
+                )
+            } else {
+                null
+            }
+        }.sortedBy { it.startSeconds }
+
+        val targetStart = SpeedMapper.mapSourceToTarget(actualTrimStart, settings.speedSegments)
+        val targetEnd = SpeedMapper.mapSourceToTarget(actualTrimStart + targetDurationSeconds, settings.speedSegments)
+        val finalOutputDuration = if (settings.speedSegments.isEmpty()) {
+            targetDurationSeconds.toDouble()
+        } else {
+            targetEnd - targetStart
         }
 
         if (!hasTelemetry || telemetry.isEmpty()) {
@@ -1122,12 +1152,20 @@ class NativeHudEncoder(
                 Thread.sleep(100)
             }
 
-            val ffmpegInputStart = actualTrimStart + ffmpegStartSeconds
-            val remainingDuration = targetDurationSeconds - ffmpegStartSeconds
+
+            val targetResume = targetStart + ffmpegStartSeconds
+            val ffmpegInputStartMapped = if (settings.speedSegments.isEmpty()) {
+                actualTrimStart + ffmpegStartSeconds
+            } else {
+                SpeedMapper.mapTargetToSource(targetResume, settings.speedSegments)
+            }
+            
+            val remainingSourceDuration = (actualTrimStart + targetDurationSeconds) - ffmpegInputStartMapped
+            val remainingDuration = remainingSourceDuration
 
             val runBlur = settings.blurLicensePlates && plateCache != null && plateCache.records.isNotEmpty()
             val fpsDouble = videoFps.toDoubleOrNull() ?: 30.0
-            val totalFrames = (targetDurationSeconds * fpsDouble).toInt()
+            val totalFrames = (finalOutputDuration * fpsDouble).toInt()
             val resumeFrames = (resumeSeconds * fpsDouble).toInt()
             val maskFramePlan = if (runBlur) {
                 val maskPlanStartNs = System.nanoTime()
@@ -1144,7 +1182,8 @@ class NativeHudEncoder(
                     targetWidth = exportWidth.toFloat(),
                     targetHeight = exportHeight.toFloat(),
                     timeBufferMs = settings.plateMaskTimeBufferMs,
-                    sourceStartTimeMs = (actualTrimStart * 1000.0).toLong()
+                    sourceStartTimeMs = (actualTrimStart * 1000.0).toLong(),
+                    speedSegments = settings.speedSegments
                 ) ?: emptyList()
                 val maskedFrameCount = planned.count { it.isNotEmpty() }
                 println("DEBUG: Precomputed plate mask plan: $maskedFrameCount/$totalFrames frames contain masks.")
@@ -1166,7 +1205,7 @@ class NativeHudEncoder(
                 (!shouldResume || !jobState.isPlateMaskStreamReady || !isMaskVideoValid)
             if (shouldGenerateMaskVideo) {
                 val maskFile = maskVideoFile ?: throw Exception("Plate mask output path was not initialized.")
-                onProgress(resumeSeconds.toFloat() / targetDurationSeconds, "Preparing plate mask stream...")
+                onProgress(resumeSeconds.toFloat() / finalOutputDuration.toFloat(), "Preparing plate mask stream...")
                 val maskVideoStartNs = System.nanoTime()
                 generateMaskVideo(
                     ffmpegPath = ffmpegPath,
@@ -1201,7 +1240,7 @@ class NativeHudEncoder(
             val seekStart = if (isLocalTrimmedVideo) {
                 ffmpegStartSeconds
             } else {
-                ffmpegInputStart
+                ffmpegInputStartMapped
             }
             pbArgs.add("-ss")
             pbArgs.add(seekStart.toString())
@@ -1218,20 +1257,66 @@ class NativeHudEncoder(
             }
             
             pbArgs.add("-filter_complex")
-            if (runBlur) {
-                pbArgs.add(
+            val hasSpeed = activeSegments.isNotEmpty()
+            if (hasSpeed) {
+                val setptsExpr = generateSetptsExpression(activeSegments)
+                
+                val videoFilter = if (runBlur) {
                     "[0:v]setpts=PTS-STARTPTS[hud];" +
                     "[2:v]scale=$exportWidth:$exportHeight,format=yuv420p,setpts=PTS-STARTPTS[mask];" +
-                    "[1:v]scale=$exportWidth:$exportHeight,setpts=PTS-STARTPTS,split[vid_orig][vid_blur_src];" +
+                    "[1:v]scale=$exportWidth:$exportHeight,setpts='$setptsExpr',split[vid_orig][vid_blur_src];" +
                     "[vid_blur_src]scale=w=${exportWidth}/20:h=${exportHeight}/20,scale=w=$exportWidth:h=$exportHeight:flags=neighbor[vid_blurred];" +
                     "[vid_orig][vid_blurred][mask]maskedmerge[vid_merged];" +
-                    "[vid_merged][hud]overlay=0:0:shortest=1"
-                )
+                    "[vid_merged][hud]overlay=0:0:shortest=1[outv]"
+                } else {
+                    "[1:v]scale=$exportWidth:$exportHeight,setpts='$setptsExpr'[vid];" +
+                    "[vid][0:v]overlay=0:0:shortest=1[outv]"
+                }
+                
+                if (hasAudioStream) {
+                    val intervals = mutableListOf<TimelineInterval>()
+                    var currentInt = 0.0
+                    for (seg in activeSegments) {
+                        if (seg.startSeconds > currentInt) {
+                            intervals.add(TimelineInterval(currentInt, seg.startSeconds, isSpeed = false, speedFactor = 1.0))
+                        }
+                        if (seg.endSeconds > seg.startSeconds) {
+                            intervals.add(TimelineInterval(seg.startSeconds, seg.endSeconds, isSpeed = true, speedFactor = seg.speedFactor))
+                        }
+                        currentInt = seg.endSeconds
+                    }
+                    if (targetDurationSeconds.toDouble() > currentInt) {
+                        intervals.add(TimelineInterval(currentInt, targetDurationSeconds.toDouble(), isSpeed = false, speedFactor = 1.0))
+                    }
+                    
+                    val audioFilterString = generateAudioFilterString(intervals)
+                    pbArgs.add(videoFilter + ";" + audioFilterString)
+                    
+                    pbArgs.add("-map")
+                    pbArgs.add("[outv]")
+                    pbArgs.add("-map")
+                    pbArgs.add("[outa]")
+                } else {
+                    pbArgs.add(videoFilter)
+                    pbArgs.add("-map")
+                    pbArgs.add("[outv]")
+                }
             } else {
-                pbArgs.add(
-                    "[1:v]scale=$exportWidth:$exportHeight,setpts=PTS-STARTPTS[vid];" +
-                    "[vid][0:v]overlay=0:0:shortest=1"
-                )
+                if (runBlur) {
+                    pbArgs.add(
+                        "[0:v]setpts=PTS-STARTPTS[hud];" +
+                        "[2:v]scale=$exportWidth:$exportHeight,format=yuv420p,setpts=PTS-STARTPTS[mask];" +
+                        "[1:v]scale=$exportWidth:$exportHeight,setpts=PTS-STARTPTS,split[vid_orig][vid_blur_src];" +
+                        "[vid_blur_src]scale=w=${exportWidth}/20:h=${exportHeight}/20,scale=w=$exportWidth:h=$exportHeight:flags=neighbor[vid_blurred];" +
+                        "[vid_orig][vid_blurred][mask]maskedmerge[vid_merged];" +
+                        "[vid_merged][hud]overlay=0:0:shortest=1"
+                    )
+                } else {
+                    pbArgs.add(
+                        "[1:v]scale=$exportWidth:$exportHeight,setpts=PTS-STARTPTS[vid];" +
+                        "[vid][0:v]overlay=0:0:shortest=1"
+                    )
+                }
             }
             
             pbArgs.add("-c:v")
@@ -1362,10 +1447,16 @@ class NativeHudEncoder(
             val frameTimes = mutableListOf<Long>()
             
             // Pre-fill power buffer for context if we're not at the start
+            // Pre-fill power buffer for context if we're not at the start
             if (resumeSeconds > 0) {
                 val prefillStart = maxOf(0, resumeSeconds - settings.powerTrendSpanSeconds)
                 for (preSec in prefillStart until resumeSeconds) {
-                    val preUtc = startTimeAdjusted.plusSeconds(preSec.toLong()).epochSecond
+                    val preSecInSource = if (settings.speedSegments.isEmpty()) {
+                        preSec.toDouble()
+                    } else {
+                        SpeedMapper.mapTargetToSource(targetStart + preSec, settings.speedSegments) - actualTrimStart
+                    }
+                    val preUtc = startTimeAdjusted.plusSeconds(preSecInSource.toLong()).epochSecond
                     val preFitTs = preUtc - fitEpoch
                     val pt = telemetry.find { it.timestamp >= preFitTs } ?: telemetry.last()
                     pBuf.add(pt.power)
@@ -1394,7 +1485,12 @@ class NativeHudEncoder(
                     
                     val loopStart = System.currentTimeMillis()
                     val currentSec = f / fpsDouble
-                    val currentUtcSeconds = startTimeAdjusted.epochSecond + currentSec
+                    val currentSecInSource = if (settings.speedSegments.isEmpty()) {
+                        currentSec
+                    } else {
+                        SpeedMapper.mapTargetToSource(targetStart + currentSec, settings.speedSegments) - actualTrimStart
+                    }
+                    val currentUtcSeconds = startTimeAdjusted.epochSecond + currentSecInSource
                     val currentFitTs = currentUtcSeconds - fitEpoch
 
                     val telemetryStartNs = System.nanoTime()
@@ -1470,7 +1566,7 @@ class NativeHudEncoder(
                     val remainingSecondsETA = if (currentFps > 0) (remainingFrames / currentFps).toInt() else 0
                     
                     val processedStr = formatDuration(currentSec.toInt())
-                    val totalStr = formatDuration(targetDurationSeconds)
+                    val totalStr = formatDuration(finalOutputDuration.toInt())
                     val remainingStr = formatDuration(remainingSecondsETA)
                     val progressRatio = f.toFloat() / totalFrames
                     val progressPercent = (progressRatio * 100).toInt()
@@ -1539,21 +1635,21 @@ class NativeHudEncoder(
                 
                 if (exitCode != 0) {
                     val lastProcessedSec = lastProcessedFrame / fpsDouble
-                    val isNearEnd = (targetDurationSeconds - lastProcessedSec) <= 3.0
+                    val isNearEnd = (finalOutputDuration - lastProcessedSec) <= 3.0
                     if (isNearEnd && !cancelSupplier()) {
-                        println("ℹ️ FFmpeg exited with code $exitCode near the end of video (${lastProcessedSec.toInt()}/$targetDurationSeconds s). Treating as success (EOF reached).")
-                        resumeSeconds = targetDurationSeconds
+                        println("ℹ️ FFmpeg exited with code $exitCode near the end of video (${lastProcessedSec.toInt()}/${finalOutputDuration.toInt()} s). Treating as success (EOF reached).")
+                        resumeSeconds = finalOutputDuration.toInt()
                     } else {
                         throw Exception("ffmpeg exited with error code $exitCode. See ffmpeg_log.txt for details.")
                     }
                 } else {
                     // Success!
-                    resumeSeconds = targetDurationSeconds
+                    resumeSeconds = finalOutputDuration.toInt()
                 }
             }
         }
 
-        if (!cancelSupplier() && resumeSeconds >= targetDurationSeconds) {
+        if (!cancelSupplier() && resumeSeconds >= finalOutputDuration.toInt()) {
             // Export trimmed FIT file
             if (hasTelemetry && parser != null) {
                 try {
@@ -1731,6 +1827,74 @@ class NativeHudEncoder(
 
         val jobState = JobStateManager.loadState(jobDir, jobHash)
         JobStateManager.saveState(jobDir, jobState.copy(videoPath = videoPath, isPlateMaskStreamReady = true))
+    }
+
+    private data class TimelineInterval(
+        val start: Double,
+        val end: Double,
+        val isSpeed: Boolean,
+        val speedFactor: Double
+    )
+
+    private fun generateSetptsExpression(activeSegments: List<SpeedSegment>): String {
+        if (activeSegments.isEmpty()) {
+            return "PTS-STARTPTS"
+        }
+        
+        fun buildExpr(index: Int, currentSource: Double, currentTarget: Double): String {
+            if (index >= activeSegments.size) {
+                return "($currentTarget + (T - $currentSource))"
+            }
+            val seg = activeSegments[index]
+            val s = seg.startSeconds
+            val e = seg.endSeconds
+            val f = seg.speedFactor
+            
+            val sTarget = currentTarget + (s - currentSource)
+            val eTarget = sTarget + (e - s) / f
+            
+            val normalPart = "($currentTarget + (T - $currentSource))"
+            val speedPart = "($sTarget + (T - $s) / $f)"
+            
+            return "if(lt(T, $s), $normalPart, if(lt(T, $e), $speedPart, ${buildExpr(index + 1, e, eTarget)}))"
+        }
+        
+        val tOutExpr = buildExpr(0, 0.0, 0.0)
+        return "($tOutExpr)/TB"
+    }
+
+    private fun getAudioSpeedFilter(factor: Double): String {
+        val filters = mutableListOf<String>()
+        var remaining = factor
+        while (remaining > 2.0) {
+            filters.add("atempo=2.0")
+            remaining /= 2.0
+        }
+        while (remaining < 0.5) {
+            filters.add("atempo=0.5")
+            remaining /= 0.5
+        }
+        if (Math.abs(remaining - 1.0) > 1e-4) {
+            filters.add("atempo=$remaining")
+        }
+        return filters.joinToString(",")
+    }
+
+    private fun generateAudioFilterString(intervals: List<TimelineInterval>): String {
+        val sb = StringBuilder()
+        for (i in intervals.indices) {
+            val int = intervals[i]
+            val speedFilter = if (int.isSpeed) {
+                val audioSpeed = getAudioSpeedFilter(int.speedFactor)
+                if (audioSpeed.isNotEmpty()) ",${audioSpeed},volume=0" else ",volume=0"
+            } else ""
+            sb.append("[1:a]atrim=start=${int.start}:end=${int.end},asetpts=PTS-STARTPTS${speedFilter}[aud$i];")
+        }
+        for (i in intervals.indices) {
+            sb.append("[aud$i]")
+        }
+        sb.append("concat=n=${intervals.size}:v=0:a=1[outa]")
+        return sb.toString()
     }
 
     companion object {

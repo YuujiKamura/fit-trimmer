@@ -224,7 +224,8 @@ fun VideoPlatesCache.buildMappedMaskFrames(
     targetWidth: Float,
     targetHeight: Float,
     timeBufferMs: Long = 300L,
-    sourceStartTimeMs: Long = 0L
+    sourceStartTimeMs: Long = 0L,
+    speedSegments: List<SpeedSegment> = emptyList()
 ): List<List<MappedPlateBox>> {
     if (!isBlurEnabled || records.isEmpty() || totalFrames <= 0 || fps <= 0.0) {
         return List(totalFrames.coerceAtLeast(0)) { emptyList() }
@@ -233,7 +234,13 @@ fun VideoPlatesCache.buildMappedMaskFrames(
     var prevIndex = -1
     var nextIndex = 0
     return List(totalFrames) { frame ->
-        val targetTimeMs = sourceStartTimeMs + (frame * 1000.0 / fps).toLong()
+        val frameTargetSeconds = frame / fps
+        val frameSourceSeconds = if (speedSegments.isEmpty()) {
+            frameTargetSeconds
+        } else {
+            SpeedMapper.mapTargetToSource(frameTargetSeconds, speedSegments)
+        }
+        val targetTimeMs = sourceStartTimeMs + (frameSourceSeconds * 1000.0).toLong()
         while (nextIndex < records.size && records[nextIndex].timeMs < targetTimeMs) {
             prevIndex = nextIndex
             nextIndex++

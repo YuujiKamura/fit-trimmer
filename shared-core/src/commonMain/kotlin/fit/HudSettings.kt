@@ -24,6 +24,7 @@ data class HudSettings(
     val captionPosition: String = "top_center",
     val roadCaptions: List<RoadCaptionSegment> = emptyList(),
     val customCaptions: List<CustomCaptionSegment> = emptyList(),
+    val speedSegments: List<SpeedSegment> = emptyList(),
     val powerTrendSpanSeconds: Int = 60,
     val language: String = "",
     val useImperialUnits: Boolean = false,
