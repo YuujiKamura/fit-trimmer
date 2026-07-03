@@ -174,7 +174,8 @@ class HudRenderer(val config: HudConfig) {
                 canvas.drawRect(cx, barY, maxBarW, barH, "#f87171", alpha = 0.25f)
                 // Foreground bar (solid red) representing current accumulation
                 val progressW = if (totalSec > 0) {
-                    (currentSec.toFloat() / totalSec.toFloat()) * maxBarW
+                    val ratio = currentSec.toFloat() / totalSec.toFloat()
+                    ratio.coerceIn(0f, 1.0f) * maxBarW
                 } else {
                     0f
                 }
