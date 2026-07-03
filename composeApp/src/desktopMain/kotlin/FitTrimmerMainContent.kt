@@ -38,6 +38,7 @@ import androidx.compose.ui.window.rememberWindowState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
@@ -183,6 +184,7 @@ fun FitTrimmerMainContent(
     var isSeeking by remember { mutableStateOf(false) }
     var seekTargetTimeMs by remember { mutableStateOf(0L) }
     var lastSeekTime by remember { mutableStateOf(0L) }
+    val scope = rememberCoroutineScope()
 
     val onSeekStart = {
         isSeeking = true
@@ -200,16 +202,18 @@ fun FitTrimmerMainContent(
         }
     }
 
-    val onSeekEnd = { targetMs: Long ->
+    val onSeekEnd: (Long) -> Unit = { targetMs: Long ->
         val target = targetMs.coerceIn(0L, videoLengthMs)
         seekTargetTimeMs = target
         val ratio = if (videoLengthMs > 0) target.toFloat() / videoLengthMs.toFloat() else 0f
         playerState.seekTo(ratio * 1000f)
         videoCurrentTimeMs = target
-        isSeeking = false
         playerState.userDragging = false
+        scope.launch {
+            delay(350)
+            isSeeking = false
+        }
     }
-    val scope = rememberCoroutineScope()
     LaunchedEffect(videoPath, settings.blurLicensePlates, viewModel.videoStartUtc) {
         if (settings.blurLicensePlates && videoPath.isNotEmpty() && viewModel.plateCache == null) {
             if (fit.PlateCacheManager.cacheExists(videoPath)) {
