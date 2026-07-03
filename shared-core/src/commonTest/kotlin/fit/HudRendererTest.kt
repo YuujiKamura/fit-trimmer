@@ -294,21 +294,14 @@ class HudRendererTest {
 
         // Check if the HEART RATE ZONES header is drawn
         val hasHeader = canvas.drawnTexts.any { it.contains("HEART RATE ZONES") }
-        assertTrue(hasHeader, "HUD should draw HEART RATE ZONES header")
+        assertFalse(hasHeader, "HUD should NOT draw HEART RATE ZONES header anymore")
 
-        // Check if specific zone labels are present
-        assertTrue(canvas.drawnTexts.contains("130-139"), "Zone 130-139 should be drawn")
-        assertTrue(canvas.drawnTexts.contains("140-149"), "Zone 140-149 should be drawn")
-        assertTrue(canvas.drawnTexts.contains("170-179"), "Zone 170-179 should be drawn")
-        assertTrue(canvas.drawnTexts.contains("190+"), "Zone 190+ should be drawn")
+        // Check if current active HR zone cell is drawn under HEART RATE
+        assertTrue(canvas.drawnTexts.contains("ZONE 140-149: 00:01"), "Should draw active zone label and time under heart rate")
 
-        // Check if current active HR zone cell is drawn on the right of HEART RATE
-        assertTrue(canvas.drawnTexts.contains("ZONE 140s"), "Should draw active zone label")
-        assertTrue(canvas.drawnTexts.contains("00:01"), "Should draw active zone time")
-
-        // Check if time representation format exists in table (e.g. "00:01 / 00:01", "00:00 / 00:01")
-        assertTrue(canvas.drawnTexts.contains("00:01 / 00:01"), "Should draw zone time text ratio in table")
-        assertTrue(canvas.drawnTexts.contains("00:00 / 00:01"), "Should draw future zone time text ratio in table")
+        // Check that bottom table labels are NOT drawn
+        assertFalse(canvas.drawnTexts.contains("130-139"), "Zone 130-139 should NOT be drawn as a separate table row")
+        assertFalse(canvas.drawnTexts.contains("190+"), "Zone 190+ should NOT be drawn as a separate table row")
     }
 }
 

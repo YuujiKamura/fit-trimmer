@@ -131,35 +131,69 @@ class HudRenderer(val config: HudConfig) {
         drawCell(getLabel("CADENCE"), cadStr, "rpm", "#a78bfa")
 
         // 3. HEART RATE
-        val hrCy = cy
         val hrStr = if (isValid) telemetry.heartRate.roundToInt().toString() else "-"
-        drawCell(getLabel("HEART RATE"), hrStr, "bpm", "#ef4444")
-
-        // Draw current HR zone accumulation time to the right of HEART RATE cell
+        
+        // 3.1. Draw standard HEART RATE label and value
+        canvas.drawText(getLabel("HEART RATE"), cx, cy, labelSize, "#e5e7eb", bold = true)
+        val valY = cy + labelSize + tightness
+        canvas.drawText(hrStr, cx, valY, valSize, "#ef4444", bold = true)
+        val valW = canvas.getTextWidth(hrStr, valSize, true)
+        val unitX = cx + valW + 8f
+        val unitY = valY + (valSize - unitSize)
+        canvas.drawText("bpm", unitX, unitY, unitSize, "#ef4444", bold = true)
+        
+        // 3.2. Draw Zone accumulation bar and text immediately below the value
+        val subCy = valY + valSize + 6f
         if (isValid) {
             val currentHr = telemetry.heartRate
             val zIdx = getHrZoneIndex(currentHr)
             if (zIdx in 0..6) {
                 val currentSec = zonesCurrent[zIdx]
+                val totalSec = cachedZonesTotal?.get(zIdx) ?: 1
                 val zoneLabel = when (zIdx) {
                     6 -> "190+"
-                    5 -> "180s"
-                    4 -> "170s"
-                    3 -> "160s"
-                    2 -> "150s"
-                    1 -> "140s"
-                    0 -> "130s"
+                    5 -> "180-189"
+                    4 -> "170-179"
+                    3 -> "160-169"
+                    2 -> "150-159"
+                    1 -> "140-149"
+                    0 -> "130-139"
                     else -> ""
                 }
-                val zoneTimeText = formatMinSec(currentSec)
+                val minSecText = formatMinSec(currentSec)
                 
-                canvas.drawText("ZONE $zoneLabel", cx + 180f, hrCy, labelSize, "#e5e7eb", bold = true)
-                canvas.drawText(zoneTimeText, cx + 180f, hrCy + labelSize + tightness, 20f, "#ffffff", bold = true)
+                // Draw text: e.g. "ZONE 170-179: 12:34"
+                val zoneText = "ZONE $zoneLabel: $minSecText"
+                canvas.drawText(zoneText, cx, subCy, 12f, "#ffffff", bold = true)
+                
+                // Draw 1 single bar representing current zone accumulation progress relative to total zone time
+                val barY = subCy + 15f
+                val maxBarW = 120f
+                val barH = 6f
+                // Background bar (thin/transparent) representing total time
+                canvas.drawRect(cx, barY, maxBarW, barH, "#f87171", alpha = 0.25f)
+                // Foreground bar (solid red) representing current accumulation
+                val progressW = if (totalSec > 0) {
+                    (currentSec.toFloat() / totalSec.toFloat()) * maxBarW
+                } else {
+                    0f
+                }
+                if (progressW > 0f) {
+                    canvas.drawRect(cx, barY, progressW, barH, "#ef4444", alpha = 1.0f)
+                }
             } else {
-                canvas.drawText("ZONE -", cx + 180f, hrCy, labelSize, "#e5e7eb", bold = true)
-                canvas.drawText("--:--", cx + 180f, hrCy + labelSize + tightness, 20f, "#9ca3af", bold = true)
+                canvas.drawText("ZONE -: --:--", cx, subCy, 12f, "#9ca3af", bold = true)
+                val barY = subCy + 15f
+                canvas.drawRect(cx, barY, 120f, 6f, "#e5e7eb", alpha = 0.15f)
             }
+        } else {
+            canvas.drawText("ZONE -: --:--", cx, subCy, 12f, "#9ca3af", bold = true)
+            val barY = subCy + 15f
+            canvas.drawRect(cx, barY, 120f, 6f, "#e5e7eb", alpha = 0.15f)
         }
+        
+        // Move cy down to cover this custom sub-section and preserve layout tightness
+        cy = valY + valSize + 6f + 12f + 15f + 6f + itemSpacing
 
         // 4. POWER
         val pwrStr = if (isValid) telemetry.power.roundToInt().toString() else "-"
@@ -434,62 +468,6 @@ class HudRenderer(val config: HudConfig) {
             
             // Draw immediately below the elevation graph box in a single line
             canvas.drawText(line, cx, eGy + graphH + 16f, infoSize, "#ffffff", bold = true)
-        }
-
-        // 8.6. Heart Rate Zones Table with Butterfly Bar Graph (130 to 190 bpm)
-        if (isValid && allPoints.isNotEmpty()) {
-            val zoneCy = eGy + graphH + 42f
-            val isJa = config.language.lowercase().let { it == "ja" || it.startsWith("ja-") }
-            canvas.drawText(
-                if (isJa) "心拍ゾーン累積時間 / 総時間" else "HEART RATE ZONES (ACCUM vs TOTAL)",
-                cx, zoneCy, labelSize, "#e5e7eb", bold = true
-            )
-
-            val maxBarW = 75f
-            val maxTotal = (cachedZonesMaxTotal).toFloat()
-            val zones = listOf("190+", "180-189", "170-179", "160-169", "150-159", "140-149", "130-139")
-            val zoneIndices = listOf(6, 5, 4, 3, 2, 1, 0)
-
-            var rowY = zoneCy + labelSize + 6f
-            val rowH = 15f
-            val barH = 7f
-
-            for (idx in zoneIndices.indices) {
-                val zIdx = zoneIndices[idx]
-                val zoneLabel = zones[idx]
-                val totalSec = cachedZonesTotal?.get(zIdx) ?: 0
-                val currentSec = zonesCurrent[zIdx]
-
-                // Calculate widths based on maxTotal
-                val totalW = (totalSec.toFloat() / maxTotal) * maxBarW
-                val currentW = (currentSec.toFloat() / maxTotal) * maxBarW
-
-                val barY = rowY + (rowH - barH) / 2f
-
-                // 1. Draw Left Bar: Current accumulation (Solid Red #ef4444)
-                if (currentW > 0f) {
-                    val leftBarX = cx + 95f - currentW
-                    canvas.drawRect(leftBarX, barY, currentW, barH, "#ef4444", alpha = 1.0f)
-                }
-
-                // 2. Draw Center Label: e.g. "170-179" (White, bold, size=10f)
-                val labelW = canvas.getTextWidth(zoneLabel, 10f, bold = true)
-                val labelX = cx + 95f + (60f - labelW) / 2f
-                canvas.drawText(zoneLabel, labelX, rowY + 1f, 10f, "#ffffff", bold = true)
-
-                // 3. Draw Right Bar: Total Clip Time (Light Red #f87171 with 0.35 alpha)
-                if (totalW > 0f) {
-                    canvas.drawRect(cx + 155f, barY, totalW, barH, "#f87171", alpha = 0.35f)
-                }
-
-                // 4. Draw Time Text: e.g. "12:34 / 20:15"
-                val timeStr = "${formatMinSec(currentSec)} / ${formatMinSec(totalSec)}"
-                val isCurrentZone = (zIdx == getHrZoneIndex(telemetry.heartRate))
-                val textColor = if (isCurrentZone) "#ef4444" else "#9ca3af"
-                canvas.drawText(timeStr, cx + 155f + maxBarW + 8f, rowY + 1f, 9f, textColor, bold = isCurrentZone)
-
-                rowY += rowH + 2f
-            }
         }
 
         // Draw Road Caption overlay
