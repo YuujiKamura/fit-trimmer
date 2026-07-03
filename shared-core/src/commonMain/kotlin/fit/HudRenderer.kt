@@ -876,7 +876,7 @@ class HudRenderer(val config: HudConfig) {
         val L = kotlin.math.sqrt(dx * dx + dy * dy)
         
         // Target path length on the map is 2 * padR to leave padding inside circle
-        val padR = R - 20f * sf // Increased safety margin (20f) for NESW spacing
+        val padR = R - 28f * sf // Increased safety margin (28f) for NESW spacing
 
         // Heading angle (Start to End) in degrees for compass rotation
         val pathBearing = calculateBearing(startPt, endPt) ?: 0.0
@@ -996,8 +996,8 @@ class HudRenderer(val config: HudConfig) {
             "W" to (angleN + 270.0)
         )
         
-        val compR = R - 8f * sf // circle inner radius to align nicely
-        val compassTextSize = 8f * sf
+        val compR = R - 16f * sf // circle inner radius to align nicely (16f offset from outer border)
+        val compassTextSize = 10.5f * sf
         for ((label, angleDeg) in compassPoints) {
             val angleRad = angleDeg * kotlin.math.PI / 180.0
             val tx = mcx + compR * kotlin.math.cos(angleRad).toFloat()

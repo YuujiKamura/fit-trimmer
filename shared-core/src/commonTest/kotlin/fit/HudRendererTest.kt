@@ -390,20 +390,20 @@ class HudRendererTest {
         // marginY = 40 * sf = 59.27f
         // mcx = canvas.width - marginX - R = 1920 - 66.67875 - 111.13125 = 1742.19f
         // mcy = marginY + R = 59.27 + 111.13125 = 170.40125f
-        // padR = R - 20f * sf = 55 * sf = 81.49625f
-        // Start marker should be at mcx, mcy + padR = (1742.19f, 251.897f)
-        // End marker should be at mcx, mcy - padR = (1742.19f, 88.905f)
+        // padR = R - 28f * sf = 47 * sf = 69.64225f
+        // Start marker should be at mcx, mcy + padR = (1742.19f, 240.043f)
+        // End marker should be at mcx, mcy - padR = (1742.19f, 100.759f)
         // Marker size = 8f * sf = 11.854f, hmSize = 5.927f
-        // Start rect left: 1742.19 - 5.927 = 1736.263f, top: 251.897 - 5.927 = 245.97f
-        // End rect left: 1742.19 - 5.927 = 1736.263f, top: 88.905 - 5.927 = 82.978f
+        // Start rect left: 1742.19 - 5.927 = 1736.263f, top: 240.043 - 5.927 = 234.116f
+        // End rect left: 1742.19 - 5.927 = 1736.263f, top: 100.759 - 5.927 = 94.832f
         
-        val startRect = rects.find { kotlin.math.abs(it.x - 1736.263f) < 1.0f && kotlin.math.abs(it.y - 245.97f) < 1.0f }
-        val endRect = rects.find { kotlin.math.abs(it.x - 1736.263f) < 1.0f && kotlin.math.abs(it.y - 82.978f) < 1.0f }
+        val startRect = rects.find { kotlin.math.abs(it.x - 1736.263f) < 1.0f && kotlin.math.abs(it.y - 234.116f) < 1.0f }
+        val endRect = rects.find { kotlin.math.abs(it.x - 1736.263f) < 1.0f && kotlin.math.abs(it.y - 94.832f) < 1.0f }
         
-        assertTrue(startRect != null, "Start marker must align perfectly with lower bound (1736.263, 245.97) (rects: $rects)")
-        assertTrue(endRect != null, "End marker must align perfectly with upper bound (1736.263, 82.978) (rects: $rects)")
+        assertTrue(startRect != null, "Start marker must align perfectly with lower bound (1736.263, 234.116) (rects: $rects)")
+        assertTrue(endRect != null, "End marker must align perfectly with upper bound (1736.263, 94.832) (rects: $rects)")
     }
-
+ 
     @Test
     fun testMiniMap_LoopRouteFittedInsideCircle() {
         val config = HudConfig(
@@ -438,10 +438,10 @@ class HudRendererTest {
         // marginY = 40 * sf = 59.27f
         // mcx = canvas.width - marginX - R = 1920 - 66.67875 - 111.13125 = 1742.19f
         // mcy = marginY + R = 59.27 + 111.13125 = 170.40125f
-        // padR = R - 20f * sf = 55 * sf = 81.49625f
+        // padR = R - 28f * sf = 47 * sf = 69.64225f
         val mcx = 1742.19f
         val mcy = 170.40125f
-        val padR = 81.49625f
+        val padR = 69.64225f
         
         // sf = 59.27 / 40.0 = 1.48175f. Route line width is 2.8f * sf = 4.1489f
         val routeLines = canvas.drawnLines.filter { it.color == "#ffffff" && kotlin.math.abs(it.width - 4.1489f) < 0.01f }
@@ -464,6 +464,101 @@ class HudRendererTest {
         
         // One of the points (furthest from center) should be scaled close to padR boundary to utilize space efficiently
         assertTrue(maxDistance >= padR - 5.0f, "Loop route must scale up to utilize circle space (max distance from center: $maxDistance, expected near $padR)")
+    }
+
+    @Test
+    fun testMiniMap_CompassAndRouteMargin() {
+        val config = HudConfig(
+            valSize = 59.27f, // sf = 1.48175f
+            tightness = 1f, spacing = 20f,
+            xOffset = 40f, yOffset = 100f, graphH = 60f, graphW = 300f,
+            language = "ja"
+        )
+        val renderer = HudRenderer(config)
+        
+        val p1 = FitParser.TelemetryPoint(
+            timestamp = 1000.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 50.0, grade = 2.0,
+            distance = 1000.0, elapsedSeconds = 10, lat = 35.0, lon = 135.0
+        )
+        val p2 = FitParser.TelemetryPoint(
+            timestamp = 1005.0, speed = 11.0, power = 105.0, cadence = 81.0, heartRate = 121.0, elevation = 51.0, grade = 2.1,
+            distance = 1750.0, elapsedSeconds = 15, lat = 35.01, lon = 135.0
+        )
+        val p3 = FitParser.TelemetryPoint(
+            timestamp = 1010.0, speed = 12.0, power = 110.0, cadence = 82.0, heartRate = 122.0, elevation = 52.0, grade = 2.2,
+            distance = 2500.0, elapsedSeconds = 20, lat = 35.0, lon = 135.0
+        )
+        val allPoints = listOf(p1, p2, p3)
+        
+        val canvas = TestHudCanvas()
+        renderer.renderFrame(canvas, p3, allPoints, emptyList(), emptyList(), 100.0f, isValid = true)
+        
+        val sf = 1.48175f
+        val R = 75f * sf
+        val marginX = 45f * sf
+        val mcx = canvas.width - marginX - R
+        val mcy = 40f * sf + R
+        
+        val routeLines = canvas.drawnLines.filter { it.color == "#ffffff" && kotlin.math.abs(it.width - 4.1489f) < 0.01f }
+        assertTrue(routeLines.isNotEmpty())
+        
+        var maxRouteDist = 0f
+        for (line in routeLines) {
+            for (pt in line.points) {
+                val dx = pt.first - mcx
+                val dy = pt.second - mcy
+                val dist = kotlin.math.sqrt(dx * dx + dy * dy)
+                if (dist > maxRouteDist) {
+                    maxRouteDist = dist
+                }
+            }
+        }
+        
+        val compR = R - 16f * sf // Compass text radius (offset 16f)
+        val actualMargin = compR - maxRouteDist
+        assertTrue(actualMargin >= 10f * sf, "Compass-to-route margin must be at least 10f * sf (got $actualMargin)")
+        
+        val compToOuterMargin = R - compR
+        assertTrue(compToOuterMargin >= 15f * sf, "Compass-to-outer border margin must be at least 15f * sf (got $compToOuterMargin)")
+    }
+
+    @Test
+    fun testMiniMap_RouteCurvatureDirection() {
+        val config = HudConfig(
+            valSize = 59.27f, // sf = 1.48175f
+            tightness = 1f, spacing = 20f,
+            xOffset = 40f, yOffset = 100f, graphH = 60f, graphW = 300f,
+            language = "ja"
+        )
+        val renderer = HudRenderer(config)
+        
+        val p1 = FitParser.TelemetryPoint(
+            timestamp = 1000.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 50.0, grade = 2.0,
+            distance = 1000.0, elapsedSeconds = 10, lat = 35.0, lon = 135.0
+        )
+        val p2 = FitParser.TelemetryPoint(
+            timestamp = 1005.0, speed = 11.0, power = 105.0, cadence = 81.0, heartRate = 121.0, elevation = 51.0, grade = 2.1,
+            distance = 1750.0, elapsedSeconds = 15, lat = 35.005, lon = 135.01
+        )
+        val p3 = FitParser.TelemetryPoint(
+            timestamp = 1010.0, speed = 12.0, power = 110.0, cadence = 82.0, heartRate = 122.0, elevation = 52.0, grade = 2.2,
+            distance = 2500.0, elapsedSeconds = 20, lat = 35.01, lon = 135.0
+        )
+        val allPoints = listOf(p1, p2, p3)
+        
+        val canvas = TestHudCanvas()
+        renderer.renderFrame(canvas, p3, allPoints, emptyList(), emptyList(), 100.0f, isValid = true)
+        
+        val sf = 1.48175f
+        val R = 75f * sf
+        val marginX = 45f * sf
+        val mcx = canvas.width - marginX - R
+        
+        val routeLines = canvas.drawnLines.filter { it.color == "#ffffff" && kotlin.math.abs(it.width - 4.1489f) < 0.01f }
+        assertTrue(routeLines.isNotEmpty())
+        
+        val middlePtProjX = routeLines[0].points[1].first
+        assertTrue(middlePtProjX > mcx + 2.0f, "Middle point in right-hand turn must be projected to the right of center mcx ($mcx), got $middlePtProjX")
     }
 
     @Test
