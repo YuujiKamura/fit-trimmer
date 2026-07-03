@@ -301,6 +301,14 @@ class HudRendererTest {
         assertTrue(canvas.drawnTexts.contains("140-149"), "Zone 140-149 should be drawn")
         assertTrue(canvas.drawnTexts.contains("170-179"), "Zone 170-179 should be drawn")
         assertTrue(canvas.drawnTexts.contains("190+"), "Zone 190+ should be drawn")
+
+        // Check if current active HR zone cell is drawn on the right of HEART RATE
+        assertTrue(canvas.drawnTexts.contains("ZONE 140s"), "Should draw active zone label")
+        assertTrue(canvas.drawnTexts.contains("00:01"), "Should draw active zone time")
+
+        // Check if time representation format exists in table (e.g. "00:01 / 00:01", "00:00 / 00:01")
+        assertTrue(canvas.drawnTexts.contains("00:01 / 00:01"), "Should draw zone time text ratio in table")
+        assertTrue(canvas.drawnTexts.contains("00:00 / 00:01"), "Should draw future zone time text ratio in table")
     }
 }
 
