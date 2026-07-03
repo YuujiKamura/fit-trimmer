@@ -384,24 +384,24 @@ class HudRendererTest {
         
         val rects = canvas.drawnRects
         
-        // sf = 59.27 / 40.0 = 1.48175
-        // R = 95 * sf = 140.76625f
-        // marginX = 80 * sf = 118.54f
-        // marginY = 60 * sf = 88.905f
-        // mcx = canvas.width - marginX - R = 1920 - 118.54 - 140.76625 = 1660.69375f
-        // mcy = marginY + R = 88.905 + 140.76625 = 229.67125f
-        // padR = R - 15f * sf = 140.76625 - 15 * 1.48175 = 118.54f
-        // Start marker should be at mcx, mcy + padR = (1660.694f, 229.671f + 118.54f) = (1660.694f, 348.211f)
-        // End marker should be at mcx, mcy - padR = (1660.694f, 229.671f - 118.54f) = (1660.694f, 111.131f)
+        // sf = 1.48175
+        // R = 75 * sf = 111.13125f
+        // marginX = 45 * sf = 66.67875f
+        // marginY = 40 * sf = 59.27f
+        // mcx = canvas.width - marginX - R = 1920 - 66.67875 - 111.13125 = 1742.19f
+        // mcy = marginY + R = 59.27 + 111.13125 = 170.40125f
+        // padR = R - 20f * sf = 55 * sf = 81.49625f
+        // Start marker should be at mcx, mcy + padR = (1742.19f, 251.897f)
+        // End marker should be at mcx, mcy - padR = (1742.19f, 88.905f)
         // Marker size = 8f * sf = 11.854f, hmSize = 5.927f
-        // Start rect left: 1660.694 - 5.927 = 1654.767f, top: 348.211 - 5.927 = 342.284f
-        // End rect left: 1660.694 - 5.927 = 1654.767f, top: 111.131 - 5.927 = 105.204f
+        // Start rect left: 1742.19 - 5.927 = 1736.263f, top: 251.897 - 5.927 = 245.97f
+        // End rect left: 1742.19 - 5.927 = 1736.263f, top: 88.905 - 5.927 = 82.978f
         
-        val startRect = rects.find { kotlin.math.abs(it.x - 1654.767f) < 1.0f && kotlin.math.abs(it.y - 342.284f) < 1.0f }
-        val endRect = rects.find { kotlin.math.abs(it.x - 1654.767f) < 1.0f && kotlin.math.abs(it.y - 105.204f) < 1.0f }
+        val startRect = rects.find { kotlin.math.abs(it.x - 1736.263f) < 1.0f && kotlin.math.abs(it.y - 245.97f) < 1.0f }
+        val endRect = rects.find { kotlin.math.abs(it.x - 1736.263f) < 1.0f && kotlin.math.abs(it.y - 82.978f) < 1.0f }
         
-        assertTrue(startRect != null, "Start marker must align perfectly with lower bound (1654.767, 342.284) (rects: $rects)")
-        assertTrue(endRect != null, "End marker must align perfectly with upper bound (1654.767, 105.204) (rects: $rects)")
+        assertTrue(startRect != null, "Start marker must align perfectly with lower bound (1736.263, 245.97) (rects: $rects)")
+        assertTrue(endRect != null, "End marker must align perfectly with upper bound (1736.263, 82.978) (rects: $rects)")
     }
 
     @Test
@@ -432,12 +432,16 @@ class HudRendererTest {
         val canvas = TestHudCanvas()
         renderer.renderFrame(canvas, p3, allPoints, emptyList(), emptyList(), 100.0f, isValid = true)
         
-        // Center: mcx = 1660.69375f, mcy = 229.67125f
-        // R = 140.76625f, padR = 118.54f
-        // All drawn line coordinates must be within padR radius from center
-        val mcx = 1660.69375f
-        val mcy = 229.67125f
-        val padR = 118.54f
+        // sf = 59.27 / 40.0 = 1.48175f
+        // R = 75 * sf = 111.13125f
+        // marginX = 45 * sf = 66.67875f
+        // marginY = 40 * sf = 59.27f
+        // mcx = canvas.width - marginX - R = 1920 - 66.67875 - 111.13125 = 1742.19f
+        // mcy = marginY + R = 59.27 + 111.13125 = 170.40125f
+        // padR = R - 20f * sf = 55 * sf = 81.49625f
+        val mcx = 1742.19f
+        val mcy = 170.40125f
+        val padR = 81.49625f
         
         // sf = 59.27 / 40.0 = 1.48175f. Route line width is 2.8f * sf = 4.1489f
         val routeLines = canvas.drawnLines.filter { it.color == "#ffffff" && kotlin.math.abs(it.width - 4.1489f) < 0.01f }

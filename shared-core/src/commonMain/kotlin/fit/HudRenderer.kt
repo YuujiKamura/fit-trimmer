@@ -846,9 +846,9 @@ class HudRenderer(val config: HudConfig) {
         val sf = (config.valSize / 40.0).toFloat().coerceAtLeast(0.5f)
 
         // 1. Layout parameters (Scaled & Enlarged for high fidelity)
-        val R = 95f * sf // 円の半径 (R) - 直径190px相当に拡大
-        val marginX = 80f * sf
-        val marginY = 60f * sf
+        val R = 75f * sf // 円の半径 (R) - コンパクト化 (直径150px相当)
+        val marginX = 45f * sf
+        val marginY = 40f * sf
         val mcx = canvas.width - marginX - R // 円の中心 X
         val mcy = marginY + R // 円の中心 Y
 
@@ -876,26 +876,25 @@ class HudRenderer(val config: HudConfig) {
         val L = kotlin.math.sqrt(dx * dx + dy * dy)
         
         // Target path length on the map is 2 * padR to leave padding inside circle
-        val padR = R - 15f * sf
+        val padR = R - 20f * sf // Increased safety margin (20f) for NESW spacing
 
         // Heading angle (Start to End) in degrees for compass rotation
         val pathBearing = calculateBearing(startPt, endPt) ?: 0.0
 
-        // Orientation angle theta (direction from start to end)
-        val theta = if (L > 1e-7) kotlin.math.atan2(dy, dx) else 0.0
-        // Rotation angle alpha to orient heading straight up (negative Y direction)
-        val alpha = -theta - kotlin.math.PI / 2.0
-
-        // 1. Transform all points to local heading-up plane and calculate bounding box
+        // 1. Project all points onto local heading-up plane and calculate bounding box
+        // lx: Rightward component (orthogonal to heading)
+        // ly: Upward component (along heading, negated for screen Y coordinates)
         var minX = Double.MAX_VALUE
         var maxX = -Double.MAX_VALUE
         var minY = Double.MAX_VALUE
         var maxY = -Double.MAX_VALUE
-                val localCoords = validRoutePoints.map { pt ->
+        val localCoords = validRoutePoints.map { pt ->
             val px = (pt.lon - startPt.lon) * cosLat
             val py = pt.lat - startPt.lat
-            val lx = px * kotlin.math.cos(alpha) - py * kotlin.math.sin(alpha)
-            val ly = px * kotlin.math.sin(alpha) + py * kotlin.math.cos(alpha)
+            
+            val lx = if (L > 1e-7) (px * dy - py * dx) / L else px
+            val ly = if (L > 1e-7) -(px * dx + py * dy) / L else -py
+            
             if (lx < minX) minX = lx
             if (lx > maxX) maxX = lx
             if (ly < minY) minY = ly
@@ -915,12 +914,13 @@ class HudRenderer(val config: HudConfig) {
         val cxL = (minX + maxX) / 2.0
         val cyL = (minY + maxY) / 2.0
 
-        // 5. Helper to project TelemetryPoint onto the screen canvas
+        // 5. Helper to project TelemetryPoint onto the screen canvas (applying dot-product projection)
         fun projectPoint(pt: FitParser.TelemetryPoint): Pair<Float, Float> {
             val px = (pt.lon - startPt.lon) * cosLat
             val py = pt.lat - startPt.lat
-            val lx = px * kotlin.math.cos(alpha) - py * kotlin.math.sin(alpha)
-            val ly = px * kotlin.math.sin(alpha) + py * kotlin.math.cos(alpha)
+            
+            val lx = if (L > 1e-7) (px * dy - py * dx) / L else px
+            val ly = if (L > 1e-7) -(px * dx + py * dy) / L else -py
             
             val lxScaled = ((lx - cxL) * dynamicScale).toFloat()
             val lyScaled = ((ly - cyL) * dynamicScale).toFloat()
@@ -996,8 +996,8 @@ class HudRenderer(val config: HudConfig) {
             "W" to (angleN + 270.0)
         )
         
-        val compR = R - 12f * sf // circle inner radius to align nicely
-        val compassTextSize = 12f * sf
+        val compR = R - 8f * sf // circle inner radius to align nicely
+        val compassTextSize = 8f * sf
         for ((label, angleDeg) in compassPoints) {
             val angleRad = angleDeg * kotlin.math.PI / 180.0
             val tx = mcx + compR * kotlin.math.cos(angleRad).toFloat()
