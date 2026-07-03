@@ -2166,6 +2166,40 @@ fun FitTrimmerMainContent(
                                     }
                                     if (selectedTab == 1) {
 
+                    TimeAlignmentCard(
+                        state = timeOffsetState,
+                        videoPath = videoPath,
+                        telemetryPoints = telemetryPoints,
+                        isAligning = viewModel.isAligningTelemetry,
+                        isEncoding = isEncoding,
+                        onAlignTelemetryClick = {
+                            scope.launch {
+                                viewModel.isAligningTelemetry = true
+                                try {
+                                    val originalInstant = try { java.time.Instant.parse(videoStartUtc) } catch(e: Exception) { null }
+                                    val alignedUtc = TelemetryAligner.alignVideoWithTelemetry(videoPath, telemetryPoints, videoStartUtc)
+                                    if (alignedUtc != null) {
+                                        val alignedInstant = try { java.time.Instant.parse(alignedUtc) } catch(e: Exception) { null }
+                                        if (originalInstant != null && alignedInstant != null) {
+                                            val diffMs = alignedInstant.toEpochMilli() - originalInstant.toEpochMilli()
+                                            val diffSec = diffMs / 1000.0
+                                            statusText = "IMU Sync: Adjusted offset by %.3f seconds".format(java.util.Locale.US, diffSec)
+                                            timeOffsetState.update(diffMs.toInt())
+                                        } else {
+                                            statusText = "IMU Sync Successful"
+                                        }
+                                    } else {
+                                        statusText = "IMU Sync failed (no correlation found)"
+                                    }
+                                } finally {
+                                    viewModel.isAligningTelemetry = false
+                                }
+                            }
+                        }
+                    )
+
+                    Spacer(Modifier.height(8.dp))
+
                     Divider(color = Color(0xFFE5E5EA))
                     // 4. HUD LAYOUT CONFIG Card
                     Card(
