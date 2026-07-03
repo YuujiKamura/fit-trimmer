@@ -2301,6 +2301,17 @@ fun FitTrimmerMainContent(
                                     fontWeight = FontWeight.Medium
                                 )
                             }
+                            Spacer(Modifier.height(8.dp))
+                            Divider(color = Color(0xFFE5E5EA), thickness = 1.dp)
+                            Spacer(Modifier.height(8.dp))
+                            
+                            // Data Scope Settings Section
+                            Text(
+                                text = utils.Localizer.get("data_scopes_section", settings.language),
+                                fontSize = 11.sp,
+                                color = Color.Gray,
+                                fontWeight = FontWeight.SemiBold
+                            )
                             Spacer(Modifier.height(4.dp))
                             Row(
                                 modifier = Modifier.fillMaxWidth().clickable(enabled = !isEncoding) {
