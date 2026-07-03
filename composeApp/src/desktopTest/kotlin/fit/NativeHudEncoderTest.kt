@@ -287,5 +287,18 @@ class NativeHudEncoderTest {
         assertTrue(textDrawn.contains("SPEED"), "Should still draw Speed")
         assertFalse(textDrawn.contains("W/KG"), "Should NOT draw W/KG when showWkg is false")
         assertFalse(textDrawn.contains("CADENCE"), "Should NOT draw Cadence when showCadence is false")
+
+        // Case 3: showWkg = true but bodyWeightKg = 0.0 (Unconfigured). W/KG should be hidden.
+        val config3 = HudConfig(
+            valSize = 50f, tightness = 0f, spacing = 10f, xOffset = 0f, yOffset = 0f, graphH = 100f, graphW = 200f,
+            showSpeed = true, showCadence = true, showHeartRate = true, showPower = true, showWkg = true, showGrade = true, showElevation = true,
+            bodyWeightKg = 0.0
+        )
+        val renderer3 = HudRenderer(config3)
+        textDrawn.clear()
+        renderer3.renderFrame(mockCanvas, pt, list, list, emptyList(), 1.0f, true)
+        
+        assertTrue(textDrawn.contains("SPEED"), "Should still draw Speed")
+        assertFalse(textDrawn.contains("W/KG"), "Should NOT draw W/KG when bodyWeightKg is 0.0 even if showWkg is true")
     }
 }

@@ -30,7 +30,7 @@ data class HudConfig(
     val showGrade: Boolean = true,
     val showElevation: Boolean = true,
     val showDistanceTime: Boolean = true,
-    val bodyWeightKg: Double = 70.0
+    val bodyWeightKg: Double = 0.0
 )
 
 interface HudCanvas {
@@ -230,8 +230,8 @@ class HudRenderer(val config: HudConfig) {
         }
 
         // 5. W/KG
-        if (config.showWkg) {
-            val weight = if (config.bodyWeightKg > 0.0) config.bodyWeightKg else 70.0
+        if (config.showWkg && config.bodyWeightKg > 0.0) {
+            val weight = config.bodyWeightKg
             val wkgVal = telemetry.power / weight
             val wkgStr = if (isValid) formatOneDecimal(wkgVal) else "-"
             drawCell("W/KG", wkgStr, "w/kg", "#2dd4bf")

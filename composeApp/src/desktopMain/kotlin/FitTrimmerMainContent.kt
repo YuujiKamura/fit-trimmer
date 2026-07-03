@@ -3522,6 +3522,7 @@ fun FitTrimmerMainContent(
                         }
                     } else if (setupStep == 3) {
                         // Step 3: Local Storage & Data Processing Policy Consent
+                        var initialWeightText by remember { mutableStateOf("") }
                         Card(
                             modifier = Modifier.width(480.dp).padding(16.dp),
                             shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
@@ -3565,6 +3566,32 @@ fun FitTrimmerMainContent(
                                         color = Color.Gray
                                     )
                                 }
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    text = utils.Localizer.get("initial_weight_label", tempSelectedLanguage),
+                                    fontSize = 11.sp,
+                                    color = Color.Gray,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                OutlinedTextField(
+                                    value = initialWeightText,
+                                    onValueChange = { input ->
+                                        if (input.isEmpty() || input.toDoubleOrNull() != null || input.all { it.isDigit() || it == '.' }) {
+                                            initialWeightText = input
+                                        }
+                                    },
+                                    placeholder = {
+                                        Text(
+                                            text = utils.Localizer.get("initial_weight_placeholder", tempSelectedLanguage),
+                                            fontSize = 11.sp,
+                                            color = Color.LightGray
+                                        )
+                                    },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                                    textStyle = TextStyle(fontSize = 12.sp, color = Color(0xFF1C1C1E))
+                                )
+                                Spacer(Modifier.height(4.dp))
                                 Divider(color = Color(0xFFE5E5EA))
                                 Row(
                                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
@@ -3581,7 +3608,11 @@ fun FitTrimmerMainContent(
                                     }
                                     Button(
                                         onClick = {
-                                            settings = settings.copy(language = tempSelectedLanguage)
+                                            val parsedWeight = initialWeightText.toDoubleOrNull() ?: 0.0
+                                            settings = settings.copy(
+                                                language = tempSelectedLanguage,
+                                                bodyWeightKg = parsedWeight
+                                            )
                                             setupStep = 0 // Finished setup
                                         },
                                         modifier = Modifier.weight(2f).height(40.dp),
