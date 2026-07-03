@@ -1089,4 +1089,24 @@ class AppViewModelTest {
         assertTrue(viewModel2.pendingRestorableJobs.isEmpty())
         assertTrue(utils.BatchQueueCache.load().isEmpty(), "Disk cache must be cleared on discard")
     }
+
+    @Test
+    fun testWindowsVideoPlayerStateDisposeDoesNotDeadlock() {
+        val os = System.getProperty("os.name").lowercase()
+        if (!os.contains("win")) {
+            return
+        }
+        val playerState = io.github.kdroidfilter.composemediaplayer.windows.WindowsVideoPlayerState()
+        playerState.openUri("C:/Users/yuuji/fit-trimmer/composeApp/scratch/crop_test.mp4")
+        Thread.sleep(100)
+        playerState.play()
+        playerState.seekTo(100f)
+        playerState.pause()
+
+        val startTime = System.currentTimeMillis()
+        playerState.dispose()
+        val duration = System.currentTimeMillis() - startTime
+        assertTrue(duration < 2500, "dispose() took too long ($duration ms), potential deadlock detected")
+    }
 }
+
