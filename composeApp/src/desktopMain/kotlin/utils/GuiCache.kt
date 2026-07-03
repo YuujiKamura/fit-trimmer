@@ -31,7 +31,18 @@ data class GuiPathCache(
 )
 
 object GuiCache {
-    private val file = File(System.getProperty("user.home"), ".fittrimmer_gui_cache.json")
+    var useTestCache: Boolean = System.getProperty("fittrimmer.test") == "true" ||
+            System.getenv("GRADLE_TEST") != null ||
+            System.getProperty("java.class.path", "").contains("testClasses") ||
+            System.getProperty("java.class.path", "").contains("desktopTest")
+
+    private val file: File
+        get() = if (useTestCache) {
+            File(System.getProperty("user.home"), ".fittrimmer_gui_cache_test.json")
+        } else {
+            File(System.getProperty("user.home"), ".fittrimmer_gui_cache.json")
+        }
+
     private val json = Json { ignoreUnknownKeys = true }
 
     fun shouldDeferSaveUntilVideoStartIsLoaded(videoPath: String, videoStartUtc: String): Boolean {
