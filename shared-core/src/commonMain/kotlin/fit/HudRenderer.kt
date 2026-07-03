@@ -454,24 +454,12 @@ class HudRenderer(val config: HudConfig) {
                 canvas.drawRect(startPt.first - 2.5f, startPt.second - 2.5f, 5f, 5f, "#ffffff", alpha = 1.0f)
                 canvas.drawRect(endPt.first - 2.5f, endPt.second - 2.5f, 5f, 5f, "#ffffff", alpha = 1.0f)
                 
-                // 16-direction calculation from raw videoPoints (trimmed range)
-                var startBearingStr = ""
-                for (i in 0 until videoPoints.size - 1) {
-                    val b = calculateBearing(videoPoints[i], videoPoints[i + 1])
-                    if (b != null) {
-                        startBearingStr = " (${get16Direction(b)})"
-                        break
-                    }
-                }
+                // 16-direction calculation from raw videoPoints (trimmed range) using stable bearing algorithm
+                val startB = calculateStableBearing(videoPoints, 0)
+                val startBearingStr = if (startB != null) " (${get16Direction(startB)})" else ""
                 
-                var endBearingStr = ""
-                for (i in videoPoints.size - 1 downTo 1) {
-                    val b = calculateBearing(videoPoints[i - 1], videoPoints[i])
-                    if (b != null) {
-                        endBearingStr = " (${get16Direction(b)})"
-                        break
-                    }
-                }
+                val endB = calculateStableBearing(videoPoints, videoPoints.size - 1)
+                val endBearingStr = if (endB != null) " (${get16Direction(endB)})" else ""
 
                 val isJa = config.language == "ja"
                 val startLabel = if (isJa) "起点 " else "START "
@@ -504,15 +492,9 @@ class HudRenderer(val config: HudConfig) {
                     val peakPt = pts[peakIdx]
                     canvas.drawRect(peakPt.first - 2.5f, peakPt.second - 2.5f, 5f, 5f, "#ef4444", alpha = 1.0f)
                     
-                    var peakBearingStr = ""
                     val rawPeakIdx = videoPoints.indexOfFirst { it.elevation == maxAlt }
-                    if (rawPeakIdx >= 0) {
-                        val b = (if (rawPeakIdx < videoPoints.size - 1) calculateBearing(videoPoints[rawPeakIdx], videoPoints[rawPeakIdx + 1]) else null)
-                            ?: if (rawPeakIdx > 0) calculateBearing(videoPoints[rawPeakIdx - 1], videoPoints[rawPeakIdx]) else null
-                        if (b != null) {
-                            peakBearingStr = " (${get16Direction(b)})"
-                        }
-                    }
+                    val peakB = if (rawPeakIdx >= 0) calculateStableBearing(videoPoints, rawPeakIdx) else null
+                    val peakBearingStr = if (peakB != null) " (${get16Direction(peakB)})" else ""
 
                     val peakText = peakLabel + (if (config.useImperialUnits) {
                         "${(maxAlt * 3.28084).roundToInt()}ft"
@@ -535,15 +517,9 @@ class HudRenderer(val config: HudConfig) {
                     val valleyPt = pts[valleyIdx]
                     canvas.drawRect(valleyPt.first - 2.5f, valleyPt.second - 2.5f, 5f, 5f, "#3b82f6", alpha = 1.0f)
                     
-                    var valleyBearingStr = ""
                     val rawValleyIdx = videoPoints.indexOfFirst { it.elevation == minAlt }
-                    if (rawValleyIdx >= 0) {
-                        val b = (if (rawValleyIdx < videoPoints.size - 1) calculateBearing(videoPoints[rawValleyIdx], videoPoints[rawValleyIdx + 1]) else null)
-                            ?: if (rawValleyIdx > 0) calculateBearing(videoPoints[rawValleyIdx - 1], videoPoints[rawValleyIdx]) else null
-                        if (b != null) {
-                            valleyBearingStr = " (${get16Direction(b)})"
-                        }
-                    }
+                    val valleyB = if (rawValleyIdx >= 0) calculateStableBearing(videoPoints, rawValleyIdx) else null
+                    val valleyBearingStr = if (valleyB != null) " (${get16Direction(valleyB)})" else ""
 
                     val valleyText = valleyLabel + (if (config.useImperialUnits) {
                         "${(minAlt * 3.28084).roundToInt()}ft"
@@ -824,6 +800,46 @@ class HudRenderer(val config: HudConfig) {
         val x = kotlin.math.cos(phi1) * kotlin.math.sin(phi2) - kotlin.math.sin(phi1) * kotlin.math.cos(phi2) * kotlin.math.cos(deltaLambda)
         val bearingRad = kotlin.math.atan2(y, x)
         return (bearingRad * 180.0 / kotlin.math.PI + 360.0) % 360.0
+    }
+
+    private fun calculateStableBearing(points: List<FitParser.TelemetryPoint>, centerIdx: Int): Double? {
+        if (points.size < 2 || centerIdx !in points.indices) return null
+        val centerPt = points[centerIdx]
+        
+        // 1. Try forward displacement (>= 5.0 meters)
+        for (i in centerIdx + 1 until points.size) {
+            val pt = points[i]
+            if (pt.lat != 0.0 && pt.lon != 0.0) {
+                val dist = pt.distance - centerPt.distance
+                if (kotlin.math.abs(dist) >= 5.0) {
+                    val b = calculateBearing(centerPt, pt)
+                    if (b != null) return b
+                }
+            }
+        }
+        
+        // 2. Fallback to backward displacement (>= 5.0 meters)
+        for (i in centerIdx - 1 downTo 0) {
+            val pt = points[i]
+            if (pt.lat != 0.0 && pt.lon != 0.0) {
+                val dist = centerPt.distance - pt.distance
+                if (kotlin.math.abs(dist) >= 5.0) {
+                    val b = calculateBearing(pt, centerPt)
+                    if (b != null) return b
+                }
+            }
+        }
+        
+        // 3. Fallback to adjacent points (GPS noise may persist, but best effort)
+        if (centerIdx < points.size - 1) {
+            val b = calculateBearing(centerPt, points[centerIdx + 1])
+            if (b != null) return b
+        }
+        if (centerIdx > 0) {
+            val b = calculateBearing(points[centerIdx - 1], centerPt)
+            if (b != null) return b
+        }
+        return null
     }
 
     private fun get16Direction(bearing: Double): String {
