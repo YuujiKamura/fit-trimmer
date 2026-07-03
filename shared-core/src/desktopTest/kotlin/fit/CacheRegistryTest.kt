@@ -61,6 +61,8 @@ class CacheRegistryTest {
         tempFile.writeText("stale")
         assertTrue(tempFile.exists())
 
+        Thread.sleep(50)
+
         CacheRegistry.cleanStaleCache(cutoffMs = 0L)
         assertFalse(tempFile.exists())
     }
@@ -237,6 +239,42 @@ class CacheRegistryTest {
             jobDirB.delete()
             CacheRegistry.clearAllCaches(videoPathA)
             CacheRegistry.clearAllCaches(videoPathB)
+        }
+    }
+
+    @Test
+    fun testSalvageAndMerge_EmptyJobDir() {
+        val jobDir = File(testTempDir, "job_empty")
+        jobDir.mkdirs()
+        try {
+            assertFailsWith<Exception> {
+                CacheRegistry.salvageAndMerge(jobDir, File(testTempDir, "out.mp4").absolutePath) { _, _ -> }
+            }
+        } finally {
+            jobDir.delete()
+        }
+    }
+
+    @Test
+    fun testSalvageAndMerge_FailsOnFfmpegError() {
+        val jobDir = File(testTempDir, "job_corrupt")
+        jobDir.mkdirs()
+        
+        // Write invalid corrupted files (not real TS)
+        val part1 = File(jobDir, "part_0000.ts")
+        part1.writeText("Corrupted dummy text data that is not a valid TS video stream")
+        
+        val outFile = File(testTempDir, "out_corrupt.mp4")
+        try {
+            // ffmpeg concat will fail to merge this invalid stream and return a non-zero exit code
+            assertFailsWith<Exception> {
+                CacheRegistry.salvageAndMerge(jobDir, outFile.absolutePath) { _, _ -> }
+            }
+            assertFalse(outFile.exists(), "Output file should not exist or be cleaned up on failure")
+        } finally {
+            part1.delete()
+            jobDir.deleteRecursively()
+            outFile.delete()
         }
     }
 }

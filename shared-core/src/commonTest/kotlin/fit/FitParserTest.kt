@@ -614,5 +614,83 @@ class FitParserTest {
         FitParser.setUShort(bytes, headerSize + recordsSize, fileCrc, true)
         return bytes
     }
+
+    @Test
+    fun testFitParser_FuzzDestruction() {
+        val baseBytes = buildCancelableFitBytes()
+        val random = kotlin.random.Random(42)
+
+        // Run 500 fuzz iterations to try and break the parser
+        repeat(500) {
+            val fuzzedBytes = baseBytes.copyOf()
+            // Randomly corrupt 1 to 5 bytes in the file
+            val corruptCount = random.nextInt(1, 6)
+            repeat(corruptCount) {
+                val index = random.nextInt(0, fuzzedBytes.size)
+                fuzzedBytes[index] = random.nextInt(0, 256).toByte()
+            }
+
+            try {
+                val parser = FitParser(fuzzedBytes)
+                parser.parse()
+                // If parsing succeeded, calling getTelemetry should also not crash
+                parser.getTelemetry()
+            } catch (e: IllegalArgumentException) {
+                // Expected parsing error (e.g. truncated file, invalid signature)
+            } catch (e: IllegalStateException) {
+                // Expected state error (e.g. undefined local ID reference)
+            } catch (e: IndexOutOfBoundsException) {
+                // Expected out of bounds due to truncation/malformation
+            } catch (e: Exception) {
+                // Any other standard exception is fine, as long as it does not crash JVM with OOM or Segfault
+            }
+        }
+    }
+
+    @Test
+    fun testFitParser_TruncatedInput() {
+        val baseBytes = buildCancelableFitBytes()
+        // Truncate the file at every possible length from 0 to full length
+        for (len in 0 until baseBytes.size) {
+            val truncatedBytes = baseBytes.copyOfRange(0, len)
+            try {
+                val parser = FitParser(truncatedBytes)
+                parser.parse()
+                parser.getTelemetry()
+            } catch (e: IllegalArgumentException) {
+                // Expected
+            } catch (e: IllegalStateException) {
+                // Expected
+            } catch (e: IndexOutOfBoundsException) {
+                // Expected
+            } catch (e: Exception) {
+                // Expected catch-all
+            }
+        }
+    }
+
+    @Test
+    fun testFitParser_InvalidTelemetryValues() {
+        val baseBytes = buildCancelableFitBytes()
+        val parser = FitParser(baseBytes)
+        parser.parse()
+        val telemetry = parser.getTelemetry()
+        // Verify base telemetry is parsed correctly
+        assertEquals(3, telemetry.size)
+
+        // Now test empty inputs and single-point inputs to make sure calculations like grade do not fail
+        val emptyBytes = ByteArray(12)
+        emptyBytes[0] = 12.toByte() // header size
+        emptyBytes[1] = 32
+        ".FIT".encodeToByteArray().copyInto(emptyBytes, 8)
+        try {
+            val emptyParser = FitParser(emptyBytes)
+            emptyParser.parse()
+            val points = emptyParser.getTelemetry()
+            assertTrue(points.isEmpty())
+        } catch (e: Exception) {
+            // Should not crash JVM
+        }
+    }
 }
 

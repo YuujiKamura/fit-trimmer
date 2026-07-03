@@ -18,18 +18,18 @@ class Mp4Parser {
                 var offset = i + 8 // skip type and version/flags
                 
                 return if (version == 1) {
-                    offset += 8 // skip creation (high)
-                    val creation = getUInt(bytes, offset)
-                    offset += 12 // skip modification (8) + timescale (4)
-                    val timescale = getUInt(bytes, offset - 4)
-                    offset += 4 // skip duration (high)
-                    val duration = getUInt(bytes, offset)
+                    val creation = getUInt(bytes, offset + 4) // read lower 4-bytes of 64-bit creation
+                    offset += 8 // skip creation (8)
+                    offset += 8 // skip modification (8)
+                    val timescale = getUInt(bytes, offset)
+                    offset += 4 // skip timescale (4)
+                    val duration = getUInt(bytes, offset + 4) // read lower 4-bytes of 64-bit duration
                     Metadata(creation, timescale, duration)
                 } else {
                     val creation = getUInt(bytes, offset)
-                    offset += 8 // skip modification
+                    offset += 8 // skip creation (4) + modification (4)
                     val timescale = getUInt(bytes, offset)
-                    offset += 4
+                    offset += 4 // skip timescale (4)
                     val duration = getUInt(bytes, offset)
                     Metadata(creation, timescale, duration)
                 }
