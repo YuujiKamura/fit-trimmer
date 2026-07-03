@@ -7,6 +7,14 @@ import java.io.File
 import fit.HudSettings
 
 @Serializable
+data class SerializedBatchJobPhase(
+    val type: String,
+    val enabled: Boolean,
+    val status: String,
+    val progress: Float
+)
+
+@Serializable
 data class SerializedBatchJob(
     val id: String,
     val videoPath: String,
@@ -21,7 +29,8 @@ data class SerializedBatchJob(
     val outputFileNames: List<String>,
     val status: String,
     val progress: Float,
-    val errorMessage: String?
+    val errorMessage: String?,
+    val phases: List<SerializedBatchJobPhase>? = null
 )
 
 object BatchQueueCache {

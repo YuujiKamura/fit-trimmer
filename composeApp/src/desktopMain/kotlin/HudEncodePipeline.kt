@@ -100,7 +100,8 @@ object HudEncodePipeline {
         onFrame: (BufferedImage) -> Unit,
         cancelSupplier: () -> Boolean,
         showLivePreviewSupplier: () -> Boolean,
-        onSegmentStart: (start: Double, end: Double) -> Unit = { _, _ -> }
+        onSegmentStart: (start: Double, end: Double) -> Unit = { _, _ -> },
+        skipConcat: Boolean = false
     ): String {
         return withContext(Dispatchers.IO) {
             val lockFile = File(fit.PathResolver.getProjectRoot(), "temp_work/encoding.lock")
@@ -196,10 +197,11 @@ object HudEncodePipeline {
                     maxDurationSeconds = if (isSample) sampleMaxDurationSeconds.coerceAtLeast(1) else -1,
                     trimStartSeconds = pStart,
                     trimEndSeconds = pEnd,
-                    shouldResume = shouldResume
+                    shouldResume = shouldResume,
+                    skipConcat = skipConcat
                 )
 
-                if (destFiles.isNotEmpty() && !cancelSupplier()) {
+                if (!skipConcat && destFiles.isNotEmpty() && !cancelSupplier()) {
                     if (finalDestFile != null) {
                         val outFile = File(partOutPath)
                         if (outFile.absolutePath != finalDestFile.absolutePath) {

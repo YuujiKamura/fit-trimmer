@@ -681,7 +681,8 @@ class NativeHudEncoder(
         maxDurationSeconds: Int = -1,
         trimStartSeconds: Double = 0.0,
         trimEndSeconds: Double = -1.0,
-        shouldResume: Boolean = false
+        shouldResume: Boolean = false,
+        skipConcat: Boolean = false
     ) {
         val profiler = EncodeProfiler()
         try {
@@ -1663,6 +1664,12 @@ class NativeHudEncoder(
                     println("⚠️ Failed to export trimmed FIT file: ${e.message}")
                     e.printStackTrace()
                 }
+            }
+
+            if (skipConcat) {
+                println("DEBUG: skipConcat is true. Skipping segment merging inside NativeHudEncoder.encode. Temporary segments preserved in: ${jobDir.absolutePath}")
+                onProgress(1.0f, "Encoding complete. Temporary segments preserved.")
+                return
             }
 
             onProgress(1.0f, "Merging video segments (Crash Recovery Checkpoint)...")

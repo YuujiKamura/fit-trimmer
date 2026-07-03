@@ -1044,6 +1044,29 @@ class AppViewModel(
                 val restored = unfinished.map {
                     val statusEnum = try { BatchJobStatus.valueOf(it.status) } catch(_: Exception) { BatchJobStatus.WAITING }
                     val finalStatus = if (statusEnum == BatchJobStatus.RUNNING) BatchJobStatus.WAITING else statusEnum
+                    
+                    val phases = it.phases?.map { p ->
+                        val phaseType = try { BatchJobPhaseType.valueOf(p.type) } catch(_: Exception) { BatchJobPhaseType.HUD_ENCODE }
+                        val phaseStatus = try { BatchJobPhaseStatus.valueOf(p.status) } catch(_: Exception) { BatchJobPhaseStatus.WAITING }
+                        val finalPhaseStatus = if (phaseStatus == BatchJobPhaseStatus.RUNNING) BatchJobPhaseStatus.WAITING else phaseStatus
+                        BatchJobPhase(
+                            type = phaseType,
+                            initialEnabled = p.enabled,
+                            initialStatus = finalPhaseStatus,
+                            initialProgress = p.progress
+                        )
+                    } ?: run {
+                        if (it.fitPath.isEmpty()) {
+                            listOf(BatchJobPhase(BatchJobPhaseType.FAST_TRIM, initialEnabled = true))
+                        } else {
+                            listOf(
+                                BatchJobPhase(BatchJobPhaseType.PLATE_SCAN, initialEnabled = it.settings.blurLicensePlates),
+                                BatchJobPhase(BatchJobPhaseType.HUD_ENCODE, initialEnabled = true),
+                                BatchJobPhase(BatchJobPhaseType.CONCAT_MERGE, initialEnabled = true)
+                            )
+                        }
+                    }
+                    
                     BatchJob(
                         id = it.id,
                         videoPath = it.videoPath,
@@ -1058,7 +1081,8 @@ class AppViewModel(
                         initialOutputFileNames = it.outputFileNames,
                         initialStatus = finalStatus,
                         initialProgress = it.progress,
-                        initialErrorMessage = it.errorMessage
+                        initialErrorMessage = it.errorMessage,
+                        initialPhases = phases
                     )
                 }
                 pendingRestorableJobs.addAll(restored)
@@ -1209,6 +1233,17 @@ class AppViewModel(
         jobSettings: HudSettings = settings.copy(),
         jobAutoDetectRoadCaptionsOnEncode: Boolean = autoDetectRoadCaptionsOnEncode
     ): BatchJob {
+        val phases = if (jobFitPath.isEmpty()) {
+            listOf(
+                BatchJobPhase(BatchJobPhaseType.FAST_TRIM, initialEnabled = true)
+            )
+        } else {
+            listOf(
+                BatchJobPhase(BatchJobPhaseType.PLATE_SCAN, initialEnabled = jobSettings.blurLicensePlates),
+                BatchJobPhase(BatchJobPhaseType.HUD_ENCODE, initialEnabled = true),
+                BatchJobPhase(BatchJobPhaseType.CONCAT_MERGE, initialEnabled = true)
+            )
+        }
         return BatchJob(
             videoPath = jobVideoPath,
             fitPath = jobFitPath,
@@ -1219,6 +1254,7 @@ class AppViewModel(
             splitPoints = jobSplitPoints,
             initialSettings = jobSettings,
             initialAutoDetectRoadCaptionsOnEncode = jobAutoDetectRoadCaptionsOnEncode,
+            initialPhases = phases,
             initialOutputFileNames = buildQueuedOutputFileNamesFor(
                 jobSettings = jobSettings,
                 jobVideoPath = jobVideoPath,
@@ -1320,7 +1356,15 @@ class AppViewModel(
                 outputFileNames = it.outputFileNames,
                 status = it.status.name,
                 progress = it.progress,
-                errorMessage = it.errorMessage
+                errorMessage = it.errorMessage,
+                phases = it.phases.map { phase ->
+                    utils.SerializedBatchJobPhase(
+                        type = phase.type.name,
+                        enabled = phase.enabled,
+                        status = phase.status.name,
+                        progress = phase.progress
+                    )
+                }
             )
         }
         utils.BatchQueueCache.save(serializedJobs)
@@ -1496,6 +1540,36 @@ enum class BatchJobStatus {
 
 
 
+
+
+enum class BatchJobPhaseType {
+    PLATE_SCAN,
+    HUD_ENCODE,
+    CONCAT_MERGE,
+    FAST_TRIM
+}
+
+enum class BatchJobPhaseStatus {
+    WAITING,
+    RUNNING,
+    COMPLETED,
+    FAILED,
+    SKIPPED
+}
+
+class BatchJobPhase(
+    val type: BatchJobPhaseType,
+    initialEnabled: Boolean,
+    initialStatus: BatchJobPhaseStatus = BatchJobPhaseStatus.WAITING,
+    initialProgress: Float = 0f
+) {
+    var enabled by mutableStateOf(initialEnabled)
+    var status by mutableStateOf(initialStatus)
+    var progress by mutableStateOf(initialProgress)
+}
+
+
+
 data class BatchJob(
 
     val id: String = java.util.UUID.randomUUID().toString(),
@@ -1524,7 +1598,9 @@ data class BatchJob(
 
     private val initialProgress: Float = 0.0f,
 
-    private val initialErrorMessage: String? = null
+    private val initialErrorMessage: String? = null,
+
+    private val initialPhases: List<BatchJobPhase>? = null
 
 ) {
     var status by mutableStateOf(initialStatus)
@@ -1533,6 +1609,7 @@ data class BatchJob(
     var outputFileNames by mutableStateOf(initialOutputFileNames)
     var settings by mutableStateOf(initialSettings)
     var autoDetectRoadCaptionsOnEncode by mutableStateOf(initialAutoDetectRoadCaptionsOnEncode)
+    var phases by mutableStateOf<List<BatchJobPhase>>(initialPhases ?: emptyList())
 
     val isRunnable: Boolean
         get() = status == BatchJobStatus.WAITING || status == BatchJobStatus.FAILED
@@ -1544,4 +1621,5 @@ data class BatchJob(
             "${outputFileNames.first()} (+${outputFileNames.size - 1})"
         }
 }
+
 
