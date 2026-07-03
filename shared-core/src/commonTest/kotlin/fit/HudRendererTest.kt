@@ -61,6 +61,7 @@ class HudRendererTest {
             startPoint,
             originalPoints,
             emptyList(),
+            emptyList(),
             15.0f, // 15秒を渡す
             isValid = true
         )
@@ -72,6 +73,7 @@ class HudRendererTest {
             canvas2,
             startPoint,
             originalPoints,
+            emptyList(),
             emptyList(),
             5.0f, // 5秒を渡す
             isValid = true
@@ -105,6 +107,7 @@ class HudRendererTest {
             telemetry,
             listOf(telemetry),
             emptyList(),
+            emptyList(),
             0.0f,
             isValid = true
         )
@@ -134,6 +137,7 @@ class HudRendererTest {
             telemetryPositiveGrade,
             listOf(telemetryPositiveGrade),
             emptyList(),
+            emptyList(),
             0.0f,
             isValid = true
         )
@@ -147,6 +151,7 @@ class HudRendererTest {
             canvasZero,
             telemetryZeroGrade,
             listOf(telemetryZeroGrade),
+            emptyList(),
             emptyList(),
             0.0f,
             isValid = true
@@ -168,6 +173,7 @@ class HudRendererTest {
         renderer.renderFrame(
             canvas,
             emptyPoint,
+            emptyList(),
             emptyList(),
             emptyList(),
             0.0f,
@@ -202,6 +208,7 @@ class HudRendererTest {
             canvas,
             currentPoint,
             allPoints,
+            emptyList(),
             emptyList(),
             100.0f,
             isValid = true
@@ -245,6 +252,7 @@ class HudRendererTest {
             currentPoint,
             allPoints,
             emptyList(),
+            emptyList(),
             100.0f,
             isValid = true
         )
@@ -287,6 +295,7 @@ class HudRendererTest {
             canvas,
             p2, // Current frame is p2
             allPoints,
+            emptyList(),
             emptyList(),
             1.0f,
             isValid = true
