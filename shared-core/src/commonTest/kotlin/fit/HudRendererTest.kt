@@ -27,7 +27,7 @@ class HudRendererTest {
         val drawnShadowTextInfos = mutableListOf<TextInfo>()
         
         override fun drawText(text: String, x: Float, y: Float, size: Float, color: String, bold: Boolean, anchor: String) {
-            if (color == "#787878") {
+            if (color == "#7F787878") {
                 drawnShadowTextInfos.add(TextInfo(text, x, y, size, color, bold, anchor))
                 return
             }
@@ -684,7 +684,7 @@ class HudRendererTest {
         val textCalls = mutableListOf<TextCall>()
         
         override fun drawText(text: String, x: Float, y: Float, size: Float, color: String, bold: Boolean, anchor: String) {
-            if (color == "#787878") return
+            if (color == "#7F787878") return
             textCalls.add(TextCall(text, x, y, size, color, anchor))
         }
         

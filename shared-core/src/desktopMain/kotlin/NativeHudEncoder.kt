@@ -386,6 +386,24 @@ class NativeHudEncoder(
         override val width: Float get() = logicalWidth
         override val height: Float get() = logicalHeight
 
+        private fun parseColor(colorStr: String): Color {
+            val clean = colorStr.replace("#", "")
+            return try {
+                if (clean.length == 8) {
+                    val argb = clean.toLong(16)
+                    val a = ((argb shr 24) and 0xFF).toInt()
+                    val r = ((argb shr 16) and 0xFF).toInt()
+                    val g = ((argb shr 8) and 0xFF).toInt()
+                    val b = (argb and 0xFF).toInt()
+                    Color(r, g, b, a)
+                } else {
+                    Color.decode(colorStr)
+                }
+            } catch (e: Exception) {
+                Color.WHITE
+            }
+        }
+
         private fun getCachedFont(size: Float, bold: Boolean, isWidthCheck: Boolean = false): Font {
             val actualSize = if (isWidthCheck) size.toInt() else (size * scale).toInt().coerceAtLeast(1)
             val key = "${actualSize}_${bold}"
@@ -423,17 +441,8 @@ class NativeHudEncoder(
                 else -> 0f
             }
             val sy = drawY + metrics.ascent
-            val shadowOffset = (1f * scale).coerceAtLeast(1f).toInt()
             
-            g.color = Color(0, 0, 0, 180)
-            for (dx in -shadowOffset..shadowOffset) {
-                for (dy in -shadowOffset..shadowOffset) {
-                    if (dx == 0 && dy == 0) continue
-                    g.drawString(text, drawX + dx, sy + dy)
-                }
-            }
-            
-            g.color = Color.decode(color)
+            g.color = parseColor(color)
             g.drawString(text, drawX, sy)
         }
 
