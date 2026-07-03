@@ -472,16 +472,6 @@ suspend fun runBatchJobs(
             viewModel.saveBatchQueue()
             onProgressUpdate()
             
-            val adjustedStartUtc = try {
-                if (job.videoStartUtc.isNotEmpty()) {
-                    java.time.Instant.parse(job.videoStartUtc).plusMillis(job.timeOffsetMillis).toString()
-                } else {
-                    ""
-                }
-            } catch (e: Exception) {
-                job.videoStartUtc
-            }
-            
             var jobFailed = false
             var jobErrorMessage: String? = null
             
@@ -515,7 +505,7 @@ suspend fun runBatchJobs(
                             val cache = utils.PlateDetectionManager.runDetection(
                                 videoPath = job.videoPath,
                                 telemetryPoints = points,
-                                adjustedStartUtc = adjustedStartUtc,
+                                adjustedStartUtc = job.adjustedStartUtc,
                                 onProgress = { percent ->
                                     mainScope.launch {
                                         phase.progress = percent / 100f
@@ -578,7 +568,7 @@ suspend fun runBatchJobs(
                                     trimEndSeconds = job.trimEndSeconds,
                                     videoDurationSeconds = detectedVideoDurationSeconds
                                 ),
-                                dateTag = buildDateTagFromUtc(adjustedStartUtc),
+                                dateTag = buildDateTagFromUtc(job.adjustedStartUtc),
                                 outputFileNames = job.outputFileNames
                             )
                             val destFiles = encodePlan.segments.map { it.finalOutputFile }
@@ -592,7 +582,7 @@ suspend fun runBatchJobs(
                                 fitPath = job.fitPath,
                                 videoPath = job.videoPath,
                                 outputDir = outputDir,
-                                videoStartUtc = adjustedStartUtc,
+                                videoStartUtc = job.adjustedStartUtc,
                                 ranges = ranges,
                                 destFiles = destFiles,
                                 isSample = false,
