@@ -539,12 +539,12 @@ class HudRendererTest {
             val dy = textInfo.y - mcy
             val dist = kotlin.math.sqrt(dx * dx + dy * dy)
             
-            // Assert that compass characters are strictly placed outside the circle border
-            assertTrue(dist >= R + 5f * sf - 1.0f, "Compass label $label must be placed outside the circle border (got distance $dist, expected >= ${R + 5f * sf})")
+            // Assert that compass characters are strictly placed outside the circle border (expected >= R + 10f * sf)
+            assertTrue(dist >= R + 10f * sf - 1.0f, "Compass label $label must be placed outside the circle border (got distance $dist, expected >= ${R + 10f * sf})")
             
             // Assert that compass characters are far enough from the route path
             val fromRouteMargin = dist - maxRouteDist
-            assertTrue(fromRouteMargin >= 15f * sf, "Compass label $label must be at least 15f * sf away from route (got $fromRouteMargin)")
+            assertTrue(fromRouteMargin >= 20f * sf, "Compass label $label must be at least 20f * sf away from route (got $fromRouteMargin)")
         }
     }
 

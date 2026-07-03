@@ -999,8 +999,8 @@ class HudRenderer(val config: HudConfig) {
             "W" to (angleN + 270.0)
         )
         
-        val compR = R + 10f * sf // Position compass labels strictly OUTSIDE the circle boundary (R + 10f)
-        val compassTextSize = 10f * sf
+        val compR = R + 15f * sf // Position compass labels strictly OUTSIDE the circle boundary (R + 15f)
+        val compassTextSize = 14f * sf
         for ((label, angleDeg) in compassPoints) {
             val angleRad = angleDeg * kotlin.math.PI / 180.0
             val tx = mcx + compR * kotlin.math.cos(angleRad).toFloat()
