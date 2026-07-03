@@ -3171,6 +3171,17 @@ fun FitTrimmerMainContent(
                                                 Text("手動カスタムテロップ設定", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 0.5.sp)
                                                 Text("動画上の任意の時間帯に文字テロップを表示します。", color = Color(0xFF636366), fontSize = 10.sp, lineHeight = 13.sp)
                                                 
+                                                // 新規追加・編集フォームの状態管理
+                                                var editingCaptionId by remember { mutableStateOf<String?>(null) }
+                                                var capStartText by remember { mutableStateOf("") }
+                                                var capDurationSeconds by remember { mutableStateOf(10f) } // デフォルト10秒表示
+                                                var capText by remember { mutableStateOf("") }
+                                                var capSizeText by remember { mutableStateOf("24") }
+                                                var capColorText by remember { mutableStateOf("#FFFFFF") }
+                                                var capPos by remember { mutableStateOf("bottom_center") }
+                                                var capPosDropdownExpanded by remember { mutableStateOf(false) }
+                                                var capIsAbsoluteTime by remember { mutableStateOf(false) }
+
                                                 val captions = settings.customCaptions
                                                 if (captions.isEmpty()) {
                                                     Text("設定されているカスタムテロップはありません。", color = Color.Gray, fontSize = 11.sp, modifier = Modifier.padding(vertical = 4.dp))
@@ -3196,20 +3207,56 @@ fun FitTrimmerMainContent(
                                                                         cap.align == "right" -> "right_center"
                                                                         else -> "center"
                                                                     }
+                                                                    val timeBaseName = if (cap.isAbsoluteTime) "絶対時間(オリジナル)" else "相対時間(トリミング後)"
                                                                     Text(
-                                                                        text = "サイズ: %.0fpx | 位置: %s | 色: %s".format(java.util.Locale.US, cap.fontSize, posName, cap.textColor),
+                                                                        text = "サイズ: %.0fpx | 位置: %s | 色: %s | 基準: %s".format(java.util.Locale.US, cap.fontSize, posName, cap.textColor, timeBaseName),
                                                                         fontSize = 9.sp,
                                                                         color = Color.Gray
                                                                     )
                                                                 }
-                                                                IconButton(
-                                                                    onClick = {
-                                                                        val updated = captions.filter { it.id != cap.id }
-                                                                        settings = settings.copy(customCaptions = updated)
-                                                                    },
-                                                                    modifier = Modifier.size(24.dp)
+                                                                Row(
+                                                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                                                    verticalAlignment = Alignment.CenterVertically
                                                                 ) {
-                                                                    Text("✕", fontSize = 12.sp, color = Color.Red, fontWeight = FontWeight.Bold)
+                                                                    // 編集（🖊）ボタン
+                                                                    IconButton(
+                                                                        onClick = {
+                                                                            editingCaptionId = cap.id
+                                                                            capText = cap.text
+                                                                            capStartText = "%.1f".format(java.util.Locale.US, cap.startSeconds)
+                                                                            // 終了秒数から表示秒数（期間）を計算し、スライダーにセット
+                                                                            val dur = (cap.endSeconds - cap.startSeconds).toFloat()
+                                                                            capDurationSeconds = ((dur / 10f).roundToInt() * 10f).coerceIn(10f, 60f)
+                                                                            capSizeText = "%.0f".format(java.util.Locale.US, cap.fontSize)
+                                                                            capColorText = cap.textColor
+                                                                            capIsAbsoluteTime = cap.isAbsoluteTime
+                                                                            capPos = when {
+                                                                                cap.positionY > 0.7f && cap.align == "center" -> "bottom_center"
+                                                                                cap.positionY < 0.3f && cap.align == "center" -> "top_center"
+                                                                                cap.align == "left" -> "left_center"
+                                                                                cap.align == "right" -> "right_center"
+                                                                                else -> "center"
+                                                                            }
+                                                                        },
+                                                                        modifier = Modifier.size(24.dp)
+                                                                    ) {
+                                                                        Text("🖊", fontSize = 12.sp, color = Color(0xFF007AFF), fontWeight = FontWeight.Bold)
+                                                                    }
+                                                                    // 削除（✕）ボタン
+                                                                    IconButton(
+                                                                        onClick = {
+                                                                            val updated = captions.filter { it.id != cap.id }
+                                                                            settings = settings.copy(customCaptions = updated)
+                                                                            if (editingCaptionId == cap.id) {
+                                                                                editingCaptionId = null
+                                                                                capStartText = ""
+                                                                                capText = ""
+                                                                            }
+                                                                        },
+                                                                        modifier = Modifier.size(24.dp)
+                                                                    ) {
+                                                                        Text("✕", fontSize = 12.sp, color = Color.Red, fontWeight = FontWeight.Bold)
+                                                                    }
                                                                 }
                                                             }
                                                         }
@@ -3218,15 +3265,32 @@ fun FitTrimmerMainContent(
                                                 
                                                 Divider(color = Color(0xFFE5E5EA), modifier = Modifier.padding(vertical = 4.dp))
                                                 
-                                                // 新規追加フォーム
-                                                var capStartText by remember { mutableStateOf("") }
-                                                var capEndText by remember { mutableStateOf("") }
-                                                var capText by remember { mutableStateOf("") }
-                                                var capSizeText by remember { mutableStateOf("24") }
-                                                var capColorText by remember { mutableStateOf("#FFFFFF") }
-                                                var capPos by remember { mutableStateOf("bottom_center") }
-                                                var capPosDropdownExpanded by remember { mutableStateOf(false) }
-                                                
+                                                // 編集中のインジケータ表示
+                                                if (editingCaptionId != null) {
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth().background(Color(0xFFFFFAEB), androidx.compose.foundation.shape.RoundedCornerShape(4.dp)).padding(8.dp),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Text("⚠️ テロップを編集しています...", color = Color(0xFFB78103), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                                    }
+                                                }
+
+                                                // タイム基準（相対 / 絶対）選択トグル
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                ) {
+                                                    Checkbox(
+                                                        checked = capIsAbsoluteTime,
+                                                        onCheckedChange = { if (!isEncoding) capIsAbsoluteTime = it },
+                                                        enabled = !isEncoding,
+                                                        colors = CheckboxDefaults.colors(checkedColor = Color(0xFF007AFF))
+                                                    )
+                                                    Text("時間指定をオリジナル動画の絶対時間（Trim前基準）にする", fontSize = 10.sp, color = Color(0xFF1C1C1E))
+                                                }
+
+                                                // テロップ入力欄
                                                 OutlinedTextField(
                                                     value = capText,
                                                     onValueChange = { capText = it },
@@ -3252,15 +3316,25 @@ fun FitTrimmerMainContent(
                                                         singleLine = true,
                                                         enabled = !isEncoding
                                                     )
-                                                    OutlinedTextField(
-                                                        value = capEndText,
-                                                        onValueChange = { capEndText = it },
-                                                        label = { Text("終了(秒)", fontSize = 10.sp) },
-                                                        modifier = Modifier.weight(1f),
-                                                        textStyle = TextStyle(fontSize = 11.sp),
-                                                        singleLine = true,
-                                                        enabled = !isEncoding
-                                                    )
+                                                    
+                                                    // 10秒刻み表示時間スライダー
+                                                    Column(
+                                                        modifier = Modifier.weight(1.5f).padding(horizontal = 4.dp),
+                                                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                                                    ) {
+                                                        Text("表示時間: ${capDurationSeconds.roundToInt()}秒", fontSize = 9.sp, color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold)
+                                                        Slider(
+                                                            value = capDurationSeconds,
+                                                            onValueChange = { if (!isEncoding) capDurationSeconds = ((it / 10f).roundToInt() * 10f).coerceIn(10f, 60f) },
+                                                            valueRange = 10f..60f,
+                                                            steps = 4, // 10s, 20s, 30s, 40s, 50s, 60s
+                                                            enabled = !isEncoding,
+                                                            colors = SliderDefaults.colors(
+                                                                thumbColor = Color(0xFF007AFF),
+                                                                activeTrackColor = Color(0xFF007AFF)
+                                                            )
+                                                        )
+                                                    }
                                                 }
                                                 
                                                 Row(
@@ -3313,52 +3387,98 @@ fun FitTrimmerMainContent(
                                                     }
                                                 }
                                                 
-                                                Button(
-                                                    onClick = {
-                                                        val start = capStartText.toDoubleOrNull()
-                                                        val end = capEndText.toDoubleOrNull()
-                                                        val size = capSizeText.toFloatOrNull()
-                                                        if (start != null && end != null && size != null && start < end && capText.isNotEmpty()) {
-                                                            val px = when (capPos) {
-                                                                "left_center" -> 0.15f
-                                                                "right_center" -> 0.85f
-                                                                else -> 0.5f
-                                                            }
-                                                            val py = when (capPos) {
-                                                                "top_center" -> 0.15f
-                                                                "bottom_center" -> 0.85f
-                                                                else -> 0.5f
-                                                            }
-                                                            val al = when (capPos) {
-                                                                "left_center" -> "left"
-                                                                "right_center" -> "right"
-                                                                else -> "center"
-                                                            }
-                                                            val newCap = CustomCaptionSegment(
-                                                                id = "cap-seg-${System.currentTimeMillis()}",
-                                                                startSeconds = start,
-                                                                endSeconds = end,
-                                                                text = capText,
-                                                                fontSize = size,
-                                                                textColor = capColorText,
-                                                                positionX = px,
-                                                                positionY = py,
-                                                                align = al
-                                                            )
-                                                            settings = settings.copy(customCaptions = captions + newCap)
-                                                            capStartText = ""
-                                                            capEndText = ""
-                                                            capText = ""
-                                                        }
-                                                    },
-                                                    enabled = !isEncoding && capText.isNotEmpty() && capStartText.isNotEmpty() && capEndText.isNotEmpty(),
-                                                    modifier = Modifier.fillMaxWidth().height(36.dp),
-                                                    colors = ButtonDefaults.buttonColors(
-                                                        backgroundColor = Color(0xFF007AFF),
-                                                        contentColor = Color.White
-                                                    )
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                                                 ) {
-                                                    Text("テロップを追加", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                    Button(
+                                                        onClick = {
+                                                            val start = capStartText.toDoubleOrNull()
+                                                            val size = capSizeText.toFloatOrNull()
+                                                            if (start != null && size != null && capText.isNotEmpty()) {
+                                                                val end = start + capDurationSeconds.toDouble()
+                                                                val px = when (capPos) {
+                                                                    "left_center" -> 0.15f
+                                                                    "right_center" -> 0.85f
+                                                                    else -> 0.5f
+                                                                }
+                                                                val py = when (capPos) {
+                                                                    "top_center" -> 0.15f
+                                                                    "bottom_center" -> 0.85f
+                                                                    else -> 0.5f
+                                                                }
+                                                                val al = when (capPos) {
+                                                                    "left_center" -> "left"
+                                                                    "right_center" -> "right"
+                                                                    else -> "center"
+                                                                }
+                                                                
+                                                                if (editingCaptionId != null) {
+                                                                    val updated = captions.map {
+                                                                        if (it.id == editingCaptionId) {
+                                                                            it.copy(
+                                                                                startSeconds = start,
+                                                                                endSeconds = end,
+                                                                                text = capText,
+                                                                                fontSize = size,
+                                                                                textColor = capColorText,
+                                                                                positionX = px,
+                                                                                positionY = py,
+                                                                                align = al,
+                                                                                isAbsoluteTime = capIsAbsoluteTime
+                                                                            )
+                                                                        } else {
+                                                                            it
+                                                                        }
+                                                                    }
+                                                                    settings = settings.copy(customCaptions = updated)
+                                                                    editingCaptionId = null
+                                                                } else {
+                                                                    val newCap = CustomCaptionSegment(
+                                                                        id = "cap-seg-${System.currentTimeMillis()}",
+                                                                        startSeconds = start,
+                                                                        endSeconds = end,
+                                                                        text = capText,
+                                                                        fontSize = size,
+                                                                        textColor = capColorText,
+                                                                        positionX = px,
+                                                                        positionY = py,
+                                                                        align = al,
+                                                                        isAbsoluteTime = capIsAbsoluteTime
+                                                                    )
+                                                                    settings = settings.copy(customCaptions = captions + newCap)
+                                                                }
+                                                                capStartText = ""
+                                                                capText = ""
+                                                                capIsAbsoluteTime = false
+                                                                capDurationSeconds = 10f
+                                                            }
+                                                        },
+                                                        enabled = !isEncoding && capText.isNotEmpty() && capStartText.isNotEmpty(),
+                                                        modifier = Modifier.weight(1f).height(36.dp),
+                                                        colors = ButtonDefaults.buttonColors(
+                                                            backgroundColor = Color(0xFF007AFF),
+                                                            contentColor = Color.White
+                                                        )
+                                                    ) {
+                                                        Text(if (editingCaptionId != null) "テロップを保存" else "テロップを追加", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                    }
+                                                    
+                                                    if (editingCaptionId != null) {
+                                                        OutlinedButton(
+                                                            onClick = {
+                                                                editingCaptionId = null
+                                                                capStartText = ""
+                                                                capText = ""
+                                                                capIsAbsoluteTime = false
+                                                                capDurationSeconds = 10f
+                                                            },
+                                                            modifier = Modifier.weight(1f).height(36.dp),
+                                                            border = BorderStroke(1.dp, Color(0xFFEF4444))
+                                                        ) {
+                                                            Text("キャンセル", color = Color(0xFFEF4444), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
