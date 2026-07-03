@@ -147,7 +147,23 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
     private var _userDragging by mutableStateOf(false)
     override var userDragging: Boolean
         get() = _userDragging
-        set(value) { _userDragging = value }
+        set(value) {
+            val old = _userDragging
+            _userDragging = value
+            if (old && !value) {
+                scope.launch {
+                    mediaOperationMutex.withLock {
+                        val instance = videoPlayerInstance
+                        if (instance != null && _hasMedia && (videoJob == null || !videoJob!!.isActive)) {
+                            videoJob = scope.launch {
+                                launch { produceFrames() }
+                                launch { consumeFrames() }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     private var _loop by mutableStateOf(false)
     override var loop: Boolean
         get() = _loop
@@ -201,6 +217,7 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
     private val isResizing = AtomicBoolean(false)
     private val suppressResizeUntilNanos = AtomicLong(0L)
     private var videoJob: Job? = null
+    private var seekJob: Job? = null
     private var posterJob: Job? = null
     private var resizeJob: Job? = null
     private var audioLevelsJob: Job? = null
@@ -812,27 +829,30 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
     }
 
     override fun seekTo(value: Float) {
-        suppressResizeFor(250)
-        executeMediaOperation(
-            operation = "seek",
-            precondition = _hasMedia && videoPlayerInstance != null
-        ) {
-            val instance = videoPlayerInstance
-            if (instance != null) {
+        seekJob?.cancel()
+        seekJob = scope.launch {
+            suppressResizeFor(250)
+            mediaOperationMutex.withLock {
+                val instance = videoPlayerInstance ?: return@withLock
+                if (!_hasMedia) return@withLock
                 try {
                     isLoading = true
-                    videoJob?.cancelAndJoin()
-                    clearFrameChannel()
+                    
+                    if (videoJob?.isActive == true) {
+                        videoJob?.cancelAndJoin()
+                        clearFrameChannel()
+                    }
+                    
                     sharedFrameBuffer = ByteArray(frameBufferSize)
 
                     val targetPos = (_duration * (value / 1000f) * 10000000).toLong()
                     var hr = player.SeekMedia(instance, targetPos)
                     if (hr < 0) {
-                        delay(50)
+                        delay(30)
                         hr = player.SeekMedia(instance, targetPos)
                         if (hr < 0) {
                             setError("Seek failed (hr=0x${hr.toString(16)})")
-                            return@executeMediaOperation
+                            return@withLock
                         }
                     }
 
@@ -842,18 +862,22 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
                         _progress = (_currentTime / _duration).toFloat().coerceIn(0f, 1f)
                     }
 
-                    delay(30)
+                    delay(20)
                     renderCurrentFrame(instance, "seek")
 
-                    videoJob = scope.launch {
-                        launch { produceFrames() }
-                        launch { consumeFrames() }
+                    if (!userDragging) {
+                        videoJob = scope.launch {
+                            launch { produceFrames() }
+                            launch { consumeFrames() }
+                        }
                     }
 
                     delay(8)
                 } catch (e: Exception) {
-                    DesktopLog.exception("Error during seek", e)
-                    setError("Error during seek: ${e.message}")
+                    if (e !is kotlinx.coroutines.CancellationException) {
+                        DesktopLog.exception("Error during seek", e)
+                        setError("Error during seek: ${e.message}")
+                    }
                 } finally {
                     isLoading = false
                 }
