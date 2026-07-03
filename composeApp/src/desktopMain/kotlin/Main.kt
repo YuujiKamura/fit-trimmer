@@ -459,6 +459,8 @@ suspend fun runBatchJobs(
     viewModel.isBatchRunning = true
     viewModel.batchStatusText = "バッチ処理を開始します..."
     viewModel.isCanceled = false
+    var lastProgressUpdateTime = 0L
+    var lastPreviewUpdateTime = 0L
     try {
         val jobs = viewModel.batchQueue.filter { it.status == BatchJobStatus.WAITING }
         if (jobs.isEmpty()) {
@@ -507,11 +509,15 @@ suspend fun runBatchJobs(
                                 telemetryPoints = points,
                                 adjustedStartUtc = job.adjustedStartUtc,
                                 onProgress = { percent ->
-                                    mainScope.launch {
-                                        phase.progress = percent / 100f
-                                        updateOverallJobProgress(job, activePhases)
-                                        viewModel.progress = job.progress
-                                        onProgressUpdate()
+                                    val now = System.currentTimeMillis()
+                                    if (percent >= 100f || now - lastProgressUpdateTime >= 100) {
+                                        lastProgressUpdateTime = now
+                                        mainScope.launch {
+                                            phase.progress = percent / 100f
+                                            updateOverallJobProgress(job, activePhases)
+                                            viewModel.progress = job.progress
+                                            onProgressUpdate()
+                                        }
                                     }
                                 },
                                 onCancel = { viewModel.isCanceled || !mainScope.isActive },
@@ -628,18 +634,27 @@ suspend fun runBatchJobs(
                                 shouldResume = true, // Batch mode defaults to true for safety
                                 moveOutputToSource = moveOutputToSource,
                                 onProgress = { prog, status ->
-                                    mainScope.launch {
-                                        phase.progress = prog
-                                        viewModel.progress = prog
-                                        viewModel.statusText = status
-                                        updateOverallJobProgress(job, activePhases)
-                                        viewModel.progress = job.progress
-                                        onProgressUpdate()
+                                    val now = System.currentTimeMillis()
+                                    if (prog >= 1.0f || now - lastProgressUpdateTime >= 100) {
+                                        lastProgressUpdateTime = now
+                                        mainScope.launch {
+                                            phase.progress = prog
+                                            viewModel.progress = prog
+                                            viewModel.statusText = status
+                                            updateOverallJobProgress(job, activePhases)
+                                            viewModel.progress = job.progress
+                                            onProgressUpdate()
+                                        }
                                     }
                                 },
                                 onFrame = { bufferedImg ->
-                                    mainScope.launch {
-                                        viewModel.encodingPreviewImage = bufferedImg.toComposeImageBitmap()
+                                    val now = System.currentTimeMillis()
+                                    if (now - lastPreviewUpdateTime >= 33) {
+                                        lastPreviewUpdateTime = now
+                                        val composeBitmap = bufferedImg.toComposeImageBitmap()
+                                        mainScope.launch {
+                                            viewModel.encodingPreviewImage = composeBitmap
+                                        }
                                     }
                                 },
                                 cancelSupplier = { viewModel.isCanceled },
