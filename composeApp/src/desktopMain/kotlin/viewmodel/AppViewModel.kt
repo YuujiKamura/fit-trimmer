@@ -473,6 +473,7 @@ class AppViewModel(
 
 
     var availableCacheJobs by androidx.compose.runtime.mutableStateOf<List<fit.CacheRegistry.CacheJobInfo>>(emptyList())
+    var lastPromptedJobHash by androidx.compose.runtime.mutableStateOf("")
 
     var isSalvaging by androidx.compose.runtime.mutableStateOf(false)
 
