@@ -661,7 +661,8 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
 
             } catch (e: CancellationException) {
                 break
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                if (e is CancellationException) throw e
                 DesktopLog.exception("Error while reading a frame", e)
                 if (scope.isActive && _hasMedia) {
                     setError("Error while reading a frame: ${e.message}")
@@ -729,7 +730,8 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
 
             } catch (e: CancellationException) {
                 break
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                if (e is CancellationException) throw e
                 DesktopLog.exception("Error while processing a frame", e)
                 if (scope.isActive && _hasMedia) {
                     setError("Error while processing a frame: ${e.message}")
