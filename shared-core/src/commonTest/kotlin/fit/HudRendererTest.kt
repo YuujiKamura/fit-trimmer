@@ -228,6 +228,75 @@ class HudRendererTest {
     }
 
     @Test
+    fun testElevationGraph_DisplaysHeadingAndValleyPoints() {
+        val config = HudConfig(
+            valSize = 40f, tightness = 1f, spacing = 20f,
+            xOffset = 40f, yOffset = 100f, graphH = 60f, graphW = 300f,
+            language = "ja", showElevation = true
+        )
+        val renderer = HudRenderer(config)
+        
+        // Setup 4 telemetry points with distinct lat/lon to compute bearings
+        // P1: Start (50m) -> Moving North-East to P2
+        val p1 = FitParser.TelemetryPoint(
+            timestamp = 1000.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 50.0, grade = 2.0,
+            distance = 1000.0, elapsedSeconds = 10, lat = 35.0, lon = 135.0
+        )
+        // P2: Peak (max 120m) -> Moving South to P3
+        val p2 = FitParser.TelemetryPoint(
+            timestamp = 1010.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 120.0, grade = 2.0,
+            distance = 1100.0, elapsedSeconds = 20, lat = 35.01, lon = 135.01
+        )
+        // P3: Valley (min 30m) -> Moving North to P4
+        val p3 = FitParser.TelemetryPoint(
+            timestamp = 1020.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 30.0, grade = 2.0,
+            distance = 1200.0, elapsedSeconds = 30, lat = 34.99, lon = 135.01
+        )
+        // P4: End (60m)
+        val p4 = FitParser.TelemetryPoint(
+            timestamp = 1030.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 60.0, grade = 2.0,
+            distance = 1300.0, elapsedSeconds = 40, lat = 35.0, lon = 135.01
+        )
+        val allPoints = listOf(p1, p2, p3, p4)
+        
+        val canvas = TestHudCanvas()
+        renderer.renderFrame(
+            canvas,
+            p4,
+            allPoints,
+            emptyList(),
+            emptyList(),
+            100.0f,
+            isValid = true
+        )
+        
+        // Assert that the drawn texts on the elevation graph contain our 16-direction azimuth labels and tags
+        val texts = canvas.drawnTexts
+        
+        // Check Start text (Expected format: "起点 50m (NE)" or similar depending on actual heading math)
+        val startText = texts.find { it.contains("起点") }
+        assertTrue(startText != null, "HUD elevation graph should draw '起点' (got $texts)")
+        assertTrue(startText!!.contains("m"), "Start text should contain elevation units")
+        assertTrue(startText.contains("(") && startText.contains(")"), "Start text should contain 16-direction heading (got '$startText')")
+        
+        // Check End text
+        val endText = texts.find { it.contains("終点") }
+        assertTrue(endText != null, "HUD elevation graph should draw '終点' (got $texts)")
+        assertTrue(endText!!.contains("m"), "End text should contain elevation units")
+        assertTrue(endText.contains("(") && endText.contains(")"), "End text should contain 16-direction heading (got '$endText')")
+        
+        // Check Peak (Max) text
+        val peakText = texts.find { it.contains("最高") }
+        assertTrue(peakText != null, "HUD elevation graph should draw '最高' (got $texts)")
+        assertTrue(peakText!!.contains("120m"), "Peak text should contain peak elevation value (got '$peakText')")
+        
+        // Check Valley (Min) text
+        val valleyText = texts.find { it.contains("最低") }
+        assertTrue(valleyText != null, "HUD elevation graph should draw '最低' (got $texts)")
+        assertTrue(valleyText!!.contains("30m"), "Valley text should contain valley elevation value (got '$valleyText')")
+    }
+
+    @Test
     fun testHudLocalizationEnglishFallback() {
         val config = HudConfig(
             valSize = 40f, tightness = 1f, spacing = 20f,

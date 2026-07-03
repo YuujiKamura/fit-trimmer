@@ -221,9 +221,9 @@ class NativeHudEncoderTest {
         renderer1.renderFrame(mockCanvas, ptEnd, fullList, trimmedList, emptyList(), 1.0f, true)
         
         // When elevationGraphScope is "video", start alt should be ptMid.elevation (50.0m -> "50m") and end alt ptEnd.elevation (20.0m -> "20m")
-        assertTrue(textDrawn.contains("50m"), "Should draw start elevation from the video trimmed range (50m)")
-        assertTrue(textDrawn.contains("20m"), "Should draw end elevation from the video trimmed range (20m)")
-        assertFalse(textDrawn.contains("10m"), "Should NOT draw start elevation from the activity range when scope is video")
+        assertTrue(textDrawn.any { it.contains("50m") }, "Should draw start elevation from the video trimmed range (50m)")
+        assertTrue(textDrawn.any { it.contains("20m") }, "Should draw end elevation from the video trimmed range (20m)")
+        assertFalse(textDrawn.any { it.contains("10m") }, "Should NOT draw start elevation from the activity range when scope is video")
 
         // Case 2: scope = "activity" for elevation
         val config2 = HudConfig(
@@ -236,8 +236,8 @@ class NativeHudEncoderTest {
         renderer2.renderFrame(mockCanvas, ptEnd, fullList, trimmedList, emptyList(), 1.0f, true)
         
         // When elevationGraphScope is "activity", start alt should be ptStart.elevation (10.0m -> "10m")
-        assertTrue(textDrawn.contains("10m"), "Should draw start elevation from the full activity range (10m)")
-        assertTrue(textDrawn.contains("20m"), "Should draw end elevation from the full activity range (20m)")
+        assertTrue(textDrawn.any { it.contains("10m") }, "Should draw start elevation from the full activity range (10m)")
+        assertTrue(textDrawn.any { it.contains("20m") }, "Should draw end elevation from the full activity range (20m)")
         assertFalse(textDrawn.contains("50m") && !textDrawn.contains("10m"), "Should contain full range alt, not just trimmed")
     }
 
