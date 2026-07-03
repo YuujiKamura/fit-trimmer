@@ -964,18 +964,42 @@ class HudRenderer(val config: HudConfig) {
         canvas.drawRect(startMapPt.first - hmSize, startMapPt.second - hmSize, mSize, mSize, "#ffffff", alpha = 1.0f)
         canvas.drawRect(endMapPt.first - hmSize, endMapPt.second - hmSize, mSize, mSize, "#ffffff", alpha = 1.0f)
 
-        // Draw distance labels near start/end (Scaled font size & adjusted spacing)
+        // Draw distance labels near start/end & midpoint (Scaled font size & adjusted spacing, Metric is in meters 'm')
         val totalDist = endPt.distance - startPt.distance
         val totalDistText = if (config.useImperialUnits) {
             "${formatOneDecimal(totalDist * 0.000621371)} mi"
         } else {
-            "${formatOneDecimal(totalDist / 1000.0)} km"
+            "${totalDist.roundToInt()} m"
         }
-        val startDistText = "0.0"
+        val startDistText = "0 m"
         val distTextSize = 10.5f * sf
+        
+        // Midpoint calculation
+        val midIdx = validRoutePoints.size / 2
+        val midPt = validRoutePoints[midIdx]
+        val midMapPt = projectPoint(midPt)
+        val midDist = midPt.distance - startPt.distance
+        val midDistText = if (config.useImperialUnits) {
+            "${formatOneDecimal(midDist * 0.000621371)} mi"
+        } else {
+            "${midDist.roundToInt()} m"
+        }
+        
+        // Offset midpoint text away from the circle center to prevent overlapping
+        val midDx = midMapPt.first - mcx
+        val midDy = midMapPt.second - mcy
+        val midAngle = kotlin.math.atan2(midDy, midDx)
+        val midOffset = 8f * sf
+        val midTx = midMapPt.first + midOffset * kotlin.math.cos(midAngle).toFloat()
+        val midTy = midMapPt.second + midOffset * kotlin.math.sin(midAngle).toFloat()
+        val midAnchor = when {
+            kotlin.math.abs(kotlin.math.cos(midAngle)) > 0.707 -> if (midDx > 0) "left-center" else "right-center"
+            else -> if (midDy > 0) "top-center" else "bottom-center"
+        }
         
         drawShadowedText(canvas, startDistText, startMapPt.first, startMapPt.second + 4f * sf, distTextSize, "#ffffff", bold = true, anchor = "top-center", sf = sf)
         drawShadowedText(canvas, totalDistText, endMapPt.first, endMapPt.second - (distTextSize + 4f * sf), distTextSize, "#ffffff", bold = true, anchor = "bottom-center", sf = sf)
+        drawShadowedText(canvas, midDistText, midTx, midTy, distTextSize, "#ffffff", bold = true, anchor = midAnchor, sf = sf)
 
         // 6. Draw Current Location Pin (Scaled pin size)
         if (isValid && telemetry.lat != 0.0 && telemetry.lon != 0.0) {

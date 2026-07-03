@@ -361,9 +361,9 @@ class HudRendererTest {
         assertTrue(texts.contains("S"), "Mini-map compass should draw 'S' (got $texts)")
         assertTrue(texts.contains("W"), "Mini-map compass should draw 'W' (got $texts)")
         
-        // Check Distance labels: start distance "0.0" and total distance "1.5 km"
-        assertTrue(texts.contains("0.0"), "Mini-map should label start distance '0.0' (got $texts)")
-        assertTrue(texts.any { it.contains("1.5") && it.contains("km") }, "Mini-map should draw total distance (got $texts)")
+        // Check Distance labels: start distance "0 m" and total distance "1500 m"
+        assertTrue(texts.contains("0 m"), "Mini-map should label start distance '0 m' (got $texts)")
+        assertTrue(texts.contains("1500 m"), "Mini-map should draw total/midpoint distance (got $texts)")
     }
 
     @Test
