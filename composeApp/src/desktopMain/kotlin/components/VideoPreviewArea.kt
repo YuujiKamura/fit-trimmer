@@ -172,6 +172,26 @@ fun VideoPreviewArea(
         derivedStateOf { if (isSeeking) seekTargetTimeMs else videoCurrentTimeMs }
     }
     var activePreviewSourceLabel by remember { mutableStateOf("Original") }
+    val outputLengthMs = remember(videoLengthMs, settings.speedSegments) {
+        val segments = settings.speedSegments
+        if (segments.isEmpty() || videoLengthMs <= 0L) {
+            videoLengthMs
+        } else {
+            val srcSec = videoLengthMs / 1000.0
+            val dstSec = fit.SpeedMapper.mapSourceToTarget(srcSec, segments)
+            (dstSec * 1000).toLong().coerceAtLeast(1000L)
+        }
+    }
+    val outputCurrentTimeMs = remember(videoCurrentTimeMs, isSeeking, seekTargetTimeMs, settings.speedSegments) {
+        val segments = settings.speedSegments
+        val currentSrc = if (isSeeking) seekTargetTimeMs else videoCurrentTimeMs
+        if (segments.isEmpty()) {
+            currentSrc
+        } else {
+            val dstSec = fit.SpeedMapper.mapSourceToTarget(currentSrc / 1000.0, segments)
+            (dstSec * 1000).toLong()
+        }
+    }
 
 
 
@@ -522,21 +542,31 @@ fun VideoPreviewArea(
                 }
 
                 Text(
-                    text = "${formatPreviewTime(videoCurrentTimeMs)} / ${formatPreviewTime(videoLengthMs)}",
+                    text = if (settings.speedSegments.isEmpty()) {
+                        "${formatPreviewTime(videoCurrentTimeMs)} / ${formatPreviewTime(videoLengthMs)}"
+                    } else {
+                        "${formatPreviewTime(outputCurrentTimeMs)} / ${formatPreviewTime(outputLengthMs)} (Output)"
+                    },
                     color = foreground,
                     fontSize = 11.sp,
                     maxLines = 1
                 )
 
                 Slider(
-                    value = if (videoLengthMs > 0) {
-                        val current = if (isSeeking) seekTargetTimeMs else videoCurrentTimeMs
-                        current.toFloat() / videoLengthMs.toFloat()
+                    value = if (outputLengthMs > 0L) {
+                        outputCurrentTimeMs.toFloat() / outputLengthMs.toFloat()
                     } else 0f,
                     onValueChange = { ratio ->
                         onSeekStart()
-                        val targetTime = (ratio * videoLengthMs).toLong()
-                        onSeekProgress(targetTime)
+                        val targetOutputMs = (ratio * outputLengthMs).toLong()
+                        val segments = settings.speedSegments
+                        val targetSrcMs = if (segments.isEmpty()) {
+                            targetOutputMs
+                        } else {
+                            val srcSec = fit.SpeedMapper.mapTargetToSource(targetOutputMs / 1000.0, segments)
+                            (srcSec * 1000).toLong()
+                        }
+                        onSeekProgress(targetSrcMs)
                     },
                     onValueChangeFinished = {
                         val finalTime = if (isSeeking) seekTargetTimeMs else videoCurrentTimeMs

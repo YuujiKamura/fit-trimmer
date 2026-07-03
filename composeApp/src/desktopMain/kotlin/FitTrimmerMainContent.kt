@@ -1431,6 +1431,11 @@ fun FitTrimmerMainContent(
                                 onClick = { selectedTab = 2 },
                                 text = { Text("設定", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
                             )
+                            Tab(
+                                selected = selectedTab == 3,
+                                onClick = { selectedTab = 3 },
+                                text = { Text("キャプション", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                            )
                         }
 
                         // スクロール可能な領域
@@ -2247,6 +2252,122 @@ fun FitTrimmerMainContent(
                             }
                         }
                     )
+
+                    Spacer(Modifier.height(8.dp))
+
+                    Card(
+                        backgroundColor = Color.White,
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, Color(0xFFE5E5EA)),
+                        elevation = 1.dp,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text("部分倍速（タイムラプス）設定", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 0.5.sp)
+                            Text("特定の区間を早送り（倍速化）します。倍速区間の音声は自動的に無音化されます。", color = Color(0xFF636366), fontSize = 10.sp, lineHeight = 13.sp)
+                            
+                            val segments = settings.speedSegments
+                            if (segments.isEmpty()) {
+                                Text("設定されている倍速区間はありません。", color = Color.Gray, fontSize = 11.sp, modifier = Modifier.padding(vertical = 4.dp))
+                            } else {
+                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    segments.sortedBy { it.startSeconds }.forEach { seg ->
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth().background(Color(0xFFF2F2F7), androidx.compose.foundation.shape.RoundedCornerShape(4.dp)).padding(horizontal = 8.dp, vertical = 4.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "⏱ %.1f秒 〜 %.1f秒 : %.1f倍".format(java.util.Locale.US, seg.startSeconds, seg.endSeconds, seg.speedFactor),
+                                                fontSize = 11.sp,
+                                                color = Color(0xFF1C1C1E)
+                                            )
+                                            IconButton(
+                                                onClick = {
+                                                    val updated = segments.filter { it.id != seg.id }
+                                                    settings = settings.copy(speedSegments = updated)
+                                                },
+                                                modifier = Modifier.size(24.dp)
+                                            ) {
+                                                Text("✕", fontSize = 12.sp, color = Color.Red, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            Divider(color = Color(0xFFE5E5EA), modifier = Modifier.padding(vertical = 4.dp))
+                            
+                            // 新規追加フォーム
+                            var newStartText by remember { mutableStateOf("") }
+                            var newEndText by remember { mutableStateOf("") }
+                            var newSpeedText by remember { mutableStateOf("2.0") }
+                            
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                OutlinedTextField(
+                                    value = newStartText,
+                                    onValueChange = { newStartText = it },
+                                    label = { Text("開始(秒)", fontSize = 10.sp) },
+                                    modifier = Modifier.weight(1f),
+                                    textStyle = TextStyle(fontSize = 11.sp),
+                                    singleLine = true,
+                                    enabled = !isEncoding
+                                )
+                                OutlinedTextField(
+                                    value = newEndText,
+                                    onValueChange = { newEndText = it },
+                                    label = { Text("終了(秒)", fontSize = 10.sp) },
+                                    modifier = Modifier.weight(1f),
+                                    textStyle = TextStyle(fontSize = 11.sp),
+                                    singleLine = true,
+                                    enabled = !isEncoding
+                                )
+                                OutlinedTextField(
+                                    value = newSpeedText,
+                                    onValueChange = { newSpeedText = it },
+                                    label = { Text("倍率", fontSize = 10.sp) },
+                                    modifier = Modifier.weight(1f),
+                                    textStyle = TextStyle(fontSize = 11.sp),
+                                    singleLine = true,
+                                    enabled = !isEncoding
+                                )
+                                Button(
+                                    onClick = {
+                                        val start = newStartText.toDoubleOrNull()
+                                        val end = newEndText.toDoubleOrNull()
+                                        val speed = newSpeedText.toDoubleOrNull()
+                                        if (start != null && end != null && speed != null && start < end && speed > 0.0) {
+                                            val newSeg = SpeedSegment(
+                                                id = "speed-seg-${System.currentTimeMillis()}",
+                                                startSeconds = start,
+                                                endSeconds = end,
+                                                speedFactor = speed
+                                            )
+                                            settings = settings.copy(speedSegments = segments + newSeg)
+                                            newStartText = ""
+                                            newEndText = ""
+                                            newSpeedText = "2.0"
+                                        }
+                                    },
+                                    enabled = !isEncoding && newStartText.isNotEmpty() && newEndText.isNotEmpty(),
+                                    modifier = Modifier.height(36.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        backgroundColor = Color(0xFF007AFF),
+                                        contentColor = Color.White
+                                    )
+                                ) {
+                                    Text("追加", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
 
                     Spacer(Modifier.height(8.dp))
 
@@ -3249,6 +3370,212 @@ fun FitTrimmerMainContent(
                                         }
                                 }
                             }
+                                    if (selectedTab == 3) {
+                                        Card(
+                                            backgroundColor = Color.White,
+                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                                            border = BorderStroke(1.dp, Color(0xFFE5E5EA)),
+                                            elevation = 1.dp,
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.padding(12.dp),
+                                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                Text("手動カスタムキャプション設定", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 0.5.sp)
+                                                Text("動画上の任意の時間帯に文字テロップを表示します。", color = Color(0xFF636366), fontSize = 10.sp, lineHeight = 13.sp)
+                                                
+                                                val captions = settings.customCaptions
+                                                if (captions.isEmpty()) {
+                                                    Text("設定されているカスタムキャプションはありません。", color = Color.Gray, fontSize = 11.sp, modifier = Modifier.padding(vertical = 4.dp))
+                                                } else {
+                                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                        captions.sortedBy { it.startSeconds }.forEach { cap ->
+                                                            Row(
+                                                                modifier = Modifier.fillMaxWidth().background(Color(0xFFF2F2F7), androidx.compose.foundation.shape.RoundedCornerShape(4.dp)).padding(horizontal = 8.dp, vertical = 4.dp),
+                                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                                verticalAlignment = Alignment.CenterVertically
+                                                            ) {
+                                                                Column(modifier = Modifier.weight(1f)) {
+                                                                    Text(
+                                                                        text = "⏱ %.1f秒 〜 %.1f秒 : \"%s\"".format(java.util.Locale.US, cap.startSeconds, cap.endSeconds, cap.text),
+                                                                        fontSize = 11.sp,
+                                                                        fontWeight = FontWeight.Bold,
+                                                                        color = Color(0xFF1C1C1E)
+                                                                    )
+                                                                    val posName = when {
+                                                                        cap.positionY > 0.7f && cap.align == "center" -> "bottom_center"
+                                                                        cap.positionY < 0.3f && cap.align == "center" -> "top_center"
+                                                                        cap.align == "left" -> "left_center"
+                                                                        cap.align == "right" -> "right_center"
+                                                                        else -> "center"
+                                                                    }
+                                                                    Text(
+                                                                        text = "サイズ: %.0fpx | 位置: %s | 色: %s".format(java.util.Locale.US, cap.fontSize, posName, cap.textColor),
+                                                                        fontSize = 9.sp,
+                                                                        color = Color.Gray
+                                                                    )
+                                                                }
+                                                                IconButton(
+                                                                    onClick = {
+                                                                        val updated = captions.filter { it.id != cap.id }
+                                                                        settings = settings.copy(customCaptions = updated)
+                                                                    },
+                                                                    modifier = Modifier.size(24.dp)
+                                                                ) {
+                                                                    Text("✕", fontSize = 12.sp, color = Color.Red, fontWeight = FontWeight.Bold)
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                                
+                                                Divider(color = Color(0xFFE5E5EA), modifier = Modifier.padding(vertical = 4.dp))
+                                                
+                                                // 新規追加フォーム
+                                                var capStartText by remember { mutableStateOf("") }
+                                                var capEndText by remember { mutableStateOf("") }
+                                                var capText by remember { mutableStateOf("") }
+                                                var capSizeText by remember { mutableStateOf("24") }
+                                                var capColorText by remember { mutableStateOf("#FFFFFF") }
+                                                var capPos by remember { mutableStateOf("bottom_center") }
+                                                var capPosDropdownExpanded by remember { mutableStateOf(false) }
+                                                
+                                                OutlinedTextField(
+                                                    value = capText,
+                                                    onValueChange = { capText = it },
+                                                    label = { Text("キャプションテキスト", fontSize = 10.sp) },
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    textStyle = TextStyle(fontSize = 11.sp),
+                                                    singleLine = true,
+                                                    enabled = !isEncoding
+                                                )
+                                                
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    OutlinedTextField(
+                                                        value = capStartText,
+                                                        onValueChange = { capStartText = it },
+                                                        label = { Text("開始(秒)", fontSize = 10.sp) },
+                                                        modifier = Modifier.weight(1f),
+                                                        textStyle = TextStyle(fontSize = 11.sp),
+                                                        singleLine = true,
+                                                        enabled = !isEncoding
+                                                    )
+                                                    OutlinedTextField(
+                                                        value = capEndText,
+                                                        onValueChange = { capEndText = it },
+                                                        label = { Text("終了(秒)", fontSize = 10.sp) },
+                                                        modifier = Modifier.weight(1f),
+                                                        textStyle = TextStyle(fontSize = 11.sp),
+                                                        singleLine = true,
+                                                        enabled = !isEncoding
+                                                    )
+                                                }
+                                                
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    OutlinedTextField(
+                                                        value = capSizeText,
+                                                        onValueChange = { capSizeText = it },
+                                                        label = { Text("サイズ(px)", fontSize = 10.sp) },
+                                                        modifier = Modifier.weight(1f),
+                                                        textStyle = TextStyle(fontSize = 11.sp),
+                                                        singleLine = true,
+                                                        enabled = !isEncoding
+                                                    )
+                                                    OutlinedTextField(
+                                                        value = capColorText,
+                                                        onValueChange = { capColorText = it },
+                                                        label = { Text("色(Hex)", fontSize = 10.sp) },
+                                                        modifier = Modifier.weight(1f),
+                                                        textStyle = TextStyle(fontSize = 11.sp),
+                                                        singleLine = true,
+                                                        enabled = !isEncoding
+                                                    )
+                                                    
+                                                    Box(modifier = Modifier.weight(1f)) {
+                                                        OutlinedButton(
+                                                            onClick = { if (!isEncoding) capPosDropdownExpanded = true },
+                                                            modifier = Modifier.fillMaxWidth().height(56.dp).padding(top = 4.dp),
+                                                            border = BorderStroke(1.dp, Color(0xFFD1D1D6))
+                                                        ) {
+                                                            Text(capPos, fontSize = 9.sp)
+                                                        }
+                                                        DropdownMenu(
+                                                            expanded = capPosDropdownExpanded,
+                                                            onDismissRequest = { capPosDropdownExpanded = false }
+                                                        ) {
+                                                            listOf("bottom_center", "top_center", "center", "left_center", "right_center").forEach { pos ->
+                                                                DropdownMenuItem(
+                                                                    onClick = {
+                                                                        capPos = pos
+                                                                        capPosDropdownExpanded = false
+                                                                    }
+                                                                ) {
+                                                                    Text(pos, fontSize = 10.sp)
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                                
+                                                Button(
+                                                    onClick = {
+                                                        val start = capStartText.toDoubleOrNull()
+                                                        val end = capEndText.toDoubleOrNull()
+                                                        val size = capSizeText.toFloatOrNull()
+                                                        if (start != null && end != null && size != null && start < end && capText.isNotEmpty()) {
+                                                            val px = when (capPos) {
+                                                                "left_center" -> 0.15f
+                                                                "right_center" -> 0.85f
+                                                                else -> 0.5f
+                                                            }
+                                                            val py = when (capPos) {
+                                                                "top_center" -> 0.15f
+                                                                "bottom_center" -> 0.85f
+                                                                else -> 0.5f
+                                                            }
+                                                            val al = when (capPos) {
+                                                                "left_center" -> "left"
+                                                                "right_center" -> "right"
+                                                                else -> "center"
+                                                            }
+                                                            val newCap = CustomCaptionSegment(
+                                                                id = "cap-seg-${System.currentTimeMillis()}",
+                                                                startSeconds = start,
+                                                                endSeconds = end,
+                                                                text = capText,
+                                                                fontSize = size,
+                                                                textColor = capColorText,
+                                                                positionX = px,
+                                                                positionY = py,
+                                                                align = al
+                                                            )
+                                                            settings = settings.copy(customCaptions = captions + newCap)
+                                                            capStartText = ""
+                                                            capEndText = ""
+                                                            capText = ""
+                                                        }
+                                                    },
+                                                    enabled = !isEncoding && capText.isNotEmpty() && capStartText.isNotEmpty() && capEndText.isNotEmpty(),
+                                                    modifier = Modifier.fillMaxWidth().height(36.dp),
+                                                    colors = ButtonDefaults.buttonColors(
+                                                        backgroundColor = Color(0xFF007AFF),
+                                                        contentColor = Color.White
+                                                    )
+                                                ) {
+                                                    Text("キャプションを追加", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                }
+                                            }
+                                        }
+                                    }
 
                         }
                     }
