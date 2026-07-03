@@ -139,7 +139,8 @@ fun FitTrimmerMainContent(
             showGrade = settings.showGrade,
             showElevation = settings.showElevation,
             showDistanceTime = settings.showDistanceTime,
-            bodyWeightKg = settings.bodyWeightKg
+            bodyWeightKg = settings.bodyWeightKg,
+            customCaptions = settings.customCaptions
         )
     }
     var reloadTrigger by remember { mutableStateOf(0) }

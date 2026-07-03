@@ -913,7 +913,8 @@ class NativeHudEncoder(
             showGrade = settings.showGrade,
             showElevation = settings.showElevation,
             showDistanceTime = settings.showDistanceTime,
-            bodyWeightKg = settings.bodyWeightKg
+            bodyWeightKg = settings.bodyWeightKg,
+            customCaptions = settings.customCaptions
         )
         println("DEBUG: NativeHudEncoder.encode config=$config, videoWidth=$videoWidth, videoHeight=$videoHeight")
         val renderer = HudRenderer(config)
@@ -1858,7 +1859,8 @@ class NativeHudEncoder(
                     showGrade = settings.showGrade,
                     showElevation = settings.showElevation,
                     showDistanceTime = settings.showDistanceTime,
-                    bodyWeightKg = settings.bodyWeightKg
+                    bodyWeightKg = settings.bodyWeightKg,
+                    customCaptions = settings.customCaptions
                 )
 
                 val (exportWidth, exportHeight) = when (settings.exportResolution) {

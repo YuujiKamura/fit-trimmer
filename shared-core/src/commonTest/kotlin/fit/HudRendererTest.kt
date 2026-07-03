@@ -312,5 +312,98 @@ class HudRendererTest {
         assertFalse(canvas.drawnTexts.contains("130-139"), "Zone 130-139 should NOT be drawn as a separate table row")
         assertFalse(canvas.drawnTexts.contains("190+"), "Zone 190+ should NOT be drawn as a separate table row")
     }
+
+    class CustomCaptionTestHudCanvas : HudCanvas {
+        override val width: Float = 1920f
+        override val height: Float = 1080f
+        
+        data class RectCall(val x: Float, val y: Float, val w: Float, val h: Float, val color: String, val alpha: Float)
+        data class TextCall(val text: String, val x: Float, val y: Float, val size: Float, val color: String, val anchor: String)
+        
+        val rectCalls = mutableListOf<RectCall>()
+        val textCalls = mutableListOf<TextCall>()
+        
+        override fun drawText(text: String, x: Float, y: Float, size: Float, color: String, bold: Boolean, anchor: String) {
+            textCalls.add(TextCall(text, x, y, size, color, anchor))
+        }
+        
+        override fun drawRect(x: Float, y: Float, w: Float, h: Float, color: String, alpha: Float, outline: Boolean) {
+            rectCalls.add(RectCall(x, y, w, h, color, alpha))
+        }
+        
+        override fun drawLine(points: List<Pair<Float, Float>>, color: String, width: Float, alpha: Float) {}
+        override fun drawPolygon(points: List<Pair<Float, Float>>, color: String, alpha: Float) {}
+        override fun getTextWidth(text: String, size: Float, bold: Boolean): Float = text.length * 10f
+    }
+
+    @Test
+    fun testCustomCaptionRendering() {
+        val segment = CustomCaptionSegment(
+            id = "custom-1",
+            startSeconds = 5.0,
+            endSeconds = 15.0,
+            text = "Hello Custom Caption",
+            isEnabled = true,
+            fontSize = 32f,
+            textColor = "#ff0000",
+            backgroundColor = "#00ff00",
+            backgroundAlpha = 0.8f,
+            positionX = 0.25f,
+            positionY = 0.75f,
+            align = "center"
+        )
+        
+        val config = HudConfig(
+            valSize = 40f, tightness = 1f, spacing = 20f,
+            xOffset = 40f, yOffset = 100f, graphH = 60f, graphW = 300f,
+            customCaptions = listOf(segment)
+        )
+        
+        val renderer = HudRenderer(config)
+        val startPoint = FitParser.TelemetryPoint(
+            timestamp = 0.0, speed = 0.0, power = 0.0, cadence = 0.0, heartRate = 0.0, elevation = 0.0, grade = 0.0
+        )
+        val originalPoints = listOf(startPoint)
+        
+        // 1. 表示時間内 (10秒)
+        val canvas1 = CustomCaptionTestHudCanvas()
+        renderer.renderFrame(
+            canvas1,
+            startPoint,
+            originalPoints,
+            emptyList(),
+            emptyList(),
+            10.0f,
+            isValid = true
+        )
+        
+        val textCall = canvas1.textCalls.find { it.text == "Hello Custom Caption" }
+        val rectCall = canvas1.rectCalls.find { it.color == "#00ff00" && it.alpha == 0.8f }
+        
+        assertTrue(textCall != null, "Custom caption should be drawn inside range")
+        assertTrue(rectCall != null, "Background rect should be drawn inside range")
+        
+        assertEquals(32f, textCall.size, "Font size should match")
+        assertEquals("#ff0000", textCall.color, "Text color should match")
+        assertEquals("center", textCall.anchor, "Anchor should be center")
+        
+        assertEquals(360f, rectCall.x, "Rect X should be aligned center")
+        assertEquals(784f, rectCall.y, "Rect Y should be centered vertically")
+        assertEquals(240f, rectCall.w, "Rect width should match text width + padding")
+        assertEquals(52f, rectCall.h, "Rect height should match font size + padding")
+        
+        // 2. 表示時間外 (20秒)
+        val canvas2 = CustomCaptionTestHudCanvas()
+        renderer.renderFrame(
+            canvas2,
+            startPoint,
+            originalPoints,
+            emptyList(),
+            emptyList(),
+            20.0f,
+            isValid = true
+        )
+        assertFalse(canvas2.textCalls.any { it.text == "Hello Custom Caption" }, "Custom caption should not be drawn out of range")
+    }
 }
 
