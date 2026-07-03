@@ -78,6 +78,18 @@ class HudRenderer(val config: HudConfig) {
         canvas.drawText(dtText, timeX + dtPadX, timeY + dtPadY, dtTextSize, "#ffffff", bold = true)
 
         val allPoints = if (originalPoints.isEmpty()) listOf(telemetry) else originalPoints
+
+        // Calculate heart rate zones current accumulation for this frame
+        val zonesCurrent = IntArray(7)
+        if (isValid && allPoints.isNotEmpty()) {
+            for (pt in allPoints) {
+                if (pt.timestamp > telemetry.timestamp) break
+                val zIdx = getHrZoneIndex(pt.heartRate)
+                if (zIdx in 0..6) {
+                    zonesCurrent[zIdx]++
+                }
+            }
+        }
         
         var cx = config.xOffset
         var cy = config.yOffset
@@ -119,8 +131,35 @@ class HudRenderer(val config: HudConfig) {
         drawCell(getLabel("CADENCE"), cadStr, "rpm", "#a78bfa")
 
         // 3. HEART RATE
+        val hrCy = cy
         val hrStr = if (isValid) telemetry.heartRate.roundToInt().toString() else "-"
         drawCell(getLabel("HEART RATE"), hrStr, "bpm", "#ef4444")
+
+        // Draw current HR zone accumulation time to the right of HEART RATE cell
+        if (isValid) {
+            val currentHr = telemetry.heartRate
+            val zIdx = getHrZoneIndex(currentHr)
+            if (zIdx in 0..6) {
+                val currentSec = zonesCurrent[zIdx]
+                val zoneLabel = when (zIdx) {
+                    6 -> "190+"
+                    5 -> "180s"
+                    4 -> "170s"
+                    3 -> "160s"
+                    2 -> "150s"
+                    1 -> "140s"
+                    0 -> "130s"
+                    else -> ""
+                }
+                val zoneTimeText = formatMinSec(currentSec)
+                
+                canvas.drawText("ZONE $zoneLabel", cx + 180f, hrCy, labelSize, "#e5e7eb", bold = true)
+                canvas.drawText(zoneTimeText, cx + 180f, hrCy + labelSize + tightness, valSize, "#ef4444", bold = true)
+            } else {
+                canvas.drawText("ZONE -", cx + 180f, hrCy, labelSize, "#e5e7eb", bold = true)
+                canvas.drawText("--:--", cx + 180f, hrCy + labelSize + tightness, valSize, "#9ca3af", bold = true)
+            }
+        }
 
         // 4. POWER
         val pwrStr = if (isValid) telemetry.power.roundToInt().toString() else "-"
@@ -399,15 +438,6 @@ class HudRenderer(val config: HudConfig) {
 
         // 8.6. Heart Rate Zones Table with Butterfly Bar Graph (130 to 190 bpm)
         if (isValid && allPoints.isNotEmpty()) {
-            val zonesCurrent = IntArray(7)
-            for (pt in allPoints) {
-                if (pt.timestamp > telemetry.timestamp) break
-                val zIdx = getHrZoneIndex(pt.heartRate)
-                if (zIdx in 0..6) {
-                    zonesCurrent[zIdx]++
-                }
-            }
-
             val zoneCy = eGy + graphH + 42f
             val isJa = config.language.lowercase().let { it == "ja" || it.startsWith("ja-") }
             canvas.drawText(
@@ -415,7 +445,7 @@ class HudRenderer(val config: HudConfig) {
                 cx, zoneCy, labelSize, "#e5e7eb", bold = true
             )
 
-            val maxBarW = 90f
+            val maxBarW = 75f
             val maxTotal = (cachedZonesMaxTotal).toFloat()
             val zones = listOf("190+", "180-189", "170-179", "160-169", "150-159", "140-149", "130-139")
             val zoneIndices = listOf(6, 5, 4, 3, 2, 1, 0)
@@ -451,6 +481,12 @@ class HudRenderer(val config: HudConfig) {
                 if (totalW > 0f) {
                     canvas.drawRect(cx + 155f, barY, totalW, barH, "#f87171", alpha = 0.35f)
                 }
+
+                // 4. Draw Time Text: e.g. "12:34 / 20:15"
+                val timeStr = "${formatMinSec(currentSec)} / ${formatMinSec(totalSec)}"
+                val isCurrentZone = (zIdx == getHrZoneIndex(telemetry.heartRate))
+                val textColor = if (isCurrentZone) "#ef4444" else "#9ca3af"
+                canvas.drawText(timeStr, cx + 155f + maxBarW + 8f, rowY + 1f, 9f, textColor, bold = isCurrentZone)
 
                 rowY += rowH + 2f
             }
@@ -546,6 +582,12 @@ class HudRenderer(val config: HudConfig) {
             "POWER TREND" -> if (isJa) "パワートレンド" else "POWER TREND"
             else -> key
         }
+    }
+
+    private fun formatMinSec(seconds: Int): String {
+        val m = seconds / 60
+        val s = seconds % 60
+        return "${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}"
     }
 
     private fun getHrZoneIndex(hr: Double): Int {
