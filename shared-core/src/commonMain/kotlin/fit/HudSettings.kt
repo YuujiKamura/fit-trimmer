@@ -46,5 +46,5 @@ data class HudSettings(
     val showGrade: Boolean = true,
     val showElevation: Boolean = true,
     val showDistanceTime: Boolean = true,
-    val bodyWeightKg: Double = 70.0
+    val bodyWeightKg: Double = 0.0
 )
