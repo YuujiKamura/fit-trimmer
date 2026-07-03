@@ -45,8 +45,8 @@ fun BatchQueueDialog(
     ) {
         Card(
             modifier = Modifier
-                .width(940.dp)
-                .fillMaxHeight(0.85f)
+                .width(960.dp)
+                .fillMaxHeight(0.9f)
                 .padding(16.dp),
             shape = RoundedCornerShape(16.dp),
             elevation = 8.dp
@@ -56,20 +56,70 @@ fun BatchQueueDialog(
                 horizontalAlignment = Alignment.Start,
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                // ヘッダー
                 Text(
-                    text = "バッチ処理キューと進行管理",
+                    text = if (viewModel.isBatchRunning) "バッチ処理 実行中" else "バッチ処理キューと進行管理",
                     style = MaterialTheme.typography.h6,
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFF007AFF),
                     modifier = Modifier.align(Alignment.CenterHorizontally)
                 )
+                
                 Text(
-                    text = "以下のジョブ（計 ${viewModel.batchQueue.size} 件）の進行管理とフェーズのオンオフを設定できます。",
+                    text = if (viewModel.isBatchRunning) 
+                        "現在バックグラウンドでバッチ処理を実行しています。この画面のまま進行状況を確認できます。" 
+                    else 
+                        "以下のジョブ（計 ${viewModel.batchQueue.size} 件）の進行管理とフェーズのオンオフを設定できます。",
                     fontSize = 12.sp,
                     color = Color(0xFF1C1C1E)
                 )
+                
                 Divider(color = Color(0xFFE5E5EA))
                 
+                // バッチ全体の大容量進捗バー (実行中のみ)
+                if (viewModel.isBatchRunning) {
+                    val completedCount = viewModel.batchQueue.count { it.status == BatchJobStatus.COMPLETED }
+                    val totalCount = viewModel.batchQueue.size
+                    val overallProgress = if (totalCount > 0) completedCount.toFloat() / totalCount.toFloat() else 0f
+                    
+                    Surface(
+                        color = Color(0xFFF2F2F7),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = viewModel.batchStatusText,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF007AFF)
+                                )
+                                Text(
+                                    text = "全体進捗: $completedCount / $totalCount 件完了 (${(overallProgress * 100).toInt()}%)",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = Color(0xFF636366)
+                                )
+                            }
+                            LinearProgressIndicator(
+                                progress = overallProgress,
+                                modifier = Modifier.fillMaxWidth().height(8.dp),
+                                color = Color(0xFF34C759),
+                                backgroundColor = Color(0xFFD1D1D6)
+                            )
+                        }
+                    }
+                }
+                
+                // ジョブのタスクリスト
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -86,11 +136,23 @@ fun BatchQueueDialog(
                             val canEditJob = !viewModel.isBatchRunning
                             var entryNameDraft by remember(job.id, job.entryName) { mutableStateOf(job.entryName) }
                             
+                            // 実行中のジョブカードの背景色を変更してアクティブなジョブを強調
+                            val cardBgColor = if (job.status == BatchJobStatus.RUNNING) {
+                                Color(0xFFF2F8FF)
+                            } else {
+                                Color.White
+                            }
+                            val cardBorderColor = if (job.status == BatchJobStatus.RUNNING) {
+                                Color(0xFF007AFF)
+                            } else {
+                                Color(0xFFE5E5EA)
+                            }
+                            
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .background(Color.White, RoundedCornerShape(8.dp))
-                                    .border(1.dp, Color(0xFFE5E5EA), RoundedCornerShape(8.dp))
+                                    .background(cardBgColor, RoundedCornerShape(8.dp))
+                                    .border(1.dp, cardBorderColor, RoundedCornerShape(8.dp))
                                     .padding(12.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
@@ -100,38 +162,51 @@ fun BatchQueueDialog(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Row(
-                                        modifier = Modifier.weight(1f),
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        OutlinedTextField(
-                                            value = entryNameDraft,
-                                            onValueChange = { entryNameDraft = it },
-                                            enabled = canEditJob,
-                                            singleLine = true,
-                                            textStyle = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Bold),
-                                            modifier = Modifier.weight(1f).height(48.dp),
-                                            colors = TextFieldDefaults.outlinedTextFieldColors(
-                                                textColor = Color(0xFF1C1C1E),
-                                                disabledTextColor = Color(0xFF636366),
-                                                focusedBorderColor = Color(0xFF007AFF),
-                                                unfocusedBorderColor = Color(0xFFE5E5EA)
-                                            )
-                                        )
-                                        OutlinedButton(
-                                            onClick = {
-                                                viewModel.renameBatchJobEntry(job.id, entryNameDraft)
-                                                entryNameDraft = job.entryName
-                                            },
-                                            enabled = canEditJob && entryNameDraft.trim().isNotEmpty() && entryNameDraft != job.entryName,
-                                            modifier = Modifier.height(34.dp),
-                                            contentPadding = PaddingValues(horizontal = 8.dp)
+                                    if (canEditJob) {
+                                        // 編集モード
+                                        Row(
+                                            modifier = Modifier.weight(1f),
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Text("保存", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                            OutlinedTextField(
+                                                value = entryNameDraft,
+                                                onValueChange = { entryNameDraft = it },
+                                                enabled = true,
+                                                singleLine = true,
+                                                textStyle = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Bold),
+                                                modifier = Modifier.weight(1f).height(48.dp),
+                                                colors = TextFieldDefaults.outlinedTextFieldColors(
+                                                    textColor = Color(0xFF1C1C1E),
+                                                    focusedBorderColor = Color(0xFF007AFF),
+                                                    unfocusedBorderColor = Color(0xFFE5E5EA)
+                                                )
+                                            )
+                                            OutlinedButton(
+                                                onClick = {
+                                                    viewModel.renameBatchJobEntry(job.id, entryNameDraft)
+                                                    entryNameDraft = job.entryName
+                                                },
+                                                enabled = entryNameDraft.trim().isNotEmpty() && entryNameDraft != job.entryName,
+                                                modifier = Modifier.height(34.dp),
+                                                contentPadding = PaddingValues(horizontal = 8.dp)
+                                            ) {
+                                                Text("保存", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                            }
                                         }
+                                    } else {
+                                        // 進行確認モード (大きなラベル表示)
+                                        Text(
+                                            text = job.entryName,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (job.status == BatchJobStatus.RUNNING) Color(0xFF007AFF) else Color(0xFF1C1C1E),
+                                            modifier = Modifier.weight(1f).padding(vertical = 6.dp)
+                                        )
                                     }
+                                    
                                     Spacer(Modifier.width(12.dp))
+                                    
                                     // ジョブ自体のステータスバッジ
                                     val jobStatusColor = when (job.status) {
                                         BatchJobStatus.WAITING -> Color.Gray
@@ -156,37 +231,39 @@ fun BatchQueueDialog(
                                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                         )
                                     }
-                                    Spacer(Modifier.width(8.dp))
-                                    // 操作矢印/削除
-                                    Row(
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        OutlinedButton(
-                                            onClick = { viewModel.moveBatchJobUp(job.id) },
-                                            enabled = canEditJob && idx > 0,
-                                            modifier = Modifier.size(30.dp),
-                                            contentPadding = PaddingValues(0.dp)
+                                    
+                                    // 操作ボタン (編集モード中のみ表示)
+                                    if (canEditJob) {
+                                        Spacer(Modifier.width(8.dp))
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                            verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Icon(Icons.Filled.KeyboardArrowUp, null, modifier = Modifier.size(18.dp))
-                                        }
-                                        OutlinedButton(
-                                            onClick = { viewModel.moveBatchJobDown(job.id) },
-                                            enabled = canEditJob && idx < viewModel.batchQueue.lastIndex,
-                                            modifier = Modifier.size(30.dp),
-                                            contentPadding = PaddingValues(0.dp)
-                                        ) {
-                                            Icon(Icons.Filled.KeyboardArrowDown, null, modifier = Modifier.size(18.dp))
-                                        }
-                                        OutlinedButton(
-                                            onClick = { viewModel.removeFromBatchQueue(job.id) },
-                                            enabled = canEditJob,
-                                            modifier = Modifier.size(30.dp),
-                                            contentPadding = PaddingValues(0.dp),
-                                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFE02424)),
-                                            border = BorderStroke(1.dp, if (canEditJob) Color(0xFFE02424) else Color(0xFFE5E5EA))
-                                        ) {
-                                            Icon(Icons.Filled.Delete, null, modifier = Modifier.size(16.dp))
+                                            OutlinedButton(
+                                                onClick = { viewModel.moveBatchJobUp(job.id) },
+                                                enabled = idx > 0,
+                                                modifier = Modifier.size(30.dp),
+                                                contentPadding = PaddingValues(0.dp)
+                                            ) {
+                                                Icon(Icons.Filled.KeyboardArrowUp, null, modifier = Modifier.size(18.dp))
+                                            }
+                                            OutlinedButton(
+                                                onClick = { viewModel.moveBatchJobDown(job.id) },
+                                                enabled = idx < viewModel.batchQueue.lastIndex,
+                                                modifier = Modifier.size(30.dp),
+                                                contentPadding = PaddingValues(0.dp)
+                                            ) {
+                                                Icon(Icons.Filled.KeyboardArrowDown, null, modifier = Modifier.size(18.dp))
+                                            }
+                                            OutlinedButton(
+                                                onClick = { viewModel.removeFromBatchQueue(job.id) },
+                                                modifier = Modifier.size(30.dp),
+                                                contentPadding = PaddingValues(0.dp),
+                                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFE02424)),
+                                                border = BorderStroke(1.dp, Color(0xFFE02424))
+                                            ) {
+                                                Icon(Icons.Filled.Delete, null, modifier = Modifier.size(16.dp))
+                                            }
                                         }
                                     }
                                 }
@@ -197,7 +274,6 @@ fun BatchQueueDialog(
                                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    // バッジ表示
                                     if (job.fitPath.isNotEmpty()) {
                                         DialogBadge(text = "HUD焼き付け", backgroundColor = Color(0xFFE8F2FF), textColor = Color(0xFF007AFF))
                                     } else {
@@ -217,16 +293,15 @@ fun BatchQueueDialog(
                                     
                                     Spacer(Modifier.weight(1f))
                                     
-                                    // トリミング範囲テキスト
                                     Text(
                                         text = "トリム: %.1fs - %.1fs (分割: ${job.splitPoints.size + 1})".format(job.trimStartSeconds, job.trimEndSeconds),
                                         fontSize = 10.sp,
                                         color = Color(0xFF636366),
                                         fontWeight = FontWeight.Medium
-                                                    )
+                                    )
                                 }
                                 
-                                // エラーメッセージの表示
+                                // エラーメッセージ
                                 if (job.errorMessage != null) {
                                     Text(
                                         text = "❌ エラー: ${job.errorMessage}",
@@ -240,59 +315,60 @@ fun BatchQueueDialog(
                                     )
                                 }
                                 
-                                // キャッシュサルベージ支援UI
-                                val availableJobs = remember(job.videoPath) { fit.CacheRegistry.scanAvailableJobs(job.videoPath) }
-                                if (availableJobs.isNotEmpty() && !viewModel.isBatchRunning) {
-                                    val jobCache = availableJobs.first()
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .background(Color(0xFFFFF9E6), RoundedCornerShape(4.dp))
-                                            .border(1.dp, Color(0xFFFFD60A), RoundedCornerShape(4.dp))
-                                            .padding(6.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Text("⚠️ 未完了キャッシュ (TSパーツ: ${jobCache.partsCount}) があります", fontSize = 10.sp, color = Color(0xFFFF9500), fontWeight = FontWeight.Bold)
-                                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                            OutlinedButton(
-                                                onClick = {
-                                                    // マージ復元モード
-                                                    job.phases.forEach { p ->
-                                                        when (p.type) {
-                                                            BatchJobPhaseType.PLATE_SCAN -> p.enabled = false
-                                                            BatchJobPhaseType.HUD_ENCODE -> {
-                                                                p.enabled = false
-                                                                p.status = BatchJobPhaseStatus.COMPLETED
+                                // キャッシュサルベージ支援UI (編集モードのみ)
+                                if (canEditJob) {
+                                    val availableJobs = remember(job.videoPath) { fit.CacheRegistry.scanAvailableJobs(job.videoPath) }
+                                    if (availableJobs.isNotEmpty()) {
+                                        val jobCache = availableJobs.first()
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .background(Color(0xFFFFF9E6), RoundedCornerShape(4.dp))
+                                                .border(1.dp, Color(0xFFFFD60A), RoundedCornerShape(4.dp))
+                                                .padding(6.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text("⚠️ 未完了キャッシュ (TSパーツ: ${jobCache.partsCount}) があります", fontSize = 10.sp, color = Color(0xFFFF9500), fontWeight = FontWeight.Bold)
+                                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                OutlinedButton(
+                                                    onClick = {
+                                                        job.phases.forEach { p ->
+                                                            when (p.type) {
+                                                                BatchJobPhaseType.PLATE_SCAN -> p.enabled = false
+                                                                BatchJobPhaseType.HUD_ENCODE -> {
+                                                                    p.enabled = false
+                                                                    p.status = BatchJobPhaseStatus.COMPLETED
+                                                                }
+                                                                BatchJobPhaseType.CONCAT_MERGE -> {
+                                                                    p.enabled = true
+                                                                    p.status = BatchJobPhaseStatus.WAITING
+                                                                    p.progress = 0f
+                                                                }
+                                                                else -> {}
                                                             }
-                                                            BatchJobPhaseType.CONCAT_MERGE -> {
-                                                                p.enabled = true
-                                                                p.status = BatchJobPhaseStatus.WAITING
-                                                                p.progress = 0f
-                                                            }
-                                                            else -> {}
                                                         }
-                                                    }
-                                                    viewModel.saveBatchQueue()
-                                                },
-                                                modifier = Modifier.height(24.dp),
-                                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
-                                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFF9500)),
-                                                border = BorderStroke(1.dp, Color(0xFFFF9500))
-                                            ) {
-                                                Text("マージ復元モードにする", fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                                            }
-                                            OutlinedButton(
-                                                onClick = {
-                                                    fit.CacheRegistry.deleteCacheJob(jobCache)
-                                                    viewModel.refreshAvailableCacheJobs()
-                                                },
-                                                modifier = Modifier.height(24.dp),
-                                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
-                                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFF3B30)),
-                                                border = BorderStroke(1.dp, Color(0xFFFF3B30))
-                                            ) {
-                                                Text("キャッシュ削除", fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                                        viewModel.saveBatchQueue()
+                                                    },
+                                                    modifier = Modifier.height(24.dp),
+                                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFF9500)),
+                                                    border = BorderStroke(1.dp, Color(0xFFFF9500))
+                                                ) {
+                                                    Text("マージ復元モードにする", fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                                }
+                                                OutlinedButton(
+                                                    onClick = {
+                                                        fit.CacheRegistry.deleteCacheJob(jobCache)
+                                                        viewModel.refreshAvailableCacheJobs()
+                                                    },
+                                                    modifier = Modifier.height(24.dp),
+                                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFF3B30)),
+                                                    border = BorderStroke(1.dp, Color(0xFFFF3B30))
+                                                ) {
+                                                    Text("キャッシュ削除", fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                                }
                                             }
                                         }
                                     }
@@ -328,48 +404,96 @@ fun BatchQueueDialog(
                                                 border = BorderStroke(1.dp, if (phase.status == BatchJobPhaseStatus.RUNNING) Color(0xFF007AFF) else Color.Transparent),
                                                 modifier = Modifier.weight(1f)
                                             ) {
-                                                Row(
+                                                Column(
                                                     modifier = Modifier.padding(6.dp),
-                                                    verticalAlignment = Alignment.CenterVertically
+                                                    verticalArrangement = Arrangement.Center
                                                 ) {
-                                                    Checkbox(
-                                                        checked = phase.enabled,
-                                                        onCheckedChange = { 
-                                                            phase.enabled = it
-                                                            viewModel.saveBatchQueue()
-                                                        },
-                                                        enabled = canEditPhase,
-                                                        modifier = Modifier.size(24.dp)
-                                                    )
-                                                    Spacer(Modifier.width(2.dp))
-                                                    Column {
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        // 編集時のみチェックボックスを表示、実行中は状況表示のみにする
+                                                        if (canEditJob) {
+                                                            Checkbox(
+                                                                checked = phase.enabled,
+                                                                onCheckedChange = { 
+                                                                    phase.enabled = it
+                                                                    viewModel.saveBatchQueue()
+                                                                },
+                                                                enabled = canEditPhase,
+                                                                modifier = Modifier.size(24.dp)
+                                                            )
+                                                            Spacer(Modifier.width(2.dp))
+                                                        } else {
+                                                            // 実行中マーク
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .padding(horizontal = 4.dp)
+                                                                    .size(6.dp)
+                                                                    .background(phaseStatusColor, androidx.compose.foundation.shape.CircleShape)
+                                                            )
+                                                            Spacer(Modifier.width(4.dp))
+                                                        }
+                                                        
                                                         Text(
                                                             text = phaseLabel,
                                                             fontSize = 9.sp,
                                                             fontWeight = FontWeight.Bold,
                                                             color = if (phase.enabled) Color(0xFF1C1C1E) else Color(0xFF8E8E93)
                                                         )
-                                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                                            Box(
-                                                                modifier = Modifier
-                                                                    .size(5.dp)
-                                                                    .background(phaseStatusColor, androidx.compose.foundation.shape.CircleShape)
-                                                            )
-                                                            Spacer(Modifier.width(4.dp))
-                                                            val progressPercent = (phase.progress * 100).toInt()
-                                                            val statusText = when (phase.status) {
-                                                                BatchJobPhaseStatus.WAITING -> "待機中"
-                                                                BatchJobPhaseStatus.RUNNING -> "進行: $progressPercent%"
-                                                                BatchJobPhaseStatus.COMPLETED -> "完了"
-                                                                BatchJobPhaseStatus.FAILED -> "失敗"
-                                                                BatchJobPhaseStatus.SKIPPED -> "スキップ"
-                                                            }
-                                                            Text(statusText, fontSize = 8.sp, color = phaseStatusColor)
-                                                        }
+                                                    }
+                                                    
+                                                    // 各フェーズの個別進捗表示
+                                                    val progressPercent = (phase.progress * 100).toInt()
+                                                    val statusText = when (phase.status) {
+                                                        BatchJobPhaseStatus.WAITING -> "待機中"
+                                                        BatchJobPhaseStatus.RUNNING -> "進行: $progressPercent%"
+                                                        BatchJobPhaseStatus.COMPLETED -> "完了"
+                                                        BatchJobPhaseStatus.FAILED -> "失敗"
+                                                        BatchJobPhaseStatus.SKIPPED -> "スキップ"
+                                                    }
+                                                    
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Text(statusText, fontSize = 8.sp, color = phaseStatusColor)
+                                                    }
+                                                    
+                                                    // 進行中のフェーズにはプログレスバーをフェーズ内に表示
+                                                    if (phase.status == BatchJobPhaseStatus.RUNNING) {
+                                                        LinearProgressIndicator(
+                                                            progress = phase.progress,
+                                                            modifier = Modifier.fillMaxWidth().height(3.dp).padding(top = 1.dp),
+                                                            color = Color(0xFF007AFF),
+                                                            backgroundColor = Color(0xFFD1D1D6)
+                                                        )
                                                     }
                                                 }
                                             }
                                         }
+                                    }
+                                }
+                                
+                                // ジョブ全体の進捗バー (ジョブ進行中のみ表示)
+                                if (job.status == BatchJobStatus.RUNNING) {
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text("ジョブ処理状況", fontSize = 8.sp, color = Color(0xFF007AFF), fontWeight = FontWeight.Bold)
+                                            Text("${(job.progress * 100).toInt()}%", fontSize = 8.sp, color = Color(0xFF007AFF), fontWeight = FontWeight.Bold)
+                                        }
+                                        LinearProgressIndicator(
+                                            progress = job.progress,
+                                            modifier = Modifier.fillMaxWidth().height(4.dp),
+                                            color = Color(0xFF007AFF),
+                                            backgroundColor = Color(0xFFE5E5EA)
+                                        )
                                     }
                                 }
                             }
@@ -379,25 +503,7 @@ fun BatchQueueDialog(
                 
                 Divider(color = Color(0xFFE5E5EA))
                 
-                // 進捗概要表示 (バッチ実行中のみ)
-                if (viewModel.isBatchRunning) {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        Text(
-                            text = viewModel.batchStatusText,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF007AFF)
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        val completedCount = viewModel.batchQueue.count { it.status == BatchJobStatus.COMPLETED }
-                        Text(
-                            text = "進捗: $completedCount / ${viewModel.batchQueue.size} 件完了",
-                            fontSize = 10.sp,
-                            color = Color(0xFF636366)
-                        )
-                    }
-                }
-                
+                // 下部アクションボタン
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -425,7 +531,7 @@ fun BatchQueueDialog(
                         }
                         Button(
                             onClick = {
-                                viewModel.dismissBatchConfirmDialog("start-button")
+                                // バッチ処理を開始してもダイアログを閉じず、進行確認画面に切り替える
                                 viewModel.prepareBatchQueueForStart()
                                 scope.launch(Dispatchers.Main) {
                                     runBatchJobs(
