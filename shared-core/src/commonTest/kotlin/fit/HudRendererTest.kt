@@ -15,6 +15,14 @@ class HudRendererTest {
         var drawTextCalled = false
         var lastDrawnText = ""
         
+        data class RectInfo(val x: Float, val y: Float, val w: Float, val h: Float, val color: String)
+        data class LineInfo(val points: List<Pair<Float, Float>>, val color: String, val width: Float)
+        data class PolygonInfo(val points: List<Pair<Float, Float>>, val color: String)
+
+        val drawnRects = mutableListOf<RectInfo>()
+        val drawnLines = mutableListOf<LineInfo>()
+        val drawnPolygons = mutableListOf<PolygonInfo>()
+        
         override fun drawText(text: String, x: Float, y: Float, size: Float, color: String, bold: Boolean, anchor: String) {
             drawnTexts.add(text)
             if (text == "テストテロップ") {
@@ -23,9 +31,18 @@ class HudRendererTest {
             }
         }
         
-        override fun drawRect(x: Float, y: Float, w: Float, h: Float, color: String, alpha: Float, outline: Boolean) {}
-        override fun drawLine(points: List<Pair<Float, Float>>, color: String, width: Float, alpha: Float) {}
-        override fun drawPolygon(points: List<Pair<Float, Float>>, color: String, alpha: Float) {}
+        override fun drawRect(x: Float, y: Float, w: Float, h: Float, color: String, alpha: Float, outline: Boolean) {
+            drawnRects.add(RectInfo(x, y, w, h, color))
+        }
+        
+        override fun drawLine(points: List<Pair<Float, Float>>, color: String, width: Float, alpha: Float) {
+            drawnLines.add(LineInfo(points, color, width))
+        }
+        
+        override fun drawPolygon(points: List<Pair<Float, Float>>, color: String, alpha: Float) {
+            drawnPolygons.add(PolygonInfo(points, color))
+        }
+        
         override fun getTextWidth(text: String, size: Float, bold: Boolean): Float = text.length * 10f
     }
 
@@ -339,6 +356,110 @@ class HudRendererTest {
         // Check Distance labels: start distance "0.0" and total distance "1.5 km"
         assertTrue(texts.contains("0.0"), "Mini-map should label start distance '0.0' (got $texts)")
         assertTrue(texts.any { it.contains("1.5") && it.contains("km") }, "Mini-map should draw total distance (got $texts)")
+    }
+
+    @Test
+    fun testMiniMap_CoordinateProjectionFidelity() {
+        val config = HudConfig(
+            valSize = 59.27f, // Use default size
+            tightness = 1f, spacing = 20f,
+            xOffset = 40f, yOffset = 100f, graphH = 60f, graphW = 300f,
+            language = "ja"
+        )
+        val renderer = HudRenderer(config)
+        
+        // P1: Start (35.0, 135.0) -> P2: End (35.01, 135.01)
+        val p1 = FitParser.TelemetryPoint(
+            timestamp = 1000.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 50.0, grade = 2.0,
+            distance = 1000.0, elapsedSeconds = 10, lat = 35.0, lon = 135.0
+        )
+        val p2 = FitParser.TelemetryPoint(
+            timestamp = 1010.0, speed = 12.0, power = 110.0, cadence = 82.0, heartRate = 122.0, elevation = 52.0, grade = 2.2,
+            distance = 2500.0, elapsedSeconds = 20, lat = 35.01, lon = 135.01
+        )
+        val allPoints = listOf(p1, p2)
+        
+        val canvas = TestHudCanvas()
+        renderer.renderFrame(canvas, p2, allPoints, emptyList(), emptyList(), 100.0f, isValid = true)
+        
+        val rects = canvas.drawnRects
+        
+        // sf = 59.27 / 40.0 = 1.48175
+        // R = 95 * sf = 140.76625f
+        // marginX = 80 * sf = 118.54f
+        // marginY = 60 * sf = 88.905f
+        // mcx = canvas.width - marginX - R = 1920 - 118.54 - 140.76625 = 1660.69375f
+        // mcy = marginY + R = 88.905 + 140.76625 = 229.67125f
+        // padR = R - 15f * sf = 140.76625 - 15 * 1.48175 = 118.54f
+        // Start marker should be at mcx, mcy + padR = (1660.694f, 229.671f + 118.54f) = (1660.694f, 348.211f)
+        // End marker should be at mcx, mcy - padR = (1660.694f, 229.671f - 118.54f) = (1660.694f, 111.131f)
+        // Marker size = 8f * sf = 11.854f, hmSize = 5.927f
+        // Start rect left: 1660.694 - 5.927 = 1654.767f, top: 348.211 - 5.927 = 342.284f
+        // End rect left: 1660.694 - 5.927 = 1654.767f, top: 111.131 - 5.927 = 105.204f
+        
+        val startRect = rects.find { kotlin.math.abs(it.x - 1654.767f) < 1.0f && kotlin.math.abs(it.y - 342.284f) < 1.0f }
+        val endRect = rects.find { kotlin.math.abs(it.x - 1654.767f) < 1.0f && kotlin.math.abs(it.y - 105.204f) < 1.0f }
+        
+        assertTrue(startRect != null, "Start marker must align perfectly with lower bound (1654.767, 342.284) (rects: $rects)")
+        assertTrue(endRect != null, "End marker must align perfectly with upper bound (1654.767, 105.204) (rects: $rects)")
+    }
+
+    @Test
+    fun testMiniMap_LoopRouteFittedInsideCircle() {
+        val config = HudConfig(
+            valSize = 59.27f, // Use default size
+            tightness = 1f, spacing = 20f,
+            xOffset = 40f, yOffset = 100f, graphH = 60f, graphW = 300f,
+            language = "ja"
+        )
+        val renderer = HudRenderer(config)
+        
+        // Loop route: Start (35.0, 135.0) -> Middle (35.01, 135.0) -> End (35.0, 135.0)
+        val p1 = FitParser.TelemetryPoint(
+            timestamp = 1000.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 50.0, grade = 2.0,
+            distance = 1000.0, elapsedSeconds = 10, lat = 35.0, lon = 135.0
+        )
+        val p2 = FitParser.TelemetryPoint(
+            timestamp = 1005.0, speed = 11.0, power = 105.0, cadence = 81.0, heartRate = 121.0, elevation = 51.0, grade = 2.1,
+            distance = 1750.0, elapsedSeconds = 15, lat = 35.01, lon = 135.0
+        )
+        val p3 = FitParser.TelemetryPoint(
+            timestamp = 1010.0, speed = 12.0, power = 110.0, cadence = 82.0, heartRate = 122.0, elevation = 52.0, grade = 2.2,
+            distance = 2500.0, elapsedSeconds = 20, lat = 35.0, lon = 135.0
+        )
+        val allPoints = listOf(p1, p2, p3)
+        
+        val canvas = TestHudCanvas()
+        renderer.renderFrame(canvas, p3, allPoints, emptyList(), emptyList(), 100.0f, isValid = true)
+        
+        // Center: mcx = 1660.69375f, mcy = 229.67125f
+        // R = 140.76625f, padR = 118.54f
+        // All drawn line coordinates must be within padR radius from center
+        val mcx = 1660.69375f
+        val mcy = 229.67125f
+        val padR = 118.54f
+        
+        // sf = 59.27 / 40.0 = 1.48175f. Route line width is 2.8f * sf = 4.1489f
+        val routeLines = canvas.drawnLines.filter { it.color == "#ffffff" && kotlin.math.abs(it.width - 4.1489f) < 0.01f }
+        assertTrue(routeLines.isNotEmpty(), "Loop route must draw some line segments")
+        
+        var maxDistance = 0f
+        for (line in routeLines) {
+            for (pt in line.points) {
+                val dx = pt.first - mcx
+                val dy = pt.second - mcy
+                val dist = kotlin.math.sqrt(dx * dx + dy * dy)
+                
+                // Allow small margin of 2px for clamped limits
+                assertTrue(dist <= padR + 2.0f, "Line coordinates must not exceed circle boundary (got distance $dist, padR $padR)")
+                if (dist > maxDistance) {
+                    maxDistance = dist
+                }
+            }
+        }
+        
+        // One of the points (furthest from center) should be scaled close to padR boundary to utilize space efficiently
+        assertTrue(maxDistance >= padR - 5.0f, "Loop route must scale up to utilize circle space (max distance from center: $maxDistance, expected near $padR)")
     }
 
     @Test

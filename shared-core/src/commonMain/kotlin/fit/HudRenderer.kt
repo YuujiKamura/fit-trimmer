@@ -847,9 +847,10 @@ class HudRenderer(val config: HudConfig) {
 
         // 1. Layout parameters (Scaled & Enlarged for high fidelity)
         val R = 95f * sf // 円の半径 (R) - 直径190px相当に拡大
-        val margin = 45f * sf
-        val mcx = canvas.width - margin - R // 円の中心 X
-        val mcy = margin + R // 円の中心 Y
+        val marginX = 80f * sf
+        val marginY = 60f * sf
+        val mcx = canvas.width - marginX - R // 円の中心 X
+        val mcy = marginY + R // 円の中心 Y
 
         // 2. Draw black semi-transparent circle background (32-sided polygon)
         val circlePoints = (0..32).map { i ->
@@ -873,35 +874,66 @@ class HudRenderer(val config: HudConfig) {
         val dx = (endPt.lon - startPt.lon) * cosLat
         val dy = endPt.lat - startPt.lat
         val L = kotlin.math.sqrt(dx * dx + dy * dy)
-        if (L < 1e-7) return
-
+        
         // Target path length on the map is 2 * padR to leave padding inside circle
         val padR = R - 15f * sf
-        // Mathematical scaling factor mapping L to 2 * padR keeping 1:1 aspect ratio
-        val scale = (2.0 * padR) / (L * L)
 
         // Heading angle (Start to End) in degrees for compass rotation
         val pathBearing = calculateBearing(startPt, endPt) ?: 0.0
 
-        // Helper to project a point into local map coordinates
-        // 起点が (0, padR) (下端)、終点が (0, -padR) (上端) になるように回転・スケーリング
+        // Orientation angle theta (direction from start to end)
+        val theta = if (L > 1e-7) kotlin.math.atan2(dy, dx) else 0.0
+        // Rotation angle alpha to orient heading straight up (negative Y direction)
+        val alpha = -theta - kotlin.math.PI / 2.0
+
+        // 1. Transform all points to local heading-up plane and calculate bounding box
+        var minX = Double.MAX_VALUE
+        var maxX = -Double.MAX_VALUE
+        var minY = Double.MAX_VALUE
+        var maxY = -Double.MAX_VALUE
+                val localCoords = validRoutePoints.map { pt ->
+            val px = (pt.lon - startPt.lon) * cosLat
+            val py = pt.lat - startPt.lat
+            val lx = px * kotlin.math.cos(alpha) - py * kotlin.math.sin(alpha)
+            val ly = px * kotlin.math.sin(alpha) + py * kotlin.math.cos(alpha)
+            if (lx < minX) minX = lx
+            if (lx > maxX) maxX = lx
+            if (ly < minY) minY = ly
+            if (ly > maxY) maxY = ly
+            lx to ly
+        }
+
+        val Wl = maxX - minX
+        val Hl = maxY - minY
+
+        // 3. Compute fitting scale factor maintaining 1:1 aspect ratio
+        val scaleX = if (Wl > 1e-7) (2.0 * padR) / Wl else Double.MAX_VALUE
+        val scaleY = if (Hl > 1e-7) (2.0 * padR) / Hl else Double.MAX_VALUE
+        val dynamicScale = minOf(scaleX, scaleY).takeIf { it != Double.MAX_VALUE && it > 0.0 } ?: 1.0
+
+        // 4. Center coordinates inside bounding box
+        val cxL = (minX + maxX) / 2.0
+        val cyL = (minY + maxY) / 2.0
+
+        // 5. Helper to project TelemetryPoint onto the screen canvas
         fun projectPoint(pt: FitParser.TelemetryPoint): Pair<Float, Float> {
             val px = (pt.lon - startPt.lon) * cosLat
             val py = pt.lat - startPt.lat
+            val lx = px * kotlin.math.cos(alpha) - py * kotlin.math.sin(alpha)
+            val ly = px * kotlin.math.sin(alpha) + py * kotlin.math.cos(alpha)
             
-            // Project along path direction vector (ly direction) and orthogonal vector (lx direction)
-            val lx = ((px * dy - py * dx) * scale).toFloat()
-            val ly = (padR - (px * dx + py * dy) * scale).toFloat()
+            val lxScaled = ((lx - cxL) * dynamicScale).toFloat()
+            val lyScaled = ((ly - cyL) * dynamicScale).toFloat()
             
             // Clamp to circle boundary to prevent visual overflow
-            val d = kotlin.math.sqrt(lx * lx + ly * ly)
+            val d = kotlin.math.sqrt(lxScaled * lxScaled + lyScaled * lyScaled)
             val limit = R - 4f * sf
             return if (d > limit) {
-                val clampedLx = lx * (limit / d)
-                val clampedLy = ly * (limit / d)
+                val clampedLx = lxScaled * (limit / d)
+                val clampedLy = lyScaled * (limit / d)
                 (mcx + clampedLx) to (mcy + clampedLy)
             } else {
-                (mcx + lx) to (mcy + ly)
+                (mcx + lxScaled) to (mcy + lyScaled)
             }
         }
 
@@ -974,3 +1006,4 @@ class HudRenderer(val config: HudConfig) {
         }
     }
 }
+// Hotreload forced trigger
