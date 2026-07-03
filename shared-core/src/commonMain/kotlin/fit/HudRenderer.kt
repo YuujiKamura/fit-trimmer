@@ -551,6 +551,9 @@ class HudRenderer(val config: HudConfig) {
                 }
             }
 
+            // 8.4.5. Mini Route Map in top-right
+            drawMiniMap(canvas, videoPoints, telemetry, isValid)
+
             // 8.5. Real-time Distance & Elapsed Time below Elevation Graph
             if (config.showDistanceTime && isValid && allPoints.isNotEmpty()) {
                 val startPoint = allPoints.first()
@@ -821,5 +824,138 @@ class HudRenderer(val config: HudConfig) {
         )
         val index = (((bearing + 11.25) / 22.5).toInt()) % 16
         return directions16[index]
+    }
+
+    private fun drawMiniMap(
+        canvas: HudCanvas,
+        videoPoints: List<FitParser.TelemetryPoint>,
+        telemetry: FitParser.TelemetryPoint,
+        isValid: Boolean
+    ) {
+        if (videoPoints.size < 2) return
+
+        // 1. Layout parameters
+        val R = 60f // 円の半径 (R)
+        val mcx = canvas.width - 40f - R // 円の中心 X
+        val mcy = 40f + R // 円の中心 Y
+
+        // 2. Draw black semi-transparent circle background (32-sided polygon)
+        val circlePoints = (0..32).map { i ->
+            val angle = i * 2.0 * kotlin.math.PI / 32.0
+            val px = mcx + R * kotlin.math.cos(angle).toFloat()
+            val py = mcy + R * kotlin.math.sin(angle).toFloat()
+            px to py
+        }
+        canvas.drawPolygon(circlePoints, "#000000", alpha = 0.5f)
+        canvas.drawLine(circlePoints, "#ffffff", width = 1.5f, alpha = 0.7f)
+
+        // 3. Coordinate alignment (Path-up projection)
+        val startPt = videoPoints.first()
+        val endPt = videoPoints.last()
+        
+        if (startPt.lat == 0.0 && startPt.lon == 0.0) return
+        if (endPt.lat == 0.0 && endPt.lon == 0.0) return
+
+        // Calculate aspect ratio correction cos(lat)
+        val meanLat = (startPt.lat + endPt.lat) / 2.0
+        val cosLat = kotlin.math.cos(meanLat * kotlin.math.PI / 180.0)
+
+        // Path direction vector (start -> end) corrected by cosLat
+        val dx = (endPt.lon - startPt.lon) * cosLat
+        val dy = endPt.lat - startPt.lat
+        val L = kotlin.math.sqrt(dx * dx + dy * dy)
+        if (L < 1e-7) return
+
+        // Target path length on the map is 2 * (R - 12f) to leave padding inside circle
+        val padR = R - 12f
+        val scale = (2.0 * padR) / L
+
+        // Heading angle (Start to End) in degrees for compass rotation
+        val pathBearing = calculateBearing(startPt, endPt) ?: 0.0
+
+        // Helper to project a point into local map coordinates
+        // 起点が (0, padR) (下端)、終点が (0, -padR) (上端) になるように回転・スケーリング
+        fun projectPoint(pt: FitParser.TelemetryPoint): Pair<Float, Float> {
+            val px = (pt.lon - startPt.lon) * cosLat
+            val py = pt.lat - startPt.lat
+            
+            // Project along path direction vector (ly direction) and orthogonal vector (lx direction)
+            val lx = ((px * dy - py * dx) / L * scale).toFloat()
+            val ly = (padR - (px * dx + py * dy) / L * 2.0 * padR).toFloat()
+            
+            // Clamp to circle boundary to prevent visual overflow
+            val d = kotlin.math.sqrt(lx * lx + ly * ly)
+            val limit = R - 2f
+            return if (d > limit) {
+                val clampedLx = lx * (limit / d)
+                val clampedLy = ly * (limit / d)
+                (mcx + clampedLx) to (mcy + clampedLy)
+            } else {
+                (mcx + lx) to (mcy + ly)
+            }
+        }
+
+        // 4. Downsample route points for drawing performance (max 100 points)
+        val maxMapPoints = 100
+        val drawPoints = if (videoPoints.size <= maxMapPoints) {
+            videoPoints
+        } else {
+            val step = (videoPoints.size - 1).toFloat() / (maxMapPoints - 1)
+            (0 until maxMapPoints).map { i ->
+                val index = (i * step).roundToInt().coerceIn(videoPoints.indices)
+                videoPoints[index]
+            }
+        }
+
+        // Draw route line
+        val routeLinePoints = drawPoints.map { projectPoint(it) }
+        canvas.drawLine(routeLinePoints, "#ffffff", width = 2.0f, alpha = 0.6f)
+
+        // 5. Draw Start/End Markers
+        val startMapPt = projectPoint(startPt)
+        val endMapPt = projectPoint(endPt)
+        canvas.drawRect(startMapPt.first - 3f, startMapPt.second - 3f, 6f, 6f, "#ffffff", alpha = 1.0f)
+        canvas.drawRect(endMapPt.first - 3f, endMapPt.second - 3f, 6f, 6f, "#ffffff", alpha = 1.0f)
+
+        // Draw distance labels near start/end
+        val totalDist = endPt.distance - startPt.distance
+        val totalDistText = if (config.useImperialUnits) {
+            "${formatOneDecimal(totalDist * 0.000621371)} mi"
+        } else {
+            "${formatOneDecimal(totalDist / 1000.0)} km"
+        }
+        val startDistText = "0.0"
+        
+        canvas.drawText(startDistText, startMapPt.first, startMapPt.second + 4f, 8f, "#ffffff", bold = true, anchor = "top-center")
+        canvas.drawText(totalDistText, endMapPt.first, endMapPt.second - 11f, 8f, "#ffffff", bold = true, anchor = "bottom-center")
+
+        // 6. Draw Current Location Pin
+        if (isValid) {
+            val currentMapPt = projectPoint(telemetry)
+            // Draw red triangle pin pointing to current position
+            val pinPoly = listOf(
+                currentMapPt.first - 6f to currentMapPt.second - 6f,
+                currentMapPt.first + 6f to currentMapPt.second - 6f,
+                currentMapPt.first to currentMapPt.second
+            )
+            canvas.drawPolygon(pinPoly, "#ef4444", alpha = 1.0f)
+        }
+
+        // 7. Draw 4 Directions (N, E, S, W) along the inner circle margin
+        val angleN = -90.0 - pathBearing
+        val compassPoints = mapOf(
+            "N" to angleN,
+            "E" to (angleN + 90.0),
+            "S" to (angleN + 180.0),
+            "W" to (angleN + 270.0)
+        )
+        
+        val compR = R - 8f // circle inner radius
+        for ((label, angleDeg) in compassPoints) {
+            val angleRad = angleDeg * kotlin.math.PI / 180.0
+            val tx = mcx + compR * kotlin.math.cos(angleRad).toFloat()
+            val ty = mcy + compR * kotlin.math.sin(angleRad).toFloat()
+            canvas.drawText(label, tx, ty - 4f, 7.5f, "#ffffff", bold = true, anchor = "bottom-center")
+        }
     }
 }
