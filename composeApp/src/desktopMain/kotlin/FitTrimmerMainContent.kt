@@ -3074,41 +3074,17 @@ fun FitTrimmerMainContent(
                                     if (!isActiveEncoding) {
                                         Text("現在の設定でHUD付き動画を書き出します。複数の設定をキューに追加して、後でまとめて一括エンコードできます。", color = Color(0xFF636366), fontSize = 10.sp, lineHeight = 13.sp)
                                         val isQueueEnabled = fitPath.isNotEmpty() && videoPath.isNotEmpty()
-                                        Button(
-                                            onClick = onNativeEncodeClick,
-                                            modifier = Modifier.fillMaxWidth().height(40.dp),
-                                            enabled = hasEnoughSpace && fitPath.isNotEmpty() && videoPath.isNotEmpty(),
-                                            colors = ButtonDefaults.buttonColors(
-                                                backgroundColor = if (hasEnoughSpace) Color(0xFF007AFF) else Color(0xFFD1D1D6),
-                                                disabledBackgroundColor = Color(0xFFE5E5EA)
-                                            ),
-                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Text(if (hasEnoughSpace) "エンコード開始" else "ディスク容量不足", color = if (hasEnoughSpace) Color.White else Color(0xFF8E8E93), fontWeight = FontWeight.Bold)
-                                        }
-                                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                                            val canStartBatch = viewModel.batchQueue.any { it.isRunnable }
-                                            OutlinedButton(
-                                                onClick = {
-                                                    viewModel.requestBatchConfirmDialog("sidebar-button")
-                                                },
-                                                modifier = Modifier.weight(1f).height(36.dp),
-                                                enabled = canStartBatch && !viewModel.isBatchRunning,
-                                                colors = ButtonDefaults.outlinedButtonColors(
-                                                    contentColor = Color(0xFF007AFF),
-                                                    disabledContentColor = Color(0xFF8E8E93)
-                                                ),
-                                                border = BorderStroke(1.5.dp, if (canStartBatch && !viewModel.isBatchRunning) Color(0xFF007AFF) else Color(0xFFE5E5EA)),
-                                                shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
-                                            ) {
-                                                Text("エンコード管理", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                            }
                                             OutlinedButton(
                                                 onClick = {
                                                     viewModel.addToBatchQueue()
                                                     statusText = "ジョブをキューに追加しました"
                                                 },
-                                                modifier = Modifier.weight(1f).height(36.dp),
+                                                modifier = Modifier.weight(1f).height(40.dp),
                                                 enabled = isQueueEnabled,
                                                 colors = ButtonDefaults.outlinedButtonColors(
                                                     contentColor = Color(0xFF34C759),
@@ -3117,7 +3093,19 @@ fun FitTrimmerMainContent(
                                                 border = BorderStroke(1.5.dp, if (isQueueEnabled) Color(0xFF34C759) else Color(0xFFE5E5EA)),
                                                 shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
                                             ) {
-                                                Text("キューに追加", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                                Text("キューに追加", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                            Button(
+                                                onClick = onNativeEncodeClick,
+                                                modifier = Modifier.weight(1.5f).height(40.dp),
+                                                enabled = hasEnoughSpace && fitPath.isNotEmpty() && videoPath.isNotEmpty(),
+                                                colors = ButtonDefaults.buttonColors(
+                                                    backgroundColor = if (hasEnoughSpace) Color(0xFF007AFF) else Color(0xFFD1D1D6),
+                                                    disabledBackgroundColor = Color(0xFFE5E5EA)
+                                                ),
+                                                shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                                            ) {
+                                                Text(if (hasEnoughSpace) "エンコード開始" else "ディスク容量不足", color = if (hasEnoughSpace) Color.White else Color(0xFF8E8E93), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                             }
                                         }
 

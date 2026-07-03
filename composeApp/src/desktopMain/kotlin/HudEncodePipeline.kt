@@ -158,11 +158,21 @@ object HudEncodePipeline {
                 val pEnd = segment.endSeconds
                 val partDuration = pEnd - pStart
 
+                val outputFileName = buildEncodeOutputFileName(
+                    settings = s,
+                    videoPath = videoPath,
+                    partIndex = if (isSample) -1 else idx,
+                    numParts = encodePlan.segments.size,
+                    isSample = isSample
+                )
+                val partOutPath = File(outputDir, outputFileName).absolutePath
+
                 val finalDestFile = destFiles.getOrNull(idx)
-                if (shouldResume && finalDestFile != null && finalDestFile.exists() && finalDestFile.length() > 0L) {
-                    println("DEBUG: Segment ${idx + 1} already finished. Skipping. File: ${finalDestFile.absolutePath}")
+                val checkFile = if (skipConcat) File(partOutPath) else finalDestFile
+                if (shouldResume && checkFile != null && checkFile.exists() && checkFile.length() > 0L) {
+                    println("DEBUG: Segment ${idx + 1} already finished. Skipping. File: ${checkFile.absolutePath}")
                     completedDuration += partDuration
-                    finalOutPath = finalDestFile.absolutePath
+                    finalOutPath = checkFile.absolutePath
                     continue
                 }
 
@@ -183,15 +193,6 @@ object HudEncodePipeline {
                     },
                     showLivePreviewSupplier = showLivePreviewSupplier
                 )
-
-                val outputFileName = buildEncodeOutputFileName(
-                    settings = s,
-                    videoPath = videoPath,
-                    partIndex = if (isSample) -1 else idx,
-                    numParts = encodePlan.segments.size,
-                    isSample = isSample
-                )
-                val partOutPath = File(outputDir, outputFileName).absolutePath
 
                 encoder.encode(fitPath, videoPath, partOutPath, videoStartUtc,
                     maxDurationSeconds = if (isSample) sampleMaxDurationSeconds.coerceAtLeast(1) else -1,
