@@ -18,13 +18,21 @@ class HudRendererTest {
         data class RectInfo(val x: Float, val y: Float, val w: Float, val h: Float, val color: String)
         data class LineInfo(val points: List<Pair<Float, Float>>, val color: String, val width: Float)
         data class PolygonInfo(val points: List<Pair<Float, Float>>, val color: String)
+        data class TextInfo(val text: String, val x: Float, val y: Float, val size: Float, val color: String, val bold: Boolean, val anchor: String)
 
         val drawnRects = mutableListOf<RectInfo>()
         val drawnLines = mutableListOf<LineInfo>()
         val drawnPolygons = mutableListOf<PolygonInfo>()
+        val drawnTextInfos = mutableListOf<TextInfo>()
+        val drawnShadowTextInfos = mutableListOf<TextInfo>()
         
         override fun drawText(text: String, x: Float, y: Float, size: Float, color: String, bold: Boolean, anchor: String) {
+            if (color == "#111827") {
+                drawnShadowTextInfos.add(TextInfo(text, x, y, size, color, bold, anchor))
+                return
+            }
             drawnTexts.add(text)
+            drawnTextInfos.add(TextInfo(text, x, y, size, color, bold, anchor))
             if (text == "テストテロップ") {
                 drawTextCalled = true
                 lastDrawnText = text
@@ -389,19 +397,24 @@ class HudRendererTest {
         // marginX = 45 * sf = 66.67875f
         // marginY = 40 * sf = 59.27f
         // mcx = canvas.width - marginX - R = 1920 - 66.67875 - 111.13125 = 1742.19f
-        // mcy = marginY + R = 59.27 + 111.13125 = 170.40125f
-        // padR = R - 28f * sf = 47 * sf = 69.64225f
-        // Start marker should be at mcx, mcy + padR = (1742.19f, 240.043f)
-        // End marker should be at mcx, mcy - padR = (1742.19f, 100.759f)
+        // sf = 1.48175
+        // R = 68 * sf = 100.759f
+        // marginX = 45 * sf = 66.67875f
+        // marginY = 40 * sf = 59.27f
+        // mcx = canvas.width - marginX - R = 1920 - 66.67875 - 100.759 = 1752.56225f
+        // mcy = marginY + R = 59.27 + 100.759 = 160.029f
+        // padR = R - 10f * sf = 58 * sf = 85.9415f
+        // Start marker should be at mcx, mcy + padR = (1752.562f, 245.9705f)
+        // End marker should be at mcx, mcy - padR = (1752.562f, 74.0875f)
         // Marker size = 8f * sf = 11.854f, hmSize = 5.927f
-        // Start rect left: 1742.19 - 5.927 = 1736.263f, top: 240.043 - 5.927 = 234.116f
-        // End rect left: 1742.19 - 5.927 = 1736.263f, top: 100.759 - 5.927 = 94.832f
+        // Start rect left: 1752.562 - 5.927 = 1746.635f, top: 245.9705 - 5.927 = 240.043f
+        // End rect left: 1752.562 - 5.927 = 1746.635f, top: 74.0875 - 5.927 = 68.160f
         
-        val startRect = rects.find { kotlin.math.abs(it.x - 1736.263f) < 1.0f && kotlin.math.abs(it.y - 234.116f) < 1.0f }
-        val endRect = rects.find { kotlin.math.abs(it.x - 1736.263f) < 1.0f && kotlin.math.abs(it.y - 94.832f) < 1.0f }
+        val startRect = rects.find { kotlin.math.abs(it.x - 1746.635f) < 1.0f && kotlin.math.abs(it.y - 240.043f) < 1.0f }
+        val endRect = rects.find { kotlin.math.abs(it.x - 1746.635f) < 1.0f && kotlin.math.abs(it.y - 68.160f) < 1.0f }
         
-        assertTrue(startRect != null, "Start marker must align perfectly with lower bound (1736.263, 234.116) (rects: $rects)")
-        assertTrue(endRect != null, "End marker must align perfectly with upper bound (1736.263, 94.832) (rects: $rects)")
+        assertTrue(startRect != null, "Start marker must align perfectly with lower bound (1746.635, 240.043) (rects: $rects)")
+        assertTrue(endRect != null, "End marker must align perfectly with upper bound (1746.635, 68.160) (rects: $rects)")
     }
  
     @Test
@@ -434,14 +447,16 @@ class HudRendererTest {
         
         // sf = 59.27 / 40.0 = 1.48175f
         // R = 75 * sf = 111.13125f
+        // sf = 1.48175f
+        // R = 68 * sf = 100.759f
         // marginX = 45 * sf = 66.67875f
         // marginY = 40 * sf = 59.27f
-        // mcx = canvas.width - marginX - R = 1920 - 66.67875 - 111.13125 = 1742.19f
-        // mcy = marginY + R = 59.27 + 111.13125 = 170.40125f
-        // padR = R - 28f * sf = 47 * sf = 69.64225f
-        val mcx = 1742.19f
-        val mcy = 170.40125f
-        val padR = 69.64225f
+        // mcx = canvas.width - marginX - R = 1752.562f
+        // mcy = marginY + R = 160.029f
+        // padR = R - 10f * sf = 58 * sf = 85.9415f
+        val mcx = 1752.562f
+        val mcy = 160.029f
+        val padR = 85.9415f
         
         // sf = 59.27 / 40.0 = 1.48175f. Route line width is 2.8f * sf = 4.1489f
         val routeLines = canvas.drawnLines.filter { it.color == "#ffffff" && kotlin.math.abs(it.width - 4.1489f) < 0.01f }
@@ -494,7 +509,7 @@ class HudRendererTest {
         renderer.renderFrame(canvas, p3, allPoints, emptyList(), emptyList(), 100.0f, isValid = true)
         
         val sf = 1.48175f
-        val R = 75f * sf
+        val R = 68f * sf
         val marginX = 45f * sf
         val mcx = canvas.width - marginX - R
         val mcy = 40f * sf + R
@@ -514,12 +529,23 @@ class HudRendererTest {
             }
         }
         
-        val compR = R - 16f * sf // Compass text radius (offset 16f)
-        val actualMargin = compR - maxRouteDist
-        assertTrue(actualMargin >= 10f * sf, "Compass-to-route margin must be at least 10f * sf (got $actualMargin)")
-        
-        val compToOuterMargin = R - compR
-        assertTrue(compToOuterMargin >= 15f * sf, "Compass-to-outer border margin must be at least 15f * sf (got $compToOuterMargin)")
+        // Verify physical drawn coordinates of compass characters
+        val compassTexts = listOf("N", "E", "S", "W")
+        for (label in compassTexts) {
+            val textInfo = canvas.drawnTextInfos.find { it.text == label }
+            assertTrue(textInfo != null, "HUD must draw compass label $label")
+            
+            val dx = textInfo.x - mcx
+            val dy = textInfo.y - mcy
+            val dist = kotlin.math.sqrt(dx * dx + dy * dy)
+            
+            // Assert that compass characters are strictly placed outside the circle border
+            assertTrue(dist >= R + 5f * sf - 1.0f, "Compass label $label must be placed outside the circle border (got distance $dist, expected >= ${R + 5f * sf})")
+            
+            // Assert that compass characters are far enough from the route path
+            val fromRouteMargin = dist - maxRouteDist
+            assertTrue(fromRouteMargin >= 15f * sf, "Compass label $label must be at least 15f * sf away from route (got $fromRouteMargin)")
+        }
     }
 
     @Test
@@ -658,6 +684,7 @@ class HudRendererTest {
         val textCalls = mutableListOf<TextCall>()
         
         override fun drawText(text: String, x: Float, y: Float, size: Float, color: String, bold: Boolean, anchor: String) {
+            if (color == "#111827") return
             textCalls.add(TextCall(text, x, y, size, color, anchor))
         }
         
