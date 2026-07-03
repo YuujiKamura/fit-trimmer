@@ -23,6 +23,7 @@ data class HudSettings(
     val exportResolution: String = "2.7k",
     val captionPosition: String = "top_center",
     val roadCaptions: List<RoadCaptionSegment> = emptyList(),
+    val customCaptions: List<CustomCaptionSegment> = emptyList(),
     val powerTrendSpanSeconds: Int = 60,
     val language: String = "",
     val useImperialUnits: Boolean = false,

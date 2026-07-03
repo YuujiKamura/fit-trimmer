@@ -13,7 +13,6 @@ import fit.PlateCacheManager
 import fit.VideoPlatesCache
 import utils.PlateDetectionManager
 
-
 typealias PlatePreScanner = suspend (
     videoPath: String,
     telemetryPoints: List<FitParser.TelemetryPoint>,
@@ -121,7 +120,8 @@ object HudEncodePipeline {
                 roadCaptions = s.roadCaptions,
                 powerTrendSpanSeconds = s.powerTrendSpanSeconds,
                 useImperialUnits = s.useImperialUnits,
-                language = s.language
+                language = s.language,
+                customCaptions = s.customCaptions
             )
             val proxy = DynamicRendererProxy(config)
             globalRendererProxy = proxy
