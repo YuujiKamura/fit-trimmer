@@ -766,5 +766,60 @@ class HudRendererTest {
         )
         assertFalse(canvas2.textCalls.any { it.text == "Hello Custom Caption" }, "Custom caption should not be drawn out of range")
     }
+
+    @Test
+    fun testCustomCaptionRendering_Multiline() {
+        val segment = CustomCaptionSegment(
+            id = "custom-multiline",
+            startSeconds = 5.0,
+            endSeconds = 15.0,
+            text = "Line1\nLine2Text",
+            isEnabled = true,
+            fontSize = 20f,
+            textColor = "#ff0000",
+            backgroundColor = "#00ff00",
+            backgroundAlpha = 0.8f,
+            positionX = 0.5f,
+            positionY = 0.5f,
+            align = "center"
+        )
+        
+        val config = HudConfig(
+            valSize = 40f, tightness = 1f, spacing = 20f,
+            xOffset = 40f, yOffset = 100f, graphH = 60f, graphW = 300f,
+            customCaptions = listOf(segment)
+        )
+        
+        val renderer = HudRenderer(config)
+        val startPoint = FitParser.TelemetryPoint(
+            timestamp = 0.0, speed = 0.0, power = 0.0, cadence = 0.0, heartRate = 0.0, elevation = 0.0, grade = 0.0
+        )
+        val originalPoints = listOf(startPoint)
+        
+        val canvas = CustomCaptionTestHudCanvas()
+        renderer.renderFrame(
+            canvas,
+            startPoint,
+            originalPoints,
+            emptyList(),
+            emptyList(),
+            10.0f,
+            isValid = true
+        )
+        
+        val line1Call = canvas.textCalls.find { it.text == "Line1" }
+        val line2Call = canvas.textCalls.find { it.text == "Line2Text" }
+        
+        assertTrue(line1Call != null, "Line 1 should be drawn")
+        assertTrue(line2Call != null, "Line 2 should be drawn")
+        
+        val rectCall = canvas.rectCalls.find { it.color == "#00ff00" && it.alpha == 0.8f }
+        assertTrue(rectCall != null, "Background rect should exist")
+        assertEquals(130f, rectCall.w, "Rect width must match max line width + padding")
+        assertEquals(65f, rectCall.h, "Rect height must match total lines height + padding")
+        
+        assertEquals(527.5f, line1Call.y, "Line 1 Y coordinate must be correct")
+        assertEquals(552.5f, line2Call.y, "Line 2 Y coordinate must be correct")
+    }
 }
 
