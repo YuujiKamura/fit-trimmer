@@ -147,10 +147,10 @@ fun VideoPreviewArea(
     rendererProxy: fit.DynamicRendererProxy,
     textMeasurer: TextMeasurer,
     playerState: VideoPlayerState,
-    videoCurrentTimeMs: Long,
+    videoCurrentTimeMsProvider: () -> Long,
     onCurrentTimeChange: (Long) -> Unit,
-    isSeeking: Boolean = false,
-    seekTargetTimeMs: Long = 0L,
+    isSeekingProvider: () -> Boolean = { false },
+    seekTargetTimeMsProvider: () -> Long = { 0L },
     onSeekStart: () -> Unit = {},
     onSeekProgress: (Long) -> Unit = {},
     onSeekEnd: (Long) -> Unit = {},
@@ -168,8 +168,8 @@ fun VideoPreviewArea(
     val previewScope = rememberCoroutineScope()
     var isPlaying by remember { mutableStateOf(false) }
     var lastVolume by remember { mutableStateOf(1f) }
-    val currentRenderTimeMs by remember(isSeeking, seekTargetTimeMs, videoCurrentTimeMs) {
-        derivedStateOf { if (isSeeking) seekTargetTimeMs else videoCurrentTimeMs }
+    val currentRenderTimeMs by remember {
+        derivedStateOf { if (isSeekingProvider()) seekTargetTimeMsProvider() else videoCurrentTimeMsProvider() }
     }
     var activePreviewSourceLabel by remember { mutableStateOf("Original") }
     val outputLengthMs = remember(videoLengthMs, settings.speedSegments) {
@@ -182,14 +182,16 @@ fun VideoPreviewArea(
             (dstSec * 1000).toLong().coerceAtLeast(1000L)
         }
     }
-    val outputCurrentTimeMs = remember(videoCurrentTimeMs, isSeeking, seekTargetTimeMs, settings.speedSegments) {
-        val segments = settings.speedSegments
-        val currentSrc = if (isSeeking) seekTargetTimeMs else videoCurrentTimeMs
-        if (segments.isEmpty()) {
-            currentSrc
-        } else {
-            val dstSec = fit.SpeedMapper.mapSourceToTarget(currentSrc / 1000.0, segments)
-            (dstSec * 1000).toLong()
+    val outputCurrentTimeMs by remember(settings.speedSegments) {
+        derivedStateOf {
+            val segments = settings.speedSegments
+            val currentSrc = if (isSeekingProvider()) seekTargetTimeMsProvider() else videoCurrentTimeMsProvider()
+            if (segments.isEmpty()) {
+                currentSrc
+            } else {
+                val dstSec = fit.SpeedMapper.mapSourceToTarget(currentSrc / 1000.0, segments)
+                (dstSec * 1000).toLong()
+            }
         }
     }
 
@@ -202,7 +204,7 @@ fun VideoPreviewArea(
                 println("DEBUG: togglePlayButton calling playerState.pause()")
                 playerState.pause()
             } else {
-                val isAtEndForReplay = (videoLengthMs > 0L && videoCurrentTimeMs >= videoLengthMs - 500L) ||
+                val isAtEndForReplay = (videoLengthMs > 0L && videoCurrentTimeMsProvider() >= videoLengthMs - 500L) ||
                     playerState.sliderPos >= 995f
                 if (isAtEndForReplay) {
                     previewScope.launch {
@@ -285,7 +287,7 @@ fun VideoPreviewArea(
     LaunchedEffect(playerState, videoLengthMs) {
         snapshotFlow { playerState.sliderPos to (playerState.metadata.duration ?: 0L) }
             .collect { (sliderPos, durationMs) ->
-                if (!isSeeking) {
+                if (!isSeekingProvider()) {
                     val elapsedMs = fit.TimelineMapper.calculateCurrentTimeMs(
                         sliderPos = sliderPos,
                         durationMs = durationMs,
@@ -355,7 +357,7 @@ fun VideoPreviewArea(
     LaunchedEffect(videoPath, previewQualityMode) {
         println("DEBUG: VideoPreviewArea LaunchedEffect(videoPath) triggered with path: $videoPath")
         if (videoPath.isNotEmpty() && File(videoPath).exists()) {
-            val savedTimeMs = videoCurrentTimeMs
+            val savedTimeMs = videoCurrentTimeMsProvider()
             val originalFile = File(videoPath)
             val lrvFile = findCompanionLrvFile(originalFile)
             val mode = previewQualityMode.lowercase()
@@ -543,7 +545,7 @@ fun VideoPreviewArea(
 
                 Text(
                     text = if (settings.speedSegments.isEmpty()) {
-                        "${formatPreviewTime(videoCurrentTimeMs)} / ${formatPreviewTime(videoLengthMs)}"
+                        "${formatPreviewTime(videoCurrentTimeMsProvider())} / ${formatPreviewTime(videoLengthMs)}"
                     } else {
                         "${formatPreviewTime(outputCurrentTimeMs)} / ${formatPreviewTime(outputLengthMs)} (Output)"
                     },
@@ -569,7 +571,7 @@ fun VideoPreviewArea(
                         onSeekProgress(targetSrcMs)
                     },
                     onValueChangeFinished = {
-                        val finalTime = if (isSeeking) seekTargetTimeMs else videoCurrentTimeMs
+                        val finalTime = if (isSeekingProvider()) seekTargetTimeMsProvider() else videoCurrentTimeMsProvider()
                         onSeekEnd(finalTime)
                     },
                     enabled = !isEncoding && !isDetectingPlates,
@@ -677,7 +679,7 @@ fun VideoPreviewArea(
                 )
                 for ((label, delta) in seekSpecs) {
                     OutlinedButton(
-                        onClick = { seekTo((videoCurrentTimeMs + delta).coerceIn(0L, maxOf(0L, videoLengthMs))) },
+                        onClick = { seekTo((videoCurrentTimeMsProvider() + delta).coerceIn(0L, maxOf(0L, videoLengthMs))) },
                         enabled = !isEncoding && !isDetectingPlates,
                         modifier = seekBtnModifier,
                         colors = seekBtnColors,
