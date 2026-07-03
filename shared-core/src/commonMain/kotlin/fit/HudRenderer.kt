@@ -845,9 +845,9 @@ class HudRenderer(val config: HudConfig) {
         // Dynamic scale factor based on configured valSize (relative to base size 40f)
         val sf = (config.valSize / 40.0).toFloat().coerceAtLeast(0.5f)
 
-        // 1. Layout parameters (Scaled)
-        val R = 75f * sf // 円の半径 (R) - 少し大きめに拡大
-        val margin = 40f * sf
+        // 1. Layout parameters (Scaled & Enlarged for high fidelity)
+        val R = 95f * sf // 円の半径 (R) - 直径190px相当に拡大
+        val margin = 45f * sf
         val mcx = canvas.width - margin - R // 円の中心 X
         val mcy = margin + R // 円の中心 Y
 
@@ -859,7 +859,7 @@ class HudRenderer(val config: HudConfig) {
             px to py
         }
         canvas.drawPolygon(circlePoints, "#000000", alpha = 0.5f)
-        canvas.drawLine(circlePoints, "#ffffff", width = 1.5f * sf, alpha = 0.7f)
+        canvas.drawLine(circlePoints, "#ffffff", width = 1.8f * sf, alpha = 0.7f)
 
         // 3. Coordinate alignment (Path-up projection)
         val startPt = validRoutePoints.first()
@@ -875,9 +875,10 @@ class HudRenderer(val config: HudConfig) {
         val L = kotlin.math.sqrt(dx * dx + dy * dy)
         if (L < 1e-7) return
 
-        // Target path length on the map is 2 * (R - 12f * sf) to leave padding inside circle
-        val padR = R - 12f * sf
-        val scale = (2.0 * padR) / L
+        // Target path length on the map is 2 * padR to leave padding inside circle
+        val padR = R - 15f * sf
+        // Mathematical scaling factor mapping L to 2 * padR keeping 1:1 aspect ratio
+        val scale = (2.0 * padR) / (L * L)
 
         // Heading angle (Start to End) in degrees for compass rotation
         val pathBearing = calculateBearing(startPt, endPt) ?: 0.0
@@ -889,12 +890,12 @@ class HudRenderer(val config: HudConfig) {
             val py = pt.lat - startPt.lat
             
             // Project along path direction vector (ly direction) and orthogonal vector (lx direction)
-            val lx = ((px * dy - py * dx) / L * scale).toFloat()
-            val ly = (padR - (px * dx + py * dy) / L * 2.0 * padR).toFloat()
+            val lx = ((px * dy - py * dx) * scale).toFloat()
+            val ly = (padR - (px * dx + py * dy) * scale).toFloat()
             
             // Clamp to circle boundary to prevent visual overflow
             val d = kotlin.math.sqrt(lx * lx + ly * ly)
-            val limit = R - 2f * sf
+            val limit = R - 4f * sf
             return if (d > limit) {
                 val clampedLx = lx * (limit / d)
                 val clampedLy = ly * (limit / d)
@@ -918,17 +919,17 @@ class HudRenderer(val config: HudConfig) {
 
         // Draw route line (with scaled line width)
         val routeLinePoints = drawPoints.map { projectPoint(it) }
-        canvas.drawLine(routeLinePoints, "#ffffff", width = 2.5f * sf, alpha = 0.6f)
+        canvas.drawLine(routeLinePoints, "#ffffff", width = 2.8f * sf, alpha = 0.6f)
 
         // 5. Draw Start/End Markers (Scaled)
         val startMapPt = projectPoint(startPt)
         val endMapPt = projectPoint(endPt)
-        val mSize = 6f * sf
+        val mSize = 8f * sf
         val hmSize = mSize / 2f
         canvas.drawRect(startMapPt.first - hmSize, startMapPt.second - hmSize, mSize, mSize, "#ffffff", alpha = 1.0f)
         canvas.drawRect(endMapPt.first - hmSize, endMapPt.second - hmSize, mSize, mSize, "#ffffff", alpha = 1.0f)
 
-        // Draw distance labels near start/end (Scaled font size)
+        // Draw distance labels near start/end (Scaled font size & adjusted spacing)
         val totalDist = endPt.distance - startPt.distance
         val totalDistText = if (config.useImperialUnits) {
             "${formatOneDecimal(totalDist * 0.000621371)} mi"
@@ -936,15 +937,15 @@ class HudRenderer(val config: HudConfig) {
             "${formatOneDecimal(totalDist / 1000.0)} km"
         }
         val startDistText = "0.0"
-        val distTextSize = 9f * sf
+        val distTextSize = 10.5f * sf
         
         canvas.drawText(startDistText, startMapPt.first, startMapPt.second + 4f * sf, distTextSize, "#ffffff", bold = true, anchor = "top-center")
-        canvas.drawText(totalDistText, endMapPt.first, endMapPt.second - (distTextSize + 2f * sf), distTextSize, "#ffffff", bold = true, anchor = "bottom-center")
+        canvas.drawText(totalDistText, endMapPt.first, endMapPt.second - (distTextSize + 4f * sf), distTextSize, "#ffffff", bold = true, anchor = "bottom-center")
 
         // 6. Draw Current Location Pin (Scaled pin size)
         if (isValid && telemetry.lat != 0.0 && telemetry.lon != 0.0) {
             val currentMapPt = projectPoint(telemetry)
-            val pSize = 7f * sf
+            val pSize = 9f * sf
             // Draw red triangle pin pointing to current position
             val pinPoly = listOf(
                 currentMapPt.first - pSize to currentMapPt.second - pSize,
@@ -954,7 +955,7 @@ class HudRenderer(val config: HudConfig) {
             canvas.drawPolygon(pinPoly, "#ef4444", alpha = 1.0f)
         }
 
-        // 7. Draw 4 Directions (N, E, S, W) along the inner circle margin (Scaled)
+        // 7. Draw 4 Directions (N, E, S, W) along the inner circle margin (Scaled & centered alignment)
         val angleN = -90.0 - pathBearing
         val compassPoints = mapOf(
             "N" to angleN,
@@ -963,13 +964,13 @@ class HudRenderer(val config: HudConfig) {
             "W" to (angleN + 270.0)
         )
         
-        val compR = R - 8f * sf // circle inner radius
-        val compassTextSize = 8.5f * sf
+        val compR = R - 12f * sf // circle inner radius to align nicely
+        val compassTextSize = 12f * sf
         for ((label, angleDeg) in compassPoints) {
             val angleRad = angleDeg * kotlin.math.PI / 180.0
             val tx = mcx + compR * kotlin.math.cos(angleRad).toFloat()
             val ty = mcy + compR * kotlin.math.sin(angleRad).toFloat()
-            canvas.drawText(label, tx, ty - 4f * sf, compassTextSize, "#ffffff", bold = true, anchor = "bottom-center")
+            canvas.drawText(label, tx, ty, compassTextSize, "#ffffff", bold = true, anchor = "center")
         }
     }
 }
