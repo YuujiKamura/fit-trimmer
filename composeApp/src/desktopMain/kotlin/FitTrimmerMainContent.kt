@@ -3073,7 +3073,7 @@ fun FitTrimmerMainContent(
                                     val isActiveEncoding = isEncoding || viewModel.isBatchRunning
                                     if (!isActiveEncoding) {
                                         Text("現在の設定でHUD付き動画を書き出します。複数の設定をキューに追加して、後でまとめて一括エンコードできます。", color = Color(0xFF636366), fontSize = 10.sp, lineHeight = 13.sp)
-                                         val isQueueEnabled = fitPath.isNotEmpty() && videoPath.isNotEmpty()
+                                        val isQueueEnabled = fitPath.isNotEmpty() && videoPath.isNotEmpty()
                                         Button(
                                             onClick = onNativeEncodeClick,
                                             modifier = Modifier.fillMaxWidth().height(40.dp),
@@ -3101,9 +3101,8 @@ fun FitTrimmerMainContent(
                                                 border = BorderStroke(1.5.dp, if (canStartBatch && !viewModel.isBatchRunning) Color(0xFF007AFF) else Color(0xFFE5E5EA)),
                                                 shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
                                             ) {
-                                                Text("バッチエンコード", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                                Text("エンコード管理", fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                             }
-                                            val isQueueEnabled = fitPath.isNotEmpty() && videoPath.isNotEmpty()
                                             OutlinedButton(
                                                 onClick = {
                                                     viewModel.addToBatchQueue()
@@ -3118,13 +3117,27 @@ fun FitTrimmerMainContent(
                                                 border = BorderStroke(1.5.dp, if (isQueueEnabled) Color(0xFF34C759) else Color(0xFFE5E5EA)),
                                                 shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
                                             ) {
-                                                Text("バッチに追加", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                                Text("キューに追加", fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                             }
                                         }
 
+                                    } else if (viewModel.isBatchRunning) {
+                                        // Recomposition 負荷を最小限にする静的パネル表示
+                                        Text("エンコードジョブを実行中です。詳細な進行状況はエンコード管理画面で確認できます。", color = Color(0xFF636366), fontSize = 10.sp, lineHeight = 13.sp)
+                                        Button(
+                                            onClick = {
+                                                viewModel.requestBatchConfirmDialog("sidebar-button")
+                                            },
+                                            modifier = Modifier.fillMaxWidth().height(36.dp),
+                                            colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF007AFF), contentColor = Color.White),
+                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                                        ) {
+                                            Text("進行管理画面を開く", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        }
                                     } else {
-                                        val currentStatusText = if (viewModel.isBatchRunning) viewModel.statusText else statusText
-                                        val currentProgress = if (viewModel.isBatchRunning) viewModel.progress else progress
+                                        // サンプル等での単独書き出し中（進捗インジケータを表示）
+                                        val currentStatusText = statusText
+                                        val currentProgress = progress
                                         if (currentStatusText.contains("Merging", ignoreCase = true)) {
                                             LinearProgressIndicator(
                                                 modifier = Modifier.fillMaxWidth(),
@@ -3143,11 +3156,7 @@ fun FitTrimmerMainContent(
                                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                             Button(
                                                 onClick = {
-                                                    if (viewModel.isBatchRunning) {
-                                                        viewModel.isCanceled = true
-                                                    } else {
-                                                        isCanceled = true
-                                                    }
+                                                    isCanceled = true
                                                 },
                                                 modifier = Modifier.weight(1f).height(32.dp),
                                                 colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFEF4444)),
@@ -3157,26 +3166,6 @@ fun FitTrimmerMainContent(
                                             }
                                         }
                                     }
-                                        if (viewModel.isBatchRunning) {
-                                            Column(
-                                                modifier = Modifier.fillMaxWidth().background(Color(0xFFFEF3C7)).padding(8.dp),
-                                                verticalArrangement = Arrangement.spacedBy(4.dp)
-                                            ) {
-                                                Text(
-                                                    text = viewModel.batchStatusText,
-                                                    fontSize = 10.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = Color(0xFFD97706)
-                                                )
-                                                Button(
-                                                    onClick = { isCanceled = true },
-                                                    modifier = Modifier.fillMaxWidth().height(28.dp),
-                                                    colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFE02424))
-                                                ) {
-                                                    Text("CANCEL BATCH", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                                }
-                                            }
-                                        }
                                 }
                             }
                                     if (selectedTab == 3) {
