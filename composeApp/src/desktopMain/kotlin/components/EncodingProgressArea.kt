@@ -21,15 +21,18 @@ import androidx.compose.ui.text.font.FontWeight
 
 @Composable
 fun EncodingProgressArea(
-    progress: Float,
-    statusText: String,
-    encodingPreviewImage: ImageBitmap?,
+    progressProvider: () -> Float,
+    statusTextProvider: () -> String,
+    encodingPreviewImageProvider: () -> ImageBitmap?,
     showLivePreview: Boolean,
     controlsEnabled: Boolean,
     videoLengthMs: Long,
     onCancel: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val progress = progressProvider()
+    val statusText = statusTextProvider()
+    val encodingPreviewImage = encodingPreviewImageProvider()
     val currentMs = (progress * videoLengthMs).toLong()
 
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {

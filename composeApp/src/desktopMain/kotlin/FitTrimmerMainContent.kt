@@ -799,6 +799,8 @@ fun FitTrimmerMainContent(
                                         encodingPreviewImage = null
                                         isEncoding = true
                                         isCanceled = false
+                                        var lastProgressTime = 0L
+                                        var lastPreviewTime = 0L
                                         try {
                                             val encodeSettings = prepareSettingsForEncode(settings)
                                             val ranges = viewModel.getSplitRanges()
@@ -823,13 +825,21 @@ fun FitTrimmerMainContent(
                                                 moveOutputToSource = moveOutputToSource,
                                                 plateTelemetryPoints = viewModel.trimmedTelemetryPoints,
                                                 onProgress = { prog, status ->
-                                                    progress = prog
-                                                    statusText = status
+                                                    val now = System.currentTimeMillis()
+                                                    if (prog >= 1.0f || now - lastProgressTime >= 100) {
+                                                        lastProgressTime = now
+                                                        progress = prog
+                                                        statusText = status
+                                                    }
                                                 },
                                                 onFrame = { bufferedImg ->
-                                                    val bitmap = bufferedImg.toComposeImageBitmap()
-                                                    javax.swing.SwingUtilities.invokeLater {
-                                                        encodingPreviewImage = bitmap
+                                                    val now = System.currentTimeMillis()
+                                                    if (now - lastPreviewTime >= 33) {
+                                                        lastPreviewTime = now
+                                                        val bitmap = bufferedImg.toComposeImageBitmap()
+                                                        javax.swing.SwingUtilities.invokeLater {
+                                                            encodingPreviewImage = bitmap
+                                                        }
                                                     }
                                                 },
                                                 cancelSupplier = { isCanceled },
@@ -1124,6 +1134,8 @@ fun FitTrimmerMainContent(
                                     isSampleEncoding = true
                                     isEncoding = true
                                     isCanceled = false
+                                    var lastProgressTime = 0L
+                                    var lastPreviewTime = 0L
                                     try {
                                         val encodeSettings = prepareSettingsForEncode(settings)
                                         val endSec = if (trimEndSeconds <= 0.0) videoLengthMs / 1000.0 else trimEndSeconds
@@ -1149,13 +1161,21 @@ fun FitTrimmerMainContent(
                                             moveOutputToSource = moveOutputToSource,
                                             plateTelemetryPoints = viewModel.trimmedTelemetryPoints,
                                             onProgress = { prog, status ->
-                                                progress = prog
-                                                statusText = status
+                                                val now = System.currentTimeMillis()
+                                                if (prog >= 1.0f || now - lastProgressTime >= 100) {
+                                                    lastProgressTime = now
+                                                    progress = prog
+                                                    statusText = status
+                                                }
                                             },
                                             onFrame = { bufferedImg ->
-                                                val bitmap = bufferedImg.toComposeImageBitmap()
-                                                javax.swing.SwingUtilities.invokeLater {
-                                                    encodingPreviewImage = bitmap
+                                                val now = System.currentTimeMillis()
+                                                if (now - lastPreviewTime >= 33) {
+                                                    lastPreviewTime = now
+                                                    val bitmap = bufferedImg.toComposeImageBitmap()
+                                                    javax.swing.SwingUtilities.invokeLater {
+                                                        encodingPreviewImage = bitmap
+                                                    }
                                                 }
                                             },
                                             cancelSupplier = { isCanceled },
@@ -3537,9 +3557,9 @@ fun FitTrimmerMainContent(
                             }
                             val trimmedDurationMs = ((actualTrimEnd - actualTrimStart) * 1000).toLong().coerceAtLeast(1000L)
                             EncodingProgressArea(
-                                progress = if (viewModel.isBatchRunning) viewModel.progress else progress,
-                                statusText = if (viewModel.isBatchRunning) viewModel.statusText else statusText,
-                                encodingPreviewImage = encodingPreviewImage,
+                                progressProvider = { if (viewModel.isBatchRunning) viewModel.progress else progress },
+                                statusTextProvider = { if (viewModel.isBatchRunning) viewModel.statusText else statusText },
+                                encodingPreviewImageProvider = { encodingPreviewImage },
                                 showLivePreview = showLivePreview,
                                 controlsEnabled = true,
                                 videoLengthMs = trimmedDurationMs,
