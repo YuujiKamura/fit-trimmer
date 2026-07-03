@@ -91,7 +91,7 @@ class VideoPreviewAreaTest {
                 rendererProxy = rendererProxy,
                 textMeasurer = textMeasurer,
                 playerState = playerState,
-                videoCurrentTimeMs = currentTimeMs,
+                videoCurrentTimeMsProvider = { currentTimeMs },
                 onCurrentTimeChange = { currentTimeMs = it },
                 renderVideoSurface = false
             )
@@ -136,6 +136,7 @@ class VideoPreviewAreaTest {
     @Test
     fun testVideoPreviewArea_SeekButtons() {
         val mock = MockPlatformVideoPlayerState()
+        mock.sliderPos = 500f // Align mock playhead with initial currentTimeMs (50% of 10s duration)
         val playerState = VideoPlayerState()
         injectMock(playerState, mock)
 
@@ -167,7 +168,7 @@ class VideoPreviewAreaTest {
                 rendererProxy = rendererProxy,
                 textMeasurer = textMeasurer,
                 playerState = playerState,
-                videoCurrentTimeMs = currentTimeMs,
+                videoCurrentTimeMsProvider = { currentTimeMs },
                 onCurrentTimeChange = { currentTimeMs = it },
                 onSeekEnd = { seekedTime = it },
                 renderVideoSurface = false
@@ -231,10 +232,10 @@ class VideoPreviewAreaTest {
                 rendererProxy = rendererProxy,
                 textMeasurer = textMeasurer,
                 playerState = playerState,
-                videoCurrentTimeMs = currentTimeMs,
+                videoCurrentTimeMsProvider = { currentTimeMs },
                 onCurrentTimeChange = { currentTimeMs = it },
-                isSeeking = isSeekingState.value,
-                seekTargetTimeMs = seekTargetTimeMsState.value,
+                isSeekingProvider = { isSeekingState.value },
+                seekTargetTimeMsProvider = { seekTargetTimeMsState.value },
                 onSeekStart = { isSeekingState.value = true },
                 onSeekProgress = { 
                     progressTime = it
@@ -275,6 +276,7 @@ class VideoPreviewAreaTest {
     @Test
     fun testVideoPreviewArea_EOF_Replay() {
         val mock = MockPlatformVideoPlayerState()
+        mock.sliderPos = 980f // Align mock playhead to EOF (98% of 10s duration)
         val playerState = VideoPlayerState()
         injectMock(playerState, mock)
 
@@ -305,7 +307,7 @@ class VideoPreviewAreaTest {
                 rendererProxy = rendererProxy,
                 textMeasurer = textMeasurer,
                 playerState = playerState,
-                videoCurrentTimeMs = currentTimeMs,
+                videoCurrentTimeMsProvider = { currentTimeMs },
                 onCurrentTimeChange = { currentTimeMs = it },
                 renderVideoSurface = false
             )
