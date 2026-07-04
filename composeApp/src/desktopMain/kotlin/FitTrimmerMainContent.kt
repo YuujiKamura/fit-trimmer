@@ -142,7 +142,8 @@ fun FitTrimmerMainContent(
             bodyWeightKg = settings.bodyWeightKg,
             customCaptions = settings.customCaptions,
             mapSizeScale = settings.mapSizeScale,
-            mapType = settings.mapType
+            mapType = settings.mapType,
+            mapPosition = settings.mapPosition
         )
     }
     var reloadTrigger by remember { mutableStateOf(0) }
@@ -690,6 +691,39 @@ fun FitTrimmerMainContent(
                         withContext(Dispatchers.Main) {
                             if (videoPath == originalPathAtStart) {
                                 videoStartUtc = utc
+                                if (telemetryPoints.isNotEmpty()) {
+                                    val confirm = javax.swing.JOptionPane.showConfirmDialog(
+                                        composeWindow ?: viewModel.composeWindow,
+                                        "動画が正常にロードされました。IMU同期（時刻補正）を実行しますか？",
+                                        "IMU時刻補正の実行確認",
+                                        javax.swing.JOptionPane.YES_NO_OPTION,
+                                        javax.swing.JOptionPane.QUESTION_MESSAGE
+                                    )
+                                    if (confirm == javax.swing.JOptionPane.YES_OPTION) {
+                                        scope.launch {
+                                            viewModel.isAligningTelemetry = true
+                                            try {
+                                                val originalInstant = try { java.time.Instant.parse(utc) } catch(e: Exception) { null }
+                                                val alignedUtc = TelemetryAligner.alignVideoWithTelemetry(videoPath, telemetryPoints, utc)
+                                                if (alignedUtc != null) {
+                                                    val alignedInstant = try { java.time.Instant.parse(alignedUtc) } catch(e: Exception) { null }
+                                                    if (originalInstant != null && alignedInstant != null) {
+                                                        val diffMs = alignedInstant.toEpochMilli() - originalInstant.toEpochMilli()
+                                                        val diffSec = diffMs / 1000.0
+                                                        statusText = "IMU Sync: Adjusted offset by %.3f seconds".format(java.util.Locale.US, diffSec)
+                                                        timeOffsetState.update(diffMs.toInt())
+                                                    } else {
+                                                        statusText = "IMU Sync Successful"
+                                                    }
+                                                } else {
+                                                    statusText = "IMU Sync failed (no correlation found)"
+                                                }
+                                            } finally {
+                                                viewModel.isAligningTelemetry = false
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -2263,6 +2297,41 @@ fun FitTrimmerMainContent(
                                     }
                                     DropdownMenuItem(onClick = { settings = settings.copy(mapType = "carto_voyager"); mapTypeDropdownExpanded = false }) {
                                         Text("Voyager (Carto)", fontSize = 11.sp, color = Color(0xFF1C1C1E))
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.height(4.dp))
+                            Text("MAP POSITION", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 0.5.sp)
+                            var mapPosDropdownExpanded by remember { mutableStateOf(false) }
+                            Box(modifier = Modifier.fillMaxWidth()) {
+                                val currentPosLabel = when (settings.mapPosition) {
+                                    "bottom_right" -> "Bottom Right (右下)"
+                                    else -> "Top Right (右上)"
+                                }
+                                OutlinedButton(
+                                    onClick = { if (!isEncoding) mapPosDropdownExpanded = true },
+                                    modifier = Modifier.fillMaxWidth().height(36.dp),
+                                    border = BorderStroke(1.dp, Color(0xFFE5E5EA)),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF1C1C1E))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(currentPosLabel, fontSize = 11.sp)
+                                        Text("▼", fontSize = 8.sp, color = Color.Gray)
+                                    }
+                                }
+                                DropdownMenu(
+                                    expanded = mapPosDropdownExpanded,
+                                    onDismissRequest = { mapPosDropdownExpanded = false }
+                                ) {
+                                    DropdownMenuItem(onClick = { settings = settings.copy(mapPosition = "top_right"); mapPosDropdownExpanded = false }) {
+                                        Text("Top Right (右上)", fontSize = 11.sp, color = Color(0xFF1C1C1E))
+                                    }
+                                    DropdownMenuItem(onClick = { settings = settings.copy(mapPosition = "bottom_right"); mapPosDropdownExpanded = false }) {
+                                        Text("Bottom Right (右下)", fontSize = 11.sp, color = Color(0xFF1C1C1E))
                                     }
                                 }
                             }

@@ -125,7 +125,8 @@ object HudEncodePipeline {
                 customCaptions = s.customCaptions,
                 trimStartSeconds = ranges.firstOrNull()?.first ?: 0.0,
                 mapSizeScale = s.mapSizeScale,
-                mapType = s.mapType
+                mapType = s.mapType,
+                mapPosition = s.mapPosition
             )
             val proxy = DynamicRendererProxy(config)
             globalRendererProxy = proxy

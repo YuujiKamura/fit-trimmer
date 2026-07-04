@@ -54,6 +54,8 @@ class HudRendererTest {
         override fun getTextWidth(text: String, size: Float, bold: Boolean): Float = text.length * 10f
         
         var drawMapBackgroundCalled = false
+        var lastMcx: Float = 0f
+        var lastMcy: Float = 0f
         override fun drawMapBackground(
             videoPoints: List<FitParser.TelemetryPoint>,
             mcx: Float, mcy: Float, R: Float, padR: Float, sf: Float,
@@ -61,7 +63,10 @@ class HudRendererTest {
             cxL: Double, cyL: Double, dynamicScale: Double
         ) {
             drawMapBackgroundCalled = true
+            lastMcx = mcx
+            lastMcy = mcy
         }
+
     }
 
     @Test
@@ -859,6 +864,90 @@ class HudRendererTest {
         
         assertEquals(527.5f, line1Call.y, "Line 1 Y coordinate must be correct")
         assertEquals(552.5f, line2Call.y, "Line 2 Y coordinate must be correct")
+    }
+
+    @Test
+    fun testMiniMap_PositionRightBottom() {
+        val config = HudConfig(
+            valSize = 40f, tightness = 1f, spacing = 20f,
+            xOffset = 40f, yOffset = 100f, graphH = 60f, graphW = 300f,
+            language = "ja",
+            mapPosition = "bottom_right"
+        )
+        val renderer = HudRenderer(config)
+        
+        val p1 = FitParser.TelemetryPoint(
+            timestamp = 1000.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 50.0, grade = 2.0,
+            distance = 1000.0, elapsedSeconds = 10, lat = 35.0, lon = 135.0
+        )
+        val p2 = FitParser.TelemetryPoint(
+            timestamp = 1010.0, speed = 12.0, power = 110.0, cadence = 82.0, heartRate = 122.0, elevation = 52.0, grade = 2.2,
+            distance = 2500.0, elapsedSeconds = 20, lat = 35.01, lon = 135.01
+        )
+        val allPoints = listOf(p1, p2)
+        
+        val canvas = TestHudCanvas()
+        renderer.renderFrame(canvas, p2, allPoints, emptyList(), emptyList(), 100.0f, isValid = true)
+        
+        // sf = 1.0f (valSizeが40fのため)
+        // R = 110f
+        // marginY = 40f
+        // bottom_right の場合: mcy = canvas.height - marginY - R = 1080 - 40 - 110 = 930f
+        // mcx = canvas.width - marginX - R = 1920 - 45 - 110 = 1765f
+        assertTrue(canvas.drawMapBackgroundCalled, "Should call drawMapBackground")
+        assertEquals(1765f, canvas.lastMcx, "mcx should be right-aligned: 1765.0f")
+        assertEquals(930f, canvas.lastMcy, "mcy should be bottom-aligned: 930.0f")
+    }
+
+    @Test
+    fun testMiniMap_BearingStabilization() {
+        val config = HudConfig(
+            valSize = 40f, tightness = 1f, spacing = 20f,
+            xOffset = 40f, yOffset = 100f, graphH = 60f, graphW = 300f,
+            language = "ja"
+        )
+        val renderer = HudRenderer(config)
+        
+        // P1: Start
+        val p1 = FitParser.TelemetryPoint(
+            timestamp = 1000.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 50.0, grade = 2.0,
+            distance = 1000.0, elapsedSeconds = 10, lat = 35.0, lon = 135.0
+        )
+        // P2: Move North by ~11m
+        val p2 = FitParser.TelemetryPoint(
+            timestamp = 1001.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 50.0, grade = 2.0,
+            distance = 1011.0, elapsedSeconds = 11, lat = 35.0001, lon = 135.0
+        )
+        // P3: Turn East and move by ~9m (heading East = 90 deg)
+        val p3 = FitParser.TelemetryPoint(
+            timestamp = 1002.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 50.0, grade = 2.0,
+            distance = 1020.0, elapsedSeconds = 12, lat = 35.0001, lon = 135.0001
+        )
+        // P4: Static/noise (distance diff 0.1m)
+        val p4 = FitParser.TelemetryPoint(
+            timestamp = 1003.0, speed = 0.1, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 50.0, grade = 2.0,
+            distance = 1020.1, elapsedSeconds = 13, lat = 35.0001, lon = 135.0001001
+        )
+        val allPoints = listOf(p1, p2, p3, p4)
+        
+        // 1. Render p3 to cache East bearing (90 degrees)
+        val canvas1 = TestHudCanvas()
+        renderer.renderFrame(canvas1, p3, allPoints, emptyList(), emptyList(), 100.0f, isValid = true)
+        
+        // 2. Render p4 (noise/static)
+        val canvas2 = TestHudCanvas()
+        renderer.renderFrame(canvas2, p4, allPoints, emptyList(), emptyList(), 100.0f, isValid = true)
+        
+        val pinPoly = canvas2.drawnPolygons.filter { it.color == "#ef4444" }.lastOrNull()
+        assertTrue(pinPoly != null, "Should find current location pin polygon")
+        
+        // If it maintains the East heading (90 degrees), phi = currentBearing (90) - pathBearing (approx 45) = 45 degrees.
+        // sin(45) > 0, so tip X (points[0]) should be greater than rear X (points[2]).
+        // If it falls back to pathBearing (approx 45 degrees), phi becomes 0, so tip X and rear X would be equal.
+        val points = pinPoly!!.points
+        val tipX = points[0].first // p1 is tip
+        val rearX = points[2].first // p3 is rear inner indentation
+        assertTrue(tipX > rearX, "Tip X ($tipX) should be greater than rear X ($rearX) when maintaining cached East bearing (got points: $points)")
     }
 }
 
