@@ -631,7 +631,7 @@ suspend fun runBatchJobs(
                                 ranges = ranges,
                                 destFiles = destFiles,
                                 isSample = false,
-                                shouldResume = true, // Batch mode defaults to true for safety
+                                shouldResume = phase.progress > 0f, // Resume only if we have partial progress
                                 moveOutputToSource = moveOutputToSource,
                                 onProgress = { prog, status ->
                                     val now = System.currentTimeMillis()
