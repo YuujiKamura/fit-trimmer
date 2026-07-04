@@ -2,6 +2,7 @@ package fit
 
 import java.awt.*
 import java.awt.image.BufferedImage
+import kotlin.math.pow
 import java.io.File
 import java.time.Instant
 import java.nio.file.Files
@@ -382,6 +383,13 @@ class NativeHudEncoder(
     private val fontCache = java.util.concurrent.ConcurrentHashMap<String, Font>()
     private val metricsCache = java.util.concurrent.ConcurrentHashMap<Font, FontMetrics>()
 
+    private var cachedMapKey: String? = null
+    private var cachedMapImage: BufferedImage? = null
+    private var cachedMapLeftLon = 0.0
+    private var cachedMapTopLat = 0.0
+    private var cachedMapRightLon = 0.0
+    private var cachedMapBottomLat = 0.0
+
     inner class DesktopHudCanvas(val g: Graphics2D, val scale: Float, val logicalWidth: Float, val logicalHeight: Float) : HudCanvas {
         override val width: Float get() = logicalWidth
         override val height: Float get() = logicalHeight
@@ -488,6 +496,197 @@ class NativeHudEncoder(
         override fun getTextWidth(text: String, size: Float, bold: Boolean): Float {
             val font = getCachedFont(size, bold, isWidthCheck = true)
             return getCachedMetrics(font).stringWidth(text).toFloat()
+        }
+
+        override fun drawMapBackground(
+            videoPoints: List<FitParser.TelemetryPoint>,
+            mcx: Float,
+            mcy: Float,
+            R: Float,
+            padR: Float,
+            sf: Float,
+            pathBearing: Double,
+            cosLat: Double,
+            dx: Double,
+            dy: Double,
+            L: Double,
+            cxL: Double,
+            cyL: Double,
+            dynamicScale: Double
+        ) {
+            val minLat = videoPoints.minOf { it.lat }
+            val maxLat = videoPoints.maxOf { it.lat }
+            val minLon = videoPoints.minOf { it.lon }
+            val maxLon = videoPoints.maxOf { it.lon }
+            
+            val mapKey = "${minLat}_${maxLat}_${minLon}_${maxLon}"
+            
+            var mapImg = cachedMapImage
+            var leftLon = cachedMapLeftLon
+            var topLat = cachedMapTopLat
+            var rightLon = cachedMapRightLon
+            var bottomLat = cachedMapBottomLat
+            
+            if (cachedMapKey != mapKey || mapImg == null) {
+                val z = calculateBestZoom(minLat, maxLat, minLon, maxLon)
+                val latRadMin = minLat * kotlin.math.PI / 180.0
+                val latRadMax = maxLat * kotlin.math.PI / 180.0
+                val n = 2.0.pow(z.toDouble())
+                
+                val minTileX = ((minLon + 180.0) / 360.0 * n).toInt()
+                val maxTileX = ((maxLon + 180.0) / 360.0 * n).toInt()
+                
+                val minTileY = ((1.0 - kotlin.math.ln(kotlin.math.tan(latRadMax) + 1.0 / kotlin.math.cos(latRadMax)) / kotlin.math.PI) / 2.0 * n).toInt()
+                val maxTileY = ((1.0 - kotlin.math.ln(kotlin.math.tan(latRadMin) + 1.0 / kotlin.math.cos(latRadMin)) / kotlin.math.PI) / 2.0 * n).toInt()
+                
+                val tX1 = minOf(minTileX, maxTileX)
+                val tX2 = maxOf(minTileX, maxTileX)
+                val tY1 = minOf(minTileY, maxTileY)
+                val tY2 = maxOf(minTileY, maxTileY)
+                
+                val Wt = tX2 - tX1 + 1
+                val Ht = tY2 - tY1 + 1
+                
+                if (Wt in 1..8 && Ht in 1..8) {
+                    val merged = BufferedImage(Wt * 256, Ht * 256, BufferedImage.TYPE_INT_ARGB)
+                    val g2 = merged.createGraphics()
+                    
+                    val cacheDir = java.io.File(System.getProperty("user.home") + "/.fit-trimmer/osm_cache")
+                    if (!cacheDir.exists()) cacheDir.mkdirs()
+                    
+                    val client = java.net.http.HttpClient.newBuilder()
+                        .connectTimeout(java.time.Duration.ofSeconds(3))
+                        .build()
+                        
+                    for (ty in tY1..tY2) {
+                        for (tx in tX1..tX2) {
+                            val tileFile = java.io.File(cacheDir, "${z}_${tx}_${ty}.png")
+                            var img: BufferedImage? = null
+                            if (tileFile.exists()) {
+                                try {
+                                    img = javax.imageio.ImageIO.read(tileFile)
+                                } catch (e: Exception) {
+                                    tileFile.delete()
+                                }
+                            }
+                            if (img == null) {
+                                val urlStr = "https://tile.openstreetmap.org/$z/$tx/$ty.png"
+                                try {
+                                    val request = java.net.http.HttpRequest.newBuilder()
+                                        .uri(java.net.URI.create(urlStr))
+                                        .header("User-Agent", "FitTrimmerApp/1.0")
+                                        .timeout(java.time.Duration.ofSeconds(3))
+                                        .build()
+                                    val response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofByteArray())
+                                    if (response.statusCode() == 200) {
+                                        val bytes = response.body()
+                                        java.nio.file.Files.write(tileFile.toPath(), bytes)
+                                        img = javax.imageio.ImageIO.read(java.io.ByteArrayInputStream(bytes))
+                                    }
+                                } catch (e: Exception) {
+                                    // Ignore errors
+                                }
+                            }
+                            
+                            if (img != null) {
+                                val dx = (tx - tX1) * 256
+                                val dy = (ty - tY1) * 256
+                                g2.drawImage(img, dx, dy, null)
+                            }
+                        }
+                    }
+                    g2.dispose()
+                    mapImg = merged
+                    
+                    leftLon = tX1.toDouble() / n * 360.0 - 180.0
+                    val nLat = kotlin.math.PI - 2.0 * kotlin.math.PI * tY1.toDouble() / n
+                    topLat = 180.0 / kotlin.math.PI * kotlin.math.atan(0.5 * (kotlin.math.exp(nLat) - kotlin.math.exp(-nLat)))
+                    
+                    rightLon = (tX2 + 1).toDouble() / n * 360.0 - 180.0
+                    val sLat = kotlin.math.PI - 2.0 * kotlin.math.PI * (tY2 + 1).toDouble() / n
+                    bottomLat = 180.0 / kotlin.math.PI * kotlin.math.atan(0.5 * (kotlin.math.exp(sLat) - kotlin.math.exp(-sLat)))
+                    
+                    cachedMapImage = mapImg
+                    cachedMapLeftLon = leftLon
+                    cachedMapTopLat = topLat
+                    cachedMapRightLon = rightLon
+                    cachedMapBottomLat = bottomLat
+                    cachedMapKey = mapKey
+                }
+            }
+            
+            if (mapImg != null) {
+                val originalClip = g.clip
+                val clipCircle = java.awt.geom.Ellipse2D.Float(
+                    (mcx - R) * scale,
+                    (mcy - R) * scale,
+                    (R * 2f) * scale,
+                    (R * 2f) * scale
+                )
+                g.clip = clipCircle
+                
+                val startPt = videoPoints.first()
+                
+                fun localX(lon: Double, lat: Double): Double {
+                    val px = (lon - startPt.lon) * cosLat
+                    val py = lat - startPt.lat
+                    return if (L > 1e-7) (px * dy - py * dx) / L else px
+                }
+                
+                fun localY(lon: Double, lat: Double): Double {
+                    val px = (lon - startPt.lon) * cosLat
+                    val py = lat - startPt.lat
+                    return if (L > 1e-7) -(px * dx + py * dy) / L else -py
+                }
+                
+                fun screenX(lon: Double, lat: Double): Float {
+                    val lx = localX(lon, lat)
+                    return ((mcx + (lx - cxL) * dynamicScale) * scale).toFloat()
+                }
+                
+                fun screenY(lon: Double, lat: Double): Float {
+                    val ly = localY(lon, lat)
+                    return ((mcy + (ly - cyL) * dynamicScale) * scale).toFloat()
+                }
+                
+                val x0 = screenX(leftLon, topLat)
+                val y0 = screenY(leftLon, topLat)
+                val x1 = screenX(rightLon, topLat)
+                val y1 = screenY(rightLon, topLat)
+                val x2 = screenX(leftLon, bottomLat)
+                val y2 = screenY(leftLon, bottomLat)
+                
+                val wImg = mapImg.width.toDouble()
+                val hImg = mapImg.height.toDouble()
+                
+                val m00 = (x1 - x0) / wImg
+                val m10 = (y1 - y0) / wImg
+                val m01 = (x2 - x0) / hImg
+                val m11 = (y2 - y0) / hImg
+                val m02 = x0.toDouble()
+                val m12 = y0.toDouble()
+                
+                val transform = java.awt.geom.AffineTransform(m00, m10, m01, m11, m02, m12)
+                
+                g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
+                g.drawImage(mapImg, transform, null)
+                
+                g.clip = originalClip
+            }
+        }
+        
+        private fun calculateBestZoom(minLat: Double, maxLat: Double, minLon: Double, maxLon: Double): Int {
+            val maxDiff = maxOf(maxLat - minLat, maxLon - minLon)
+            if (maxDiff <= 0.0) return 16
+            
+            for (z in 16 downTo 12) {
+                val n = 2.0.pow(z.toDouble())
+                val tileSizeDeg = 360.0 / n
+                if (maxDiff < tileSizeDeg * 2.0) {
+                    return z
+                }
+            }
+            return 12
         }
     }
 
