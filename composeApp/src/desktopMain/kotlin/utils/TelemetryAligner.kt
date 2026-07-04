@@ -476,6 +476,7 @@ object TelemetryAligner {
             // Intelligently evaluate if we should trust the local window or trust the global peak.
             // If the global peak is significantly stronger than the local peak, we assume approxStartUtc was way off.
             val isGlobalStronger = bestIdxGlobal != -1 && (
+                (maxCorrLocal == Double.NEGATIVE_INFINITY && maxCorrGlobal >= 0.25) ||
                 (maxCorrLocal < 0.35 && maxCorrGlobal >= 0.50) ||
                 (maxCorrGlobal >= maxCorrLocal + 0.15 && maxCorrGlobal >= 0.45)
             )
