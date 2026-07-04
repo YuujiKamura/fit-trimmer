@@ -7,7 +7,7 @@ import kotlin.math.roundToInt
 
 class TimeAlignmentState(initialMillis: Int) {
     companion object {
-        const val MAX_OFFSET_MILLIS = 600000 // 10 minutes
+        const val MAX_OFFSET_MILLIS = 43200000 // 12 hours
         const val MAX_OFFSET_SECONDS = MAX_OFFSET_MILLIS / 1000f
     }
 
