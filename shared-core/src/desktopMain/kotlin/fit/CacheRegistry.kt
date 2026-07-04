@@ -131,6 +131,7 @@ object CacheRegistry {
         onProgress(0.3f, "Merging video segments (Direct Concat)...")
         val concatArgs = listOf(
             ffmpegPath, "-y",
+            "-nostdin",
             "-f", "concat",
             "-safe", "0",
             "-i", partsListFile.absolutePath,
