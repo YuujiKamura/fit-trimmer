@@ -443,31 +443,59 @@ object TelemetryAligner {
         var bestIdx = -1
         var maxCorr = Double.NEGATIVE_INFINITY
 
-        if (!approxStartTs.isNaN()) {
-            val window = windowSeconds
-            val minTs = approxStartTs - window
-            val maxTs = approxStartTs + window
-            for (i in corr.indices) {
-                val ts = fitGrid[i]
-                if (ts in minTs..maxTs) {
-                    if (corr[i] > maxCorr) {
-                        maxCorr = corr[i]
-                        bestIdx = i
-                    }
-                }
+        // 1. Calculate best alignment globally
+        var bestIdxGlobal = -1
+        var maxCorrGlobal = Double.NEGATIVE_INFINITY
+        for (i in corr.indices) {
+            if (corr[i] > maxCorrGlobal) {
+                maxCorrGlobal = corr[i]
+                bestIdxGlobal = i
             }
         }
 
-        // CRITICAL BUG FIX: Only fallback to global search when NO approxStartUtc is provided.
-        // If approxStartUtc is provided, we must strictly respect the window to avoid alignment jumps of -600s
-        if (bestIdx == -1 && approxStartTs.isNaN()) {
-            // global fallback
+        // 2. Determine search strategy
+        val useStrictWindowOnly = !approxStartTs.isNaN() && windowSeconds > 0.0 && windowSeconds < 999999.0
+
+        if (useStrictWindowOnly) {
+            val window = windowSeconds
+            val minTs = approxStartTs - window
+            val maxTs = approxStartTs + window
+            
+            var bestIdxLocal = -1
+            var maxCorrLocal = Double.NEGATIVE_INFINITY
             for (i in corr.indices) {
-                if (corr[i] > maxCorr) {
-                    maxCorr = corr[i]
-                    bestIdx = i
+                val ts = fitGrid[i]
+                if (ts in minTs..maxTs) {
+                    if (corr[i] > maxCorrLocal) {
+                        maxCorrLocal = corr[i]
+                        bestIdxLocal = i
+                    }
                 }
             }
+            
+            // Intelligently evaluate if we should trust the local window or trust the global peak.
+            // If the global peak is significantly stronger than the local peak, we assume approxStartUtc was way off.
+            val isGlobalStronger = bestIdxGlobal != -1 && (
+                (maxCorrLocal < 0.35 && maxCorrGlobal >= 0.50) ||
+                (maxCorrGlobal >= maxCorrLocal + 0.15 && maxCorrGlobal >= 0.45)
+            )
+            
+            if (isGlobalStronger && bestIdxGlobal != bestIdxLocal) {
+                bestIdx = bestIdxGlobal
+                maxCorr = maxCorrGlobal
+                println("DEBUG: Local search completed (maxCorrLocal=${maxCorrLocal} at ${bestIdxLocal}). " +
+                        "However, global peak is significantly stronger (maxCorrGlobal=${maxCorrGlobal} at ${bestIdxGlobal}). " +
+                        "Choosing global peak.")
+            } else {
+                bestIdx = bestIdxLocal
+                maxCorr = maxCorrLocal
+                println("DEBUG: Using local search result (maxCorrLocal=${maxCorrLocal} at ${bestIdxLocal}).")
+            }
+        } else {
+            // Global search explicitly requested or approxStartTs not available
+            bestIdx = bestIdxGlobal
+            maxCorr = maxCorrGlobal
+            println("DEBUG: Global search completed. Best correlation: ${maxCorr}")
         }
 
         if (bestIdx == -1) {
