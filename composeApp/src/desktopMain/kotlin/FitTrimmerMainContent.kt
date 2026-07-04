@@ -699,36 +699,150 @@ fun FitTrimmerMainContent(
                                         println("DEBUG: Skipped IMU sync confirmation dialog on startup restore")
                                     } else {
                                         isInitialLoadOfRestoredVideo = false
-                                        val confirm = javax.swing.JOptionPane.showConfirmDialog(
+                                        
+                                        // Set metadata time as the initial offset location first (0 offset)
+                                        timeOffsetState.update(0)
+                                        
+                                        fun formatUtcToJstString(utcStr: String): String {
+                                            return try {
+                                                val instant = java.time.Instant.parse(utcStr)
+                                                val jst = java.time.ZonedDateTime.ofInstant(instant, java.time.ZoneId.of("Asia/Tokyo"))
+                                                jst.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
+                                            } catch(e: Exception) {
+                                                utcStr
+                                            }
+                                        }
+                                        
+                                        val firstPoint = telemetryPoints.firstOrNull()
+                                        val fitStartJst = if (firstPoint != null) {
+                                            val unix = firstPoint.timestamp.toLong() + 631065600L
+                                            val jst = java.time.ZonedDateTime.ofInstant(java.time.Instant.ofEpochSecond(unix), java.time.ZoneId.of("Asia/Tokyo"))
+                                            jst.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
+                                        } else {
+                                            "不明"
+                                        }
+                                        
+                                        val originalInstant = try { java.time.Instant.parse(utc) } catch(e: Exception) { null }
+                                        val simpleDiffStr = if (firstPoint != null && originalInstant != null) {
+                                            try {
+                                                 val fitInstant = java.time.Instant.ofEpochSecond(firstPoint.timestamp.toLong() + 631065600L)
+                                                 val diffSec = Math.abs(fitInstant.epochSecond - originalInstant.epochSecond)
+                                                 val h = diffSec / 3600
+                                                 val m = (diffSec % 3600) / 60
+                                                 val s = diffSec % 60
+                                                 if (h > 0) "${h}時間${m}分${s}秒" else "${m}分${s}秒"
+                                            } catch (e: Exception) {
+                                                "-"
+                                            }
+                                        } else {
+                                            "-"
+                                        }
+                                        
+                                        val initialMessage = """
+                                            動画とGPSログ（FIT）のロードが完了しました。
+                                            初期同期位置として「動画メタデータの基準時刻」を適用しました。
+                                            
+                                            【時間情報の観測】
+                                            ・動画メタデータの基準時刻:  ${formatUtcToJstString(utc)} JST
+                                            ・FITデータの記録開始時刻:   $fitStartJst JST
+                                            ・見かけの開始時間乖離:     $simpleDiffStr
+                                            
+                                            【IMU同期（自動補正）の実行】
+                                            GPSデータの走行挙動と動画のIMU波形を自動で解析し、
+                                            正確な同期位置（アライメント）を検出しますか？
+                                        """.trimIndent()
+                                        
+                                        val options = arrayOf("自動同期を実行する", "実行しない（手動で調整）")
+                                        val choice = javax.swing.JOptionPane.showOptionDialog(
                                             composeWindow ?: viewModel.composeWindow,
-                                            "動画が正常にロードされました。IMU同期（時刻補正）を実行しますか？",
-                                            "IMU時刻補正の実行確認",
+                                            initialMessage,
+                                            "IMU時刻補正アライメントの開始確認",
                                             javax.swing.JOptionPane.YES_NO_OPTION,
-                                            javax.swing.JOptionPane.QUESTION_MESSAGE
+                                            javax.swing.JOptionPane.QUESTION_MESSAGE,
+                                            null,
+                                            options,
+                                            options[0]
                                         )
-                                        if (confirm == javax.swing.JOptionPane.YES_OPTION) {
+                                        
+                                        if (choice == javax.swing.JOptionPane.YES_OPTION) {
                                             scope.launch {
                                                 viewModel.isAligningTelemetry = true
+                                                statusText = "IMU同期解析を実行中..."
                                                 try {
-                                                    val originalInstant = try { java.time.Instant.parse(utc) } catch(e: Exception) { null }
-                                                    val alignedUtc = TelemetryAligner.alignVideoWithTelemetry(videoPath, telemetryPoints, utc)
-                                                    if (alignedUtc != null) {
-                                                        val alignedInstant = try { java.time.Instant.parse(alignedUtc) } catch(e: Exception) { null }
-                                                        if (originalInstant != null && alignedInstant != null) {
-                                                            val diffMs = alignedInstant.toEpochMilli() - originalInstant.toEpochMilli()
-                                                            val diffSec = diffMs / 1000.0
-                                                            statusText = "IMU Sync: Adjusted offset by %.3f seconds".format(java.util.Locale.US, diffSec)
-                                                            timeOffsetState.update(diffMs.toInt())
-                                                        } else {
-                                                            statusText = "IMU Sync Successful"
-                                                        }
-                                                    } else {
-                                                        statusText = "IMU Sync failed (no correlation found)"
+                                                    val alignedUtc = withContext(Dispatchers.Default) {
+                                                        TelemetryAligner.alignVideoWithTelemetry(videoPath, telemetryPoints, utc)
                                                     }
+                                                    
+                                                    withContext(Dispatchers.Main) {
+                                                        if (alignedUtc != null) {
+                                                            val alignedInstant = try { java.time.Instant.parse(alignedUtc) } catch(e: Exception) { null }
+                                                            if (originalInstant != null && alignedInstant != null) {
+                                                                val diffMs = alignedInstant.toEpochMilli() - originalInstant.toEpochMilli()
+                                                                val diffSec = diffMs / 1000.0
+                                                                val absDiffSec = Math.abs(diffSec)
+                                                                val h = (absDiffSec / 3600).toInt()
+                                                                val m = ((absDiffSec % 3600) / 60).toInt()
+                                                                val s = (absDiffSec % 60).toInt()
+                                                                val ms = ((absDiffSec - absDiffSec.toInt()) * 1000).toInt()
+                                                                
+                                                                val offsetDir = if (diffSec >= 0) "進める" else "遅らせる"
+                                                                val offsetFormatted = if (h > 0) {
+                                                                    "${h}時間${m}分${s}.${ms}秒 ($offsetDir)"
+                                                                } else {
+                                                                    "${m}分${s}.${ms}秒 ($offsetDir)"
+                                                                }
+                                                                
+                                                                val alignedJstStr = formatUtcToJstString(alignedUtc)
+                                                                
+                                                                val resultMessage = """
+                                                                    IMU同期解析が完了しました。
+                                                                    
+                                                                    ・検出された最適な補正値: $offsetFormatted
+                                                                    ・補正後の動画開始時刻:     $alignedJstStr JST
+                                                                    
+                                                                    この自動補正アライメントをタイムラインに適用しますか？
+                                                                """.trimIndent()
+                                                                
+                                                                val applyOptions = arrayOf("適用する", "適用しない（初期位置のまま）")
+                                                                val applyChoice = javax.swing.JOptionPane.showOptionDialog(
+                                                                    composeWindow ?: viewModel.composeWindow,
+                                                                    resultMessage,
+                                                                    "IMU自動補正結果の適用確認",
+                                                                    javax.swing.JOptionPane.YES_NO_OPTION,
+                                                                    javax.swing.JOptionPane.INFORMATION_MESSAGE,
+                                                                    null,
+                                                                    applyOptions,
+                                                                    applyOptions[0]
+                                                                )
+                                                                
+                                                                if (applyChoice == javax.swing.JOptionPane.YES_OPTION) {
+                                                                    timeOffsetState.update(diffMs.toInt())
+                                                                    statusText = "IMU Sync: Adjusted offset by %.3f seconds".format(java.util.Locale.US, diffSec)
+                                                                } else {
+                                                                    statusText = "IMU Sync: User bypassed autodetected alignment"
+                                                                }
+                                                            } else {
+                                                                statusText = "IMU Sync skipped due to parse error"
+                                                            }
+                                                        } else {
+                                                            javax.swing.JOptionPane.showMessageDialog(
+                                                                composeWindow ?: viewModel.composeWindow,
+                                                                "同期位置の自動検出に失敗しました（波形の明確な一致箇所が見つかりません）。\n初期位置（メタデータ時刻）のまま「編集」タブで手動調整してください。",
+                                                                "IMU自動同期（失敗）",
+                                                                javax.swing.JOptionPane.WARNING_MESSAGE
+                                                            )
+                                                            statusText = "IMU Sync failed"
+                                                        }
+                                                    }
+                                                } catch (e: Exception) {
+                                                    e.printStackTrace()
+                                                    statusText = "IMU Sync error: ${e.message}"
                                                 } finally {
                                                     viewModel.isAligningTelemetry = false
                                                 }
                                             }
+                                        } else {
+                                            statusText = "IMU Sync: User skipped automatic alignment"
                                         }
                                     }
                                 }
