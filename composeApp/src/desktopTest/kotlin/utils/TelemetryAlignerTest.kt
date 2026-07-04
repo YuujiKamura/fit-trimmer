@@ -448,5 +448,49 @@ class TelemetryAlignerTest {
         println("DEBUG TEST: alignedUtc=$alignedUtc, approxStartUtc=$approxStartUtc, diff=$diffSeconds seconds")
         assertTrue(diffSeconds < 90, "Alignment jumped by $diffSeconds seconds (exceeded 90s search window), expected to be close to approxStartUtc")
     }
+
+    @Test
+    fun testGlobalAlignmentWithLargeApproxOffset() {
+        val telemetryStream = javaClass.getResourceAsStream("/fit_telemetry.json")
+        assertNotNull(telemetryStream)
+        val telemetryJsonText = telemetryStream.bufferedReader().use { it.readText() }
+        
+        val vibStream = javaClass.getResourceAsStream("/video_vibration_1hz.json")
+        assertNotNull(vibStream)
+        val vibJsonText = vibStream.bufferedReader().use { it.readText() }
+
+        val telemetryArray = kotlinx.serialization.json.Json.parseToJsonElement(telemetryJsonText).jsonArray
+        val telemetryPoints = List(telemetryArray.size) { i ->
+            val obj = telemetryArray[i].jsonObject
+            fit.FitParser.TelemetryPoint(
+                timestamp = obj["ts"]!!.jsonPrimitive.double,
+                speed = obj["speedKmh"]!!.jsonPrimitive.double,
+                power = 0.0, cadence = 0.0, heartRate = 0.0, elevation = 0.0, grade = 0.0
+            )
+        }
+
+        val originalVib = kotlinx.serialization.json.Json.parseToJsonElement(vibJsonText).jsonArray.map { it.jsonPrimitive.double }.toDoubleArray()
+
+        val approxStartUtc = "2026-06-25T08:09:57.335Z"
+        val wrongApproxStartUtc = "2026-06-25T08:14:57.335Z"
+        val firstFileImuOffset = 2.664490
+
+        val alignedUtc = TelemetryAligner.alignVibWithTelemetryCore(
+            vVib = originalVib,
+            telemetryPoints = telemetryPoints,
+            approxStartUtc = wrongApproxStartUtc,
+            method = "binary",
+            windowSeconds = -1.0,
+            firstFileImuOffset = firstFileImuOffset
+        )
+
+        assertNotNull(alignedUtc, "Alignment should not fail")
+        val alignedInstant = java.time.Instant.parse(alignedUtc)
+        val expectedInstant = java.time.Instant.parse("2026-06-25T08:19:55.335Z")
+        val diffSeconds = Math.abs(alignedInstant.epochSecond - expectedInstant.epochSecond)
+
+        println("DEBUG TEST GLOBAL: alignedUtc=$alignedUtc, expectedUtc=2026-06-25T08:19:55.335Z, diff=$diffSeconds seconds")
+        assertTrue(diffSeconds < 10, "Global alignment failed to find correct match, diff was $diffSeconds seconds")
+    }
 }
 
