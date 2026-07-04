@@ -892,7 +892,7 @@ class HudRenderer(val config: HudConfig) {
         if (validRoutePoints.size < 2) return
 
         // 1. Layout parameters (Scaled & Enlarged for high fidelity)
-        val R = 150f * sf // 円の半径 (R) - 特大サイズ
+        val R = 110f * sf // 円の半径 (R) - やや大きめサイズ
         val marginX = 45f * sf
         val marginY = 40f * sf
         val mcx = canvas.width - marginX - R // 円の中心 X

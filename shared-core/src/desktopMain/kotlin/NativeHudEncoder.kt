@@ -578,7 +578,7 @@ class NativeHudEncoder(
                                 try {
                                     val request = java.net.http.HttpRequest.newBuilder()
                                         .uri(java.net.URI.create(urlStr))
-                                        .header("User-Agent", "FitTrimmerApp/1.0")
+                                        .header("User-Agent", "FitTrimmerApp/1.0 (contact: yuujiKamura on GitHub)")
                                         .timeout(java.time.Duration.ofSeconds(3))
                                         .build()
                                     val response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofByteArray())
@@ -600,7 +600,12 @@ class NativeHudEncoder(
                         }
                     }
                     g2.dispose()
-                    mapImg = merged
+                    // Convert merged to grayscale for high contrast
+                    val gray = BufferedImage(Wt * 256, Ht * 256, BufferedImage.TYPE_BYTE_GRAY)
+                    val gGray = gray.createGraphics()
+                    gGray.drawImage(merged, 0, 0, null)
+                    gGray.dispose()
+                    mapImg = gray
                     
                     leftLon = tX1.toDouble() / n * 360.0 - 180.0
                     val nLat = kotlin.math.PI - 2.0 * kotlin.math.PI * tY1.toDouble() / n

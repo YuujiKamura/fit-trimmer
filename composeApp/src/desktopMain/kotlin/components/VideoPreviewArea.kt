@@ -52,6 +52,7 @@ private var cachedMapBottomLat = 0.0
 
 private val downloadingTiles = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 private val downloadExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
+private val failedTiles = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
 val BlurredRectsKey = SemanticsPropertyKey<List<PlateBox>>("BlurredRects")
 var SemanticsPropertyReceiver.blurredRects by BlurredRectsKey
@@ -215,30 +216,37 @@ class ComposeHudCanvas(
                         val tileKey = "${z}_${tx}_${ty}"
                         val tileFile = java.io.File(cacheDir, "${tileKey}.png")
                         if (!tileFile.exists()) {
-                            allTilesLoaded = false
-                            // Trigger background download
-                            if (downloadingTiles.add(tileKey)) {
-                                downloadExecutor.submit {
-                                    val urlStr = "https://tile.openstreetmap.org/$z/$tx/$ty.png"
-                                    try {
-                                        val client = java.net.http.HttpClient.newBuilder()
-                                            .connectTimeout(java.time.Duration.ofSeconds(5))
-                                            .build()
-                                        val request = java.net.http.HttpRequest.newBuilder()
-                                            .uri(java.net.URI.create(urlStr))
-                                            .header("User-Agent", "FitTrimmerApp/1.0")
-                                            .timeout(java.time.Duration.ofSeconds(5))
-                                            .build()
-                                        val response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofByteArray())
-                                        if (response.statusCode() == 200) {
-                                            java.nio.file.Files.write(tileFile.toPath(), response.body())
-                                            // Reset mapKey to trigger rebuild on next frame
-                                            cachedMapKey = null
+                            val lastFail = failedTiles[tileKey]
+                            val now = System.currentTimeMillis()
+                            if (lastFail == null || now - lastFail > 30000) { // 30-second cooldown
+                                allTilesLoaded = false
+                                // Trigger background download
+                                if (downloadingTiles.add(tileKey)) {
+                                    downloadExecutor.submit {
+                                        val urlStr = "https://tile.openstreetmap.org/$z/$tx/$ty.png"
+                                        try {
+                                            val client = java.net.http.HttpClient.newBuilder()
+                                                .connectTimeout(java.time.Duration.ofSeconds(5))
+                                                .build()
+                                            val request = java.net.http.HttpRequest.newBuilder()
+                                                .uri(java.net.URI.create(urlStr))
+                                                .header("User-Agent", "FitTrimmerApp/1.0 (contact: yuujiKamura on GitHub)")
+                                                .timeout(java.time.Duration.ofSeconds(5))
+                                                .build()
+                                            val response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofByteArray())
+                                            if (response.statusCode() == 200) {
+                                                java.nio.file.Files.write(tileFile.toPath(), response.body())
+                                                failedTiles.remove(tileKey)
+                                                // Reset mapKey to trigger rebuild on next frame
+                                                cachedMapKey = null
+                                            } else {
+                                                failedTiles[tileKey] = System.currentTimeMillis()
+                                            }
+                                        } catch (e: Exception) {
+                                            failedTiles[tileKey] = System.currentTimeMillis()
+                                        } finally {
+                                            downloadingTiles.remove(tileKey)
                                         }
-                                    } catch (e: Exception) {
-                                        // Ignore
-                                    } finally {
-                                        downloadingTiles.remove(tileKey)
                                     }
                                 }
                             }
@@ -278,7 +286,13 @@ class ComposeHudCanvas(
                     val sLat = kotlin.math.PI - 2.0 * kotlin.math.PI * (tY2 + 1).toDouble() / n
                     bottomLat = 180.0 / kotlin.math.PI * kotlin.math.atan(0.5 * (kotlin.math.exp(sLat) - kotlin.math.exp(-sLat)))
                     
-                    mapImg = merged.toComposeImageBitmap()
+                    // Convert merged to grayscale for high contrast
+                    val gray = BufferedImage(Wt * 256, Ht * 256, BufferedImage.TYPE_BYTE_GRAY)
+                    val gGray = gray.createGraphics()
+                    gGray.drawImage(merged, 0, 0, null)
+                    gGray.dispose()
+                    
+                    mapImg = gray.toComposeImageBitmap()
                     cachedMapImage = mapImg
                     cachedMapLeftLon = leftLon
                     cachedMapTopLat = topLat
