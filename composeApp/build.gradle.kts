@@ -12,12 +12,15 @@ val generateVersionKt = tasks.register("generateVersionKt") {
     val outputDir = layout.buildDirectory.dir("generated/version/fit")
     outputs.dir(outputDir)
     
+    val appVersionProp = objects.property<String>().value(provider { gitVersion })
+    inputs.property("appVersion", appVersionProp)
+    
     doLast {
         val versionFile = outputDir.get().file("Version.kt").asFile
         versionFile.parentFile.mkdirs()
         versionFile.writeText("""
             package fit
-            const val APP_VERSION = "v$gitVersion"
+            const val APP_VERSION = "v${appVersionProp.get()}"
         """.trimIndent())
     }
 }
