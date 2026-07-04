@@ -24,6 +24,7 @@ class CacheRegistryTest {
         val ffmpegPath = try { findFfmpegPath() } catch (e: Exception) { "ffmpeg" }
         val pb = ProcessBuilder(
             ffmpegPath, "-y",
+            "-nostdin",
             "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=10:duration=0.2",
             "-c:v", "libopenh264",
             "-f", "mpegts",
