@@ -489,6 +489,8 @@ class TelemetryAlignerTest {
         val expectedInstant = java.time.Instant.parse("2026-06-25T08:19:55.335Z")
         val diffSeconds = Math.abs(alignedInstant.epochSecond - expectedInstant.epochSecond)
 
+        println("DEBUG TEST GLOBAL: alignedUtc=$alignedUtc, expectedUtc=2026-06-25T08:19:55.335Z, diff=$diffSeconds seconds")
+        assertTrue(diffSeconds < 10, "Global alignment failed to find correct match, diff was $diffSeconds seconds")
     }
 }
 
