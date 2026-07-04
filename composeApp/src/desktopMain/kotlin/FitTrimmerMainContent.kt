@@ -700,7 +700,7 @@ fun FitTrimmerMainContent(
                                     } else {
                                         isInitialLoadOfRestoredVideo = false
                                         
-                                        // Set metadata time as the initial offset location first (0 offset)
+                                        // Always set 0 offset (metadata time directly) initially
                                         timeOffsetState.update(0)
                                         
                                         fun formatUtcToJstString(utcStr: String): String {
@@ -738,111 +738,179 @@ fun FitTrimmerMainContent(
                                             "-"
                                         }
                                         
-                                        val initialMessage = """
-                                            動画とGPSログ（FIT）のロードが完了しました。
-                                            初期同期位置として「動画メタデータの基準時刻」を適用しました。
-                                            
-                                            【時間情報の観測】
-                                            ・動画メタデータの基準時刻:  ${formatUtcToJstString(utc)} JST
-                                            ・FITデータの記録開始時刻:   $fitStartJst JST
-                                            ・見かけの開始時間乖離:     $simpleDiffStr
-                                            
-                                            【IMU同期（自動補正）の実行】
-                                            GPSデータの走行挙動と動画のIMU波形を自動で解析し、
-                                            正確な同期位置（アライメント）を検出しますか？
-                                        """.trimIndent()
+                                        // Build custom JPanel for integrated UI controls
+                                        val panel = javax.swing.JPanel()
+                                        panel.layout = javax.swing.BoxLayout(panel, javax.swing.BoxLayout.Y_AXIS)
                                         
-                                        val options = arrayOf("自動同期を実行する", "実行しない（手動で調整）")
-                                        val choice = javax.swing.JOptionPane.showOptionDialog(
-                                            composeWindow ?: viewModel.composeWindow,
-                                            initialMessage,
-                                            "IMU時刻補正アライメントの開始確認",
-                                            javax.swing.JOptionPane.YES_NO_OPTION,
-                                            javax.swing.JOptionPane.QUESTION_MESSAGE,
-                                            null,
-                                            options,
-                                            options[0]
-                                        )
+                                        val descLabel = javax.swing.JLabel("動画とGPSログ（FIT）のロードが完了しました。初期同期位置（オフセット0）を適用しています。")
+                                        descLabel.alignmentX = java.awt.Component.LEFT_ALIGNMENT
+                                        panel.add(descLabel)
+                                        panel.add(javax.swing.Box.createVerticalStrut(10))
                                         
-                                        if (choice == javax.swing.JOptionPane.YES_OPTION) {
+                                        // 1. Observed time details
+                                        val infoPanel = javax.swing.JPanel(java.awt.GridLayout(3, 2, 5, 5))
+                                        infoPanel.border = javax.swing.BorderFactory.createTitledBorder("【時間情報の観測】")
+                                        infoPanel.alignmentX = java.awt.Component.LEFT_ALIGNMENT
+                                        
+                                        infoPanel.add(javax.swing.JLabel("動画メタデータ基準時刻 (JST):"))
+                                        infoPanel.add(javax.swing.JLabel(formatUtcToJstString(utc)))
+                                        infoPanel.add(javax.swing.JLabel("FITデータ記録開始時刻 (JST):"))
+                                        infoPanel.add(javax.swing.JLabel(fitStartJst))
+                                        infoPanel.add(javax.swing.JLabel("見かけの開始時間乖離:"))
+                                        infoPanel.add(javax.swing.JLabel(simpleDiffStr))
+                                        
+                                        panel.add(infoPanel)
+                                        panel.add(javax.swing.Box.createVerticalStrut(10))
+                                        
+                                        // 2. Control adjustment inputs
+                                        val controlPanel = javax.swing.JPanel()
+                                        controlPanel.layout = javax.swing.BoxLayout(controlPanel, javax.swing.BoxLayout.Y_AXIS)
+                                        controlPanel.border = javax.swing.BorderFactory.createTitledBorder("【同期・アライメント補正の一元管理】")
+                                        controlPanel.alignmentX = java.awt.Component.LEFT_ALIGNMENT
+                                        
+                                        val offsetField = javax.swing.JTextField("0.000", 12)
+                                        val targetJstField = javax.swing.JTextField(formatUtcToJstString(utc), 19)
+                                        
+                                        // Auto alignment execution controls
+                                        val runAutoButton = javax.swing.JButton("IMU自動同期を実行する")
+                                        val autoStatusLabel = javax.swing.JLabel("自動解析は未実行です。")
+                                        
+                                        runAutoButton.addActionListener {
+                                            runAutoButton.isEnabled = false
+                                            autoStatusLabel.text = "IMU同期解析を実行中..."
                                             scope.launch {
-                                                viewModel.isAligningTelemetry = true
-                                                statusText = "IMU同期解析を実行中..."
                                                 try {
                                                     val alignedUtc = withContext(Dispatchers.Default) {
                                                         TelemetryAligner.alignVideoWithTelemetry(videoPath, telemetryPoints, utc)
                                                     }
-                                                    
                                                     withContext(Dispatchers.Main) {
                                                         if (alignedUtc != null) {
                                                             val alignedInstant = try { java.time.Instant.parse(alignedUtc) } catch(e: Exception) { null }
                                                             if (originalInstant != null && alignedInstant != null) {
                                                                 val diffMs = alignedInstant.toEpochMilli() - originalInstant.toEpochMilli()
                                                                 val diffSec = diffMs / 1000.0
-                                                                val absDiffSec = Math.abs(diffSec)
-                                                                val h = (absDiffSec / 3600).toInt()
-                                                                val m = ((absDiffSec % 3600) / 60).toInt()
-                                                                val s = (absDiffSec % 60).toInt()
-                                                                val ms = ((absDiffSec - absDiffSec.toInt()) * 1000).toInt()
+                                                                offsetField.text = "%.3f".format(java.util.Locale.US, diffSec)
                                                                 
-                                                                val offsetDir = if (diffSec >= 0) "進める" else "遅らせる"
-                                                                val offsetFormatted = if (h > 0) {
-                                                                    "${h}時間${m}分${s}.${ms}秒 ($offsetDir)"
-                                                                } else {
-                                                                    "${m}分${s}.${ms}秒 ($offsetDir)"
-                                                                }
+                                                                val jst = java.time.ZonedDateTime.ofInstant(alignedInstant, java.time.ZoneId.of("Asia/Tokyo"))
+                                                                targetJstField.text = jst.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
                                                                 
-                                                                val alignedJstStr = formatUtcToJstString(alignedUtc)
-                                                                
-                                                                val resultMessage = """
-                                                                    IMU同期解析が完了しました。
-                                                                    
-                                                                    ・検出された最適な補正値: $offsetFormatted
-                                                                    ・補正後の動画開始時刻:     $alignedJstStr JST
-                                                                    
-                                                                    この自動補正アライメントをタイムラインに適用しますか？
-                                                                """.trimIndent()
-                                                                
-                                                                val applyOptions = arrayOf("適用する", "適用しない（初期位置のまま）")
-                                                                val applyChoice = javax.swing.JOptionPane.showOptionDialog(
-                                                                    composeWindow ?: viewModel.composeWindow,
-                                                                    resultMessage,
-                                                                    "IMU自動補正結果の適用確認",
-                                                                    javax.swing.JOptionPane.YES_NO_OPTION,
-                                                                    javax.swing.JOptionPane.INFORMATION_MESSAGE,
-                                                                    null,
-                                                                    applyOptions,
-                                                                    applyOptions[0]
-                                                                )
-                                                                
-                                                                if (applyChoice == javax.swing.JOptionPane.YES_OPTION) {
-                                                                    timeOffsetState.update(diffMs.toInt())
-                                                                    statusText = "IMU Sync: Adjusted offset by %.3f seconds".format(java.util.Locale.US, diffSec)
-                                                                } else {
-                                                                    statusText = "IMU Sync: User bypassed autodetected alignment"
-                                                                }
+                                                                autoStatusLabel.text = "自動同期完了。補正値 %.3f 秒をセットしました。".format(java.util.Locale.US, diffSec)
                                                             } else {
-                                                                statusText = "IMU Sync skipped due to parse error"
+                                                                autoStatusLabel.text = "解析結果のパースに失敗しました。"
                                                             }
                                                         } else {
-                                                            javax.swing.JOptionPane.showMessageDialog(
-                                                                composeWindow ?: viewModel.composeWindow,
-                                                                "同期位置の自動検出に失敗しました（波形の明確な一致箇所が見つかりません）。\n初期位置（メタデータ時刻）のまま「編集」タブで手動調整してください。",
-                                                                "IMU自動同期（失敗）",
-                                                                javax.swing.JOptionPane.WARNING_MESSAGE
-                                                            )
-                                                            statusText = "IMU Sync failed"
+                                                            autoStatusLabel.text = "自動同期に失敗しました（一致箇所なし）。"
                                                         }
+                                                        runAutoButton.isEnabled = true
                                                     }
                                                 } catch (e: Exception) {
-                                                    e.printStackTrace()
-                                                    statusText = "IMU Sync error: ${e.message}"
-                                                } finally {
-                                                    viewModel.isAligningTelemetry = false
+                                                    withContext(Dispatchers.Main) {
+                                                        autoStatusLabel.text = "エラー: ${e.message}"
+                                                        runAutoButton.isEnabled = true
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        
+                                        val autoRow = javax.swing.JPanel(java.awt.FlowLayout(java.awt.FlowLayout.LEFT))
+                                        autoRow.add(runAutoButton)
+                                        autoRow.add(autoStatusLabel)
+                                        controlPanel.add(autoRow)
+                                        controlPanel.add(javax.swing.Box.createVerticalStrut(10))
+                                        
+                                        // Manual offset input
+                                        val offsetRow = javax.swing.JPanel(java.awt.FlowLayout(java.awt.FlowLayout.LEFT))
+                                        offsetRow.add(javax.swing.JLabel("補正オフセット秒数 (秒):"))
+                                        offsetRow.add(offsetField)
+                                        offsetRow.add(javax.swing.JLabel(" (進める場合はプラス、遅らせる場合はマイナス)"))
+                                        controlPanel.add(offsetRow)
+                                        
+                                        // Manual JST Target Time input
+                                        val targetJstRow = javax.swing.JPanel(java.awt.FlowLayout(java.awt.FlowLayout.LEFT))
+                                        targetJstRow.add(javax.swing.JLabel("同期後の動画開始時刻 (JST):"))
+                                        targetJstRow.add(targetJstField)
+                                        targetJstRow.add(javax.swing.JLabel(" (フォーマット: YYYY-MM-DD HH:MM:SS)"))
+                                        controlPanel.add(targetJstRow)
+                                        
+                                        // Bidirectional linking: Offset -> JST
+                                        offsetField.document.addDocumentListener(object : javax.swing.event.DocumentListener {
+                                            override fun insertUpdate(e: javax.swing.event.DocumentEvent) { update() }
+                                            override fun removeUpdate(e: javax.swing.event.DocumentEvent) { update() }
+                                            override fun changedUpdate(e: javax.swing.event.DocumentEvent) { update() }
+                                            private fun update() {
+                                                javax.swing.SwingUtilities.invokeLater {
+                                                    if (offsetField.hasFocus()) {
+                                                        try {
+                                                            val sec = offsetField.text.toDouble()
+                                                            if (originalInstant != null) {
+                                                                val targetInstant = originalInstant.plusMillis((sec * 1000).toLong())
+                                                                val jst = java.time.ZonedDateTime.ofInstant(targetInstant, java.time.ZoneId.of("Asia/Tokyo"))
+                                                                targetJstField.text = jst.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
+                                                            }
+                                                        } catch (ex: Exception) {}
+                                                    }
+                                                }
+                                            }
+                                        })
+                                        
+                                        // Bidirectional linking: JST -> Offset
+                                        targetJstField.document.addDocumentListener(object : javax.swing.event.DocumentListener {
+                                            override fun insertUpdate(e: javax.swing.event.DocumentEvent) { update() }
+                                            override fun removeUpdate(e: javax.swing.event.DocumentEvent) { update() }
+                                            override fun changedUpdate(e: javax.swing.event.DocumentEvent) { update() }
+                                            private fun update() {
+                                                javax.swing.SwingUtilities.invokeLater {
+                                                    if (targetJstField.hasFocus()) {
+                                                        try {
+                                                            val format = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+                                                            val ldt = java.time.LocalDateTime.parse(targetJstField.text.trim(), format)
+                                                            val zdt = ldt.atZone(java.time.ZoneId.of("Asia/Tokyo"))
+                                                            val targetInstant = zdt.toInstant()
+                                                            if (originalInstant != null) {
+                                                                val diffSec = (targetInstant.toEpochMilli() - originalInstant.toEpochMilli()) / 1000.0
+                                                                offsetField.text = "%.3f".format(java.util.Locale.US, diffSec)
+                                                            }
+                                                        } catch (ex: Exception) {}
+                                                    }
+                                                }
+                                            }
+                                        })
+                                        
+                                        panel.add(controlPanel)
+                                        
+                                        val options = arrayOf("この設定で同期を適用する", "適用しない（初期位置のまま）")
+                                        val choice = javax.swing.JOptionPane.showOptionDialog(
+                                            composeWindow ?: viewModel.composeWindow,
+                                            panel,
+                                            "IMU時刻補正同期の一元管理",
+                                            javax.swing.JOptionPane.YES_NO_OPTION,
+                                            javax.swing.JOptionPane.PLAIN_MESSAGE,
+                                            null,
+                                            options,
+                                            options[0]
+                                        )
+                                        
+                                        if (choice == javax.swing.JOptionPane.YES_OPTION) {
+                                            try {
+                                                val finalOffsetSec = offsetField.text.toDouble()
+                                                val finalOffsetMs = (finalOffsetSec * 1000).toInt()
+                                                timeOffsetState.update(finalOffsetMs)
+                                                statusText = "IMU Sync: Applied offset %.3f seconds".format(java.util.Locale.US, finalOffsetSec)
+                                            } catch (e: Exception) {
+                                                try {
+                                                    val format = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+                                                    val ldt = java.time.LocalDateTime.parse(targetJstField.text.trim(), format)
+                                                    val zdt = ldt.atZone(java.time.ZoneId.of("Asia/Tokyo"))
+                                                    val targetInstant = zdt.toInstant()
+                                                    val diffMs = targetInstant.toEpochMilli() - originalInstant!!.toEpochMilli()
+                                                    timeOffsetState.update(diffMs.toInt())
+                                                    statusText = "IMU Sync: Applied manual JST time (offset %.3f seconds)".format(java.util.Locale.US, diffMs / 1000.0)
+                                                } catch (ex: Exception) {
+                                                    statusText = "IMU Sync: Manual parse error"
                                                 }
                                             }
                                         } else {
-                                            statusText = "IMU Sync: User skipped automatic alignment"
+                                            statusText = "IMU Sync bypassed (metadata initial time kept)"
                                         }
                                     }
                                 }
