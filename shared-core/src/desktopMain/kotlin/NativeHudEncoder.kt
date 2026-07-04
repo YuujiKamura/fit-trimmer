@@ -514,10 +514,14 @@ class NativeHudEncoder(
             cyL: Double,
             dynamicScale: Double
         ) {
-            val minLat = videoPoints.minOf { it.lat }
-            val maxLat = videoPoints.maxOf { it.lat }
-            val minLon = videoPoints.minOf { it.lon }
-            val maxLon = videoPoints.maxOf { it.lon }
+            val meanLat = (videoPoints.minOf { it.lat } + videoPoints.maxOf { it.lat }) / 2.0
+            val meanLon = (videoPoints.minOf { it.lon } + videoPoints.maxOf { it.lon }) / 2.0
+            val maxR_local = (R / dynamicScale) * 1.25
+            
+            val minLat = meanLat - maxR_local
+            val maxLat = meanLat + maxR_local
+            val minLon = meanLon - maxR_local / cosLat
+            val maxLon = meanLon + maxR_local / cosLat
             
             val mapKey = "${minLat}_${maxLat}_${minLon}_${maxLon}"
             
