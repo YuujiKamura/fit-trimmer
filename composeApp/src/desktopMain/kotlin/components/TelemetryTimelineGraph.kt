@@ -38,12 +38,6 @@ data class SampledPoint(
     val isValid: Boolean
 )
 
-enum class DragHandle {
-    TRIM_START,
-    TRIM_END,
-    PLAYHEAD
-}
-
 data class GraphLimits(
     val maxPower: Double,
     val maxSpeed: Double,
