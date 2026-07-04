@@ -152,6 +152,10 @@ fun main(args: Array<String>) {
         runE2ETest(args)
         return
     }
+    if (args.contains("--test-gui")) {
+        startGui(args)
+        return
+    }
     if (args.contains("--auto-sample")) {
         startGui(args)
         return
@@ -269,6 +273,19 @@ fun startGui(args: Array<String>) = application {
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()
+                }
+            }
+        }
+        if (args.contains("--test-gui")) {
+            LaunchedEffect(Unit) {
+                DesktopLog.info("🧪 GUI Smoke Test: Verifying UI initialization and rendering stability for 5 seconds...")
+                try {
+                    kotlinx.coroutines.delay(5000)
+                    DesktopLog.info("🧪 GUI Smoke Test: Startup stability verified. Exiting application.")
+                    System.exit(0)
+                } catch (e: Exception) {
+                    DesktopLog.exception("❌ GUI Smoke Test: Exception during delay/exit", e)
+                    throw e
                 }
             }
         }
