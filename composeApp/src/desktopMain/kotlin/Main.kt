@@ -28,12 +28,16 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.MainScope
 import kotlin.coroutines.resume
 import java.io.File
 import java.awt.FileDialog
@@ -442,10 +446,457 @@ suspend fun loadTelemetryPointsForRoadDetection(
     }
 }
 
-fun updateOverallJobProgress(job: BatchJob, activePhases: List<BatchJobPhase>) {
-    if (activePhases.isEmpty()) return
-    val totalProgress = activePhases.sumOf { it.progress.toDouble() }
-    job.progress = (totalProgress / activePhases.size).toFloat()
+object BatchJobRunner {
+    private var lastProgressUpdateTime = 0L
+    private var lastPreviewUpdateTime = 0L
+
+    fun updateOverallJobProgress(job: BatchJob, activePhases: List<BatchJobPhase>) {
+        if (activePhases.isEmpty()) return
+        val totalProgress = activePhases.sumOf { it.progress.toDouble() }
+        job.progress = (totalProgress / activePhases.size).toFloat()
+    }
+
+    suspend fun runBatchJobs(
+        viewModel: AppViewModel,
+        outputDir: String,
+        moveOutputToSource: Boolean,
+        onProgressUpdate: () -> Unit
+    ) {
+        if (viewModel.isBatchRunning) return
+        val mainScope = kotlinx.coroutines.CoroutineScope(Dispatchers.Main.immediate)
+        viewModel.isBatchRunning = true
+        viewModel.batchStatusText = "バッチ処理を開始します..."
+        viewModel.isCanceled = false
+        lastProgressUpdateTime = 0L
+        lastPreviewUpdateTime = 0L
+        try {
+            val jobs = viewModel.batchQueue.filter { it.status == BatchJobStatus.WAITING }
+            if (jobs.isEmpty()) {
+                viewModel.batchStatusText = "処理待ちのジョブがありません。"
+                return
+            }
+            for ((jobIdx, job) in jobs.withIndex()) {
+                if (viewModel.isCanceled) break
+                job.status = BatchJobStatus.RUNNING
+                job.progress = 0f
+                viewModel.saveBatchQueue()
+                onProgressUpdate()
+                
+                var jobFailed = false
+                var jobErrorMessage: String? = null
+                
+                // Reset phases to WAITING if they were failed or running
+                job.phases.forEach {
+                    if (it.status == BatchJobPhaseStatus.FAILED || it.status == BatchJobPhaseStatus.RUNNING) {
+                        it.status = BatchJobPhaseStatus.WAITING
+                        it.progress = 0f
+                    }
+                }
+                
+                val activePhases = job.phases.filter { it.enabled }
+                for ((phaseIdx, phase) in activePhases.withIndex()) {
+                    if (viewModel.isCanceled) break
+                    
+                    // If phase is already completed, skip it
+                    if (phase.status == BatchJobPhaseStatus.COMPLETED) {
+                        continue
+                    }
+                    
+                    phase.status = BatchJobPhaseStatus.RUNNING
+                    phase.progress = 0f
+                    viewModel.saveBatchQueue()
+                    onProgressUpdate()
+                    
+                    try {
+                        executePhase(
+                            viewModel, job, phase, activePhases, 
+                            jobIdx, jobs.size, outputDir, moveOutputToSource, 
+                            mainScope, onProgressUpdate
+                        )
+                    } catch (e: Exception) {
+                        phase.status = BatchJobPhaseStatus.FAILED
+                        jobFailed = true
+                        jobErrorMessage = e.message ?: "フェーズの実行に失敗しました"
+                        break
+                    }
+                }
+                
+                if (jobFailed) {
+                    if (viewModel.isCanceled) {
+                        job.status = BatchJobStatus.WAITING
+                        job.progress = 0f
+                    } else {
+                        job.status = BatchJobStatus.FAILED
+                        job.errorMessage = jobErrorMessage
+                    }
+                } else {
+                    job.status = BatchJobStatus.COMPLETED
+                    job.progress = 1.0f
+                }
+                viewModel.saveBatchQueue()
+                onProgressUpdate()
+            }
+            viewModel.batchStatusText = if (viewModel.isCanceled) "バッチ処理をキャンセルしました" else "✨ すべてのバッチ処理が完了しました！"
+            if (!viewModel.isCanceled) {
+                showSystemNotification("HUD エンコーダー", "すべてのバッチエンコードが完了しました！")
+                // Clear successfully completed jobs from queue to keep it temporary
+                viewModel.batchQueue.removeAll { it.status == BatchJobStatus.COMPLETED }
+                viewModel.saveBatchQueue()
+            }
+        } finally {
+            viewModel.isBatchRunning = false
+            viewModel.isCanceled = false
+            viewModel.encodingSegmentStart = null
+            viewModel.encodingSegmentEnd = null
+        }
+    }
+
+    private suspend fun executePhase(
+        viewModel: AppViewModel,
+        job: BatchJob,
+        phase: BatchJobPhase,
+        activePhases: List<BatchJobPhase>,
+        jobIdx: Int,
+        totalJobs: Int,
+        outputDir: String,
+        moveOutputToSource: Boolean,
+        mainScope: CoroutineScope,
+        onProgressUpdate: () -> Unit
+    ) {
+        when (phase.type) {
+            BatchJobPhaseType.PLATE_SCAN -> executePlateScan(viewModel, job, phase, activePhases, jobIdx, totalJobs, mainScope, onProgressUpdate)
+            BatchJobPhaseType.ROAD_SCAN -> executeRoadScan(viewModel, job, phase, jobIdx, totalJobs, onProgressUpdate)
+            BatchJobPhaseType.HUD_ENCODE -> executeHudEncode(viewModel, job, phase, activePhases, jobIdx, totalJobs, outputDir, moveOutputToSource, mainScope, onProgressUpdate)
+            BatchJobPhaseType.CONCAT_MERGE -> executeConcatMerge(viewModel, job, phase, activePhases, jobIdx, totalJobs, outputDir, moveOutputToSource, mainScope, onProgressUpdate)
+            BatchJobPhaseType.FAST_TRIM -> executeFastTrim(viewModel, job, phase, activePhases, jobIdx, totalJobs, outputDir, moveOutputToSource, mainScope, onProgressUpdate)
+        }
+    }
+
+    private suspend fun executePlateScan(
+        viewModel: AppViewModel,
+        job: BatchJob,
+        phase: BatchJobPhase,
+        activePhases: List<BatchJobPhase>,
+        jobIdx: Int,
+        totalJobs: Int,
+        mainScope: CoroutineScope,
+        onProgressUpdate: () -> Unit
+    ) {
+        viewModel.batchStatusText = "[${jobIdx + 1}/$totalJobs] プレートスキャンを実行中..."
+        val points = loadTelemetryPointsForRoadDetection(job.fitPath) { viewModel.isCanceled }
+        val cache = utils.PlateDetectionManager.runDetection(
+            videoPath = job.videoPath,
+            telemetryPoints = points,
+            adjustedStartUtc = job.adjustedStartUtc,
+            onProgress = { percent ->
+                val now = System.currentTimeMillis()
+                if (percent >= 100f || now - lastProgressUpdateTime >= 100) {
+                    lastProgressUpdateTime = now
+                    mainScope.launch {
+                        phase.progress = percent / 100f
+                        updateOverallJobProgress(job, activePhases)
+                        viewModel.progress = job.progress
+                        onProgressUpdate()
+                    }
+                }
+            },
+            onCancel = { viewModel.isCanceled || !mainScope.isActive },
+            saveCache = true,
+            settings = job.settings
+        )
+        if (viewModel.isCanceled) throw Exception("Canceled")
+        if (cache == null) throw Exception("License plate scan failed")
+        phase.status = BatchJobPhaseStatus.COMPLETED
+        phase.progress = 1.0f
+        viewModel.saveBatchQueue()
+        onProgressUpdate()
+    }
+
+    private suspend fun executeRoadScan(
+        viewModel: AppViewModel,
+        job: BatchJob,
+        phase: BatchJobPhase,
+        jobIdx: Int,
+        totalJobs: Int,
+        onProgressUpdate: () -> Unit
+    ) {
+        viewModel.batchStatusText = "[${jobIdx + 1}/$totalJobs] 路線名検出を実行中..."
+        val trimDuration = job.trimEndSeconds - job.trimStartSeconds
+        val trimStartUtc = try {
+            if (job.videoStartUtc.isNotEmpty()) {
+                java.time.Instant.parse(job.videoStartUtc).plusMillis((job.trimStartSeconds * 1000).toLong()).toString()
+            } else ""
+        } catch (e: Exception) {
+            job.videoStartUtc
+        }
+        val detectionContext = RoadCaptionDetectionContext(
+            points = loadTelemetryPointsForRoadDetection(job.fitPath) { viewModel.isCanceled },
+            videoStartUtc = trimStartUtc,
+            timeOffsetMillis = job.timeOffsetMillis,
+            videoDurationSeconds = trimDuration
+        )
+        val encodeSettings = prepareRoadCaptionSettingsForEncode(
+            baseSettings = job.settings,
+            autoDetectRoadCaptionsOnEncode = true,
+            context = detectionContext,
+            cancelCheck = { viewModel.isCanceled },
+            onStatus = { progressText ->
+                viewModel.batchStatusText = "[${jobIdx + 1}/$totalJobs] $progressText"
+            },
+            onSettingsPrepared = { updated ->
+                job.settings = updated
+                viewModel.saveBatchQueue()
+            }
+        )
+        phase.status = BatchJobPhaseStatus.COMPLETED
+        phase.progress = 1.0f
+        viewModel.saveBatchQueue()
+        onProgressUpdate()
+    }
+
+    private suspend fun executeHudEncode(
+        viewModel: AppViewModel,
+        job: BatchJob,
+        phase: BatchJobPhase,
+        activePhases: List<BatchJobPhase>,
+        jobIdx: Int,
+        totalJobs: Int,
+        outputDir: String,
+        moveOutputToSource: Boolean,
+        mainScope: CoroutineScope,
+        onProgressUpdate: () -> Unit
+    ) {
+        viewModel.batchStatusText = "[${jobIdx + 1}/$totalJobs] HUDエンコードを実行中..."
+        val detectedVideoDurationSeconds = getVideoDuration(job.videoPath)?.toDouble()?.div(1000.0)
+        
+        val runRoadDetection = job.autoDetectRoadCaptionsOnEncode &&
+                job.phases.none { it.type == BatchJobPhaseType.ROAD_SCAN && it.enabled && it.status == BatchJobPhaseStatus.COMPLETED }
+        
+        val encodeSettings = if (runRoadDetection) {
+            val trimDuration = job.trimEndSeconds - job.trimStartSeconds
+            val trimStartUtc = try {
+                if (job.videoStartUtc.isNotEmpty()) {
+                    java.time.Instant.parse(job.videoStartUtc).plusMillis((job.trimStartSeconds * 1000).toLong()).toString()
+                } else ""
+            } catch (e: Exception) {
+                job.videoStartUtc
+            }
+            val detectionContext = RoadCaptionDetectionContext(
+                points = loadTelemetryPointsForRoadDetection(job.fitPath) { viewModel.isCanceled },
+                videoStartUtc = trimStartUtc,
+                timeOffsetMillis = job.timeOffsetMillis,
+                videoDurationSeconds = trimDuration
+            )
+            prepareRoadCaptionSettingsForEncode(
+                baseSettings = job.settings,
+                autoDetectRoadCaptionsOnEncode = true,
+                context = detectionContext,
+                cancelCheck = { viewModel.isCanceled },
+                onStatus = { progressText ->
+                    viewModel.batchStatusText = "[${jobIdx + 1}/$totalJobs] $progressText"
+                }
+            )
+        } else {
+            job.settings
+        }
+        val ranges = buildEncodeRanges(job.trimStartSeconds, job.trimEndSeconds, job.splitPoints)
+        val encodePlan = buildEncodePlan(
+            settings = encodeSettings,
+            videoPath = job.videoPath,
+            outputDir = outputDir,
+            moveOutputToSource = moveOutputToSource,
+            ranges = ranges,
+            includeTrimRangeInFileName = hasTrimmedRange(
+                trimStartSeconds = job.trimStartSeconds,
+                trimEndSeconds = job.trimEndSeconds,
+                videoDurationSeconds = detectedVideoDurationSeconds
+            ),
+            dateTag = buildDateTagFromUtc(job.adjustedStartUtc),
+            outputFileNames = job.outputFileNames
+        )
+        val destFiles = encodePlan.segments.map { it.finalOutputFile }
+        
+        // Check if next phase (CONCAT_MERGE) exists and is enabled
+        val nextConcatMerge = activePhases.find { it.type == BatchJobPhaseType.CONCAT_MERGE }
+        val skipConcat = nextConcatMerge != null
+        
+        HudEncodePipeline.execute(
+            s = encodeSettings,
+            fitPath = job.fitPath,
+            videoPath = job.videoPath,
+            outputDir = outputDir,
+            videoStartUtc = job.adjustedStartUtc,
+            ranges = ranges,
+            destFiles = destFiles,
+            isSample = false,
+            shouldResume = phase.progress > 0f,
+            moveOutputToSource = moveOutputToSource,
+            onProgress = { prog, status ->
+                val now = System.currentTimeMillis()
+                if (prog >= 1.0f || now - lastProgressUpdateTime >= 100) {
+                    lastProgressUpdateTime = now
+                    mainScope.launch {
+                        phase.progress = prog
+                        viewModel.progress = prog
+                        viewModel.statusText = status
+                        updateOverallJobProgress(job, activePhases)
+                        viewModel.progress = job.progress
+                        onProgressUpdate()
+                    }
+                }
+            },
+            onFrame = { bufferedImg ->
+                val now = System.currentTimeMillis()
+                if (now - lastPreviewUpdateTime >= 33) {
+                    lastPreviewUpdateTime = now
+                    val composeBitmap = bufferedImg.toComposeImageBitmap()
+                    mainScope.launch {
+                        viewModel.encodingPreviewImage = composeBitmap
+                    }
+                }
+            },
+            cancelSupplier = { viewModel.isCanceled },
+            showLivePreviewSupplier = { viewModel.showLivePreview },
+            onSegmentStart = { pStart, pEnd ->
+                mainScope.launch {
+                    viewModel.encodingSegmentStart = pStart
+                    viewModel.encodingSegmentEnd = pEnd
+                }
+            },
+            skipConcat = skipConcat
+        )
+        phase.status = BatchJobPhaseStatus.COMPLETED
+        phase.progress = 1.0f
+        viewModel.saveBatchQueue()
+        onProgressUpdate()
+    }
+
+    private suspend fun executeConcatMerge(
+        viewModel: AppViewModel,
+        job: BatchJob,
+        phase: BatchJobPhase,
+        activePhases: List<BatchJobPhase>,
+        jobIdx: Int,
+        totalJobs: Int,
+        outputDir: String,
+        moveOutputToSource: Boolean,
+        mainScope: CoroutineScope,
+        onProgressUpdate: () -> Unit
+    ) {
+        viewModel.batchStatusText = "[${jobIdx + 1}/$totalJobs] 動画を結合マージ中..."
+        val detectedVideoDurationSeconds = getVideoDuration(job.videoPath)?.toDouble()?.div(1000.0)
+        val ranges = buildEncodeRanges(job.trimStartSeconds, job.trimEndSeconds, job.splitPoints)
+        val encodePlan = buildEncodePlan(
+            settings = job.settings,
+            videoPath = job.videoPath,
+            outputDir = outputDir,
+            moveOutputToSource = moveOutputToSource,
+            ranges = ranges,
+            includeTrimRangeInFileName = hasTrimmedRange(
+                trimStartSeconds = job.trimStartSeconds,
+                trimEndSeconds = job.trimEndSeconds,
+                videoDurationSeconds = detectedVideoDurationSeconds
+            ),
+            dateTag = buildDateTagFromUtc(job.videoStartUtc),
+            outputFileNames = job.outputFileNames
+        )
+        
+        val availableJobs = fit.CacheRegistry.scanAvailableJobs(job.videoPath)
+        val targetJob = availableJobs.firstOrNull() ?: throw Exception("結合する一時エンコードデータ（キャッシュ）が見つかりません。")
+        
+        val finalDestFile = encodePlan.segments.first().finalOutputFile
+        
+        fit.CacheRegistry.salvageAndMerge(
+            jobDir = targetJob.folder,
+            output = finalDestFile.absolutePath,
+            onProgress = { prog, status ->
+                mainScope.launch {
+                    phase.progress = prog
+                    viewModel.progress = prog
+                    viewModel.statusText = status
+                    updateOverallJobProgress(job, activePhases)
+                    viewModel.progress = job.progress
+                    onProgressUpdate()
+                }
+            }
+        )
+        
+        if (moveOutputToSource) {
+            val normalized = job.videoPath.replace("\\", "/").lowercase()
+            if (normalized.contains("google drive") ||
+                normalized.contains("マイドライブ") ||
+                normalized.contains("my drive") ||
+                normalized.startsWith("g:/") ||
+                normalized.startsWith("h:/")) {
+                viewModel.batchStatusText = "✨ クラウドストレージ同期中 (Google Drive)..."
+            }
+        }
+        
+        phase.status = BatchJobPhaseStatus.COMPLETED
+        phase.progress = 1.0f
+        viewModel.saveBatchQueue()
+        onProgressUpdate()
+    }
+
+    private suspend fun executeFastTrim(
+        viewModel: AppViewModel,
+        job: BatchJob,
+        phase: BatchJobPhase,
+        activePhases: List<BatchJobPhase>,
+        jobIdx: Int,
+        totalJobs: Int,
+        outputDir: String,
+        moveOutputToSource: Boolean,
+        mainScope: CoroutineScope,
+        onProgressUpdate: () -> Unit
+    ) {
+        viewModel.batchStatusText = "[${jobIdx + 1}/$totalJobs] 高速トリミングを実行中..."
+        val ranges = buildEncodeRanges(job.trimStartSeconds, job.trimEndSeconds, job.splitPoints)
+        val detectedVideoDurationSeconds = getVideoDuration(job.videoPath)?.toDouble()?.div(1000.0)
+        val encodePlan = buildEncodePlan(
+            settings = job.settings,
+            videoPath = job.videoPath,
+            outputDir = outputDir,
+            moveOutputToSource = moveOutputToSource,
+            ranges = ranges,
+            includeTrimRangeInFileName = hasTrimmedRange(
+                trimStartSeconds = job.trimStartSeconds,
+                trimEndSeconds = job.trimEndSeconds,
+                videoDurationSeconds = detectedVideoDurationSeconds
+            ),
+            dateTag = buildDateTagFromUtc(job.videoStartUtc),
+            outputFileNames = job.outputFileNames
+        )
+        val destFile = encodePlan.segments.first().finalOutputFile
+        
+        val encoder = NativeHudEncoder(job.settings,
+            onProgress = { prog, status ->
+                mainScope.launch {
+                    phase.progress = prog
+                    viewModel.progress = prog
+                    viewModel.statusText = status
+                    updateOverallJobProgress(job, activePhases)
+                    viewModel.progress = job.progress
+                    onProgressUpdate()
+                }
+            },
+            cancelSupplier = { viewModel.isCanceled }
+        )
+        encoder.encode(
+            fitPath = "",
+            videoPath = job.videoPath,
+            output = destFile.absolutePath,
+            startUtc = job.videoStartUtc,
+            maxDurationSeconds = -1,
+            trimStartSeconds = job.trimStartSeconds,
+            trimEndSeconds = job.trimEndSeconds,
+            shouldResume = false
+        )
+        phase.status = BatchJobPhaseStatus.COMPLETED
+        phase.progress = 1.0f
+        viewModel.saveBatchQueue()
+        onProgressUpdate()
+    }
 }
 
 suspend fun runBatchJobs(
@@ -453,368 +904,7 @@ suspend fun runBatchJobs(
     outputDir: String,
     moveOutputToSource: Boolean,
     onProgressUpdate: () -> Unit
-) {
-    if (viewModel.isBatchRunning) return
-    val mainScope = kotlinx.coroutines.CoroutineScope(Dispatchers.Main.immediate)
-    viewModel.isBatchRunning = true
-    viewModel.batchStatusText = "バッチ処理を開始します..."
-    viewModel.isCanceled = false
-    var lastProgressUpdateTime = 0L
-    var lastPreviewUpdateTime = 0L
-    try {
-        val jobs = viewModel.batchQueue.filter { it.status == BatchJobStatus.WAITING }
-        if (jobs.isEmpty()) {
-            viewModel.batchStatusText = "処理待ちのジョブがありません。"
-            return
-        }
-        for ((jobIdx, job) in jobs.withIndex()) {
-            if (viewModel.isCanceled) break
-            job.status = BatchJobStatus.RUNNING
-            job.progress = 0f
-            viewModel.saveBatchQueue()
-            onProgressUpdate()
-            
-            var jobFailed = false
-            var jobErrorMessage: String? = null
-            
-            // Reset phases to WAITING if they were failed or running
-            job.phases.forEach {
-                if (it.status == BatchJobPhaseStatus.FAILED || it.status == BatchJobPhaseStatus.RUNNING) {
-                    it.status = BatchJobPhaseStatus.WAITING
-                    it.progress = 0f
-                }
-            }
-            
-            val activePhases = job.phases.filter { it.enabled }
-            for ((phaseIdx, phase) in activePhases.withIndex()) {
-                if (viewModel.isCanceled) break
-                
-                // If phase is already completed, skip it
-                if (phase.status == BatchJobPhaseStatus.COMPLETED) {
-                    continue
-                }
-                
-                phase.status = BatchJobPhaseStatus.RUNNING
-                phase.progress = 0f
-                viewModel.saveBatchQueue()
-                onProgressUpdate()
-                
-                try {
-                    when (phase.type) {
-                        BatchJobPhaseType.PLATE_SCAN -> {
-                            viewModel.batchStatusText = "[${jobIdx + 1}/${jobs.size}] プレートスキャンを実行中..."
-                            val points = loadTelemetryPointsForRoadDetection(job.fitPath) { viewModel.isCanceled }
-                            val cache = utils.PlateDetectionManager.runDetection(
-                                videoPath = job.videoPath,
-                                telemetryPoints = points,
-                                adjustedStartUtc = job.adjustedStartUtc,
-                                onProgress = { percent ->
-                                    val now = System.currentTimeMillis()
-                                    if (percent >= 100f || now - lastProgressUpdateTime >= 100) {
-                                        lastProgressUpdateTime = now
-                                        mainScope.launch {
-                                            phase.progress = percent / 100f
-                                            updateOverallJobProgress(job, activePhases)
-                                            viewModel.progress = job.progress
-                                            onProgressUpdate()
-                                        }
-                                    }
-                                },
-                                onCancel = { viewModel.isCanceled || !mainScope.isActive },
-                                saveCache = true,
-                                settings = job.settings
-                            )
-                            if (viewModel.isCanceled) throw Exception("Canceled")
-                            if (cache == null) throw Exception("License plate scan failed")
-                            phase.status = BatchJobPhaseStatus.COMPLETED
-                            phase.progress = 1.0f
-                            viewModel.saveBatchQueue()
-                            onProgressUpdate()
-                        }
-                        
-                        BatchJobPhaseType.ROAD_SCAN -> {
-                            viewModel.batchStatusText = "[${jobIdx + 1}/${jobs.size}] 路線名検出を実行中..."
-                            val trimDuration = job.trimEndSeconds - job.trimStartSeconds
-                            val trimStartUtc = try {
-                                if (job.videoStartUtc.isNotEmpty()) {
-                                    java.time.Instant.parse(job.videoStartUtc).plusMillis((job.trimStartSeconds * 1000).toLong()).toString()
-                                } else ""
-                            } catch (e: Exception) {
-                                job.videoStartUtc
-                            }
-                            val detectionContext = RoadCaptionDetectionContext(
-                                points = loadTelemetryPointsForRoadDetection(job.fitPath) { viewModel.isCanceled },
-                                videoStartUtc = trimStartUtc,
-                                timeOffsetMillis = job.timeOffsetMillis,
-                                videoDurationSeconds = trimDuration
-                            )
-                            val encodeSettings = prepareRoadCaptionSettingsForEncode(
-                                baseSettings = job.settings,
-                                autoDetectRoadCaptionsOnEncode = true,
-                                context = detectionContext,
-                                cancelCheck = { viewModel.isCanceled },
-                                onStatus = { progressText ->
-                                    viewModel.batchStatusText = "[${jobIdx + 1}/${jobs.size}] $progressText"
-                                },
-                                onSettingsPrepared = { updated ->
-                                    job.settings = updated
-                                    viewModel.saveBatchQueue()
-                                }
-                            )
-                            phase.status = BatchJobPhaseStatus.COMPLETED
-                            phase.progress = 1.0f
-                            viewModel.saveBatchQueue()
-                            onProgressUpdate()
-                        }
-                        
-                        BatchJobPhaseType.HUD_ENCODE -> {
-                            viewModel.batchStatusText = "[${jobIdx + 1}/${jobs.size}] HUDエンコードを実行中..."
-                            val detectedVideoDurationSeconds = getVideoDuration(job.videoPath)?.toDouble()?.div(1000.0)
-                            
-                            val runRoadDetection = job.autoDetectRoadCaptionsOnEncode &&
-                                    job.phases.none { it.type == BatchJobPhaseType.ROAD_SCAN && it.enabled && it.status == BatchJobPhaseStatus.COMPLETED }
-                            
-                            val encodeSettings = if (runRoadDetection) {
-                                val trimDuration = job.trimEndSeconds - job.trimStartSeconds
-                                val trimStartUtc = try {
-                                    if (job.videoStartUtc.isNotEmpty()) {
-                                        java.time.Instant.parse(job.videoStartUtc).plusMillis((job.trimStartSeconds * 1000).toLong()).toString()
-                                    } else ""
-                                } catch (e: Exception) {
-                                    job.videoStartUtc
-                                }
-                                val detectionContext = RoadCaptionDetectionContext(
-                                    points = loadTelemetryPointsForRoadDetection(job.fitPath) { viewModel.isCanceled },
-                                    videoStartUtc = trimStartUtc,
-                                    timeOffsetMillis = job.timeOffsetMillis,
-                                    videoDurationSeconds = trimDuration
-                                )
-                                prepareRoadCaptionSettingsForEncode(
-                                    baseSettings = job.settings,
-                                    autoDetectRoadCaptionsOnEncode = true,
-                                    context = detectionContext,
-                                    cancelCheck = { viewModel.isCanceled },
-                                    onStatus = { progressText ->
-                                        viewModel.batchStatusText = "[${jobIdx + 1}/${jobs.size}] $progressText"
-                                    }
-                                )
-                            } else {
-                                job.settings
-                            }
-                            val ranges = buildEncodeRanges(job.trimStartSeconds, job.trimEndSeconds, job.splitPoints)
-                            val encodePlan = buildEncodePlan(
-                                settings = encodeSettings,
-                                videoPath = job.videoPath,
-                                outputDir = outputDir,
-                                moveOutputToSource = moveOutputToSource,
-                                ranges = ranges,
-                                includeTrimRangeInFileName = hasTrimmedRange(
-                                    trimStartSeconds = job.trimStartSeconds,
-                                    trimEndSeconds = job.trimEndSeconds,
-                                    videoDurationSeconds = detectedVideoDurationSeconds
-                                ),
-                                dateTag = buildDateTagFromUtc(job.adjustedStartUtc),
-                                outputFileNames = job.outputFileNames
-                            )
-                            val destFiles = encodePlan.segments.map { it.finalOutputFile }
-                            
-                            // Check if next phase (CONCAT_MERGE) exists and is enabled
-                            val nextConcatMerge = activePhases.find { it.type == BatchJobPhaseType.CONCAT_MERGE }
-                            val skipConcat = nextConcatMerge != null
-                            
-                            val resultMsg = HudEncodePipeline.execute(
-                                s = encodeSettings,
-                                fitPath = job.fitPath,
-                                videoPath = job.videoPath,
-                                outputDir = outputDir,
-                                videoStartUtc = job.adjustedStartUtc,
-                                ranges = ranges,
-                                destFiles = destFiles,
-                                isSample = false,
-                                shouldResume = phase.progress > 0f, // Resume only if we have partial progress
-                                moveOutputToSource = moveOutputToSource,
-                                onProgress = { prog, status ->
-                                    val now = System.currentTimeMillis()
-                                    if (prog >= 1.0f || now - lastProgressUpdateTime >= 100) {
-                                        lastProgressUpdateTime = now
-                                        mainScope.launch {
-                                            phase.progress = prog
-                                            viewModel.progress = prog
-                                            viewModel.statusText = status
-                                            updateOverallJobProgress(job, activePhases)
-                                            viewModel.progress = job.progress
-                                            onProgressUpdate()
-                                        }
-                                    }
-                                },
-                                onFrame = { bufferedImg ->
-                                    val now = System.currentTimeMillis()
-                                    if (now - lastPreviewUpdateTime >= 33) {
-                                        lastPreviewUpdateTime = now
-                                        val composeBitmap = bufferedImg.toComposeImageBitmap()
-                                        mainScope.launch {
-                                            viewModel.encodingPreviewImage = composeBitmap
-                                        }
-                                    }
-                                },
-                                cancelSupplier = { viewModel.isCanceled },
-                                showLivePreviewSupplier = { viewModel.showLivePreview },
-                                onSegmentStart = { pStart, pEnd ->
-                                    mainScope.launch {
-                                        viewModel.encodingSegmentStart = pStart
-                                        viewModel.encodingSegmentEnd = pEnd
-                                    }
-                                },
-                                skipConcat = skipConcat
-                            )
-                            phase.status = BatchJobPhaseStatus.COMPLETED
-                            phase.progress = 1.0f
-                            viewModel.saveBatchQueue()
-                            onProgressUpdate()
-                        }
-                        
-                        BatchJobPhaseType.CONCAT_MERGE -> {
-                            viewModel.batchStatusText = "[${jobIdx + 1}/${jobs.size}] 動画を結合マージ中..."
-                            val detectedVideoDurationSeconds = getVideoDuration(job.videoPath)?.toDouble()?.div(1000.0)
-                            val ranges = buildEncodeRanges(job.trimStartSeconds, job.trimEndSeconds, job.splitPoints)
-                            val encodePlan = buildEncodePlan(
-                                settings = job.settings,
-                                videoPath = job.videoPath,
-                                outputDir = outputDir,
-                                moveOutputToSource = moveOutputToSource,
-                                ranges = ranges,
-                                includeTrimRangeInFileName = hasTrimmedRange(
-                                    trimStartSeconds = job.trimStartSeconds,
-                                    trimEndSeconds = job.trimEndSeconds,
-                                    videoDurationSeconds = detectedVideoDurationSeconds
-                                ),
-                                dateTag = buildDateTagFromUtc(job.videoStartUtc),
-                                outputFileNames = job.outputFileNames
-                            )
-                            
-                            val availableJobs = fit.CacheRegistry.scanAvailableJobs(job.videoPath)
-                            val targetJob = availableJobs.firstOrNull() ?: throw Exception("結合する一時エンコードデータ（キャッシュ）が見つかりません。")
-                            
-                            val finalDestFile = encodePlan.segments.first().finalOutputFile
-                            
-                            fit.CacheRegistry.salvageAndMerge(
-                                jobDir = targetJob.folder,
-                                output = finalDestFile.absolutePath,
-                                onProgress = { prog, status ->
-                                    mainScope.launch {
-                                        phase.progress = prog
-                                        viewModel.progress = prog
-                                        viewModel.statusText = status
-                                        updateOverallJobProgress(job, activePhases)
-                                        viewModel.progress = job.progress
-                                        onProgressUpdate()
-                                    }
-                                }
-                            )
-                            
-                            if (moveOutputToSource) {
-                                val normalized = job.videoPath.replace("\\", "/").lowercase()
-                                if (normalized.contains("google drive") ||
-                                    normalized.contains("マイドライブ") ||
-                                    normalized.contains("my drive") ||
-                                    normalized.startsWith("g:/") ||
-                                    normalized.startsWith("h:/")) {
-                                    viewModel.batchStatusText = "✨ クラウドストレージ同期中 (Google Drive)..."
-                                }
-                            }
-                            
-                            phase.status = BatchJobPhaseStatus.COMPLETED
-                            phase.progress = 1.0f
-                            viewModel.saveBatchQueue()
-                            onProgressUpdate()
-                        }
-                        
-                        BatchJobPhaseType.FAST_TRIM -> {
-                            viewModel.batchStatusText = "[${jobIdx + 1}/${jobs.size}] 高速トリミングを実行中..."
-                            val ranges = buildEncodeRanges(job.trimStartSeconds, job.trimEndSeconds, job.splitPoints)
-                            val detectedVideoDurationSeconds = getVideoDuration(job.videoPath)?.toDouble()?.div(1000.0)
-                            val encodePlan = buildEncodePlan(
-                                settings = job.settings,
-                                videoPath = job.videoPath,
-                                outputDir = outputDir,
-                                moveOutputToSource = moveOutputToSource,
-                                ranges = ranges,
-                                includeTrimRangeInFileName = hasTrimmedRange(
-                                    trimStartSeconds = job.trimStartSeconds,
-                                    trimEndSeconds = job.trimEndSeconds,
-                                    videoDurationSeconds = detectedVideoDurationSeconds
-                                ),
-                                dateTag = buildDateTagFromUtc(job.videoStartUtc),
-                                outputFileNames = job.outputFileNames
-                            )
-                            val destFile = encodePlan.segments.first().finalOutputFile
-                            
-                            val encoder = NativeHudEncoder(job.settings,
-                                onProgress = { prog, status ->
-                                    mainScope.launch {
-                                        phase.progress = prog
-                                        viewModel.progress = prog
-                                        viewModel.statusText = status
-                                        updateOverallJobProgress(job, activePhases)
-                                        viewModel.progress = job.progress
-                                        onProgressUpdate()
-                                    }
-                                },
-                                cancelSupplier = { viewModel.isCanceled }
-                            )
-                            encoder.encode(
-                                fitPath = "",
-                                videoPath = job.videoPath,
-                                output = destFile.absolutePath,
-                                startUtc = job.videoStartUtc,
-                                maxDurationSeconds = -1,
-                                trimStartSeconds = job.trimStartSeconds,
-                                trimEndSeconds = job.trimEndSeconds,
-                                shouldResume = false
-                            )
-                            phase.status = BatchJobPhaseStatus.COMPLETED
-                            phase.progress = 1.0f
-                            viewModel.saveBatchQueue()
-                            onProgressUpdate()
-                        }
-                    }
-                } catch (e: Exception) {
-                    phase.status = BatchJobPhaseStatus.FAILED
-                    jobFailed = true
-                    jobErrorMessage = e.message ?: "フェーズの実行に失敗しました"
-                    break
-                }
-            }
-            
-            if (jobFailed) {
-                if (viewModel.isCanceled) {
-                    job.status = BatchJobStatus.WAITING
-                    job.progress = 0f
-                } else {
-                    job.status = BatchJobStatus.FAILED
-                    job.errorMessage = jobErrorMessage
-                }
-            } else {
-                job.status = BatchJobStatus.COMPLETED
-                job.progress = 1.0f
-            }
-            viewModel.saveBatchQueue()
-            onProgressUpdate()
-        }
-        viewModel.batchStatusText = if (viewModel.isCanceled) "バッチ処理をキャンセルしました" else "✨ すべてのバッチ処理が完了しました！"
-        if (!viewModel.isCanceled) {
-            showSystemNotification("HUD エンコーダー", "すべてのバッチエンコードが完了しました！")
-            // Clear successfully completed jobs from queue to keep it temporary
-            viewModel.batchQueue.removeAll { it.status == BatchJobStatus.COMPLETED }
-            viewModel.saveBatchQueue()
-        }
-    } finally {
-        viewModel.isBatchRunning = false
-        viewModel.isCanceled = false
-        viewModel.encodingSegmentStart = null
-        viewModel.encodingSegmentEnd = null
-    }
-}
+) = BatchJobRunner.runBatchJobs(viewModel, outputDir, moveOutputToSource, onProgressUpdate)
 
 suspend fun queryRoadName(
     lat: Double,
