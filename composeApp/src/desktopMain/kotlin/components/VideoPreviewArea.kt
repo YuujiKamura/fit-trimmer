@@ -61,7 +61,8 @@ class ComposeHudCanvas(
     private val drawScope: androidx.compose.ui.graphics.drawscope.DrawScope,
     private val textMeasurer: TextMeasurer,
     private val scale: Float,
-    private val density: Float
+    private val density: Float,
+    private val settings: fit.HudSettings
 ) : fit.HudCanvas {
     override val width: Float get() = drawScope.size.width / scale
     override val height: Float get() = drawScope.size.height / scale
@@ -177,7 +178,7 @@ class ComposeHudCanvas(
         val minLon = meanLon - maxR_local / cosLat
         val maxLon = meanLon + maxR_local / cosLat
         
-        val mapKey = "${minLat}_${maxLat}_${minLon}_${maxLon}"
+        val mapKey = "${settings.mapType}_${minLat}_${maxLat}_${minLon}_${maxLon}"
         
         var mapImg = cachedMapImage
         var leftLon = cachedMapLeftLon
@@ -213,7 +214,8 @@ class ComposeHudCanvas(
                 // Fast cache check
                 for (ty in tY1..tY2) {
                     for (tx in tX1..tX2) {
-                        val tileKey = "${z}_${tx}_${ty}"
+                        val mapType = settings.mapType
+                        val tileKey = "${mapType}_${z}_${tx}_${ty}"
                         val tileFile = java.io.File(cacheDir, "${tileKey}.png")
                         if (!tileFile.exists()) {
                             val lastFail = failedTiles[tileKey]
@@ -223,7 +225,12 @@ class ComposeHudCanvas(
                                 // Trigger background download
                                 if (downloadingTiles.add(tileKey)) {
                                     downloadExecutor.submit {
-                                        val urlStr = "https://tile.openstreetmap.org/$z/$tx/$ty.png"
+                                        val urlStr = when (mapType) {
+                                            "carto_light" -> "https://basemaps.cartocdn.com/light_all/$z/$tx/$ty.png"
+                                            "carto_dark" -> "https://basemaps.cartocdn.com/dark_all/$z/$tx/$ty.png"
+                                            "carto_voyager" -> "https://basemaps.cartocdn.com/rastertiles/voyager/$z/$tx/$ty.png"
+                                            else -> "https://tile.openstreetmap.org/$z/$tx/$ty.png"
+                                        }
                                         try {
                                             val client = java.net.http.HttpClient.newBuilder()
                                                 .connectTimeout(java.time.Duration.ofSeconds(5))
@@ -260,7 +267,7 @@ class ComposeHudCanvas(
                     
                     for (ty in tY1..tY2) {
                         for (tx in tX1..tX2) {
-                            val tileFile = java.io.File(cacheDir, "${z}_${tx}_${ty}.png")
+                            val tileFile = java.io.File(cacheDir, "${settings.mapType}_${z}_${tx}_${ty}.png")
                             var img: BufferedImage? = null
                             if (tileFile.exists()) {
                                 try {
@@ -286,13 +293,7 @@ class ComposeHudCanvas(
                     val sLat = kotlin.math.PI - 2.0 * kotlin.math.PI * (tY2 + 1).toDouble() / n
                     bottomLat = 180.0 / kotlin.math.PI * kotlin.math.atan(0.5 * (kotlin.math.exp(sLat) - kotlin.math.exp(-sLat)))
                     
-                    // Convert merged to grayscale for high contrast
-                    val gray = BufferedImage(Wt * 256, Ht * 256, BufferedImage.TYPE_BYTE_GRAY)
-                    val gGray = gray.createGraphics()
-                    gGray.drawImage(merged, 0, 0, null)
-                    gGray.dispose()
-                    
-                    mapImg = gray.toComposeImageBitmap()
+                    mapImg = merged.toComposeImageBitmap()
                     cachedMapImage = mapImg
                     cachedMapLeftLon = leftLon
                     cachedMapTopLat = topLat
@@ -1050,7 +1051,7 @@ fun VideoPreviewArea(
                             timestamp = 0.0, speed = 26.2, power = 175.0, cadence = 79.0, heartRate = 148.0, elevation = 63.2, grade = 4.0
                         )
                         val pBuf = currentTrendPoints.map { it }
-                        val composeCanvas = ComposeHudCanvas(this, textMeasurer, scale, density)
+                        val composeCanvas = ComposeHudCanvas(this, textMeasurer, scale, density, settings)
                         val isValid = currentPoint != null
                         rendererProxy.renderFrame(
                             composeCanvas,

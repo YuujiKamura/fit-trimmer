@@ -140,7 +140,9 @@ fun FitTrimmerMainContent(
             showElevation = settings.showElevation,
             showDistanceTime = settings.showDistanceTime,
             bodyWeightKg = settings.bodyWeightKg,
-            customCaptions = settings.customCaptions
+            customCaptions = settings.customCaptions,
+            mapSizeScale = settings.mapSizeScale,
+            mapType = settings.mapType
         )
     }
     var reloadTrigger by remember { mutableStateOf(0) }
@@ -2221,6 +2223,49 @@ fun FitTrimmerMainContent(
                             ControlSlider("Y OFFSET", settings.yOffset, 0f, 500f, enabled = !isEncoding) { settings = settings.copy(yOffset = it) }
                             ControlSlider("GRAPH H", settings.graphH, 20f, 300f, enabled = !isEncoding) { settings = settings.copy(graphH = it) }
                             ControlSlider("GRAPH W", settings.graphW, 50f, 800f, enabled = !isEncoding) { settings = settings.copy(graphW = it) }
+                            ControlSlider("MAP SIZE", settings.mapSizeScale, 0.2f, 3.0f, enabled = !isEncoding) { settings = settings.copy(mapSizeScale = it) }
+                            Text("MAP TYPE", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 0.5.sp)
+                            var mapTypeDropdownExpanded by remember { mutableStateOf(false) }
+                            Box(modifier = Modifier.fillMaxWidth()) {
+                                val currentMapLabel = when (settings.mapType) {
+                                    "carto_light" -> "Light (Carto)"
+                                    "carto_dark" -> "Dark (Carto)"
+                                    "carto_voyager" -> "Voyager (Carto)"
+                                    else -> "Standard (OSM)"
+                                }
+                                OutlinedButton(
+                                    onClick = { if (!isEncoding) mapTypeDropdownExpanded = true },
+                                    modifier = Modifier.fillMaxWidth().height(36.dp),
+                                    border = BorderStroke(1.dp, Color(0xFFE5E5EA)),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF1C1C1E))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(currentMapLabel, fontSize = 11.sp)
+                                        Text("▼", fontSize = 8.sp, color = Color.Gray)
+                                    }
+                                }
+                                DropdownMenu(
+                                    expanded = mapTypeDropdownExpanded,
+                                    onDismissRequest = { mapTypeDropdownExpanded = false }
+                                ) {
+                                    DropdownMenuItem(onClick = { settings = settings.copy(mapType = "openstreetmap"); mapTypeDropdownExpanded = false }) {
+                                        Text("Standard (OSM)", fontSize = 11.sp, color = Color(0xFF1C1C1E))
+                                    }
+                                    DropdownMenuItem(onClick = { settings = settings.copy(mapType = "carto_light"); mapTypeDropdownExpanded = false }) {
+                                        Text("Light (Carto)", fontSize = 11.sp, color = Color(0xFF1C1C1E))
+                                    }
+                                    DropdownMenuItem(onClick = { settings = settings.copy(mapType = "carto_dark"); mapTypeDropdownExpanded = false }) {
+                                        Text("Dark (Carto)", fontSize = 11.sp, color = Color(0xFF1C1C1E))
+                                    }
+                                    DropdownMenuItem(onClick = { settings = settings.copy(mapType = "carto_voyager"); mapTypeDropdownExpanded = false }) {
+                                        Text("Voyager (Carto)", fontSize = 11.sp, color = Color(0xFF1C1C1E))
+                                    }
+                                }
+                            }
                             Spacer(Modifier.height(4.dp))
                             Text(utils.Localizer.get("language", settings.language).uppercase(), color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 0.5.sp)
                             var langDropdownExpanded by remember { mutableStateOf(false) }
