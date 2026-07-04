@@ -12,6 +12,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.runBlocking
 
 class TelemetryAlignerTest {
 
@@ -491,6 +492,35 @@ class TelemetryAlignerTest {
 
         println("DEBUG TEST GLOBAL: alignedUtc=$alignedUtc, expectedUtc=2026-06-25T08:19:55.335Z, diff=$diffSeconds seconds")
         assertTrue(diffSeconds < 10, "Global alignment failed to find correct match, diff was $diffSeconds seconds")
+    }
+
+    @Test
+    fun testRealAlignmentDebug() = runBlocking {
+        val fitPath = "F:\\Insta360\\20260704\\Afternoon_Ride.fit"
+        val videoPath = "F:\\Insta360\\20260704\\VID_20260704_153816_001.mp4"
+        val videoStartUtc = "2026-07-04T06:38:16Z"
+
+        val fitFile = File(fitPath)
+        val videoFile = File(videoPath)
+        if (!fitFile.exists() || !videoFile.exists()) {
+            println("Real files not found, skipping debug.")
+            return@runBlocking
+        }
+
+        val fitBytes = fitFile.readBytes()
+        val parser = fit.FitParser(fitBytes)
+        parser.parse()
+        val telemetryPoints = parser.getTelemetry()
+        println("FIT Telemetry points: ${telemetryPoints.size}")
+
+        val res = TelemetryAligner.alignVideoWithTelemetry(
+            videoPath = videoPath,
+            telemetryPoints = telemetryPoints,
+            approxStartUtc = videoStartUtc,
+            method = "binary",
+            windowSeconds = 90.0
+        )
+        println("DEBUG REAL ALIGNMENT RESULT: $res")
     }
 }
 
