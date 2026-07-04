@@ -30,20 +30,6 @@ import androidx.compose.ui.unit.sp
 import fit.FitParser
 import utils.formatTime
 
-data class SampledPoint(
-    val seconds: Float,
-    val power: Double,
-    val speed: Double,
-    val elevation: Double,
-    val isValid: Boolean
-)
-
-data class GraphLimits(
-    val maxPower: Double,
-    val maxSpeed: Double,
-    val minElev: Double,
-    val maxElev: Double
-)
 
 @Composable
 fun TelemetryTimelineGraph(
