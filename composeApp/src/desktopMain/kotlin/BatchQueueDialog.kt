@@ -67,15 +67,15 @@ fun BatchQueueDialog(
             Card(
                 modifier = Modifier
                     .width(1000.dp)
-                    .fillMaxHeight(0.92f)
+                    .fillMaxHeight(0.96f)
                     .padding(16.dp),
                 shape = RoundedCornerShape(16.dp),
                 elevation = 12.dp
             ) {
                 Column(
-                    modifier = Modifier.padding(28.dp),
+                    modifier = Modifier.padding(20.dp),
                     horizontalAlignment = Alignment.Start,
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     // ヘッダー
                     Text(
@@ -181,8 +181,8 @@ fun BatchQueueDialog(
                                         .fillMaxWidth()
                                         .background(cardBgColor, RoundedCornerShape(10.dp))
                                         .border(1.dp, cardBorderColor, RoundedCornerShape(10.dp))
-                                        .padding(16.dp),
-                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                        .padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     // 上段: ファイル名/編集と操作ボタン
                                     Row(

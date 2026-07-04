@@ -591,6 +591,23 @@ class AppViewModelTest {
     }
 
     @Test
+    fun testBatchConfirmDialogDismissClearsQueue() {
+        val viewModel = AppViewModel(null)
+        viewModel.videoPath = "/path/to/video1.mp4"
+        viewModel.fitPath = "/path/to/fit1.fit"
+        viewModel.addToBatchQueue()
+
+        assertEquals(1, viewModel.batchQueue.size)
+        assertTrue(viewModel.requestBatchConfirmDialog("test"))
+        
+        // dismiss
+        viewModel.dismissBatchConfirmDialog("cancel-button")
+        
+        // The queue should be cleared
+        assertEquals(0, viewModel.batchQueue.size)
+    }
+
+    @Test
     fun testPrepareBatchQueueForStartResetsFinishedJobs() {
         val viewModel = AppViewModel(null)
         viewModel.videoPath = "/path/to/video1.mp4"
