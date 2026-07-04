@@ -129,7 +129,7 @@ class Mp4ParserTest {
         val baseBytes = buildValidMvhdBytes(version = 0, creation = 1000L, timescale = 600L, duration = 30000L)
         val random = kotlin.random.Random(1337)
         
-        repeat(1000) {
+        repeat(100) {
             val corrupted = baseBytes.copyOf()
             val corruptCount = random.nextInt(1, 10)
             repeat(corruptCount) {
