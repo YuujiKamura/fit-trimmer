@@ -32,7 +32,9 @@ data class HudConfig(
     val showDistanceTime: Boolean = true,
     val bodyWeightKg: Double = 0.0,
     val customCaptions: List<CustomCaptionSegment> = emptyList(),
-    val trimStartSeconds: Double = 0.0
+    val trimStartSeconds: Double = 0.0,
+    val mapSizeScale: Float = 1.0f,
+    val mapType: String = "openstreetmap"
 )
 
 interface HudCanvas {
@@ -892,7 +894,7 @@ class HudRenderer(val config: HudConfig) {
         if (validRoutePoints.size < 2) return
 
         // 1. Layout parameters (Scaled & Enlarged for high fidelity)
-        val R = 110f * sf // 円の半径 (R) - やや大きめサイズ
+        val R = 110f * config.mapSizeScale * sf // 円の半径 (R) - スライダー可変対応
         val marginX = 45f * sf
         val marginY = 40f * sf
         val mcx = canvas.width - marginX - R // 円の中心 X

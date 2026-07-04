@@ -48,5 +48,7 @@ data class HudSettings(
     val showGrade: Boolean = true,
     val showElevation: Boolean = true,
     val showDistanceTime: Boolean = true,
-    val bodyWeightKg: Double = 0.0
+    val bodyWeightKg: Double = 0.0,
+    val mapSizeScale: Float = 1.0f,
+    val mapType: String = "openstreetmap"
 )

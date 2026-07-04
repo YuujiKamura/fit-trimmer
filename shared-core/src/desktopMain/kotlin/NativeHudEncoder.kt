@@ -523,7 +523,7 @@ class NativeHudEncoder(
             val minLon = meanLon - maxR_local / cosLat
             val maxLon = meanLon + maxR_local / cosLat
             
-            val mapKey = "${minLat}_${maxLat}_${minLon}_${maxLon}"
+            val mapKey = "${settings.mapType}_${minLat}_${maxLat}_${minLon}_${maxLon}"
             
             var mapImg = cachedMapImage
             var leftLon = cachedMapLeftLon
@@ -564,7 +564,8 @@ class NativeHudEncoder(
                         
                     for (ty in tY1..tY2) {
                         for (tx in tX1..tX2) {
-                            val tileFile = java.io.File(cacheDir, "${z}_${tx}_${ty}.png")
+                            val mapType = settings.mapType
+                            val tileFile = java.io.File(cacheDir, "${mapType}_${z}_${tx}_${ty}.png")
                             var img: BufferedImage? = null
                             if (tileFile.exists()) {
                                 try {
@@ -574,7 +575,12 @@ class NativeHudEncoder(
                                 }
                             }
                             if (img == null) {
-                                val urlStr = "https://tile.openstreetmap.org/$z/$tx/$ty.png"
+                                val urlStr = when (mapType) {
+                                    "carto_light" -> "https://basemaps.cartocdn.com/light_all/$z/$tx/$ty.png"
+                                    "carto_dark" -> "https://basemaps.cartocdn.com/dark_all/$z/$tx/$ty.png"
+                                    "carto_voyager" -> "https://basemaps.cartocdn.com/rastertiles/voyager/$z/$tx/$ty.png"
+                                    else -> "https://tile.openstreetmap.org/$z/$tx/$ty.png"
+                                }
                                 try {
                                     val request = java.net.http.HttpRequest.newBuilder()
                                         .uri(java.net.URI.create(urlStr))
@@ -600,12 +606,7 @@ class NativeHudEncoder(
                         }
                     }
                     g2.dispose()
-                    // Convert merged to grayscale for high contrast
-                    val gray = BufferedImage(Wt * 256, Ht * 256, BufferedImage.TYPE_BYTE_GRAY)
-                    val gGray = gray.createGraphics()
-                    gGray.drawImage(merged, 0, 0, null)
-                    gGray.dispose()
-                    mapImg = gray
+                    mapImg = merged
                     
                     leftLon = tX1.toDouble() / n * 360.0 - 180.0
                     val nLat = kotlin.math.PI - 2.0 * kotlin.math.PI * tY1.toDouble() / n
