@@ -52,6 +52,16 @@ class HudRendererTest {
         }
         
         override fun getTextWidth(text: String, size: Float, bold: Boolean): Float = text.length * 10f
+        
+        var drawMapBackgroundCalled = false
+        override fun drawMapBackground(
+            videoPoints: List<FitParser.TelemetryPoint>,
+            mcx: Float, mcy: Float, R: Float, padR: Float, sf: Float,
+            pathBearing: Double, cosLat: Double, dx: Double, dy: Double, L: Double,
+            cxL: Double, cyL: Double, dynamicScale: Double
+        ) {
+            drawMapBackgroundCalled = true
+        }
     }
 
     @Test
@@ -364,6 +374,7 @@ class HudRendererTest {
         // Check Distance labels: start distance "0 m" and total distance "1500 m"
         assertTrue(texts.contains("0 m"), "Mini-map should label start distance '0 m' (got $texts)")
         assertTrue(texts.contains("1500 m"), "Mini-map should draw total/midpoint distance (got $texts)")
+        assertTrue(canvas.drawMapBackgroundCalled, "Should call drawMapBackground on canvas")
     }
 
     @Test

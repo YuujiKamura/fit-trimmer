@@ -43,6 +43,22 @@ interface HudCanvas {
     fun drawLine(points: List<Pair<Float, Float>>, color: String, width: Float, alpha: Float = 1.0f)
     fun drawPolygon(points: List<Pair<Float, Float>>, color: String, alpha: Float = 1.0f)
     fun getTextWidth(text: String, size: Float, bold: Boolean): Float
+    fun drawMapBackground(
+        videoPoints: List<FitParser.TelemetryPoint>,
+        mcx: Float,
+        mcy: Float,
+        R: Float,
+        padR: Float,
+        sf: Float,
+        pathBearing: Double,
+        cosLat: Double,
+        dx: Double,
+        dy: Double,
+        L: Double,
+        cxL: Double,
+        cyL: Double,
+        dynamicScale: Double
+    ) {}
 }
 
 class HudRenderer(val config: HudConfig) {
@@ -890,7 +906,6 @@ class HudRenderer(val config: HudConfig) {
             px to py
         }
         canvas.drawPolygon(circlePoints, "#000000", alpha = 0.5f)
-        canvas.drawLine(circlePoints, "#ffffff", width = 1.8f * sf, alpha = 0.7f)
 
         // 3. Coordinate alignment (Path-up projection)
         val startPt = validRoutePoints.first()
@@ -943,6 +958,26 @@ class HudRenderer(val config: HudConfig) {
         // 4. Center coordinates inside bounding box
         val cxL = (minX + maxX) / 2.0
         val cyL = (minY + maxY) / 2.0
+
+        if (isValid && validRoutePoints.isNotEmpty()) {
+            canvas.drawMapBackground(
+                videoPoints = validRoutePoints,
+                mcx = mcx,
+                mcy = mcy,
+                R = R,
+                padR = padR,
+                sf = sf,
+                pathBearing = pathBearing,
+                cosLat = cosLat,
+                dx = dx,
+                dy = dy,
+                L = L,
+                cxL = cxL,
+                cyL = cyL,
+                dynamicScale = dynamicScale
+            )
+        }
+        canvas.drawLine(circlePoints, "#ffffff", width = 1.8f * sf, alpha = 0.7f)
 
         // 5. Helper to project TelemetryPoint onto the screen canvas (applying dot-product projection)
         fun projectPoint(pt: FitParser.TelemetryPoint): Pair<Float, Float> {
