@@ -148,6 +148,72 @@ class HudEncodePipelineTest {
         }
     }
 
+    @Test
+    fun testExecuteShouldResumeTrueSkipsExistingDestFiles() = runBlocking {
+        val tempDir = java.io.File(System.getProperty("java.io.tmpdir"))
+        val dummyOutFile = java.io.File(tempDir, "fit-trimmer-dummy-out-${System.nanoTime()}.mp4")
+        dummyOutFile.parentFile?.mkdirs()
+        dummyOutFile.writeText("dummy_segment_content")
+
+        try {
+            // Under shouldResume = true, execute should skip encoding entirely since dummyOutFile exists,
+            // and return successfully without trying to open or parse the invalid input files.
+            val result = HudEncodePipeline.execute(
+                s = HudSettings(blurLicensePlates = false),
+                fitPath = "invalid_fit_path.fit",
+                videoPath = "invalid_video_path.mp4",
+                outputDir = tempDir.absolutePath,
+                videoStartUtc = "2026-07-02T17:53:06Z",
+                ranges = listOf(0.0 to 10.0),
+                destFiles = listOf(dummyOutFile),
+                shouldResume = true,
+                onProgress = { _, _ -> },
+                onFrame = {},
+                cancelSupplier = { false },
+                showLivePreviewSupplier = { false }
+            )
+            assertTrue(result.contains("Finished Successfully") || result.contains("Copied to Cloud"))
+            assertEquals("dummy_segment_content", dummyOutFile.readText(), "Existing output file must remain untouched")
+        } finally {
+            if (dummyOutFile.exists()) dummyOutFile.delete()
+        }
+    }
+
+    @Test
+    fun testExecuteShouldResumeFalseAttemptsOverwrite() = runBlocking {
+        val tempDir = java.io.File(System.getProperty("java.io.tmpdir"))
+        val dummyOutFile = java.io.File(tempDir, "fit-trimmer-dummy-out-${System.nanoTime()}.mp4")
+        dummyOutFile.parentFile?.mkdirs()
+        dummyOutFile.writeText("dummy_segment_content")
+
+        try {
+            // Under shouldResume = false, execute must NOT skip encoding. It will attempt to run NativeHudEncoder,
+            // which will throw an exception immediately due to invalid/missing video files.
+            var threwException = false
+            try {
+                HudEncodePipeline.execute(
+                    s = HudSettings(blurLicensePlates = false),
+                    fitPath = "invalid_fit_path.fit",
+                    videoPath = "invalid_video_path.mp4",
+                    outputDir = tempDir.absolutePath,
+                    videoStartUtc = "2026-07-02T17:53:06Z",
+                    ranges = listOf(0.0 to 10.0),
+                    destFiles = listOf(dummyOutFile),
+                    shouldResume = false,
+                    onProgress = { _, _ -> },
+                    onFrame = {},
+                    cancelSupplier = { false },
+                    showLivePreviewSupplier = { false }
+                )
+            } catch (e: Exception) {
+                threwException = true
+            }
+            assertTrue(threwException, "Should attempt overwrite and throw exception due to invalid inputs instead of silently skipping")
+        } finally {
+            if (dummyOutFile.exists()) dummyOutFile.delete()
+        }
+    }
+
     private fun uniqueVideoPath(label: String): String {
         return java.io.File(
             System.getProperty("java.io.tmpdir"),
