@@ -892,7 +892,7 @@ class HudRenderer(val config: HudConfig) {
         if (validRoutePoints.size < 2) return
 
         // 1. Layout parameters (Scaled & Enlarged for high fidelity)
-        val R = 68f * sf // 円の半径 (R) - コンパクト化 (直径136px相当、外側に文字スペースを確保)
+        val R = 150f * sf // 円の半径 (R) - 特大サイズ
         val marginX = 45f * sf
         val marginY = 40f * sf
         val mcx = canvas.width - marginX - R // 円の中心 X
@@ -1016,15 +1016,15 @@ class HudRenderer(val config: HudConfig) {
 
         // Draw route line (with scaled line width)
         val routeLinePoints = drawPoints.map { projectPoint(it) }
-        canvas.drawLine(routeLinePoints, "#ffffff", width = 2.8f * sf, alpha = 0.6f)
+        canvas.drawLine(routeLinePoints, "#ff9100", width = 2.8f * sf, alpha = 0.9f)
 
         // 5. Draw Start/End Markers (Scaled)
         val startMapPt = projectPoint(startPt)
         val endMapPt = projectPoint(endPt)
         val mSize = 8f * sf
         val hmSize = mSize / 2f
-        canvas.drawRect(startMapPt.first - hmSize, startMapPt.second - hmSize, mSize, mSize, "#ffffff", alpha = 1.0f)
-        canvas.drawRect(endMapPt.first - hmSize, endMapPt.second - hmSize, mSize, mSize, "#ffffff", alpha = 1.0f)
+        canvas.drawRect(startMapPt.first - hmSize, startMapPt.second - hmSize, mSize, mSize, "#00e676", alpha = 1.0f)
+        canvas.drawRect(endMapPt.first - hmSize, endMapPt.second - hmSize, mSize, mSize, "#ef4444", alpha = 1.0f)
 
         // Draw distance labels near start/end & midpoint (Scaled font size & adjusted spacing, Metric is in meters 'm')
         val totalDist = endPt.distance - startPt.distance
