@@ -50,6 +50,9 @@ private var cachedMapTopLat = 0.0
 private var cachedMapRightLon = 0.0
 private var cachedMapBottomLat = 0.0
 
+private val downloadingTiles = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+private val downloadExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
+
 val BlurredRectsKey = SemanticsPropertyKey<List<PlateBox>>("BlurredRects")
 var SemanticsPropertyReceiver.blurredRects by BlurredRectsKey
 
@@ -198,136 +201,156 @@ class ComposeHudCanvas(
             val Ht = tY2 - tY1 + 1
             
             if (Wt in 1..8 && Ht in 1..8) {
-                val merged = BufferedImage(Wt * 256, Ht * 256, BufferedImage.TYPE_INT_ARGB)
-                val g2 = merged.createGraphics()
-                
+                var allTilesLoaded = true
                 val cacheDir = java.io.File(System.getProperty("user.home") + "/.fit-trimmer/osm_cache")
                 if (!cacheDir.exists()) cacheDir.mkdirs()
                 
-                val client = java.net.http.HttpClient.newBuilder()
-                    .connectTimeout(java.time.Duration.ofSeconds(1))
-                    .build()
-                    
+                // Fast cache check
                 for (ty in tY1..tY2) {
                     for (tx in tX1..tX2) {
-                        val tileFile = java.io.File(cacheDir, "${z}_${tx}_${ty}.png")
-                        var img: BufferedImage? = null
-                        if (tileFile.exists()) {
-                            try {
-                                img = javax.imageio.ImageIO.read(tileFile)
-                            } catch (e: Exception) {
-                                tileFile.delete()
-                            }
-                        }
-                        if (img == null) {
-                            val urlStr = "https://tile.openstreetmap.org/$z/$tx/$ty.png"
-                            try {
-                                val request = java.net.http.HttpRequest.newBuilder()
-                                    .uri(java.net.URI.create(urlStr))
-                                    .header("User-Agent", "FitTrimmerApp/1.0")
-                                    .timeout(java.time.Duration.ofSeconds(1))
-                                    .build()
-                                val response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofByteArray())
-                                if (response.statusCode() == 200) {
-                                    val bytes = response.body()
-                                    java.nio.file.Files.write(tileFile.toPath(), bytes)
-                                    img = javax.imageio.ImageIO.read(java.io.ByteArrayInputStream(bytes))
+                        val tileKey = "${z}_${tx}_${ty}"
+                        val tileFile = java.io.File(cacheDir, "${tileKey}.png")
+                        if (!tileFile.exists()) {
+                            allTilesLoaded = false
+                            // Trigger background download
+                            if (downloadingTiles.add(tileKey)) {
+                                downloadExecutor.submit {
+                                    val urlStr = "https://tile.openstreetmap.org/$z/$tx/$ty.png"
+                                    try {
+                                        val client = java.net.http.HttpClient.newBuilder()
+                                            .connectTimeout(java.time.Duration.ofSeconds(5))
+                                            .build()
+                                        val request = java.net.http.HttpRequest.newBuilder()
+                                            .uri(java.net.URI.create(urlStr))
+                                            .header("User-Agent", "FitTrimmerApp/1.0")
+                                            .timeout(java.time.Duration.ofSeconds(5))
+                                            .build()
+                                        val response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofByteArray())
+                                        if (response.statusCode() == 200) {
+                                            java.nio.file.Files.write(tileFile.toPath(), response.body())
+                                            // Reset mapKey to trigger rebuild on next frame
+                                            cachedMapKey = null
+                                        }
+                                    } catch (e: Exception) {
+                                        // Ignore
+                                    } finally {
+                                        downloadingTiles.remove(tileKey)
+                                    }
                                 }
-                            } catch (e: Exception) {
-                                // Ignore
                             }
-                        }
-                        
-                        if (img != null) {
-                            val dx = (tx - tX1) * 256
-                            val dy = (ty - tY1) * 256
-                            g2.drawImage(img, dx, dy, null)
                         }
                     }
                 }
-                g2.dispose()
                 
-                leftLon = tX1.toDouble() / n * 360.0 - 180.0
-                val nLat = kotlin.math.PI - 2.0 * kotlin.math.PI * tY1.toDouble() / n
-                topLat = 180.0 / kotlin.math.PI * kotlin.math.atan(0.5 * (kotlin.math.exp(nLat) - kotlin.math.exp(-nLat)))
-                
-                rightLon = (tX2 + 1).toDouble() / n * 360.0 - 180.0
-                val sLat = kotlin.math.PI - 2.0 * kotlin.math.PI * (tY2 + 1).toDouble() / n
-                bottomLat = 180.0 / kotlin.math.PI * kotlin.math.atan(0.5 * (kotlin.math.exp(sLat) - kotlin.math.exp(-sLat)))
-                
-                mapImg = merged.toComposeImageBitmap()
-                cachedMapImage = mapImg
-                cachedMapLeftLon = leftLon
-                cachedMapTopLat = topLat
-                cachedMapRightLon = rightLon
-                cachedMapBottomLat = bottomLat
-                cachedMapKey = mapKey
+                if (allTilesLoaded) {
+                    val merged = BufferedImage(Wt * 256, Ht * 256, BufferedImage.TYPE_INT_ARGB)
+                    val g2 = merged.createGraphics()
+                    
+                    for (ty in tY1..tY2) {
+                        for (tx in tX1..tX2) {
+                            val tileFile = java.io.File(cacheDir, "${z}_${tx}_${ty}.png")
+                            var img: BufferedImage? = null
+                            if (tileFile.exists()) {
+                                try {
+                                    img = javax.imageio.ImageIO.read(tileFile)
+                                } catch (e: Exception) {
+                                    tileFile.delete()
+                                }
+                            }
+                            if (img != null) {
+                                val dx = (tx - tX1) * 256
+                                val dy = (ty - tY1) * 256
+                                g2.drawImage(img, dx, dy, null)
+                            }
+                        }
+                    }
+                    g2.dispose()
+                    
+                    leftLon = tX1.toDouble() / n * 360.0 - 180.0
+                    val nLat = kotlin.math.PI - 2.0 * kotlin.math.PI * tY1.toDouble() / n
+                    topLat = 180.0 / kotlin.math.PI * kotlin.math.atan(0.5 * (kotlin.math.exp(nLat) - kotlin.math.exp(-nLat)))
+                    
+                    rightLon = (tX2 + 1).toDouble() / n * 360.0 - 180.0
+                    val sLat = kotlin.math.PI - 2.0 * kotlin.math.PI * (tY2 + 1).toDouble() / n
+                    bottomLat = 180.0 / kotlin.math.PI * kotlin.math.atan(0.5 * (kotlin.math.exp(sLat) - kotlin.math.exp(-sLat)))
+                    
+                    mapImg = merged.toComposeImageBitmap()
+                    cachedMapImage = mapImg
+                    cachedMapLeftLon = leftLon
+                    cachedMapTopLat = topLat
+                    cachedMapRightLon = rightLon
+                    cachedMapBottomLat = bottomLat
+                    cachedMapKey = mapKey
+                }
             }
         }
         
         if (mapImg != null) {
             drawScope.drawIntoCanvas { canvas ->
                 canvas.save()
-                
-                val center = Offset(mcx * scale, mcy * scale)
-                val radius = R * scale
-                val path = androidx.compose.ui.graphics.Path().apply {
-                    addOval(Rect(center.x - radius, center.y - radius, center.x + radius, center.y + radius))
+                try {
+                    val center = Offset(mcx * scale, mcy * scale)
+                    val radius = R * scale
+                    val path = androidx.compose.ui.graphics.Path().apply {
+                        addOval(Rect(center.x - radius, center.y - radius, center.x + radius, center.y + radius))
+                    }
+                    canvas.clipPath(path)
+                    
+                    val startPt = videoPoints.first()
+                    
+                    fun localX(lon: Double, lat: Double): Double {
+                        val px = (lon - startPt.lon) * cosLat
+                        val py = lat - startPt.lat
+                        return if (L > 1e-7) (px * dy - py * dx) / L else px
+                    }
+                    
+                    fun localY(lon: Double, lat: Double): Double {
+                        val px = (lon - startPt.lon) * cosLat
+                        val py = lat - startPt.lat
+                        return if (L > 1e-7) -(px * dx + py * dy) / L else -py
+                    }
+                    
+                    fun screenX(lon: Double, lat: Double): Float {
+                        val lx = localX(lon, lat)
+                        return ((mcx + (lx - cxL) * dynamicScale) * scale).toFloat()
+                    }
+                    
+                    fun screenY(lon: Double, lat: Double): Float {
+                        val ly = localY(lon, lat)
+                        return ((mcy + (ly - cyL) * dynamicScale) * scale).toFloat()
+                    }
+                    
+                    val x0 = screenX(leftLon, topLat)
+                    val y0 = screenY(leftLon, topLat)
+                    val x1 = screenX(rightLon, topLat)
+                    val y1 = screenY(rightLon, topLat)
+                    val x2 = screenX(leftLon, bottomLat)
+                    val y2 = screenY(leftLon, bottomLat)
+                    
+                    val wImg = mapImg.width.toDouble()
+                    val hImg = mapImg.height.toDouble()
+                    
+                    if (wImg > 0 && hImg > 0) {
+                        val m00 = (x1 - x0) / wImg
+                        val m10 = (y1 - y0) / wImg
+                        val m01 = (x2 - x0) / hImg
+                        val m11 = (y2 - y0) / hImg
+                        val m02 = x0.toDouble()
+                        val m12 = y0.toDouble()
+                        
+                        val matrix = Matrix(floatArrayOf(
+                            m00.toFloat(), m10.toFloat(), 0f, 0f,
+                            m01.toFloat(), m11.toFloat(), 0f, 0f,
+                            0f,            0f,            1f, 0f,
+                            m02.toFloat(), m12.toFloat(), 0f, 1f
+                        ))
+                        canvas.concat(matrix)
+                        
+                        canvas.drawImage(mapImg, Offset.Zero, Paint())
+                    }
+                } finally {
+                    canvas.restore()
                 }
-                canvas.clipPath(path)
-                
-                val startPt = videoPoints.first()
-                
-                fun localX(lon: Double, lat: Double): Double {
-                    val px = (lon - startPt.lon) * cosLat
-                    val py = lat - startPt.lat
-                    return if (L > 1e-7) (px * dy - py * dx) / L else px
-                }
-                
-                fun localY(lon: Double, lat: Double): Double {
-                    val px = (lon - startPt.lon) * cosLat
-                    val py = lat - startPt.lat
-                    return if (L > 1e-7) -(px * dx + py * dy) / L else -py
-                }
-                
-                fun screenX(lon: Double, lat: Double): Float {
-                    val lx = localX(lon, lat)
-                    return ((mcx + (lx - cxL) * dynamicScale) * scale).toFloat()
-                }
-                
-                fun screenY(lon: Double, lat: Double): Float {
-                    val ly = localY(lon, lat)
-                    return ((mcy + (ly - cyL) * dynamicScale) * scale).toFloat()
-                }
-                
-                val x0 = screenX(leftLon, topLat)
-                val y0 = screenY(leftLon, topLat)
-                val x1 = screenX(rightLon, topLat)
-                val y1 = screenY(rightLon, topLat)
-                val x2 = screenX(leftLon, bottomLat)
-                val y2 = screenY(leftLon, bottomLat)
-                
-                val wImg = mapImg.width.toDouble()
-                val hImg = mapImg.height.toDouble()
-                
-                val m00 = (x1 - x0) / wImg
-                val m10 = (y1 - y0) / wImg
-                val m01 = (x2 - x0) / hImg
-                val m11 = (y2 - y0) / hImg
-                val m02 = x0.toDouble()
-                val m12 = y0.toDouble()
-                
-                val matrix = Matrix(floatArrayOf(
-                    m00.toFloat(), m10.toFloat(), 0f, 0f,
-                    m01.toFloat(), m11.toFloat(), 0f, 0f,
-                    0f,            0f,            1f, 0f,
-                    m02.toFloat(), m12.toFloat(), 0f, 1f
-                ))
-                canvas.concat(matrix)
-                
-                canvas.drawImage(mapImg, Offset.Zero, Paint())
-                
-                canvas.restore()
             }
         }
     }
