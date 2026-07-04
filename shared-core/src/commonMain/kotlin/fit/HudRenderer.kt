@@ -455,12 +455,8 @@ class HudRenderer(val config: HudConfig) {
                 canvas.drawRect(startPt.first - 2.5f, startPt.second - 2.5f, 5f, 5f, "#ffffff", alpha = 1.0f)
                 canvas.drawRect(endPt.first - 2.5f, endPt.second - 2.5f, 5f, 5f, "#ffffff", alpha = 1.0f)
                 
-                // 16-direction calculation from raw videoPoints (trimmed range) using stable bearing algorithm
-                val startB = calculateStableBearing(videoPoints, 0)
-                val startBearingStr = if (startB != null) " (${get16Direction(startB)})" else ""
-                
-                val endB = calculateStableBearing(videoPoints, videoPoints.size - 1)
-                val endBearingStr = if (endB != null) " (${get16Direction(endB)})" else ""
+                val startBearingStr = ""
+                val endBearingStr = ""
 
                 val isJa = config.language == "ja"
                 val startLabel = if (isJa) "起点 " else "START "
@@ -493,9 +489,7 @@ class HudRenderer(val config: HudConfig) {
                     val peakPt = pts[peakIdx]
                     canvas.drawRect(peakPt.first - 2.5f, peakPt.second - 2.5f, 5f, 5f, "#ef4444", alpha = 1.0f)
                     
-                    val rawPeakIdx = videoPoints.indexOfFirst { it.elevation == maxAlt }
-                    val peakB = if (rawPeakIdx >= 0) calculateStableBearing(videoPoints, rawPeakIdx) else null
-                    val peakBearingStr = if (peakB != null) " (${get16Direction(peakB)})" else ""
+                    val peakBearingStr = ""
 
                     val peakText = peakLabel + (if (config.useImperialUnits) {
                         "${(maxAlt * 3.28084).roundToInt()}ft"
@@ -518,9 +512,7 @@ class HudRenderer(val config: HudConfig) {
                     val valleyPt = pts[valleyIdx]
                     canvas.drawRect(valleyPt.first - 2.5f, valleyPt.second - 2.5f, 5f, 5f, "#3b82f6", alpha = 1.0f)
                     
-                    val rawValleyIdx = videoPoints.indexOfFirst { it.elevation == minAlt }
-                    val valleyB = if (rawValleyIdx >= 0) calculateStableBearing(videoPoints, rawValleyIdx) else null
-                    val valleyBearingStr = if (valleyB != null) " (${get16Direction(valleyB)})" else ""
+                    val valleyBearingStr = ""
 
                     val valleyText = valleyLabel + (if (config.useImperialUnits) {
                         "${(minAlt * 3.28084).roundToInt()}ft"
@@ -1036,16 +1028,42 @@ class HudRenderer(val config: HudConfig) {
         drawShadowedText(canvas, totalDistText, endMapPt.first, endMapPt.second - (distTextSize + 4f * sf), distTextSize, "#ffffff", bold = true, anchor = "bottom-center", sf = sf)
         drawShadowedText(canvas, midDistText, midTx, midTy, distTextSize, "#ffffff", bold = true, anchor = midAnchor, sf = sf)
 
-        // 6. Draw Current Location Pin (Scaled pin size)
+        // 6. Draw Arrowhead Pin for Current Location
         if (isValid && telemetry.lat != 0.0 && telemetry.lon != 0.0) {
             val currentMapPt = projectPoint(telemetry)
-            val pSize = 9f * sf
-            // Draw red triangle pin pointing to current position
-            val pinPoly = listOf(
-                currentMapPt.first - pSize to currentMapPt.second - pSize,
-                currentMapPt.first + pSize to currentMapPt.second - pSize,
-                currentMapPt.first to currentMapPt.second
-            )
+            
+            // Find the closest point index in videoPoints to compute current bearing
+            val telemetryIndex = videoPoints.indexOfFirst { 
+                kotlin.math.abs(it.timestamp - telemetry.timestamp) < 0.01 
+            }.takeIf { it >= 0 } ?: videoPoints.indexOfFirst { 
+                kotlin.math.abs(it.distance - telemetry.distance) < 1.0 
+            }.coerceAtLeast(0)
+            
+            val currentBearing = calculateStableBearing(videoPoints, telemetryIndex) ?: pathBearing
+            val phi = (currentBearing - pathBearing) * kotlin.math.PI / 180.0
+            val sinPhi = kotlin.math.sin(phi).toFloat()
+            val cosPhi = kotlin.math.cos(phi).toFloat()
+            
+            // Arrowhead dimensions (scaled)
+            val L1 = 11f * sf  // Tip length (forward)
+            val L2 = 9f * sf   // Rear wings length
+            val L3 = 3.5f * sf // Rear inner indentation length
+            
+            // Tip point (pointing forward)
+            val p1 = currentMapPt.first + L1 * sinPhi to currentMapPt.second - L1 * cosPhi
+            
+            // Left wing point (135 degrees counter-clockwise from heading)
+            val angleLeft = phi - (135.0 * kotlin.math.PI / 180.0)
+            val p2 = currentMapPt.first + L2 * kotlin.math.sin(angleLeft).toFloat() to currentMapPt.second - L2 * kotlin.math.cos(angleLeft).toFloat()
+            
+            // Inner indent point (180 degrees from heading)
+            val p3 = currentMapPt.first - L3 * sinPhi to currentMapPt.second + L3 * cosPhi
+            
+            // Right wing point (135 degrees clockwise from heading)
+            val angleRight = phi + (135.0 * kotlin.math.PI / 180.0)
+            val p4 = currentMapPt.first + L2 * kotlin.math.sin(angleRight).toFloat() to currentMapPt.second - L2 * kotlin.math.cos(angleRight).toFloat()
+            
+            val pinPoly = listOf(p1, p2, p3, p4)
             canvas.drawPolygon(pinPoly, "#ef4444", alpha = 1.0f)
         }
 

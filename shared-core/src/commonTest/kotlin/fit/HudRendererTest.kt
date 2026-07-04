@@ -298,17 +298,17 @@ class HudRendererTest {
         // Assert that the drawn texts on the elevation graph contain our 16-direction azimuth labels and tags
         val texts = canvas.drawnTexts
         
-        // Check Start text (Expected format: "起点 50m (NE)" or similar depending on actual heading math)
+        // Check Start text (Expected format: "起点 50m")
         val startText = texts.find { it.contains("起点") }
         assertTrue(startText != null, "HUD elevation graph should draw '起点' (got $texts)")
         assertTrue(startText!!.contains("m"), "Start text should contain elevation units")
-        assertTrue(startText.contains("(") && startText.contains(")"), "Start text should contain 16-direction heading (got '$startText')")
+        assertFalse(startText.contains("("), "Start text should not contain 16-direction heading (got '$startText')")
         
         // Check End text
         val endText = texts.find { it.contains("終点") }
         assertTrue(endText != null, "HUD elevation graph should draw '終点' (got $texts)")
         assertTrue(endText!!.contains("m"), "End text should contain elevation units")
-        assertTrue(endText.contains("(") && endText.contains(")"), "End text should contain 16-direction heading (got '$endText')")
+        assertFalse(endText.contains("("), "End text should not contain 16-direction heading (got '$endText')")
         
         // Check Peak (Max) text
         val peakText = texts.find { it.contains("最高") }
@@ -364,6 +364,41 @@ class HudRendererTest {
         // Check Distance labels: start distance "0 m" and total distance "1500 m"
         assertTrue(texts.contains("0 m"), "Mini-map should label start distance '0 m' (got $texts)")
         assertTrue(texts.contains("1500 m"), "Mini-map should draw total/midpoint distance (got $texts)")
+    }
+
+    @Test
+    fun testMiniMap_CurrentLocationPinIsArrowhead() {
+        val config = HudConfig(
+            valSize = 40f, tightness = 1f, spacing = 20f,
+            xOffset = 40f, yOffset = 100f, graphH = 60f, graphW = 300f,
+            language = "ja"
+        )
+        val renderer = HudRenderer(config)
+        
+        val p1 = FitParser.TelemetryPoint(
+            timestamp = 1000.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 50.0, grade = 2.0,
+            distance = 1000.0, elapsedSeconds = 10, lat = 35.0, lon = 135.0
+        )
+        val p2 = FitParser.TelemetryPoint(
+            timestamp = 1010.0, speed = 12.0, power = 110.0, cadence = 82.0, heartRate = 122.0, elevation = 52.0, grade = 2.2,
+            distance = 2500.0, elapsedSeconds = 20, lat = 35.01, lon = 135.01
+        )
+        val allPoints = listOf(p1, p2)
+        
+        val canvas = TestHudCanvas()
+        renderer.renderFrame(
+            canvas,
+            p2,
+            allPoints,
+            emptyList(),
+            emptyList(),
+            100.0f,
+            isValid = true
+        )
+        
+        val pinPoly = canvas.drawnPolygons.filter { it.color == "#ef4444" }.lastOrNull()
+        assertTrue(pinPoly != null, "Should find current location pin polygon")
+        assertEquals(4, pinPoly!!.points.size, "Current location pin polygon should be a 4-point arrowhead")
     }
 
     @Test
