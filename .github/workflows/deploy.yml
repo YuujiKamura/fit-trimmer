@@ -29,6 +29,11 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-home-cache-includes: |
+            caches/modules-2
+            caches/files-2.1
+            wrapper/dists
 
       - name: Build with Gradle
         run: ./gradlew :shared-core:wasmJsBrowserDistribution

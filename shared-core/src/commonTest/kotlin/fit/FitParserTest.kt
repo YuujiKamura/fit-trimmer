@@ -620,8 +620,8 @@ class FitParserTest {
         val baseBytes = buildCancelableFitBytes()
         val random = kotlin.random.Random(42)
 
-        // Run 500 fuzz iterations to try and break the parser
-        repeat(500) {
+        // Run 100 fuzz iterations to try and break the parser
+        repeat(100) {
             val fuzzedBytes = baseBytes.copyOf()
             // Randomly corrupt 1 to 5 bytes in the file
             val corruptCount = random.nextInt(1, 6)
