@@ -34,8 +34,10 @@ data class HudConfig(
     val customCaptions: List<CustomCaptionSegment> = emptyList(),
     val trimStartSeconds: Double = 0.0,
     val mapSizeScale: Float = 1.0f,
-    val mapType: String = "openstreetmap"
+    val mapType: String = "openstreetmap",
+    val mapPosition: String = "top_right"
 )
+
 
 interface HudCanvas {
     val width: Float
@@ -72,6 +74,10 @@ class HudRenderer(val config: HudConfig) {
     private var lastTimestampSeconds = -1L
     private var lastFormattedDateTime = "----- --:--:--"
     private val systemTimeZone by lazy { TimeZone.currentSystemDefault() }
+    
+    // Bearing cache to maintain direction during static / slow periods
+    private var lastBearing: Double? = null
+
 
     // Cache fields for elevation points to avoid recalculation/reallocation every frame
     private var cachedOriginalPoints: List<FitParser.TelemetryPoint>? = null
@@ -860,16 +866,26 @@ class HudRenderer(val config: HudConfig) {
         }
         
         // 3. Fallback to adjacent points (GPS noise may persist, but best effort)
+        // Only if the distance is at least 1.0 meter to suppress noise while static
         if (centerIdx < points.size - 1) {
-            val b = calculateBearing(centerPt, points[centerIdx + 1])
-            if (b != null) return b
+            val pt = points[centerIdx + 1]
+            val dist = kotlin.math.abs(pt.distance - centerPt.distance)
+            if (dist >= 1.0) {
+                val b = calculateBearing(centerPt, pt)
+                if (b != null) return b
+            }
         }
         if (centerIdx > 0) {
-            val b = calculateBearing(points[centerIdx - 1], centerPt)
-            if (b != null) return b
+            val pt = points[centerIdx - 1]
+            val dist = kotlin.math.abs(centerPt.distance - pt.distance)
+            if (dist >= 1.0) {
+                val b = calculateBearing(pt, centerPt)
+                if (b != null) return b
+            }
         }
         return null
     }
+
 
     private fun get16Direction(bearing: Double): String {
         val directions16 = arrayOf(
@@ -898,7 +914,12 @@ class HudRenderer(val config: HudConfig) {
         val marginX = 45f * sf
         val marginY = 40f * sf
         val mcx = canvas.width - marginX - R // 円の中心 X
-        val mcy = marginY + R // 円の中心 Y
+        val mcy = if (config.mapPosition == "bottom_right") {
+            canvas.height - marginY - R
+        } else {
+            marginY + R // 円の中心 Y
+        }
+
 
         // 2. Draw black semi-transparent circle background (32-sided polygon)
         val circlePoints = (0..32).map { i ->
@@ -1076,8 +1097,10 @@ class HudRenderer(val config: HudConfig) {
                 kotlin.math.abs(it.distance - telemetry.distance) < 1.0 
             }.coerceAtLeast(0)
             
-            val currentBearing = calculateStableBearing(videoPoints, telemetryIndex) ?: pathBearing
+            val currentBearing = calculateStableBearing(videoPoints, telemetryIndex) ?: lastBearing ?: pathBearing
+            lastBearing = currentBearing
             val phi = (currentBearing - pathBearing) * kotlin.math.PI / 180.0
+
             val sinPhi = kotlin.math.sin(phi).toFloat()
             val cosPhi = kotlin.math.cos(phi).toFloat()
             
@@ -1134,17 +1157,8 @@ class HudRenderer(val config: HudConfig) {
         anchor: String = "left-center",
         sf: Float
     ) {
-        val shadowOffset = 1.6f * sf
-        val shadowColor = "#787878" // Base color for width check
-        val transparentShadowColor = "#7F787878" // 50% translucent gray shadow for actual rendering
-        
-        // Render 4-directional shadows to form a thick, translucent outline
-        canvas.drawText(text, x - shadowOffset, y - shadowOffset, size, transparentShadowColor, bold = true, anchor = anchor)
-        canvas.drawText(text, x + shadowOffset, y - shadowOffset, size, transparentShadowColor, bold = true, anchor = anchor)
-        canvas.drawText(text, x - shadowOffset, y + shadowOffset, size, transparentShadowColor, bold = true, anchor = anchor)
-        canvas.drawText(text, x + shadowOffset, y + shadowOffset, size, transparentShadowColor, bold = true, anchor = anchor)
-        
         canvas.drawText(text, x, y, size, color, bold = bold, anchor = anchor)
     }
+
 }
 // Hotreload forced trigger
