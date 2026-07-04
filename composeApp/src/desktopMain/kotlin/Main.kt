@@ -300,27 +300,6 @@ fun startGui(args: Array<String>) = application {
 }
 var globalRendererProxy: fit.DynamicRendererProxy? = null
 
-data class EncodeSegmentPlan(
-    val index: Int,
-    val startSeconds: Double,
-    val endSeconds: Double,
-    val finalOutputFile: File
-)
-
-data class EncodePlan(
-    val settings: HudSettings,
-    val segments: List<EncodeSegmentPlan>
-) {
-    val totalDurationSeconds: Double
-        get() = segments.sumOf { it.endSeconds - it.startSeconds }
-}
-
-data class RoadCaptionDetectionContext(
-    val points: List<FitParser.TelemetryPoint>,
-    val videoStartUtc: String,
-    val timeOffsetMillis: Long,
-    val videoDurationSeconds: Double
-)
 
 fun buildEncodeRanges(
     trimStartSeconds: Double,
