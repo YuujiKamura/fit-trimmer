@@ -19,6 +19,12 @@ val verifyNoStrayFileIO = tasks.register("verifyNoStrayFileIO") {
     group = "verification"
     description = "Verify that no stray direct file I/O operations are used outside the cache system."
 
+    val sourceDirs = project.subprojects.map { sub ->
+        sub.file("src")
+    }.filter { it.exists() }
+    
+    inputs.files(sourceDirs)
+
     doLast {
         val allowedFiles = setOf(
             "PathResolver.kt",
@@ -45,25 +51,22 @@ val verifyNoStrayFileIO = tasks.register("verifyNoStrayFileIO") {
 
         val violations = mutableListOf<String>()
 
-        project.subprojects.forEach { sub ->
-            val srcDir = sub.file("src")
-            if (srcDir.exists()) {
-                srcDir.walk().forEach { file ->
-                    if (file.extension == "kt" && !file.path.contains("Test") && !allowedFiles.contains(file.name)) {
-                        val lines = file.readLines()
-                        lines.forEachIndexed { index, line ->
-                            val trimmed = line.trim()
-                            if (trimmed.startsWith("import") || trimmed.startsWith("//") || trimmed.startsWith("/*")) {
-                                return@forEachIndexed
-                            }
-                            if (trimmed.contains("File(") || 
-                                trimmed.contains(".writeText(") || 
-                                trimmed.contains(".writeBytes(") || 
-                                (trimmed.contains(".delete()") && !trimmed.contains("lockFile.delete")) || 
-                                trimmed.contains(".deleteRecursively()")
-                            ) {
-                                violations.add("${file.path}:${index + 1} -> $trimmed")
-                            }
+        sourceDirs.forEach { srcDir ->
+            srcDir.walk().forEach { file ->
+                if (file.extension == "kt" && !file.path.contains("Test") && !allowedFiles.contains(file.name)) {
+                    val lines = file.readLines()
+                    lines.forEachIndexed { index, line ->
+                        val trimmed = line.trim()
+                        if (trimmed.startsWith("import") || trimmed.startsWith("//") || trimmed.startsWith("/*")) {
+                            return@forEachIndexed
+                        }
+                        if (trimmed.contains("File(") || 
+                            trimmed.contains(".writeText(") || 
+                            trimmed.contains(".writeBytes(") || 
+                            (trimmed.contains(".delete()") && !trimmed.contains("lockFile.delete")) || 
+                            trimmed.contains(".deleteRecursively()")
+                        ) {
+                            violations.add("${file.path}:${index + 1} -> $trimmed")
                         }
                     }
                 }

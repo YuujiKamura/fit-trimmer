@@ -69,7 +69,13 @@ compose.desktop {
     application {
         mainClass = "MainKt"
         nativeDistributions {
-            targetFormats(org.jetbrains.compose.desktop.application.dsl.TargetFormat.Dmg, org.jetbrains.compose.desktop.application.dsl.TargetFormat.Msi, org.jetbrains.compose.desktop.application.dsl.TargetFormat.Deb)
+            val currentOs = System.getProperty("os.name")
+            val formats = when {
+                currentOs.contains("Windows", ignoreCase = true) -> listOf(org.jetbrains.compose.desktop.application.dsl.TargetFormat.Msi)
+                currentOs.contains("Mac", ignoreCase = true) -> listOf(org.jetbrains.compose.desktop.application.dsl.TargetFormat.Dmg)
+                else -> listOf(org.jetbrains.compose.desktop.application.dsl.TargetFormat.Deb)
+            }
+            targetFormats(*formats.toTypedArray())
             packageName = "FitTrimmer"
             packageVersion = gitVersion.split("-")[0]
 
