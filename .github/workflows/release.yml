@@ -29,13 +29,13 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
 
       - name: Run JVM and Desktop Tests
-        shell: pwsh
-        run: .\gradlew.bat :shared-core:desktopTest :composeApp:desktopTest :composeApp:compileKotlinDesktop --no-build-cache --rerun-tasks
+        shell: cmd
+        run: gradlew.bat :shared-core:desktopTest :composeApp:desktopTest :composeApp:compileKotlinDesktop --no-build-cache --rerun-tasks < NUL
 
 
       - name: Build Desktop Distribution
-        shell: pwsh
-        run: .\gradlew.bat :composeApp:packageMsi
+        shell: cmd
+        run: gradlew.bat :composeApp:packageMsi < NUL
         env:
           APP_RELEASE_VERSION: ${{ github.ref_name }}
 
