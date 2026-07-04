@@ -617,61 +617,65 @@ class NativeHudEncoder(
             
             if (mapImg != null) {
                 val originalClip = g.clip
-                val clipCircle = java.awt.geom.Ellipse2D.Float(
-                    (mcx - R) * scale,
-                    (mcy - R) * scale,
-                    (R * 2f) * scale,
-                    (R * 2f) * scale
-                )
-                g.clip = clipCircle
-                
-                val startPt = videoPoints.first()
-                
-                fun localX(lon: Double, lat: Double): Double {
-                    val px = (lon - startPt.lon) * cosLat
-                    val py = lat - startPt.lat
-                    return if (L > 1e-7) (px * dy - py * dx) / L else px
+                try {
+                    val clipCircle = java.awt.geom.Ellipse2D.Float(
+                        (mcx - R) * scale,
+                        (mcy - R) * scale,
+                        (R * 2f) * scale,
+                        (R * 2f) * scale
+                    )
+                    g.clip = clipCircle
+                    
+                    val startPt = videoPoints.first()
+                    
+                    fun localX(lon: Double, lat: Double): Double {
+                        val px = (lon - startPt.lon) * cosLat
+                        val py = lat - startPt.lat
+                        return if (L > 1e-7) (px * dy - py * dx) / L else px
+                    }
+                    
+                    fun localY(lon: Double, lat: Double): Double {
+                        val px = (lon - startPt.lon) * cosLat
+                        val py = lat - startPt.lat
+                        return if (L > 1e-7) -(px * dx + py * dy) / L else -py
+                    }
+                    
+                    fun screenX(lon: Double, lat: Double): Float {
+                        val lx = localX(lon, lat)
+                        return ((mcx + (lx - cxL) * dynamicScale) * scale).toFloat()
+                    }
+                    
+                    fun screenY(lon: Double, lat: Double): Float {
+                        val ly = localY(lon, lat)
+                        return ((mcy + (ly - cyL) * dynamicScale) * scale).toFloat()
+                    }
+                    
+                    val x0 = screenX(leftLon, topLat)
+                    val y0 = screenY(leftLon, topLat)
+                    val x1 = screenX(rightLon, topLat)
+                    val y1 = screenY(rightLon, topLat)
+                    val x2 = screenX(leftLon, bottomLat)
+                    val y2 = screenY(leftLon, bottomLat)
+                    
+                    val wImg = mapImg.width.toDouble()
+                    val hImg = mapImg.height.toDouble()
+                    
+                    if (wImg > 0 && hImg > 0) {
+                        val m00 = (x1 - x0) / wImg
+                        val m10 = (y1 - y0) / wImg
+                        val m01 = (x2 - x0) / hImg
+                        val m11 = (y2 - y0) / hImg
+                        val m02 = x0.toDouble()
+                        val m12 = y0.toDouble()
+                        
+                        val transform = java.awt.geom.AffineTransform(m00, m10, m01, m11, m02, m12)
+                        
+                        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
+                        g.drawImage(mapImg, transform, null)
+                    }
+                } finally {
+                    g.clip = originalClip
                 }
-                
-                fun localY(lon: Double, lat: Double): Double {
-                    val px = (lon - startPt.lon) * cosLat
-                    val py = lat - startPt.lat
-                    return if (L > 1e-7) -(px * dx + py * dy) / L else -py
-                }
-                
-                fun screenX(lon: Double, lat: Double): Float {
-                    val lx = localX(lon, lat)
-                    return ((mcx + (lx - cxL) * dynamicScale) * scale).toFloat()
-                }
-                
-                fun screenY(lon: Double, lat: Double): Float {
-                    val ly = localY(lon, lat)
-                    return ((mcy + (ly - cyL) * dynamicScale) * scale).toFloat()
-                }
-                
-                val x0 = screenX(leftLon, topLat)
-                val y0 = screenY(leftLon, topLat)
-                val x1 = screenX(rightLon, topLat)
-                val y1 = screenY(rightLon, topLat)
-                val x2 = screenX(leftLon, bottomLat)
-                val y2 = screenY(leftLon, bottomLat)
-                
-                val wImg = mapImg.width.toDouble()
-                val hImg = mapImg.height.toDouble()
-                
-                val m00 = (x1 - x0) / wImg
-                val m10 = (y1 - y0) / wImg
-                val m01 = (x2 - x0) / hImg
-                val m11 = (y2 - y0) / hImg
-                val m02 = x0.toDouble()
-                val m12 = y0.toDouble()
-                
-                val transform = java.awt.geom.AffineTransform(m00, m10, m01, m11, m02, m12)
-                
-                g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
-                g.drawImage(mapImg, transform, null)
-                
-                g.clip = originalClip
             }
         }
         
