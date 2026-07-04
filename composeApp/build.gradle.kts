@@ -95,6 +95,22 @@ compose.desktop {
     }
 }
 
+// Override runtimeImage property on all jpackage tasks with the prebuilt Windows runtime when available
+tasks.withType<org.jetbrains.compose.desktop.application.tasks.AbstractJPackageTask>().configureEach {
+    val runtimeZip = project.file("tools/win-x64-runtime.zip")
+    val runtimeDestDir = project.layout.buildDirectory.dir("prebuilt-runtime").get().asFile
+    if (runtimeZip.exists()) {
+        if (!runtimeDestDir.exists()) {
+            runtimeDestDir.mkdirs()
+            project.copy {
+                from(project.zipTree(runtimeZip))
+                into(runtimeDestDir)
+            }
+        }
+        runtimeImage.set(runtimeDestDir)
+    }
+}
+
 tasks.withType<Test> {
     testLogging {
         showStandardStreams = true
