@@ -1180,7 +1180,13 @@ class AppViewModel(
 
     fun dismissBatchConfirmDialog(source: String) {
         showBatchConfirmDialog = false
-        logBatch("confirm dialog dismissed from $source")
+        if (!isBatchRunning) {
+            batchQueue.clear()
+            saveBatchQueue()
+            logBatch("confirm dialog dismissed from $source, queue cleared")
+        } else {
+            logBatch("confirm dialog dismissed from $source")
+        }
     }
 
     fun prepareBatchQueueForStart() {
