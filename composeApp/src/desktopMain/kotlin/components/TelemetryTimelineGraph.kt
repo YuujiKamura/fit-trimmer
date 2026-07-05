@@ -156,6 +156,7 @@ fun TelemetryTimelineGraph(
     val currentOnSeekProgress by rememberUpdatedState(onSeekProgress)
     val currentOnSeekEnd by rememberUpdatedState(onSeekEnd)
 
+    val currentAdjustedStartUtc by rememberUpdatedState(adjustedStartUtc)
     val currentVideoStartUtc by rememberUpdatedState(videoStartUtc)
     val currentFitStartUtc by rememberUpdatedState(fitStartUtc)
     val currentTimelineDurationSec by rememberUpdatedState(timelineDurationSec)
@@ -286,7 +287,7 @@ fun TelemetryTimelineGraph(
         modifier = modifier
             .fillMaxWidth()
             .pointerHoverIcon(customCursor)
-            .pointerInput(videoStartUtc, fitStartUtc, timelineDurationSec, isTelemetryCut, videoDurationSec) {
+            .pointerInput(adjustedStartUtc, fitStartUtc, timelineDurationSec, isTelemetryCut, videoDurationSec) {
                 awaitPointerEventScope {
                     while (true) {
                         val event = awaitPointerEvent()
@@ -295,8 +296,8 @@ fun TelemetryTimelineGraph(
                             val w = size.width.toFloat()
                             val h = size.height.toFloat()
                             if (w > 0f) {
-                                val startDiffSec = if (videoStartUtc.isNotEmpty() && fitStartUtc.isNotEmpty()) {
-                                    val vUtc = try { java.time.Instant.parse(videoStartUtc).epochSecond } catch(e: Exception) { 0L }
+                                val startDiffSec = if (adjustedStartUtc.isNotEmpty() && fitStartUtc.isNotEmpty()) {
+                                    val vUtc = try { java.time.Instant.parse(adjustedStartUtc).epochSecond } catch(e: Exception) { 0L }
                                     val fUtc = try { java.time.Instant.parse(fitStartUtc).epochSecond } catch(e: Exception) { 0L }
                                     (vUtc - fUtc).toDouble()
                                 } else 0.0
@@ -421,8 +422,8 @@ fun TelemetryTimelineGraph(
                                             ((fitStartRelativeSec / vDuration) * w).toFloat().takeIf { it.isFinite() } ?: -999f
                                         } else -999f
                                         
-                                        val startDiffSec = if (currentVideoStartUtc.isNotEmpty() && currentFitStartUtc.isNotEmpty()) {
-                                            val vUtc = try { java.time.Instant.parse(currentVideoStartUtc).epochSecond } catch(e: Exception) { 0L }
+                                        val startDiffSec = if (currentAdjustedStartUtc.isNotEmpty() && currentFitStartUtc.isNotEmpty()) {
+                                            val vUtc = try { java.time.Instant.parse(currentAdjustedStartUtc).epochSecond } catch(e: Exception) { 0L }
                                             val fUtc = try { java.time.Instant.parse(currentFitStartUtc).epochSecond } catch(e: Exception) { 0L }
                                             (vUtc - fUtc).toDouble()
                                         } else 0.0
@@ -523,8 +524,8 @@ fun TelemetryTimelineGraph(
                     val w = size.width
                     val h = size.height
                     
-                    val startDiffSec = if (videoStartUtc.isNotEmpty() && fitStartUtc.isNotEmpty()) {
-                        val vUtc = try { java.time.Instant.parse(videoStartUtc).epochSecond } catch(e: Exception) { 0L }
+                    val startDiffSec = if (adjustedStartUtc.isNotEmpty() && fitStartUtc.isNotEmpty()) {
+                        val vUtc = try { java.time.Instant.parse(adjustedStartUtc).epochSecond } catch(e: Exception) { 0L }
                         val fUtc = try { java.time.Instant.parse(fitStartUtc).epochSecond } catch(e: Exception) { 0L }
                         (vUtc - fUtc).toDouble()
                     } else 0.0
@@ -732,8 +733,8 @@ fun TelemetryTimelineGraph(
                      val safeTrimStart = if (trimStartSeconds.isNaN() || trimStartSeconds.isInfinite()) 0.0 else trimStartSeconds
                      val safeTrimEnd = if (trimEndSeconds.isNaN() || trimEndSeconds.isInfinite()) timelineDurationSec else trimEndSeconds
                      
-                     val startDiffSec = if (videoStartUtc.isNotEmpty() && fitStartUtc.isNotEmpty()) {
-                         val vUtc = try { java.time.Instant.parse(videoStartUtc).epochSecond } catch(e: Exception) { 0L }
+                     val startDiffSec = if (adjustedStartUtc.isNotEmpty() && fitStartUtc.isNotEmpty()) {
+                         val vUtc = try { java.time.Instant.parse(adjustedStartUtc).epochSecond } catch(e: Exception) { 0L }
                          val fUtc = try { java.time.Instant.parse(fitStartUtc).epochSecond } catch(e: Exception) { 0L }
                          (vUtc - fUtc).toDouble()
                      } else 0.0
@@ -898,8 +899,8 @@ fun TelemetryTimelineGraph(
                     val w = size.width
                     val h = size.height
                     if (videoDurationSec > 0 && !sampledPoints.isEmpty()) {
-                        val startDiffSec = if (videoStartUtc.isNotEmpty() && fitStartUtc.isNotEmpty()) {
-                            val vUtc = try { java.time.Instant.parse(videoStartUtc).epochSecond } catch(e: Exception) { 0L }
+                        val startDiffSec = if (adjustedStartUtc.isNotEmpty() && fitStartUtc.isNotEmpty()) {
+                            val vUtc = try { java.time.Instant.parse(adjustedStartUtc).epochSecond } catch(e: Exception) { 0L }
                             val fUtc = try { java.time.Instant.parse(fitStartUtc).epochSecond } catch(e: Exception) { 0L }
                             (vUtc - fUtc).toDouble()
                         } else 0.0
@@ -940,8 +941,8 @@ fun TelemetryTimelineGraph(
                     val h = size.height.toFloat()
                     val ticks = 5
                     
-                    val startDiffSec = if (videoStartUtc.isNotEmpty() && fitStartUtc.isNotEmpty()) {
-                        val vUtc = try { java.time.Instant.parse(videoStartUtc).epochSecond } catch(e: Exception) { 0L }
+                    val startDiffSec = if (adjustedStartUtc.isNotEmpty() && fitStartUtc.isNotEmpty()) {
+                        val vUtc = try { java.time.Instant.parse(adjustedStartUtc).epochSecond } catch(e: Exception) { 0L }
                         val fUtc = try { java.time.Instant.parse(fitStartUtc).epochSecond } catch(e: Exception) { 0L }
                         (vUtc - fUtc).toDouble()
                     } else 0.0
