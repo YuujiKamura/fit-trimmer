@@ -1822,6 +1822,8 @@ fun TimeAlignmentCard(
     onAlignTelemetryClick: () -> Unit,
     isEncoding: Boolean,
     videoStartUtc: String = "",
+    syncCandidates: List<TelemetryAligner.AlignmentCandidate> = emptyList(),
+    onApplySyncCandidate: ((TelemetryAligner.AlignmentCandidate) -> Unit)? = null,
     onOpenSyncPanelClick: (() -> Unit)? = null,
     onOpenManualJstSyncClick: (() -> Unit)? = null
 ) {
@@ -2028,6 +2030,50 @@ fun TimeAlignmentCard(
             ) {
                 Text("マイナス: HUDを戻す", color = Color(0xFF8E8E93), fontSize = 9.sp)
                 Text("プラス: HUDを進める", color = Color(0xFF8E8E93), fontSize = 9.sp)
+            }
+            if (syncCandidates.isNotEmpty()) {
+                Divider(color = Color(0xFFE5E5EA))
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("IMU同期候補", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                    syncCandidates.take(5).forEach { candidate ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFFF2F2F7), androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                                .padding(horizontal = 8.dp, vertical = 5.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                                val offsetText = candidate.offsetSeconds?.let {
+                                    "${if (it >= 0.0) "+" else ""}${String.format(java.util.Locale.US, "%.3f", it)}s"
+                                } ?: "--"
+                                Text(
+                                    "#${candidate.rank}  $offsetText  r=${String.format(java.util.Locale.US, "%.3f", candidate.correlation)}",
+                                    color = Color(0xFF1C1C1E),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    "FIT ${String.format(java.util.Locale.US, "%.1f", candidate.fitStartSeconds)}s / ${candidate.alignedUtc}",
+                                    color = Color(0xFF636366),
+                                    fontSize = 9.sp,
+                                    maxLines = 1
+                                )
+                            }
+                            OutlinedButton(
+                                onClick = { onApplySyncCandidate?.invoke(candidate) },
+                                enabled = !isEncoding && onApplySyncCandidate != null,
+                                modifier = Modifier.height(28.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF007AFF)),
+                                border = BorderStroke(1.dp, Color(0xFF007AFF)),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Text("適用", fontSize = 10.sp)
+                            }
+                        }
+                    }
+                }
             }
             Divider(color = Color(0xFFE5E5EA))
             Row(
