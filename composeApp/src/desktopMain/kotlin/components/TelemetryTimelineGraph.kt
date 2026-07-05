@@ -288,6 +288,8 @@ fun TelemetryTimelineGraph(
     var activeDragHandle by remember { mutableStateOf<DragHandle?>(null) }
     var dragStartStartDiffSec by remember { mutableStateOf(0.0) }
     var dragStartRatio by remember { mutableStateOf(0.0f) }
+    var dragStartTrimStart by remember { mutableStateOf(0.0) }
+    var dragStartTrimEnd by remember { mutableStateOf(0.0) }
     var isHoveringVideoRange by remember { mutableStateOf(false) }
 
     val customCursor = if (!isTelemetryCut && (isHoveringVideoRange || activeDragHandle == DragHandle.VIDEO_RANGE)) {
@@ -459,6 +461,8 @@ fun TelemetryTimelineGraph(
                                         if (activeDragHandle == DragHandle.VIDEO_RANGE) {
                                             dragStartStartDiffSec = startDiffSec
                                             dragStartRatio = offset.x / w
+                                            dragStartTrimStart = currentTrimStartSeconds
+                                            dragStartTrimEnd = currentTrimEndSeconds
                                         }
                                         
                                         // If no handle is grabbed, perform a seek click
@@ -500,18 +504,25 @@ fun TelemetryTimelineGraph(
                                             }
                                         }
                                         DragHandle.VIDEO_RANGE -> {
-                                            if (!currentIsTelemetryCut && currentVideoStartUtc.isNotEmpty() && currentFitStartUtc.isNotEmpty()) {
-                                                val deltaRatio = ratio - dragStartRatio
-                                                val deltaSec = deltaRatio * vDuration
-                                                val targetSec = dragStartStartDiffSec + deltaSec
-                                                
-                                                val newOffsetMs = utils.TelemetryAligner.calculateOffsetFromTargetSec(
-                                                    videoStartUtc = currentVideoStartUtc,
-                                                    fitStartUtc = currentFitStartUtc,
-                                                    targetSec = targetSec
-                                                )
-                                                currentOnTimeOffsetChange(newOffsetMs)
+                                            val deltaRatio = ratio - dragStartRatio
+                                            val deltaSec = deltaRatio * vDuration
+                                            
+                                            val trimLength = dragStartTrimEnd - dragStartTrimStart
+                                            var newTrimStart = dragStartTrimStart + deltaSec
+                                            var newTrimEnd = dragStartTrimEnd + deltaSec
+                                            
+                                            val vLimit = currentVideoDurationSec
+                                            if (newTrimStart < 0.0) {
+                                                newTrimStart = 0.0
+                                                newTrimEnd = trimLength
                                             }
+                                            if (newTrimEnd > vLimit) {
+                                                newTrimEnd = vLimit
+                                                newTrimStart = (vLimit - trimLength).coerceAtLeast(0.0)
+                                            }
+                                            
+                                            currentOnTrimStartChange(newTrimStart)
+                                            currentOnTrimEndChange(newTrimEnd)
                                         }
                                         null -> {}
                                     }
