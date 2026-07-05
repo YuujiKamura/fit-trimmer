@@ -54,6 +54,10 @@ import kotlinx.serialization.json.Json
 import kotlin.math.roundToInt
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.onPointerEvent
+import androidx.compose.ui.ExperimentalComposeUiApi
 // VLC dependency removed
 import utils.*
 import components.*
@@ -1605,6 +1609,62 @@ fun runCli(args: Array<String>) {
     }
 }
 
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+fun TimeSpinnerField(
+    valueText: String,
+    onValueChange: (String) -> Unit,
+    onIncrement: () -> Unit,
+    onDecrement: () -> Unit,
+    label: String,
+    enabled: Boolean
+) {
+    var dragAccumulator = 0f
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        OutlinedTextField(
+            value = valueText,
+            onValueChange = onValueChange,
+            enabled = enabled,
+            modifier = Modifier
+                .width(42.dp)
+                .height(45.dp)
+                .onPointerEvent(PointerEventType.Scroll) { event ->
+                    if (enabled) {
+                        val delta = event.changes.first().scrollDelta.y
+                        if (delta > 0) onDecrement() else if (delta < 0) onIncrement()
+                    }
+                }
+                .pointerInput(enabled) {
+                    if (enabled) {
+                        detectVerticalDragGestures { change, dragAmount ->
+                            change.consume()
+                            dragAccumulator += dragAmount
+                            if (dragAccumulator > 12f) {
+                                onDecrement()
+                                dragAccumulator = 0f
+                            } else if (dragAccumulator < -12f) {
+                                onIncrement()
+                                dragAccumulator = 0f
+                            }
+                        }
+                    }
+                },
+            textStyle = TextStyle(fontSize = 12.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center, fontWeight = FontWeight.Bold),
+            singleLine = true,
+            colors = TextFieldDefaults.outlinedTextFieldColors(
+                backgroundColor = Color(0xFFF2F2F7),
+                focusedBorderColor = Color(0xFF007AFF),
+                unfocusedBorderColor = Color(0xFFD1D1D6),
+                textColor = Color(0xFF1C1C1E)
+            )
+        )
+        Text(label, fontSize = 9.sp, color = Color(0xFF1C1C1E))
+    }
+}
+
 @Composable
 fun SourceRangeSummary(
     fitStartInstant: java.time.Instant?,
@@ -1612,7 +1672,10 @@ fun SourceRangeSummary(
     videoStartInstant: java.time.Instant?,
     videoEndInstant: java.time.Instant?,
     isVideoInFitRange: Boolean,
-    isHudBurned: Boolean
+    isHudBurned: Boolean,
+    videoStartUtc: String = "",
+    timeOffsetState: TimeAlignmentState? = null,
+    isEncoding: Boolean = false
 ) {
     if (fitStartInstant == null || fitEndInstant == null) return
 
@@ -1694,7 +1757,10 @@ fun TimeAlignmentCard(
     telemetryPoints: List<FitParser.TelemetryPoint>,
     isAligning: Boolean,
     onAlignTelemetryClick: () -> Unit,
-    isEncoding: Boolean
+    isEncoding: Boolean,
+    videoStartUtc: String = "",
+    onOpenSyncPanelClick: (() -> Unit)? = null,
+    onOpenManualJstSyncClick: (() -> Unit)? = null
 ) {
     Card(
         backgroundColor = Color.White,
@@ -1722,6 +1788,33 @@ fun TimeAlignmentCard(
                     )
                 }
             }
+            
+            // 補正後開始時刻(JST)の表示
+            val currentOffsetSec = state.seconds
+            val originalInstant = try { java.time.Instant.parse(videoStartUtc) } catch(e: Exception) { null }
+            val adjustedJstStr = if (originalInstant != null) {
+                val adjustedInstant = originalInstant.plusMillis(state.millis.toLong())
+                val jst = java.time.ZonedDateTime.ofInstant(adjustedInstant, java.time.ZoneId.of("Asia/Tokyo"))
+                jst.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
+            } else {
+                null
+            }
+            if (adjustedJstStr != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("補正後開始時刻 (JST)", color = Color(0xFF636366), fontSize = 10.sp)
+                    Text(
+                        adjustedJstStr,
+                        color = Color(0xFF34C759),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1729,7 +1822,7 @@ fun TimeAlignmentCard(
             ) {
                 Text("HUD表示オフセット", color = Color(0xFF636366), fontSize = 10.sp)
                 Text(
-                    "${if (state.seconds >= 0) "+" else ""}${String.format("%.1f", state.seconds)} s",
+                    "${if (state.seconds >= 0) "+" else ""}${String.format(java.util.Locale.US, "%.3f", state.seconds)} s",
                     color = Color(0xFF007AFF),
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold
@@ -1747,34 +1840,125 @@ fun TimeAlignmentCard(
                     inactiveTrackColor = Color(0xFFE5E5EA)
                 )
             )
+            
+            // 数値直接入力 & 同期管理ダイアログ起動
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                val buttonModifier = Modifier.weight(1f).height(24.dp)
-                val buttonColors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF1C1C1E))
-                val specs = listOf(
-                    "-1s" to -1000,
-                    "-0.1s" to -100,
-                    "0" to 0,
-                    "+0.1s" to 100,
-                    "+1s" to 1000
+                Text("数値直接入力 (秒):", color = Color(0xFF636366), fontSize = 10.sp, modifier = Modifier.alignByBaseline())
+                var textVal by remember(state.millis) { mutableStateOf(String.format(java.util.Locale.US, "%.3f", state.seconds)) }
+                OutlinedTextField(
+                    value = textVal,
+                    onValueChange = { newValue ->
+                        textVal = newValue
+                        val parsed = newValue.toDoubleOrNull()
+                        if (parsed != null) {
+                            state.update((parsed * 1000).roundToInt())
+                        }
+                    },
+                    enabled = !isEncoding,
+                    modifier = Modifier.width(90.dp).height(45.dp),
+                    textStyle = TextStyle(fontSize = 11.sp),
+                    singleLine = true,
+                    colors = TextFieldDefaults.outlinedTextFieldColors(
+                        backgroundColor = Color.White,
+                        focusedBorderColor = Color(0xFF007AFF),
+                        unfocusedBorderColor = Color(0xFFE5E5EA)
+                    )
                 )
-                for ((label, delta) in specs) {
+                
+                if (onOpenSyncPanelClick != null && videoPath.isNotEmpty() && telemetryPoints.isNotEmpty()) {
                     OutlinedButton(
-                        onClick = {
-                            val nextVal = if (delta == 0) 0 else state.millis + delta
-                            state.update(nextVal)
-                        },
+                        onClick = onOpenSyncPanelClick,
                         enabled = !isEncoding,
-                        modifier = buttonModifier,
-                        colors = buttonColors,
-                        contentPadding = PaddingValues(0.dp)
+                        modifier = Modifier.height(28.dp).weight(1f),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF007AFF)),
+                        border = BorderStroke(1.dp, Color(0xFF007AFF)),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
                     ) {
-                        Text(label, fontSize = 9.sp)
+                        Text("詳細同期パネル", fontSize = 10.sp)
+                    }
+                }
+                
+                if (onOpenManualJstSyncClick != null && videoStartUtc.isNotEmpty()) {
+                    OutlinedButton(
+                        onClick = onOpenManualJstSyncClick,
+                        enabled = !isEncoding,
+                        modifier = Modifier.height(28.dp).weight(1f),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF007AFF)),
+                        border = BorderStroke(1.dp, Color(0xFF007AFF)),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
+                    ) {
+                        Text("開始時刻 (JST) 補正", fontSize = 10.sp)
                     }
                 }
             }
+
+            // 微調整ボタン（2段構成）
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                val buttonModifier = Modifier.height(24.dp)
+                val buttonColors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF1C1C1E))
+                
+                // 1段目: 大まかな移動
+                val specs1 = listOf(
+                    "-60s" to -60000,
+                    "-10s" to -10000,
+                    "-1s" to -1000,
+                    "0" to 0,
+                    "+1s" to 1000,
+                    "+10s" to 10000,
+                    "+60s" to 60000
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    for ((label, delta) in specs1) {
+                        OutlinedButton(
+                            onClick = {
+                                val nextVal = if (delta == 0) 0 else state.millis + delta
+                                state.update(nextVal)
+                            },
+                            enabled = !isEncoding,
+                            modifier = buttonModifier.weight(1f),
+                            colors = buttonColors,
+                            contentPadding = PaddingValues(0.dp)
+                        ) {
+                            Text(label, fontSize = 9.sp)
+                        }
+                    }
+                }
+                
+                // 2段目: 精密な移動
+                val specs2 = listOf(
+                    "-0.5s" to -500,
+                    "-0.1s" to -100,
+                    "+0.1s" to 100,
+                    "+0.5s" to 500
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    for ((label, delta) in specs2) {
+                        OutlinedButton(
+                            onClick = {
+                                val nextVal = state.millis + delta
+                                state.update(nextVal)
+                            },
+                            enabled = !isEncoding,
+                            modifier = buttonModifier.weight(1f),
+                            colors = buttonColors,
+                            contentPadding = PaddingValues(0.dp)
+                        ) {
+                            Text(label, fontSize = 9.sp)
+                        }
+                    }
+                }
+            }
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
@@ -2175,6 +2359,237 @@ fun RoadCaptionEditDialog(
                     shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
                 ) {
                     Text("閉じる", fontSize = 10.sp, color = Color(0xFF1C1C1E))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun JstManualSyncDialog(
+    videoStartUtc: String,
+    videoStartInstant: java.time.Instant?,
+    timeOffsetState: TimeAlignmentState,
+    isEncoding: Boolean,
+    onClose: () -> Unit
+) {
+    var dragAccumulator = 0f
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.5f))
+            .clickable(enabled = true, onClick = onClose),
+        contentAlignment = Alignment.Center
+    ) {
+        Card(
+            modifier = Modifier
+                .width(360.dp)
+                .wrapContentHeight()
+                .clickable(
+                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                    indication = null
+                ) { /* クリック伝播防止 */ },
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+            elevation = 8.dp,
+            backgroundColor = Color.White
+        ) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    text = "動画開始時刻 (JST) の手動調整",
+                    color = Color(0xFF1C1C1E),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp
+                )
+                
+                Text(
+                    text = "動画の記録開始時刻を直接入力、またはマウスホイール/ドラッグで微調整して、GPSテレメトリとの同期ズレを解消します。",
+                    color = Color(0xFF636366),
+                    fontSize = 11.sp,
+                    lineHeight = 14.sp
+                )
+                
+                val currentJst = if (videoStartInstant != null) {
+                    java.time.ZonedDateTime.ofInstant(videoStartInstant, java.time.ZoneId.of("Asia/Tokyo"))
+                } else null
+                
+                if (currentJst != null) {
+                    var hourText by remember(videoStartInstant) { mutableStateOf(currentJst.hour.toString()) }
+                    var minText by remember(videoStartInstant) { mutableStateOf(currentJst.minute.toString()) }
+                    var secText by remember(videoStartInstant) { mutableStateOf(currentJst.second.toString()) }
+                    
+                    val toHalfWidth = { s: String ->
+                        s.map { c ->
+                            if (c in '０'..'９') (c - '０' + '0'.code).toChar() else c
+                        }.joinToString("").filter { it.isDigit() }
+                    }
+
+                    val updateTime = {
+                        val h = hourText.toIntOrNull()
+                        val m = minText.toIntOrNull()
+                        val s = secText.toIntOrNull()
+                        if (h != null && m != null && s != null) {
+                            timeOffsetState.updateTimeComponents(h, m, s, videoStartUtc)
+                        }
+                    }
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // 時
+                        TimeSpinnerField(
+                            valueText = hourText,
+                            onValueChange = { newValue ->
+                                val clean = toHalfWidth(newValue)
+                                if (clean.length <= 2) {
+                                    hourText = clean
+                                    updateTime()
+                                }
+                            },
+                            onIncrement = {
+                                val next = ((hourText.toIntOrNull() ?: currentJst.hour) + 1) % 24
+                                hourText = next.toString()
+                                updateTime()
+                            },
+                            onDecrement = {
+                                val cur = hourText.toIntOrNull() ?: currentJst.hour
+                                val next = if (cur - 1 < 0) 23 else cur - 1
+                                hourText = next.toString()
+                                updateTime()
+                            },
+                            label = "時",
+                            enabled = !isEncoding
+                        )
+                        
+                        Spacer(Modifier.width(12.dp))
+
+                        // 分
+                        TimeSpinnerField(
+                            valueText = minText,
+                            onValueChange = { newValue ->
+                                val clean = toHalfWidth(newValue)
+                                if (clean.length <= 2) {
+                                    minText = clean
+                                    updateTime()
+                                }
+                            },
+                            onIncrement = {
+                                val next = ((minText.toIntOrNull() ?: currentJst.minute) + 1) % 60
+                                minText = next.toString()
+                                updateTime()
+                            },
+                            onDecrement = {
+                                val cur = minText.toIntOrNull() ?: currentJst.minute
+                                val next = if (cur - 1 < 0) 59 else cur - 1
+                                minText = next.toString()
+                                updateTime()
+                            },
+                            label = "分",
+                            enabled = !isEncoding
+                        )
+                        
+                        Spacer(Modifier.width(12.dp))
+
+                        // 秒
+                        TimeSpinnerField(
+                            valueText = secText,
+                            onValueChange = { newValue ->
+                                val clean = toHalfWidth(newValue)
+                                if (clean.length <= 2) {
+                                    secText = clean
+                                    updateTime()
+                                }
+                            },
+                            onIncrement = {
+                                val next = ((secText.toIntOrNull() ?: currentJst.second) + 1) % 60
+                                secText = next.toString()
+                                updateTime()
+                            },
+                            onDecrement = {
+                                val cur = secText.toIntOrNull() ?: currentJst.second
+                                val next = if (cur - 1 < 0) 59 else cur - 1
+                                secText = next.toString()
+                                updateTime()
+                            },
+                            label = "秒",
+                            enabled = !isEncoding
+                        )
+                    }
+                }
+                
+                // オフセット計算結果の表示
+                val currentOffsetSec = timeOffsetState.seconds
+                val originalInstant = try { java.time.Instant.parse(videoStartUtc) } catch(e: Exception) { null }
+                val adjustedJstStr = if (originalInstant != null) {
+                    val adjustedInstant = originalInstant.plusMillis(timeOffsetState.millis.toLong())
+                    val jst = java.time.ZonedDateTime.ofInstant(adjustedInstant, java.time.ZoneId.of("Asia/Tokyo"))
+                    jst.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
+                } else null
+                
+                if (adjustedJstStr != null) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFFF2F2F7), shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                            .padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("補正前の開始 (JST):", color = Color(0xFF636366), fontSize = 10.sp)
+                            val origJst = originalInstant?.let { java.time.ZonedDateTime.ofInstant(it, java.time.ZoneId.of("Asia/Tokyo")) }
+                            Text(origJst?.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss")) ?: "", color = Color(0xFF1C1C1E), fontSize = 10.sp)
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("補正後の開始 (JST):", color = Color(0xFF636366), fontSize = 10.sp)
+                            Text(adjustedJstStr.substringAfter(" "), color = Color(0xFF34C759), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("HUD表示ズレ (オフセット):", color = Color(0xFF636366), fontSize = 10.sp)
+                            Text(
+                                "${if (currentOffsetSec >= 0) "+" else ""}${String.format(java.util.Locale.US, "%.3f", currentOffsetSec)} 秒",
+                                color = Color(0xFF007AFF),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+                
+                // 操作のヒント
+                Text(
+                    text = "ヒント: 各入力ボックスの上でマウスホイールをスクロールするか、上下にドラッグすることで、数値を素早く微調整できます。",
+                    color = Color(0xFF8E8E93),
+                    fontSize = 9.sp,
+                    lineHeight = 12.sp
+                )
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    Button(
+                        onClick = onClose,
+                        colors = ButtonDefaults.buttonColors(
+                            backgroundColor = Color(0xFF007AFF),
+                            contentColor = Color.White
+                        ),
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
+                    ) {
+                        Text("閉じる", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }
