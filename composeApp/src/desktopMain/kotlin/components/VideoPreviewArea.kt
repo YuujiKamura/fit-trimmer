@@ -178,7 +178,7 @@ class ComposeHudCanvas(
         val minLon = meanLon - maxR_local / cosLat
         val maxLon = meanLon + maxR_local / cosLat
         
-        val mapKey = "${settings.mapType}_${minLat}_${maxLat}_${minLon}_${maxLon}"
+        val mapKey = "${asettings.mapType}_${minLat}_${maxLat}_${minLon}_${maxLon}"
         
         var mapImg = cachedMapImage
         var leftLon = cachedMapLeftLon
