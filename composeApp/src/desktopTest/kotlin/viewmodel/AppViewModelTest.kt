@@ -44,6 +44,86 @@ class AppViewModelTest {
     }
 
     @Test
+    fun testTelemetryCuttingFlow() {
+        val viewModel = AppViewModel(null)
+        viewModel.videoStartUtc = "1989-12-31T00:00:05Z"
+        
+        val dummyPoints = List(30) { i ->
+            FitParser.TelemetryPoint(
+                timestamp = i.toDouble(),
+                speed = 25.0,
+                cadence = 90.0,
+                heartRate = 140.0,
+                power = 200.0,
+                elevation = 100.0,
+                distance = i * 7.0,
+                grade = 0.0
+            )
+        }
+        
+        viewModel.updateTelemetry(dummyPoints)
+        assertFalse(viewModel.isTelemetryCut)
+        assertEquals(30, viewModel.telemetryPoints.size)
+        assertEquals(30, viewModel.originalTelemetryPoints.size)
+        
+        viewModel.cutTelemetry(
+            trimStartSec = 10.0,
+            trimEndSec = 20.0,
+            videoStartUtcStr = viewModel.videoStartUtc
+        )
+        
+        assertTrue(viewModel.isTelemetryCut)
+        assertEquals(11, viewModel.telemetryPoints.size)
+        assertEquals(10.0, viewModel.telemetryPoints.first().timestamp)
+        assertEquals(20.0, viewModel.telemetryPoints.last().timestamp)
+        
+        assertEquals(30, viewModel.originalTelemetryPoints.size)
+        
+        assertEquals(5000, viewModel.timeOffsetState.millis)
+    }
+
+    @Test
+    fun testVideoPathChangeRestoresFullTelemetryPoints() {
+        val viewModel = AppViewModel(null)
+        viewModel.videoPath = "video1.mp4"
+        
+        val dummyPoints = List(10) { i ->
+            FitParser.TelemetryPoint(
+                timestamp = i.toDouble(),
+                speed = 20.0, cadence = 80.0, heartRate = 120.0, power = 150.0,
+                elevation = 50.0, distance = i * 5.0, grade = 0.0
+            )
+        }
+        viewModel.updateTelemetry(dummyPoints)
+        
+        viewModel.cutTelemetry(
+            trimStartSec = 3.0,
+            trimEndSec = 5.0,
+            videoStartUtcStr = ""
+        )
+        assertTrue(viewModel.isTelemetryCut)
+        assertEquals(3, viewModel.telemetryPoints.size)
+        
+        // Scenario A: Same video path loaded again (reload)
+        viewModel.videoPath = "video1.mp4"
+        assertFalse(viewModel.isTelemetryCut)
+        assertEquals(10, viewModel.telemetryPoints.size)
+        
+        // Trim/Cut again
+        viewModel.cutTelemetry(
+            trimStartSec = 3.0,
+            trimEndSec = 5.0,
+            videoStartUtcStr = ""
+        )
+        assertTrue(viewModel.isTelemetryCut)
+        
+        // Scenario B: Different video path loaded
+        viewModel.videoPath = "video2.mp4"
+        assertFalse(viewModel.isTelemetryCut)
+        assertEquals(10, viewModel.telemetryPoints.size)
+    }
+
+    @Test
     fun testEncodingPhaseTransitionsKeepCompletionSeparateFromActiveEncoding() {
         val viewModel = AppViewModel(null)
 

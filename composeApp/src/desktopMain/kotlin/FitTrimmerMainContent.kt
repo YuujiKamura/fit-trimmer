@@ -580,15 +580,29 @@ fun FitTrimmerMainContent(
                     parser.parse()
                     val telemetry = parser.getTelemetry()
                     println("DEBUG: FIT file parsed successfully. Points=${telemetry.size}")
-                    telemetryPoints = telemetry
+                    viewModel.updateTelemetry(telemetry)
+                    val fitEpoch = java.time.Instant.parse("1989-12-31T00:00:00Z").epochSecond
+                    val firstPoint = telemetry.firstOrNull()
+                    val videoInstant = try { java.time.Instant.parse(videoStartUtc) } catch(e: Exception) { null }
+                    if (firstPoint != null && videoInstant != null) {
+                        val fitStartEpoch = firstPoint.timestamp + fitEpoch
+                        val videoStartEpoch = videoInstant.toEpochMilli() / 1000.0
+                        val totalFitDuration = telemetry.last().timestamp - telemetry.first().timestamp
+                        val initialStartSec = (videoStartEpoch - fitStartEpoch).coerceIn(0.0, kotlin.math.max(0.0, totalFitDuration - (videoLengthMs / 1000.0)))
+                        trimStartSeconds = initialStartSec
+                        trimEndSeconds = initialStartSec + (videoLengthMs / 1000.0)
+                    } else {
+                        trimStartSeconds = 0.0
+                        trimEndSeconds = videoLengthMs / 1000.0
+                    }
                 } catch (e: Exception) {
                     println("ERROR: Failed to parse FIT file: ${e.message}")
                     e.printStackTrace()
-                    telemetryPoints = emptyList()
+                    viewModel.updateTelemetry(emptyList())
                 }
             }
         } else {
-            telemetryPoints = emptyList()
+            viewModel.updateTelemetry(emptyList())
         }
     }
     // Save path cache when modified.
@@ -1155,8 +1169,21 @@ fun FitTrimmerMainContent(
                                                 if (originalInstant != null && alignedInstant != null) {
                                                     val diffMs = alignedInstant.toEpochMilli() - originalInstant.toEpochMilli()
                                                     val diffSec = diffMs / 1000.0
-                                                    statusText = "IMU Sync: Adjusted offset by %.3f seconds".format(java.util.Locale.US, diffSec)
+                                                    statusText = "IMU Sync: Adjusted offset by %.3f seconds (r=%.2f)".format(java.util.Locale.US, diffSec, utils.TelemetryAligner.lastMaxCorr)
                                                     timeOffsetState.update(diffMs.toInt())
+                                                    viewModel.syncAnchorSec = utils.TelemetryAligner.lastAnchorSec
+                                                    viewModel.syncCorrelation = utils.TelemetryAligner.lastMaxCorr
+                                                    val fitEpoch = java.time.Instant.parse("1989-12-31T00:00:00Z").epochSecond
+                                                    val firstPoint = viewModel.telemetryPoints.firstOrNull()
+                                                    if (firstPoint != null) {
+                                                        val fitStartEpoch = firstPoint.timestamp + fitEpoch
+                                                        val videoStartEpoch = originalInstant.toEpochMilli() / 1000.0
+                                                        val adjustedStartEpoch = videoStartEpoch + diffSec
+                                                        val startSec = adjustedStartEpoch - fitStartEpoch
+                                                        val videoSec = videoLengthMs / 1000.0
+                                                        trimStartSeconds = kotlin.math.max(0.0, kotlin.math.min(startSec, (viewModel.telemetryPoints.last().timestamp - firstPoint.timestamp) - videoSec))
+                                                        trimEndSeconds = trimStartSeconds + videoSec
+                                                    }
                                                 } else {
                                                     statusText = "IMU Sync Successful"
                                                 }
@@ -2293,8 +2320,21 @@ fun FitTrimmerMainContent(
                                         if (originalInstant != null && alignedInstant != null) {
                                             val diffMs = alignedInstant.toEpochMilli() - originalInstant.toEpochMilli()
                                             val diffSec = diffMs / 1000.0
-                                            statusText = "IMU Sync: Adjusted offset by %.3f seconds".format(java.util.Locale.US, diffSec)
+                                            statusText = "IMU Sync: Adjusted offset by %.3f seconds (r=%.2f)".format(java.util.Locale.US, diffSec, utils.TelemetryAligner.lastMaxCorr)
                                             timeOffsetState.update(diffMs.toInt())
+                                            viewModel.syncAnchorSec = utils.TelemetryAligner.lastAnchorSec
+                                            viewModel.syncCorrelation = utils.TelemetryAligner.lastMaxCorr
+                                            val fitEpoch = java.time.Instant.parse("1989-12-31T00:00:00Z").epochSecond
+                                            val firstPoint = viewModel.telemetryPoints.firstOrNull()
+                                            if (firstPoint != null) {
+                                                val fitStartEpoch = firstPoint.timestamp + fitEpoch
+                                                val videoStartEpoch = originalInstant.toEpochMilli() / 1000.0
+                                                val adjustedStartEpoch = videoStartEpoch + diffSec
+                                                val startSec = adjustedStartEpoch - fitStartEpoch
+                                                val videoSec = videoLengthMs / 1000.0
+                                                trimStartSeconds = kotlin.math.max(0.0, kotlin.math.min(startSec, (viewModel.telemetryPoints.last().timestamp - firstPoint.timestamp) - videoSec))
+                                                trimEndSeconds = trimStartSeconds + videoSec
+                                            }
                                         } else {
                                             statusText = "IMU Sync Successful"
                                         }
@@ -3942,7 +3982,84 @@ fun FitTrimmerMainContent(
                                 language = settings.language,
                                 isFolded = isTimelineFolded,
                                 onFoldToggle = { isTimelineFolded = it }
-                            )
+                            ,
+                                videoStartUtc = videoStartUtc,
+                                timeOffsetMillis = timeOffsetState.millis.toLong(),
+                                onTimeOffsetChange = { offset -> timeOffsetState.update(offset.toInt()) },
+                                syncAnchorSec = viewModel.syncAnchorSec,
+                                syncCorrelation = viewModel.syncCorrelation,
+                                isTelemetryCut = viewModel.isTelemetryCut)
+
+                            if (!viewModel.isTelemetryCut && viewModel.telemetryPoints.isNotEmpty()) {
+                                Spacer(Modifier.height(8.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Button(
+                                        onClick = {
+                                            viewModel.cutTelemetry(
+                                                trimStartSec = trimStartSeconds,
+                                                trimEndSec = trimEndSeconds,
+                                                videoStartUtcStr = videoStartUtc
+                                            )
+                                            trimStartSeconds = 0.0
+                                            trimEndSeconds = videoLengthMs / 1000.0
+                                        },
+                                        colors = ButtonDefaults.buttonColors(
+                                            backgroundColor = Color(0xFF34C759),
+                                            contentColor = Color.White
+                                        ),
+                                        modifier = Modifier.height(36.dp)
+                                    ) {
+                                        Text(
+                                            text = if (settings.language == "ja") "\u30C6\u30EC\u30E1\u30C8\u30EA\u78BA\u5B9A (Cut)" else "Confirm & Cut Telemetry",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+                            if (viewModel.isTelemetryCut && viewModel.originalTelemetryPoints.isNotEmpty()) {
+                                Spacer(Modifier.height(8.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Button(
+                                        onClick = {
+                                            viewModel.updateTelemetry(viewModel.originalTelemetryPoints)
+                                            val fitEpoch = java.time.Instant.parse("1989-12-31T00:00:00Z").epochSecond
+                                            val firstPoint = viewModel.originalTelemetryPoints.firstOrNull()
+                                            val videoInstant = try { java.time.Instant.parse(videoStartUtc) } catch(e: Exception) { null }
+                                            if (firstPoint != null && videoInstant != null) {
+                                                val fitStartEpoch = firstPoint.timestamp + fitEpoch
+                                                val videoStartEpoch = videoInstant.toEpochMilli() / 1000.0
+                                                val totalFitDuration = viewModel.originalTelemetryPoints.last().timestamp - firstPoint.timestamp
+                                                val initialStartSec = (videoStartEpoch - fitStartEpoch).coerceIn(0.0, kotlin.math.max(0.0, totalFitDuration - (videoLengthMs / 1000.0)))
+                                                trimStartSeconds = initialStartSec
+                                                trimEndSeconds = initialStartSec + (videoLengthMs / 1000.0)
+                                            } else {
+                                                trimStartSeconds = 0.0
+                                                trimEndSeconds = videoLengthMs / 1000.0
+                                            }
+                                        },
+                                        colors = ButtonDefaults.buttonColors(
+                                            backgroundColor = Color(0xFFFF9500),
+                                            contentColor = Color.White
+                                        ),
+                                        modifier = Modifier.height(36.dp)
+                                    ) {
+                                        Text(
+                                            text = if (settings.language == "ja") "\u540C\u671F\u30EA\u30BB\u30C3\u30C8 (Reset)" else "Reset Sync",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
                             val previewLabel = when (settings.exportResolution) {
                                 "360p" -> "360p (640x360) Overlay Preview"
                                 "720p" -> "720p (1280x720) Overlay Preview"

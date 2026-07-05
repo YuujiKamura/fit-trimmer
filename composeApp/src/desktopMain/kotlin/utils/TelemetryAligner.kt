@@ -10,6 +10,11 @@ import java.nio.ByteOrder
 import java.time.Instant
 
 object TelemetryAligner {
+    @Volatile
+    var lastMaxCorr: Double = 0.0
+
+    @Volatile
+    var lastAnchorSec: Double = 0.0
     
     data class ImuData(
         val times: DoubleArray,
@@ -505,6 +510,9 @@ object TelemetryAligner {
 
         val videoStartTs = fitGrid[bestIdx]
         val trueFileStartTs = videoStartTs - firstFileImuOffset
+        
+        lastMaxCorr = maxCorr
+        lastAnchorSec = firstFileImuOffset
 
         // Convert Garmin epoch back to Unix and generate UTC ISO-8601
         val unixSec = (trueFileStartTs + 631065600.0).toLong()
@@ -512,5 +520,26 @@ object TelemetryAligner {
         val instant = Instant.ofEpochSecond(unixSec, unixNano)
         
         return instant.toString()
+    }
+
+    fun calculateOffsetFromTargetSec(
+        videoStartUtc: String,
+        fitStartUtc: String,
+        targetSec: Double
+    ): Long {
+        if (videoStartUtc.isEmpty() || fitStartUtc.isEmpty()) return 0L
+        try {
+            val videoInstant = java.time.Instant.parse(videoStartUtc)
+            val fitInstant = java.time.Instant.parse(fitStartUtc)
+            
+            val videoStartMs = videoInstant.toEpochMilli()
+            val fitStartMs = fitInstant.toEpochMilli()
+            
+            val adjustedStartMs = fitStartMs - (targetSec * 1000.0).toLong()
+            return adjustedStartMs - videoStartMs
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return 0L
+        }
     }
 }

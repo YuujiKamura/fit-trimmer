@@ -3,5 +3,6 @@ package components
 enum class DragHandle {
     TRIM_START,
     TRIM_END,
-    PLAYHEAD
+    PLAYHEAD,
+    FIT_START
 }
