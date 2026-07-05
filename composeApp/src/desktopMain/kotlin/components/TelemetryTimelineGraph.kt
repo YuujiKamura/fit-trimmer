@@ -809,7 +809,7 @@ fun TelemetryTimelineGraph(
             if (!isFolded) {
                 Spacer(Modifier.height(4.dp))
                 Canvas(
-                    modifier = Modifier.fillMaxWidth().height(22.dp)
+                    modifier = Modifier.fillMaxWidth().height(32.dp)
                 ) {
                     val w = size.width.toFloat()
                     val h = size.height.toFloat()
@@ -824,15 +824,15 @@ fun TelemetryTimelineGraph(
                             color = Color(0xFFC7C7CC),
                             start = Offset(tickX, 0f),
                             end = Offset(tickX, 5.dp.toPx()),
-                            strokeWidth = 1.dp.toPx()
+                            strokeWidth = 1.2.dp.toPx()
                         )
                         
-                        val labelStr = formatTime((tickSec * 1000).toLong()).substring(0, 5) // mm:ss
+                        val labelStr = formatTime((tickSec * 1000).toLong()) // mm:ss or mmm:ss
                         val labelLayout = textMeasurer.measure(
                             text = labelStr,
                             style = TextStyle(
                                 color = Color(0xFF3A3A3C), 
-                                fontSize = 9.5.sp, 
+                                fontSize = 10.sp, 
                                 fontWeight = FontWeight.Medium
                             )
                         )
@@ -840,7 +840,7 @@ fun TelemetryTimelineGraph(
                             textLayoutResult = labelLayout,
                             topLeft = Offset(
                                 x = (tickX - labelLayout.size.width / 2f).coerceIn(4f, w - labelLayout.size.width - 4f),
-                                y = 7.dp.toPx()
+                                y = 9.dp.toPx()
                             )
                         )
                     }
