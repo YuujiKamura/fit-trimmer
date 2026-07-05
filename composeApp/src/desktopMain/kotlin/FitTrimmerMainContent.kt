@@ -82,7 +82,7 @@ fun FitTrimmerMainContent(
     var outputDir by viewModel::outputDir
     var videoStartUtc by viewModel::videoStartUtc
     val timeOffsetState = viewModel.timeOffsetState
-    val adjustedStartUtc by viewModel::adjustedStartUtc
+    val adjustedStartUtc = viewModel.adjustedStartUtc
     var isEncoding by viewModel::isEncoding
     var isCanceled by viewModel::isCanceled
     var progress by viewModel::progress
