@@ -4,5 +4,6 @@ enum class DragHandle {
     TRIM_START,
     TRIM_END,
     PLAYHEAD,
-    FIT_START
+    FIT_START,
+    VIDEO_RANGE
 }

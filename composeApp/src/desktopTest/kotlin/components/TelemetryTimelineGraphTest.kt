@@ -38,4 +38,26 @@ class TelemetryTimelineGraphTest {
         val regex = Regex("^\\d{2}:\\d{2}:\\d{2}$")
         assert(regex.matches(formatted)) { "Expected HH:mm:ss format, got '$formatted'" }
     }
+    @Test
+    fun testDragVideoRangeCalculatesCorrectOffset() {
+        val fitStartUtc = "2026-07-05T11:00:00Z"
+        val videoStartUtc = "2026-07-05T11:02:00Z" // startDiffSec = 120.0
+        val vDuration = 600.0
+        
+        val dragStartStartDiffSec = 120.0
+        val dragStartRatio = 0.2f
+        
+        val currentRatio = 0.3f
+        val deltaRatio = currentRatio - dragStartRatio
+        val deltaSec = deltaRatio * vDuration
+        val targetSec = dragStartStartDiffSec + deltaSec // 120.0 + 60.0 = 180.0
+        
+        val newOffsetMs = utils.TelemetryAligner.calculateOffsetFromTargetSec(
+            videoStartUtc = videoStartUtc,
+            fitStartUtc = fitStartUtc,
+            targetSec = targetSec
+        )
+        
+        assertEquals(-300000L, newOffsetMs)
+    }
 }
