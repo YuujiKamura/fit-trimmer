@@ -3882,7 +3882,7 @@ fun FitTrimmerMainContent(
                             VideoPreviewArea(
                                 videoPath = videoPath,
                                 videoLengthMs = videoLengthMs,
-                                adjustedStartUtc = adjustedStartUtc,
+                                adjustedStartUtcProvider = { adjustedStartUtc },
                                 telemetryPoints = telemetryPoints,
                                 trimmedTelemetryPoints = trimmedTelemetryPoints,
                                 settings = settings,

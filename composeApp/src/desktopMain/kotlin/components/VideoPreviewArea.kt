@@ -393,7 +393,7 @@ class ComposeHudCanvas(
 fun VideoPreviewArea(
     videoPath: String,
     videoLengthMs: Long,
-    adjustedStartUtc: String,
+    adjustedStartUtcProvider: () -> String,
     telemetryPoints: List<FitParser.TelemetryPoint>,
     trimmedTelemetryPoints: List<FitParser.TelemetryPoint>,
     settings: HudSettings,
@@ -687,7 +687,8 @@ fun VideoPreviewArea(
         }
     }
 
-    val currentPointAndIndex = remember(currentRenderTimeMs, telemetryPoints, adjustedStartUtc) {
+    val currentPointAndIndex by derivedStateOf {
+        val adjustedStartUtc = adjustedStartUtcProvider()
         if (telemetryPoints.isEmpty() || adjustedStartUtc.isEmpty()) null
         else {
             try {

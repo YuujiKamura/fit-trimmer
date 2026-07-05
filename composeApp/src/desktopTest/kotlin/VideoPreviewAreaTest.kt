@@ -84,7 +84,7 @@ class VideoPreviewAreaTest {
             VideoPreviewArea(
                 videoPath = dummyFile.absolutePath,
                 videoLengthMs = 10000L,
-                adjustedStartUtc = "2026-07-02T12:00:00Z",
+                adjustedStartUtcProvider = { "2026-07-02T12:00:00Z" },
                 telemetryPoints = emptyList(),
                 trimmedTelemetryPoints = emptyList(),
                 settings = HudSettings(),
@@ -161,7 +161,7 @@ class VideoPreviewAreaTest {
             VideoPreviewArea(
                 videoPath = dummyFile.absolutePath,
                 videoLengthMs = 10000L,
-                adjustedStartUtc = "2026-07-02T12:00:00Z",
+                adjustedStartUtcProvider = { "2026-07-02T12:00:00Z" },
                 telemetryPoints = emptyList(),
                 trimmedTelemetryPoints = emptyList(),
                 settings = HudSettings(),
@@ -225,7 +225,7 @@ class VideoPreviewAreaTest {
             VideoPreviewArea(
                 videoPath = dummyFile.absolutePath,
                 videoLengthMs = 10000L,
-                adjustedStartUtc = "2026-07-02T12:00:00Z",
+                adjustedStartUtcProvider = { "2026-07-02T12:00:00Z" },
                 telemetryPoints = emptyList(),
                 trimmedTelemetryPoints = emptyList(),
                 settings = HudSettings(),
@@ -300,7 +300,7 @@ class VideoPreviewAreaTest {
             VideoPreviewArea(
                 videoPath = dummyFile.absolutePath,
                 videoLengthMs = 10000L,
-                adjustedStartUtc = "2026-07-02T12:00:00Z",
+                adjustedStartUtcProvider = { "2026-07-02T12:00:00Z" },
                 telemetryPoints = emptyList(),
                 trimmedTelemetryPoints = emptyList(),
                 settings = HudSettings(),
