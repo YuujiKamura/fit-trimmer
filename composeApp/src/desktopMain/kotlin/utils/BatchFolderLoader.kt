@@ -74,7 +74,7 @@ object BatchFolderLoader {
             val durationSeconds = durationMs.toDouble() / 1000.0
 
             val jobSettings = currentSettings.copy()
-            val outputFileName = fit.CacheRegistry.buildEncodeOutputFileName(
+            val outputFileName = fit.HudFileNameFormatter.buildEncodeOutputFileName(
                 settings = jobSettings,
                 videoPath = videoAbs,
                 partIndex = -1,

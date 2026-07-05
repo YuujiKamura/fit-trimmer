@@ -198,7 +198,7 @@ fun main(args: Array<String>) {
             println("❌ Video file not found: ${firstArgFile.absolutePath}")
             return
         }
-        val jobs = fit.CacheRegistry.scanAvailableJobs(firstArgFile.absolutePath)
+        val jobs = fit.CacheJobManager.getInstance().scanJobs(firstArgFile.absolutePath)
         if (jobs.isEmpty()) {
             println("No unfinished encoding caches found for: ${firstArgFile.name}")
         } else {
@@ -224,14 +224,14 @@ fun main(args: Array<String>) {
             println("❌ Video file not found: ${firstArgFile.absolutePath}")
             return
         }
-        val jobs = fit.CacheRegistry.scanAvailableJobs(firstArgFile.absolutePath)
+        val jobs = fit.CacheJobManager.getInstance().scanJobs(firstArgFile.absolutePath)
         val job = jobs.find { it.jobHash == jobHash }
         if (job == null) {
             println("❌ Cache job with hash '$jobHash' not found.")
             return
         }
         println("⚠️ Deleting cache job ${job.jobHash} (${job.folder.absolutePath}) ...")
-        fit.CacheRegistry.deleteCacheJob(job)
+        job.delete()
         println("✨ Cache job successfully deleted.")
         return
     }
@@ -252,7 +252,7 @@ fun main(args: Array<String>) {
         }
         val outputDir = File(args[outputDirIdx + 1])
         
-        val jobs = fit.CacheRegistry.scanAvailableJobs(firstArgFile.absolutePath)
+        val jobs = fit.CacheJobManager.getInstance().scanJobs(firstArgFile.absolutePath)
         val job = jobs.find { it.jobHash == jobHash }
         if (job == null) {
             println("❌ Cache job with hash '$jobHash' not found.")
@@ -310,12 +310,12 @@ fun main(args: Array<String>) {
             }
         }
 
-        val outPath = fit.CacheRegistry.getSalvageOutputPath(firstArgFile.absolutePath, outputDir.absolutePath, settings).absolutePath
+        val outPath = fit.CacheJobManager.getInstance().getSalvageOutputPath(firstArgFile.absolutePath, outputDir.absolutePath, settings).absolutePath
         println("🚀 RESTORING CACHE JOB: ${job.jobHash}")
         println("Target Output: $outPath")
 
         try {
-            fit.CacheRegistry.salvageAndMerge(job.folder, outPath) { progress, status ->
+            job.salvageAndMerge(File(outPath)) { progress, status ->
                 reportProgress(progress, status, true)
             }
             reportProgress(1.0f, "Finished", false)

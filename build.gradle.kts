@@ -29,6 +29,8 @@ val verifyNoStrayFileIO = tasks.register("verifyNoStrayFileIO") {
         val allowedFiles = setOf(
             "PathResolver.kt",
             "CacheRegistry.kt",
+            "CacheJobManager.kt",
+            "HudFileNameFormatter.kt",
             "JobStateManager.kt",
             "PlateCacheManager.kt",
             "Localizer.kt",

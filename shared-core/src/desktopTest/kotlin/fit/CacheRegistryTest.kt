@@ -136,6 +136,7 @@ class CacheRegistryTest {
 
     @Test
     fun testScanAvailableJobsAndSalvageAndMerge() {
+        val manager = CacheJobManager.getInstance()
         val mockVideoPath = File(testTempDir, "video_mock.mp4").absolutePath
         val workDir = PathResolver.getTempWorkDir(mockVideoPath)
         val jobDir = File(workDir, "job_99999")
@@ -152,15 +153,15 @@ class CacheRegistryTest {
         assertTrue(part2.exists() && part2.length() > 0, "Mock TS part 2 should be a valid video stream")
 
         try {
-            val jobs = CacheRegistry.scanAvailableJobs(mockVideoPath)
+            val jobs = manager.scanJobs(mockVideoPath)
             val myJob = jobs.find { it.jobHash == "99999" }
             assertNotNull(myJob, "Should scan and find our dummy job")
             assertEquals(2, myJob.partsCount, "Parts count should match")
 
-            val salvagedOutput = File(testTempDir, "salvaged_output.mp4").absolutePath
+            val salvagedOutput = File(testTempDir, "salvaged_output.mp4")
             val progressList = mutableListOf<Float>()
             val statusList = mutableListOf<String>()
-            CacheRegistry.salvageAndMerge(jobDir, salvagedOutput) { progress, status ->
+            myJob.salvageAndMerge(salvagedOutput) { progress, status ->
                 println("Salvage progress: $progress -> $status")
                 progressList.add(progress)
                 statusList.add(status)
@@ -171,9 +172,8 @@ class CacheRegistryTest {
             val hasPercentAndMb = mergingStatuses.any { "%" in it && "MB" in it }
             assertTrue(hasPercentAndMb, "Merging status should report numeric progress in % and size in MB (actual statuses: $mergingStatuses)")
 
-            val outFile = File(salvagedOutput)
-            assertTrue(outFile.exists(), "Salvaged output file should be generated")
-            assertTrue(outFile.length() > 0, "Salvaged file should contain data")
+            assertTrue(salvagedOutput.exists(), "Salvaged output file should be generated")
+            assertTrue(salvagedOutput.length() > 0, "Salvaged file should contain data")
             assertFalse(jobDir.exists(), "Job directory should be cleaned up after successful salvage")
         } finally {
             part1.delete()
@@ -184,6 +184,7 @@ class CacheRegistryTest {
 
     @Test
     fun testVideoSwitchingCacheIsolationAndRecovery() {
+        val manager = CacheJobManager.getInstance()
         val videoPathA = File(testTempDir, "video_a.mp4").absolutePath
         val videoPathB = File(testTempDir, "video_b.mp4").absolutePath
 
@@ -208,38 +209,38 @@ class CacheRegistryTest {
 
         try {
             // 1. Scan & Isolation: Scan of A must not find job B caches
-            val jobsA = CacheRegistry.scanAvailableJobs(videoPathA)
+            val jobsA = manager.scanJobs(videoPathA)
             val foundJobA = jobsA.find { it.jobHash == "aaaaa" }
             val foundJobBInA = jobsA.find { it.jobHash == "bbbbb" }
             assertNotNull(foundJobA, "Should find job A cache under video A path")
             assertNull(foundJobBInA, "Should NOT find job B cache under video A path")
 
             // 2. Verify Scan B
-            val jobsB = CacheRegistry.scanAvailableJobs(videoPathB)
+            val jobsB = manager.scanJobs(videoPathB)
             val foundJobB = jobsB.find { it.jobHash == "bbbbb" }
             val foundJobAInB = jobsB.find { it.jobHash == "aaaaa" }
             assertNotNull(foundJobB, "Should find job B cache under video B path")
             assertNull(foundJobAInB, "Should NOT find job A cache under video B path")
 
             // 3. Simulate re-loading video A (switching back)
-            val reloadJobsA = CacheRegistry.scanAvailableJobs(videoPathA)
+            val reloadJobsA = manager.scanJobs(videoPathA)
             assertNotNull(reloadJobsA.find { it.jobHash == "aaaaa" }, "Should recover job A cache upon re-scanning video A path")
 
             // 4. Verify bulk cleanup (clearAllCaches)
-            CacheRegistry.clearAllCaches(videoPathA)
+            manager.clearAll(videoPathA)
             assertFalse(jobDirA.exists(), "Job directory A should be completely removed by clearAllCaches")
             assertTrue(jobDirB.exists(), "Job directory B must remain untouched and isolated")
 
             // 5. Post-cleanup scanning state
-            assertTrue(CacheRegistry.scanAvailableJobs(videoPathA).isEmpty(), "Scanned jobs for A should be empty after clearAllCaches")
-            assertFalse(CacheRegistry.scanAvailableJobs(videoPathB).isEmpty(), "Scanned jobs for B must still be intact")
+            assertTrue(manager.scanJobs(videoPathA).isEmpty(), "Scanned jobs for A should be empty after clearAllCaches")
+            assertFalse(manager.scanJobs(videoPathB).isEmpty(), "Scanned jobs for B must still be intact")
         } finally {
             partA.delete()
             partB.delete()
             jobDirA.delete()
             jobDirB.delete()
-            CacheRegistry.clearAllCaches(videoPathA)
-            CacheRegistry.clearAllCaches(videoPathB)
+            manager.clearAll(videoPathA)
+            manager.clearAll(videoPathB)
         }
     }
 
@@ -248,8 +249,16 @@ class CacheRegistryTest {
         val jobDir = File(testTempDir, "job_empty")
         jobDir.mkdirs()
         try {
+            val emptyJob = DefaultCacheJob(
+                jobHash = "empty",
+                folder = jobDir,
+                partsCount = 0,
+                lastModified = System.currentTimeMillis(),
+                hasMaskVideo = false,
+                parts = emptyList()
+            )
             assertFailsWith<Exception> {
-                CacheRegistry.salvageAndMerge(jobDir, File(testTempDir, "out.mp4").absolutePath) { _, _ -> }
+                emptyJob.salvageAndMerge(File(testTempDir, "out.mp4")) { _, _ -> }
             }
         } finally {
             jobDir.delete()
@@ -266,10 +275,18 @@ class CacheRegistryTest {
         part1.writeText("Corrupted dummy text data that is not a valid TS video stream")
         
         val outFile = File(testTempDir, "out_corrupt.mp4")
+        val corruptJob = DefaultCacheJob(
+            jobHash = "corrupt",
+            folder = jobDir,
+            partsCount = 1,
+            lastModified = System.currentTimeMillis(),
+            hasMaskVideo = false,
+            parts = listOf(part1)
+        )
         try {
             // ffmpeg concat will fail to merge this invalid stream and return a non-zero exit code
             assertFailsWith<Exception> {
-                CacheRegistry.salvageAndMerge(jobDir, outFile.absolutePath) { _, _ -> }
+                corruptJob.salvageAndMerge(outFile) { _, _ -> }
             }
             assertFalse(outFile.exists(), "Output file should not exist or be cleaned up on failure")
         } finally {
@@ -278,4 +295,48 @@ class CacheRegistryTest {
             outFile.delete()
         }
     }
+
+    @Test
+    fun testNewCacheJobManagerFlow() {
+        val manager = CacheJobManager.getInstance()
+        val mockVideoPath = File(testTempDir, "video_mock_new.mp4").absolutePath
+        val workDir = PathResolver.getTempWorkDir(mockVideoPath)
+        val jobDir = File(workDir, "job_88888")
+        jobDir.mkdirs()
+
+        val part1 = File(jobDir, "part_0000.ts")
+        createMockTsFile(part1)
+        JobStateManager.saveState(jobDir, JobState("88888", videoPath = mockVideoPath))
+        File(jobDir, ".video_source").writeText(mockVideoPath)
+
+        try {
+            val jobs = manager.scanJobs(mockVideoPath)
+            val myJob = jobs.find { it.jobHash == "88888" }
+            assertNotNull(myJob)
+            assertEquals(1, myJob.partsCount)
+
+            val salvagedOutput = File(testTempDir, "salvaged_output_new.mp4")
+            myJob.salvageAndMerge(salvagedOutput) { _, _ -> }
+
+            assertTrue(salvagedOutput.exists())
+            assertFalse(jobDir.exists())
+        } finally {
+            part1.delete()
+            jobDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun testNewHudFileNameFormatter() {
+        val settings = HudSettings(exportResolution = "1080p")
+        val videoPath = "C:/videos/test_video.mp4"
+        val outputName = HudFileNameFormatter.buildEncodeOutputFileName(
+            settings = settings,
+            videoPath = videoPath,
+            isSample = false
+        )
+        assertTrue(outputName.contains("test_video"))
+        assertTrue(outputName.contains("_1080p"))
+    }
 }
+

@@ -472,7 +472,7 @@ class AppViewModel(
 
 
 
-    var availableCacheJobs by androidx.compose.runtime.mutableStateOf<List<fit.CacheRegistry.CacheJobInfo>>(emptyList())
+    var availableCacheJobs by androidx.compose.runtime.mutableStateOf<List<fit.CacheJob>>(emptyList())
     var lastPromptedJobHash by androidx.compose.runtime.mutableStateOf("")
 
     var isSalvaging by androidx.compose.runtime.mutableStateOf(false)
@@ -487,7 +487,7 @@ class AppViewModel(
 
         if (videoPath.isNotEmpty()) {
 
-            availableCacheJobs = fit.CacheRegistry.scanAvailableJobs(videoPath)
+            availableCacheJobs = fit.CacheJobManager.getInstance().scanJobs(videoPath)
 
         } else {
 
@@ -501,7 +501,7 @@ class AppViewModel(
 
     fun runSalvage(
 
-        jobInfo: fit.CacheRegistry.CacheJobInfo,
+        jobInfo: fit.CacheJob,
 
         outputPath: String,
 
@@ -525,24 +525,14 @@ class AppViewModel(
 
             try {
 
-                fit.CacheRegistry.salvageAndMerge(
-
-                    jobDir = jobInfo.folder,
-
-                    output = outputPath,
-
+                jobInfo.salvageAndMerge(
+                    outputFile = File(outputPath),
                     onProgress = { prog, status ->
-
                         coroutineScope.launch(kotlinx.coroutines.Dispatchers.Main) {
-
                             salvageProgress = prog
-
                             salvageStatusText = status
-
                         }
-
                     }
-
                 )
 
                 coroutineScope.launch(kotlinx.coroutines.Dispatchers.Main) {
@@ -577,14 +567,14 @@ class AppViewModel(
 
     }
 
-    fun deleteCacheJob(jobInfo: fit.CacheRegistry.CacheJobInfo) {
-        fit.CacheRegistry.deleteCacheJob(jobInfo)
+    fun deleteCacheJob(jobInfo: fit.CacheJob) {
+        jobInfo.delete()
         refreshAvailableCacheJobs()
     }
 
     fun clearAllCaches() {
         if (videoPath.isNotEmpty()) {
-            fit.CacheRegistry.clearAllCaches(videoPath)
+            fit.CacheJobManager.getInstance().clearAll(videoPath)
             refreshAvailableCacheJobs()
         }
     }
@@ -1286,7 +1276,7 @@ class AppViewModel(
         val includeTrim = hasTrimmedRangeForFileName(jobTrimStartSeconds, jobTrimEndSeconds, jobDurationSeconds)
         val ranges = buildQueuedRangesFor(jobTrimStartSeconds, jobTrimEndSeconds, jobSplitPoints)
         return ranges.mapIndexed { idx, (start, end) ->
-            fit.CacheRegistry.buildEncodeOutputFileName(
+            fit.HudFileNameFormatter.buildEncodeOutputFileName(
                 settings = jobSettings,
                 videoPath = jobVideoPath,
                 partIndex = if (ranges.size > 1) idx else -1,
