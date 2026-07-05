@@ -1171,31 +1171,29 @@ fun FitTrimmerMainContent(
                                         viewModel.isAligningTelemetry = true
                                         try {
                                             val originalInstant = try { java.time.Instant.parse(videoStartUtc) } catch(e: Exception) { null }
-                                            val alignedUtc = TelemetryAligner.alignVideoWithTelemetry(videoPath, telemetryPoints, videoStartUtc)
-                                            if (alignedUtc != null) {
-                                                val alignedInstant = try { java.time.Instant.parse(alignedUtc) } catch(e: Exception) { null }
+                                            val candidates = TelemetryAligner.alignVideoWithTelemetryCandidates(
+                                                videoPath = videoPath,
+                                                telemetryPoints = telemetryPoints,
+                                                approxStartUtc = videoStartUtc,
+                                                windowSeconds = 1800.0,
+                                                maxCandidates = 5
+                                            )
+                                            viewModel.syncCandidates = candidates
+                                            val candidate = candidates.firstOrNull()
+                                            if (candidate != null) {
+                                                val alignedInstant = try { java.time.Instant.parse(candidate.alignedUtc) } catch(e: Exception) { null }
                                                 if (originalInstant != null && alignedInstant != null) {
                                                     val diffMs = alignedInstant.toEpochMilli() - originalInstant.toEpochMilli()
                                                     val diffSec = diffMs / 1000.0
-                                                    statusText = "IMU Sync: Adjusted offset by %.3f seconds (r=%.2f)".format(java.util.Locale.US, diffSec, utils.TelemetryAligner.lastMaxCorr)
+                                                    statusText = "IMU Sync: Applied candidate #1 %.3f seconds (r=%.2f, %d candidates)".format(java.util.Locale.US, diffSec, candidate.correlation, candidates.size)
                                                     timeOffsetState.update(diffMs.toInt())
                                                     viewModel.syncAnchorSec = utils.TelemetryAligner.lastAnchorSec
-                                                    viewModel.syncCorrelation = utils.TelemetryAligner.lastMaxCorr
-                                                    val fitEpoch = java.time.Instant.parse("1989-12-31T00:00:00Z").epochSecond
-                                                    val firstPoint = viewModel.telemetryPoints.firstOrNull()
-                                                    if (firstPoint != null) {
-                                                        val fitStartEpoch = firstPoint.timestamp + fitEpoch
-                                                        val videoStartEpoch = originalInstant.toEpochMilli() / 1000.0
-                                                        val adjustedStartEpoch = videoStartEpoch + diffSec
-                                                        val startSec = adjustedStartEpoch - fitStartEpoch
-                                                        val videoSec = videoLengthMs / 1000.0
-                                                        trimStartSeconds = kotlin.math.max(0.0, kotlin.math.min(startSec, (viewModel.telemetryPoints.last().timestamp - firstPoint.timestamp) - videoSec))
-                                                        trimEndSeconds = trimStartSeconds + videoSec
-                                                    }
+                                                    viewModel.syncCorrelation = candidate.correlation
                                                 } else {
                                                     statusText = "IMU Sync Successful"
                                                 }
                                             } else {
+                                                viewModel.syncCandidates = emptyList()
                                                 statusText = "IMU Sync failed (no correlation found)"
                                             }
                                         } finally {
@@ -2321,6 +2319,18 @@ fun FitTrimmerMainContent(
                         isAligning = viewModel.isAligningTelemetry,
                         isEncoding = isEncoding,
                         videoStartUtc = videoStartUtc,
+                        syncCandidates = viewModel.syncCandidates,
+                        onApplySyncCandidate = { candidate ->
+                            val originalInstant = try { java.time.Instant.parse(videoStartUtc) } catch(e: Exception) { null }
+                            val alignedInstant = try { java.time.Instant.parse(candidate.alignedUtc) } catch(e: Exception) { null }
+                            if (originalInstant != null && alignedInstant != null) {
+                                val diffMs = alignedInstant.toEpochMilli() - originalInstant.toEpochMilli()
+                                timeOffsetState.update(diffMs.toInt())
+                                viewModel.syncCorrelation = candidate.correlation
+                                viewModel.syncAnchorSec = utils.TelemetryAligner.lastAnchorSec
+                                statusText = "IMU Sync: Applied candidate #${candidate.rank} %.3f seconds (r=%.2f)".format(java.util.Locale.US, diffMs / 1000.0, candidate.correlation)
+                            }
+                        },
                         onOpenSyncPanelClick = showSyncDialog,
                         onOpenManualJstSyncClick = { showManualJstSyncDialog = true },
                         onAlignTelemetryClick = {
@@ -2328,31 +2338,29 @@ fun FitTrimmerMainContent(
                                 viewModel.isAligningTelemetry = true
                                 try {
                                     val originalInstant = try { java.time.Instant.parse(videoStartUtc) } catch(e: Exception) { null }
-                                    val alignedUtc = TelemetryAligner.alignVideoWithTelemetry(videoPath, telemetryPoints, videoStartUtc)
-                                    if (alignedUtc != null) {
-                                        val alignedInstant = try { java.time.Instant.parse(alignedUtc) } catch(e: Exception) { null }
+                                    val candidates = TelemetryAligner.alignVideoWithTelemetryCandidates(
+                                        videoPath = videoPath,
+                                        telemetryPoints = telemetryPoints,
+                                        approxStartUtc = videoStartUtc,
+                                        windowSeconds = 1800.0,
+                                        maxCandidates = 5
+                                    )
+                                    viewModel.syncCandidates = candidates
+                                    val candidate = candidates.firstOrNull()
+                                    if (candidate != null) {
+                                        val alignedInstant = try { java.time.Instant.parse(candidate.alignedUtc) } catch(e: Exception) { null }
                                         if (originalInstant != null && alignedInstant != null) {
                                             val diffMs = alignedInstant.toEpochMilli() - originalInstant.toEpochMilli()
                                             val diffSec = diffMs / 1000.0
-                                            statusText = "IMU Sync: Adjusted offset by %.3f seconds (r=%.2f)".format(java.util.Locale.US, diffSec, utils.TelemetryAligner.lastMaxCorr)
+                                            statusText = "IMU Sync: Applied candidate #1 %.3f seconds (r=%.2f, %d candidates)".format(java.util.Locale.US, diffSec, candidate.correlation, candidates.size)
                                             timeOffsetState.update(diffMs.toInt())
                                             viewModel.syncAnchorSec = utils.TelemetryAligner.lastAnchorSec
-                                            viewModel.syncCorrelation = utils.TelemetryAligner.lastMaxCorr
-                                            val fitEpoch = java.time.Instant.parse("1989-12-31T00:00:00Z").epochSecond
-                                            val firstPoint = viewModel.telemetryPoints.firstOrNull()
-                                            if (firstPoint != null) {
-                                                val fitStartEpoch = firstPoint.timestamp + fitEpoch
-                                                val videoStartEpoch = originalInstant.toEpochMilli() / 1000.0
-                                                val adjustedStartEpoch = videoStartEpoch + diffSec
-                                                val startSec = adjustedStartEpoch - fitStartEpoch
-                                                val videoSec = videoLengthMs / 1000.0
-                                                trimStartSeconds = kotlin.math.max(0.0, kotlin.math.min(startSec, (viewModel.telemetryPoints.last().timestamp - firstPoint.timestamp) - videoSec))
-                                                trimEndSeconds = trimStartSeconds + videoSec
-                                            }
+                                            viewModel.syncCorrelation = candidate.correlation
                                         } else {
                                             statusText = "IMU Sync Successful"
                                         }
                                     } else {
+                                        viewModel.syncCandidates = emptyList()
                                         statusText = "IMU Sync failed (no correlation found)"
                                     }
                                 } finally {

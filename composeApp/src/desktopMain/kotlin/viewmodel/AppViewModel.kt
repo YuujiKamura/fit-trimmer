@@ -750,6 +750,8 @@ class AppViewModel(
 
     var syncCorrelation by mutableStateOf<Double?>(null)
 
+    var syncCandidates by mutableStateOf<List<utils.TelemetryAligner.AlignmentCandidate>>(emptyList())
+
     var encodePhase by mutableStateOf(EncodePhase.Idle)
 
     var isEncoding: Boolean
