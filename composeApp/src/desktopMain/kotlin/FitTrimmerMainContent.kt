@@ -82,7 +82,7 @@ fun FitTrimmerMainContent(
     var outputDir by viewModel::outputDir
     var videoStartUtc by viewModel::videoStartUtc
     val timeOffsetState = viewModel.timeOffsetState
-    val adjustedStartUtc = viewModel.adjustedStartUtc
+    val adjustedStartUtc by viewModel::adjustedStartUtc
     var isEncoding by viewModel::isEncoding
     var isCanceled by viewModel::isCanceled
     var progress by viewModel::progress
@@ -3882,7 +3882,7 @@ fun FitTrimmerMainContent(
                             VideoPreviewArea(
                                 videoPath = videoPath,
                                 videoLengthMs = videoLengthMs,
-                                adjustedStartUtcProvider = { adjustedStartUtc },
+                                adjustedStartUtc = adjustedStartUtc,
                                 telemetryPoints = telemetryPoints,
                                 trimmedTelemetryPoints = trimmedTelemetryPoints,
                                 settings = settings,
