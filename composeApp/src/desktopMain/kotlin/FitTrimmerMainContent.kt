@@ -3976,7 +3976,7 @@ fun FitTrimmerMainContent(
                                 onSeekEnd = { if (!isEncoding) onSeekEnd(it) },
                                 plateCache = viewModel.plateCache,
                                 blurLicensePlates = settings.blurLicensePlates,
-                                modifier = Modifier.fillMaxWidth().height(if (isTimelineFolded) 50.dp else 190.dp),
+                                modifier = Modifier.fillMaxWidth().height(if (isTimelineFolded) 50.dp else 200.dp),
                                 isEncoding = isEncoding,
                                 isDetectingPlates = viewModel.isDetectingPlates,
                                 language = settings.language,
