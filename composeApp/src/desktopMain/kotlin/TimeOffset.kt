@@ -29,6 +29,23 @@ class TimeAlignmentState(initialMillis: Int) {
             videoStartUtc
         }
     }
+
+    fun updateTimeComponents(hour: Int, minute: Int, second: Int, baseUtcStr: String) {
+        if (baseUtcStr.isEmpty()) return
+        try {
+            val baseInstant = java.time.Instant.parse(baseUtcStr)
+            val baseZdt = java.time.ZonedDateTime.ofInstant(baseInstant, java.time.ZoneId.of("Asia/Tokyo"))
+            val newJst = baseZdt.withHour(hour.coerceIn(0, 23))
+                                .withMinute(minute.coerceIn(0, 59))
+                                .withSecond(second.coerceIn(0, 59))
+                                .withNano(0)
+            val originalInstant = java.time.Instant.parse(baseUtcStr)
+            val diffMs = newJst.toInstant().toEpochMilli() - originalInstant.toEpochMilli()
+            update(diffMs.toInt())
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
 }
 
 @Composable
