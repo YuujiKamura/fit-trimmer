@@ -83,6 +83,44 @@ class AppViewModelTest {
     }
 
     @Test
+    fun testConfirmTelemetryRangeUsesAlignedVideoRangeAndPreservesOffset() {
+        val viewModel = AppViewModel(null)
+        val dummyPoints = List(30) { i ->
+            FitParser.TelemetryPoint(
+                timestamp = i.toDouble(),
+                speed = 25.0,
+                cadence = 90.0,
+                heartRate = 140.0,
+                power = 200.0,
+                elevation = 100.0,
+                distance = i * 7.0,
+                grade = 0.0
+            )
+        }
+
+        viewModel.updateTelemetry(dummyPoints)
+        viewModel.timeOffsetState.update(5000)
+
+        viewModel.confirmTelemetryRangeForVideo(
+            alignedVideoStartUtcStr = "1989-12-31T00:00:10Z",
+            videoDurationSec = 8.0
+        )
+
+        assertTrue(viewModel.isTelemetryCut)
+        assertEquals(9, viewModel.telemetryPoints.size)
+        assertEquals(10.0, viewModel.telemetryPoints.first().timestamp)
+        assertEquals(18.0, viewModel.telemetryPoints.last().timestamp)
+        assertEquals(30, viewModel.originalTelemetryPoints.size)
+        assertEquals(5000, viewModel.timeOffsetState.millis)
+
+        viewModel.resetTelemetryCut()
+
+        assertFalse(viewModel.isTelemetryCut)
+        assertEquals(30, viewModel.telemetryPoints.size)
+        assertEquals(30, viewModel.originalTelemetryPoints.size)
+    }
+
+    @Test
     fun testVideoPathChangeRestoresFullTelemetryPoints() {
         val viewModel = AppViewModel(null)
         viewModel.videoPath = "video1.mp4"
