@@ -4013,10 +4013,9 @@ fun FitTrimmerMainContent(
                                 ) {
                                     Button(
                                         onClick = {
-                                            viewModel.cutTelemetry(
-                                                trimStartSec = trimStartSeconds,
-                                                trimEndSec = trimEndSeconds,
-                                                videoStartUtcStr = videoStartUtc
+                                            viewModel.confirmTelemetryRangeForVideo(
+                                                alignedVideoStartUtcStr = adjustedStartUtc.ifEmpty { videoStartUtc },
+                                                videoDurationSec = videoLengthMs / 1000.0
                                             )
                                             trimStartSeconds = 0.0
                                             trimEndSeconds = videoLengthMs / 1000.0
@@ -4044,21 +4043,9 @@ fun FitTrimmerMainContent(
                                 ) {
                                     Button(
                                         onClick = {
-                                            viewModel.updateTelemetry(viewModel.originalTelemetryPoints)
-                                            val fitEpoch = java.time.Instant.parse("1989-12-31T00:00:00Z").epochSecond
-                                            val firstPoint = viewModel.originalTelemetryPoints.firstOrNull()
-                                            val videoInstant = try { java.time.Instant.parse(videoStartUtc) } catch(e: Exception) { null }
-                                            if (firstPoint != null && videoInstant != null) {
-                                                val fitStartEpoch = firstPoint.timestamp + fitEpoch
-                                                val videoStartEpoch = videoInstant.toEpochMilli() / 1000.0
-                                                val totalFitDuration = viewModel.originalTelemetryPoints.last().timestamp - firstPoint.timestamp
-                                                val initialStartSec = (videoStartEpoch - fitStartEpoch).coerceIn(0.0, kotlin.math.max(0.0, totalFitDuration - (videoLengthMs / 1000.0)))
-                                                trimStartSeconds = initialStartSec
-                                                trimEndSeconds = initialStartSec + (videoLengthMs / 1000.0)
-                                            } else {
-                                                trimStartSeconds = 0.0
-                                                trimEndSeconds = videoLengthMs / 1000.0
-                                            }
+                                            viewModel.resetTelemetryCut()
+                                            trimStartSeconds = 0.0
+                                            trimEndSeconds = videoLengthMs / 1000.0
                                         },
                                         colors = ButtonDefaults.buttonColors(
                                             backgroundColor = Color(0xFFFF9500),
@@ -4067,7 +4054,7 @@ fun FitTrimmerMainContent(
                                         modifier = Modifier.height(36.dp)
                                     ) {
                                         Text(
-                                            text = if (settings.language == "ja") "\u540C\u671F\u30EA\u30BB\u30C3\u30C8 (Reset)" else "Reset Sync",
+                                            text = if (settings.language == "ja") "FIT\u5207\u308A\u51FA\u3057\u89E3\u9664 (Reset)" else "Reset FIT Cut",
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.Bold
                                         )
