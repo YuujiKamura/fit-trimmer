@@ -783,8 +783,8 @@ fun TelemetryTimelineGraph(
                     val h = size.height
                     if (videoDurationSec > 0 && !sampledPoints.isEmpty()) {
                         val startDiffSec = if (videoStartUtc.isNotEmpty() && fitStartUtc.isNotEmpty()) {
-                            val vUtc = try { java.time.Instant.parse(videoStartUtc).epochSeconds } catch(e: Exception) { 0L }
-                            val fUtc = try { java.time.Instant.parse(fitStartUtc).epochSeconds } catch(e: Exception) { 0L }
+                            val vUtc = try { java.time.Instant.parse(videoStartUtc).epochSecond } catch(e: Exception) { 0L }
+                            val fUtc = try { java.time.Instant.parse(fitStartUtc).epochSecond } catch(e: Exception) { 0L }
                             (vUtc - fUtc).toDouble()
                         } else 0.0
                         val playheadAbsoluteSec = startDiffSec + (videoCurrentTimeMs / 1000.0)
@@ -811,15 +811,15 @@ fun TelemetryTimelineGraph(
             if (!isFolded) {
                 Spacer(Modifier.height(4.dp))
                 Canvas(
-                    modifier = Modifier.fillMaxWidth().height(32.dp)
+                    modifier = Modifier.fillMaxWidth().height(40.dp)
                 ) {
                     val w = size.width.toFloat()
                     val h = size.height.toFloat()
                     val ticks = 5
                     
                     val startDiffSec = if (videoStartUtc.isNotEmpty() && fitStartUtc.isNotEmpty()) {
-                        val vUtc = try { java.time.Instant.parse(videoStartUtc).epochSeconds } catch(e: Exception) { 0L }
-                        val fUtc = try { java.time.Instant.parse(fitStartUtc).epochSeconds } catch(e: Exception) { 0L }
+                        val vUtc = try { java.time.Instant.parse(videoStartUtc).epochSecond } catch(e: Exception) { 0L }
+                        val fUtc = try { java.time.Instant.parse(fitStartUtc).epochSecond } catch(e: Exception) { 0L }
                         (vUtc - fUtc).toDouble()
                     } else 0.0
 
@@ -881,7 +881,6 @@ fun TelemetryTimelineGraph(
             }
         }
     }
-}
 
 data class TimelineEvent(
     val label: String,
