@@ -179,9 +179,17 @@ fun TelemetryTimelineGraph(
                 val startFitTs = startTime.toEpochMilli() / 1000.0 - fitEpoch
                 println("DEBUG: TelemetryTimelineGraph sampledPoints remember triggered. adjustedStartUtc=$adjustedStartUtc, startFitTs=$startFitTs, telemetryPoints.size=${telemetryPoints.size}")
                 val numSamples = 400
+                val sampleDuration = if (isTelemetryCut) videoDurationSec else timelineDurationSec
+                val firstPoint = telemetryPoints.firstOrNull()
+                val fitBaseTimestamp = firstPoint?.timestamp ?: 0.0
+                
                 List(numSamples) { i ->
-                    val sec = (i.toFloat() / (numSamples - 1).toFloat()) * videoDurationSec.toFloat()
-                    val fitTs = startFitTs + sec
+                    val sec = (i.toFloat() / (numSamples - 1).toFloat()) * sampleDuration.toFloat()
+                    val fitTs = if (isTelemetryCut) {
+                        startFitTs + sec
+                    } else {
+                        fitBaseTimestamp + sec
+                    }
                     
                     // Binary search for the closest telemetry point
                     var low = 0
@@ -801,29 +809,43 @@ fun TelemetryTimelineGraph(
             if (!isFolded) {
                 Spacer(Modifier.height(4.dp))
                 Canvas(
-                    modifier = Modifier.fillMaxWidth().height(14.dp)
+                    modifier = Modifier.fillMaxWidth().height(22.dp)
                 ) {
                     val w = size.width.toFloat()
                     val h = size.height.toFloat()
-                    val ticks = 10
+                    val ticks = 5
                     for (i in 0..ticks) {
                         val ratio = i.toFloat() / ticks.toFloat()
                         val tickX = ratio * w
                         val tickSec = ratio * timelineDurationSec
+                        
+                        // Draw a tiny Ruler Tick mark (メモリ線)
+                        drawLine(
+                            color = Color(0xFFC7C7CC),
+                            start = Offset(tickX, 0f),
+                            end = Offset(tickX, 5.dp.toPx()),
+                            strokeWidth = 1.dp.toPx()
+                        )
+                        
                         val labelStr = formatTime((tickSec * 1000).toLong()).substring(0, 5) // mm:ss
                         val labelLayout = textMeasurer.measure(
                             text = labelStr,
-                            style = TextStyle(color = Color(0xFF8E8E93), fontSize = 8.sp)
+                            style = TextStyle(
+                                color = Color(0xFF3A3A3C), 
+                                fontSize = 9.5.sp, 
+                                fontWeight = FontWeight.Medium
+                            )
                         )
                         drawText(
                             textLayoutResult = labelLayout,
                             topLeft = Offset(
                                 x = (tickX - labelLayout.size.width / 2f).coerceIn(4f, w - labelLayout.size.width - 4f),
-                                y = h / 2f - labelLayout.size.height / 2f
+                                y = 7.dp.toPx()
                             )
                         )
                     }
                 }
+                Spacer(Modifier.height(4.dp))
             }
 
             // Quick Info row
