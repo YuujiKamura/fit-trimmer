@@ -804,7 +804,9 @@ fun VideoPreviewArea(
                     },
                     color = foreground,
                     fontSize = 11.sp,
-                    maxLines = 1
+                    maxLines = 1,
+                    modifier = Modifier.width(if (settings.speedSegments.isEmpty()) 100.dp else 150.dp),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
                 )
 
                 Slider(

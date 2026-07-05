@@ -216,8 +216,8 @@ fun startGui(args: Array<String>) = application {
             androidx.compose.ui.window.WindowPosition.PlatformDefault
         },
         size = androidx.compose.ui.unit.DpSize(
-            width = (initialCache?.windowWidth ?: 1300f).coerceIn(800f, 1400f).dp,
-            height = (initialCache?.windowHeight ?: 750f).coerceIn(500f, 780f).dp
+            width = (initialCache?.windowWidth ?: 1300f).coerceIn(1000f, 1600f).dp,
+            height = (initialCache?.windowHeight ?: 780f).coerceIn(750f, 950f).dp
         )
     )
     val viewModel = remember { AppViewModel(initialCache) }
@@ -232,6 +232,13 @@ fun startGui(args: Array<String>) = application {
         LaunchedEffect(window) {
             viewModel.composeWindow = window
             composeWindow = window
+            kotlinx.coroutines.delay(800)
+            try {
+                window.toFront()
+                window.requestFocus()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
         LaunchedEffect(viewModel.isPreviewFullscreen) {
             windowState.placement = if (viewModel.isPreviewFullscreen) {
