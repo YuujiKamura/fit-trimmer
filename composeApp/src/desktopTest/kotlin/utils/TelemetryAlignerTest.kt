@@ -507,5 +507,18 @@ class TelemetryAlignerTest {
 
         assertEquals(-5000L, newOffsetMs)
     }
-}
 
+    @Test
+    fun testVideoStartAtFitSecondOffsetCalculation() {
+        val videoStartUtc = "2026-07-05T11:02:00Z"
+        val fitStartUtc = "2026-07-05T11:00:00Z"
+
+        val newOffsetMs = TelemetryAligner.calculateOffsetForVideoStartAtFitSec(
+            videoStartUtc = videoStartUtc,
+            fitStartUtc = fitStartUtc,
+            videoStartFitSec = 180.0
+        )
+
+        assertEquals(60000L, newOffsetMs)
+    }
+}

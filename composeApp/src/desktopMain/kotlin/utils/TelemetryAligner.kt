@@ -26,6 +26,14 @@ object TelemetryAligner {
         val gyroZ: DoubleArray
     )
 
+    data class AlignmentCandidate(
+        val alignedUtc: String,
+        val offsetSeconds: Double?,
+        val fitStartSeconds: Double,
+        val correlation: Double,
+        val rank: Int
+    )
+
     internal fun extractImuOffsetsFast(filepath: String): ImuData {
         val file = File(filepath)
         val size = file.length()
@@ -264,9 +272,29 @@ object TelemetryAligner {
         method: String = "binary",
         windowSeconds: Double = 90.0
     ): String? = withContext(Dispatchers.IO) {
+        val candidates = alignVideoWithTelemetryCandidates(
+            videoPath = videoPath,
+            telemetryPoints = telemetryPoints,
+            approxStartUtc = approxStartUtc,
+            method = method,
+            windowSeconds = windowSeconds,
+            maxCandidates = 1
+        )
+        return@withContext candidates.firstOrNull()?.alignedUtc
+    }
+
+    suspend fun alignVideoWithTelemetryCandidates(
+        videoPath: String,
+        telemetryPoints: List<FitParser.TelemetryPoint>,
+        approxStartUtc: String = "",
+        method: String = "binary",
+        windowSeconds: Double = 90.0,
+        maxCandidates: Int = 5,
+        minSeparationSeconds: Int = 30
+    ): List<AlignmentCandidate> = withContext(Dispatchers.IO) {
         if (telemetryPoints.isEmpty() || videoPath.isEmpty()) {
             println("DEBUG: Auto alignment skipped (empty inputs)")
-            return@withContext null
+            return@withContext emptyList()
         }
         
         try {
@@ -275,7 +303,7 @@ object TelemetryAligner {
             val times = imuData.times
             if (times.isEmpty()) {
                 println("ERROR: No IMU samples extracted from video")
-                return@withContext null
+                return@withContext emptyList()
             }
             
             val accNorms = DoubleArray(times.size) { i ->
@@ -298,20 +326,22 @@ object TelemetryAligner {
             val vVib = interpolate(vGrid, relTimes, accDiffs)
             
             val firstFileImuOffset = getFirstFileImuOffset(videoPath)
-            return@withContext alignVibWithTelemetryCore(
+            return@withContext alignVibWithTelemetryCandidatesCore(
                 vVib = vVib,
                 telemetryPoints = telemetryPoints,
                 approxStartUtc = approxStartUtc,
                 method = method,
                 windowSeconds = windowSeconds,
-                firstFileImuOffset = firstFileImuOffset
+                firstFileImuOffset = firstFileImuOffset,
+                maxCandidates = maxCandidates,
+                minSeparationSeconds = minSeparationSeconds
             )
         } catch (e: Exception) {
             println("ERROR: Exception during native auto alignment: ${e.message}")
             e.printStackTrace()
         }
         
-        return@withContext null
+        return@withContext emptyList()
     }
 
     /**
@@ -326,19 +356,42 @@ object TelemetryAligner {
         windowSeconds: Double,
         firstFileImuOffset: Double
     ): String? {
-        if (telemetryPoints.isEmpty() || vVib.isEmpty()) return null
+        return alignVibWithTelemetryCandidatesCore(
+            vVib = vVib,
+            telemetryPoints = telemetryPoints,
+            approxStartUtc = approxStartUtc,
+            method = method,
+            windowSeconds = windowSeconds,
+            firstFileImuOffset = firstFileImuOffset,
+            maxCandidates = 1
+        ).firstOrNull()?.alignedUtc
+    }
+
+    fun alignVibWithTelemetryCandidatesCore(
+        vVib: DoubleArray,
+        telemetryPoints: List<FitParser.TelemetryPoint>,
+        approxStartUtc: String,
+        method: String,
+        windowSeconds: Double,
+        firstFileImuOffset: Double,
+        maxCandidates: Int = 5,
+        minSeparationSeconds: Int = 30
+    ): List<AlignmentCandidate> {
+        if (telemetryPoints.isEmpty() || vVib.isEmpty()) return emptyList()
 
         // 2. Prepare telemetry points
         val fitTs = DoubleArray(telemetryPoints.size) { telemetryPoints[it].timestamp.toDouble() }
         val fitSpeed = DoubleArray(telemetryPoints.size) { telemetryPoints[it].speed.toDouble() }
+        val fitPower = DoubleArray(telemetryPoints.size) { telemetryPoints[it].power.toDouble() }
         
         val startTs = fitTs.first()
         val endTs = fitTs.last()
         val fitGridSize = (endTs - startTs).toInt() + 1
         val fitGrid = DoubleArray(fitGridSize) { startTs + it }
         val fitSpeedGrid = interpolate(fitGrid, fitTs, fitSpeed)
+        val fitPowerGrid = interpolate(fitGrid, fitTs, fitPower)
 
-        // Auto-pause gap correction: set interpolated speed to 0.0 during gaps > 2.0 seconds
+        // Auto-pause gap correction: set interpolated telemetry signals to 0.0 during gaps > 2.0 seconds
         for (i in 0 until fitTs.size - 1) {
             val ts1 = fitTs[i]
             val ts2 = fitTs[i + 1]
@@ -348,6 +401,7 @@ object TelemetryAligner {
                 for (idx in idxStart..idxEnd) {
                     if (idx in fitSpeedGrid.indices) {
                         fitSpeedGrid[idx] = 0.0
+                        fitPowerGrid[idx] = 0.0
                     }
                 }
             }
@@ -356,19 +410,40 @@ object TelemetryAligner {
         val corr: DoubleArray
 
         if (method == "binary") {
-            val vSig = gaussianFilter1D(vVib, 3.0)
-            
-            // 10th percentile
-            val sortedVSig = vSig.sorted()
-            val pct10Idx = (sortedVSig.size * 0.10).toInt()
-            val pct10 = sortedVSig[Math.max(0, Math.min(sortedVSig.size - 1, pct10Idx))]
-            val vThresh = Math.max(20.0, pct10 * 1.5)
-            
-            val vMov = DoubleArray(vSig.size) { if (vSig[it] > vThresh) 1.0 else 0.0 }
-            val fitMov = DoubleArray(fitSpeedGrid.size) { if (fitSpeedGrid[it] > 2.0) 1.0 else 0.0 }
+            val maxPower = fitPowerGrid.maxOrNull() ?: 0.0
+            val usablePowerSamples = fitPowerGrid.count { it > 10.0 }
+            if (maxPower < 30.0 || usablePowerSamples < 5) {
+                println("ERROR: Power-based sync requires FIT power data. maxPower=$maxPower usableSamples=$usablePowerSamples")
+                return emptyList()
+            }
 
-            val fitSigSmooth = gaussianFilter1D(fitMov, 3.0)
-            val vSigSmooth = gaussianFilter1D(vMov, 3.0)
+            val powerThreshold = Math.max(30.0, Math.min(120.0, maxPower * 0.15))
+            val fitPowerSmooth = gaussianFilter1D(fitPowerGrid, 1.0)
+            val fitPowerDelta = DoubleArray(fitPowerSmooth.size)
+            for (i in 1 until fitPowerSmooth.size) {
+                fitPowerDelta[i] = Math.abs(fitPowerSmooth[i] - fitPowerSmooth[i - 1])
+            }
+            val maxPowerDelta = fitPowerDelta.maxOrNull()?.takeIf { it > 1e-6 } ?: 1.0
+            val fitPowerEvent = DoubleArray(fitPowerSmooth.size) { i ->
+                val active = if (fitPowerSmooth[i] > powerThreshold) 1.0 else 0.0
+                val edge = fitPowerDelta[i] / maxPowerDelta
+                0.35 * active + 0.65 * edge
+            }
+
+            val vSig = gaussianFilter1D(vVib, 2.0)
+            val vDelta = DoubleArray(vSig.size)
+            for (i in 1 until vSig.size) {
+                vDelta[i] = Math.abs(vSig[i] - vSig[i - 1])
+            }
+            val maxVDelta = vDelta.maxOrNull()?.takeIf { it > 1e-6 } ?: 1.0
+            val vEvent = DoubleArray(vSig.size) { i -> vDelta[i] / maxVDelta }
+
+            val fitSigSmooth = gaussianFilter1D(fitPowerEvent, 2.0)
+            val vSigSmooth = gaussianFilter1D(vEvent, 2.0)
+            println(
+                "DEBUG: Using power-event sync signal. " +
+                    "maxPower=$maxPower threshold=$powerThreshold usableSamples=$usablePowerSamples"
+            )
 
             // Calculate Pearson's Local Normalized Cross-Correlation (NCC)
             val outSize = fitSigSmooth.size - vSigSmooth.size + 1
@@ -431,7 +506,7 @@ object TelemetryAligner {
 
         if (corr.isEmpty()) {
             println("ERROR: Video is longer than ride telemetry. Cannot align.")
-            return null
+            return emptyList()
         }
 
         // Find best offset
@@ -445,81 +520,65 @@ object TelemetryAligner {
             }
         }
 
-        var bestIdx = -1
-        var maxCorr = Double.NEGATIVE_INFINITY
-
-        // 1. Calculate best alignment globally
-        var bestIdxGlobal = -1
-        var maxCorrGlobal = Double.NEGATIVE_INFINITY
-        for (i in corr.indices) {
-            if (corr[i] > maxCorrGlobal) {
-                maxCorrGlobal = corr[i]
-                bestIdxGlobal = i
-            }
-        }
-
-        // 2. Determine search strategy
         val useStrictWindowOnly = !approxStartTs.isNaN() && windowSeconds > 0.0 && windowSeconds < 999999.0
 
-        if (useStrictWindowOnly) {
-            val window = windowSeconds
-            val minTs = approxStartTs - window
-            val maxTs = approxStartTs + window
-            
-            var bestIdxLocal = -1
-            var maxCorrLocal = Double.NEGATIVE_INFINITY
-            for (i in corr.indices) {
-                val ts = fitGrid[i]
-                if (ts in minTs..maxTs) {
-                    if (corr[i] > maxCorrLocal) {
-                        maxCorrLocal = corr[i]
-                        bestIdxLocal = i
-                    }
-                }
-            }
-            
-            // Intelligently evaluate if we should trust the local window or trust the global peak.
-            // If the global peak is significantly stronger than the local peak, we assume approxStartUtc was way off.
-            val isGlobalStronger = bestIdxGlobal != -1 && (
-                (maxCorrLocal == Double.NEGATIVE_INFINITY && maxCorrGlobal >= 0.25) ||
-                (maxCorrLocal < 0.35 && maxCorrGlobal >= 0.50) ||
-                (maxCorrGlobal >= maxCorrLocal + 0.15 && maxCorrGlobal >= 0.45)
-            )
-            
-            if (isGlobalStronger && bestIdxGlobal != bestIdxLocal) {
-                bestIdx = bestIdxGlobal
-                maxCorr = maxCorrGlobal
-                println("DEBUG: Local search completed (maxCorrLocal=${maxCorrLocal} at ${bestIdxLocal}). " +
-                        "However, global peak is significantly stronger (maxCorrGlobal=${maxCorrGlobal} at ${bestIdxGlobal}). " +
-                        "Choosing global peak.")
-            } else {
-                bestIdx = bestIdxLocal
-                maxCorr = maxCorrLocal
-                println("DEBUG: Using local search result (maxCorrLocal=${maxCorrLocal} at ${bestIdxLocal}).")
-            }
+        val allowedIndices = if (useStrictWindowOnly) {
+            val minTs = approxStartTs - windowSeconds
+            val maxTs = approxStartTs + windowSeconds
+            corr.indices.filter { fitGrid[it] in minTs..maxTs }
         } else {
-            // Global search explicitly requested or approxStartTs not available
-            bestIdx = bestIdxGlobal
-            maxCorr = maxCorrGlobal
-            println("DEBUG: Global search completed. Best correlation: ${maxCorr}")
+            corr.indices.toList()
         }
 
-        if (bestIdx == -1) {
-            return null
+        if (allowedIndices.isEmpty()) {
+            println("DEBUG: Alignment candidate search found no valid indices in the requested window.")
+            return emptyList()
         }
 
-        val videoStartTs = fitGrid[bestIdx]
-        val trueFileStartTs = videoStartTs - firstFileImuOffset
-        
-        lastMaxCorr = maxCorr
+        val peakIndices = allowedIndices.filter { i ->
+            val prev = if (i > 0) corr[i - 1] else Double.NEGATIVE_INFINITY
+            val next = if (i + 1 < corr.size) corr[i + 1] else Double.NEGATIVE_INFINITY
+            corr[i] >= prev && corr[i] >= next
+        }.ifEmpty { allowedIndices }
+
+        val selected = mutableListOf<Int>()
+        for (idx in peakIndices.sortedByDescending { corr[it] }) {
+            if (selected.size >= maxCandidates.coerceAtLeast(1)) break
+            if (selected.none { Math.abs(it - idx) < minSeparationSeconds }) {
+                selected.add(idx)
+            }
+        }
+
+        if (selected.isEmpty()) return emptyList()
+
+        val approxInstant = approxStartUtc.takeIf { it.isNotEmpty() }?.let {
+            try { Instant.parse(it) } catch (_: Exception) { null }
+        }
+        val candidates = selected.mapIndexed { rankIndex, idx ->
+            val videoStartTs = fitGrid[idx]
+            val trueFileStartTs = videoStartTs - firstFileImuOffset
+            val unixSecondsDouble = trueFileStartTs + 631065600.0
+            val unixSec = Math.floor(unixSecondsDouble).toLong()
+            val unixNano = ((unixSecondsDouble - unixSec) * 1_000_000_000).toLong()
+            val instant = Instant.ofEpochSecond(unixSec, unixNano)
+            val offsetSeconds = approxInstant?.let { (instant.toEpochMilli() - it.toEpochMilli()) / 1000.0 }
+
+            AlignmentCandidate(
+                alignedUtc = instant.toString(),
+                offsetSeconds = offsetSeconds,
+                fitStartSeconds = trueFileStartTs - startTs,
+                correlation = corr[idx],
+                rank = rankIndex + 1
+            )
+        }
+
+        lastMaxCorr = candidates.first().correlation
         lastAnchorSec = firstFileImuOffset
 
-        // Convert Garmin epoch back to Unix and generate UTC ISO-8601
-        val unixSec = (trueFileStartTs + 631065600.0).toLong()
-        val unixNano = ((trueFileStartTs + 631065600.0 - unixSec) * 1_000_000_000).toLong()
-        val instant = Instant.ofEpochSecond(unixSec, unixNano)
-        
-        return instant.toString()
+        val mode = if (useStrictWindowOnly) "window" else "global"
+        println("DEBUG: $mode alignment candidates: " + candidates.joinToString { "#${it.rank}@${it.alignedUtc}(r=${it.correlation})" })
+
+        return candidates
     }
 
     fun calculateOffsetFromTargetSec(
@@ -540,6 +599,24 @@ object TelemetryAligner {
         } catch (e: Exception) {
             e.printStackTrace()
             return 0L
+        }
+    }
+
+    fun calculateOffsetForVideoStartAtFitSec(
+        videoStartUtc: String,
+        fitStartUtc: String,
+        videoStartFitSec: Double
+    ): Long {
+        if (videoStartUtc.isEmpty() || fitStartUtc.isEmpty()) return 0L
+        return try {
+            val videoInstant = java.time.Instant.parse(videoStartUtc)
+            val fitInstant = java.time.Instant.parse(fitStartUtc)
+
+            val desiredAdjustedStartMs = fitInstant.toEpochMilli() + (videoStartFitSec * 1000.0).toLong()
+            desiredAdjustedStartMs - videoInstant.toEpochMilli()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            0L
         }
     }
 }
