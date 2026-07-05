@@ -170,6 +170,13 @@ fun TelemetryTimelineGraph(
     val currentOnSeekProgress by rememberUpdatedState(onSeekProgress)
     val currentOnSeekEnd by rememberUpdatedState(onSeekEnd)
 
+    val currentVideoStartUtc by rememberUpdatedState(videoStartUtc)
+    val currentFitStartUtc by rememberUpdatedState(fitStartUtc)
+    val currentTimelineDurationSec by rememberUpdatedState(timelineDurationSec)
+    val currentVideoDurationSec by rememberUpdatedState(videoDurationSec)
+    val currentIsTelemetryCut by rememberUpdatedState(isTelemetryCut)
+    val currentOnTimeOffsetChange by rememberUpdatedState(onTimeOffsetChange)
+
     // Sample telemetry points to match video seconds
     val sampledPoints = remember(telemetryPoints, adjustedStartUtc, videoLengthMs) {
         if (telemetryPoints.isEmpty() || adjustedStartUtc.isEmpty() || videoLengthMs <= 0) {
@@ -397,16 +404,16 @@ fun TelemetryTimelineGraph(
                         detectTapGestures(
                             onDoubleTap = { offset ->
                                 val w = size.width.toFloat()
-                                if (w > 0f && timelineDurationSec > 0) {
+                                if (w > 0f && currentTimelineDurationSec > 0) {
                                     val ratio = (offset.x / w).coerceIn(0f, 1f)
-                                    val targetSec = ratio * timelineDurationSec
-                                    if (videoStartUtc.isNotEmpty() && fitStartUtc.isNotEmpty()) {
+                                    val targetSec = ratio * currentTimelineDurationSec
+                                    if (currentVideoStartUtc.isNotEmpty() && currentFitStartUtc.isNotEmpty()) {
                                         val newOffsetMs = utils.TelemetryAligner.calculateOffsetFromTargetSec(
-                                            videoStartUtc = videoStartUtc,
-                                            fitStartUtc = fitStartUtc,
+                                            videoStartUtc = currentVideoStartUtc,
+                                            fitStartUtc = currentFitStartUtc,
                                             targetSec = targetSec
                                         )
-                                        onTimeOffsetChange(newOffsetMs)
+                                        currentOnTimeOffsetChange(newOffsetMs)
                                     }
                                 }
                             }
@@ -417,7 +424,7 @@ fun TelemetryTimelineGraph(
                         detectDragGestures(
                             onDragStart = { offset ->
                                 val vLength = currentVideoLengthMs
-                                val vDuration = timelineDurationSec
+                                val vDuration = currentTimelineDurationSec
                                 if (vDuration > 0) {
                                     val w = size.width.toFloat()
                                     if (w > 0f) {
@@ -428,13 +435,13 @@ fun TelemetryTimelineGraph(
                                             ((fitStartRelativeSec / vDuration) * w).toFloat().takeIf { it.isFinite() } ?: -999f
                                         } else -999f
                                         
-                                        val startDiffSec = if (videoStartUtc.isNotEmpty() && fitStartUtc.isNotEmpty()) {
-                                            val vUtc = try { java.time.Instant.parse(videoStartUtc).epochSecond } catch(e: Exception) { 0L }
-                                            val fUtc = try { java.time.Instant.parse(fitStartUtc).epochSecond } catch(e: Exception) { 0L }
+                                        val startDiffSec = if (currentVideoStartUtc.isNotEmpty() && currentFitStartUtc.isNotEmpty()) {
+                                            val vUtc = try { java.time.Instant.parse(currentVideoStartUtc).epochSecond } catch(e: Exception) { 0L }
+                                            val fUtc = try { java.time.Instant.parse(currentFitStartUtc).epochSecond } catch(e: Exception) { 0L }
                                             (vUtc - fUtc).toDouble()
                                         } else 0.0
                                         val xVideoStart = if (vDuration > 0.0) (((startDiffSec / vDuration) * w).toFloat().takeIf { it.isFinite() } ?: 0f) else 0f
-                                        val xVideoEnd = if (vDuration > 0.0) ((((startDiffSec + videoDurationSec) / vDuration) * w).toFloat().takeIf { it.isFinite() } ?: w) else w
+                                        val xVideoEnd = if (vDuration > 0.0) ((((startDiffSec + currentVideoDurationSec) / vDuration) * w).toFloat().takeIf { it.isFinite() } ?: w) else w
 
                                         val threshold = 20.dp.toPx()
                                         activeDragHandle = when {
@@ -442,7 +449,7 @@ fun TelemetryTimelineGraph(
                                             kotlin.math.abs(offset.x - xEnd) < threshold -> DragHandle.TRIM_END
                                             kotlin.math.abs(offset.x - xPlayhead) < threshold -> DragHandle.PLAYHEAD
                                             kotlin.math.abs(offset.x - xFitStart) < threshold -> DragHandle.FIT_START
-                                            !isTelemetryCut && offset.x in xVideoStart..xVideoEnd -> DragHandle.VIDEO_RANGE
+                                            !currentIsTelemetryCut && offset.x in xVideoStart..xVideoEnd -> DragHandle.VIDEO_RANGE
                                             else -> null
                                         }
                                         
@@ -465,7 +472,7 @@ fun TelemetryTimelineGraph(
                             onDrag = { change, _ ->
                                 change.consume()
                                 val vLength = currentVideoLengthMs
-                                val vDuration = timelineDurationSec
+                                val vDuration = currentTimelineDurationSec
                                 val w = size.width.toFloat()
                                 if (vDuration > 0 && w > 0f && activeDragHandle != null) {
                                     val ratio = (change.position.x / w).coerceIn(0f, 1f)
@@ -483,27 +490,27 @@ fun TelemetryTimelineGraph(
                                             currentOnSeekProgress(targetTimeMs)
                                         }
                                         DragHandle.FIT_START -> {
-                                            if (videoStartUtc.isNotEmpty() && fitStartUtc.isNotEmpty()) {
+                                            if (currentVideoStartUtc.isNotEmpty() && currentFitStartUtc.isNotEmpty()) {
                                                 val newOffsetMs = utils.TelemetryAligner.calculateOffsetFromTargetSec(
-                                                    videoStartUtc = videoStartUtc,
-                                                    fitStartUtc = fitStartUtc,
+                                                    videoStartUtc = currentVideoStartUtc,
+                                                    fitStartUtc = currentFitStartUtc,
                                                     targetSec = targetSec
                                                 )
-                                                onTimeOffsetChange(newOffsetMs)
+                                                currentOnTimeOffsetChange(newOffsetMs)
                                             }
                                         }
                                         DragHandle.VIDEO_RANGE -> {
-                                            if (!isTelemetryCut && videoStartUtc.isNotEmpty() && fitStartUtc.isNotEmpty()) {
+                                            if (!currentIsTelemetryCut && currentVideoStartUtc.isNotEmpty() && currentFitStartUtc.isNotEmpty()) {
                                                 val deltaRatio = ratio - dragStartRatio
                                                 val deltaSec = deltaRatio * vDuration
                                                 val targetSec = dragStartStartDiffSec + deltaSec
                                                 
                                                 val newOffsetMs = utils.TelemetryAligner.calculateOffsetFromTargetSec(
-                                                    videoStartUtc = videoStartUtc,
-                                                    fitStartUtc = fitStartUtc,
+                                                    videoStartUtc = currentVideoStartUtc,
+                                                    fitStartUtc = currentFitStartUtc,
                                                     targetSec = targetSec
                                                 )
-                                                onTimeOffsetChange(newOffsetMs)
+                                                currentOnTimeOffsetChange(newOffsetMs)
                                             }
                                         }
                                         null -> {}
