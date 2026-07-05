@@ -277,17 +277,10 @@ fun TelemetryTimelineGraph(
 
     var activeDragHandle by remember { mutableStateOf<DragHandle?>(null) }
 
-    Card(
-        backgroundColor = Color.White,
-        shape = RoundedCornerShape(8.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE5E5EA)),
-        elevation = 1.dp,
-        modifier = modifier.fillMaxWidth()
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(if (isFolded) 4.dp else 8.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(if (isFolded) PaddingValues(horizontal = 12.dp, vertical = 6.dp) else PaddingValues(12.dp)),
-            verticalArrangement = Arrangement.spacedBy(if (isFolded) 4.dp else 8.dp)
-        ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -789,7 +782,16 @@ fun TelemetryTimelineGraph(
                     val w = size.width
                     val h = size.height
                     if (videoDurationSec > 0 && !sampledPoints.isEmpty()) {
-                        val xPlayhead = if (videoDurationSec > 0.0) (((videoCurrentTimeMs / 1000.0 / videoDurationSec) * w).toFloat().takeIf { it.isFinite() } ?: 0f) else 0f
+                        val startDiffSec = if (videoStartUtc.isNotEmpty() && fitStartUtc.isNotEmpty()) {
+                            val vUtc = try { java.time.Instant.parse(videoStartUtc).epochSeconds } catch(e: Exception) { 0L }
+                            val fUtc = try { java.time.Instant.parse(fitStartUtc).epochSeconds } catch(e: Exception) { 0L }
+                            (vUtc - fUtc).toDouble()
+                        } else 0.0
+                        val playheadAbsoluteSec = startDiffSec + (videoCurrentTimeMs / 1000.0)
+                        val xPlayhead = if (timelineDurationSec > 0.0) {
+                            (((playheadAbsoluteSec / timelineDurationSec) * w).toFloat().takeIf { it.isFinite() } ?: 0f)
+                        } else 0f
+                        
                         // Draw Playhead (Blue)
                         drawLine(
                             color = Color(0xFF007AFF),
@@ -809,35 +811,51 @@ fun TelemetryTimelineGraph(
             if (!isFolded) {
                 Spacer(Modifier.height(4.dp))
                 Canvas(
-                    modifier = Modifier.fillMaxWidth().height(6.dp)
+                    modifier = Modifier.fillMaxWidth().height(32.dp)
                 ) {
                     val w = size.width.toFloat()
+                    val h = size.height.toFloat()
                     val ticks = 5
+                    
+                    val startDiffSec = if (videoStartUtc.isNotEmpty() && fitStartUtc.isNotEmpty()) {
+                        val vUtc = try { java.time.Instant.parse(videoStartUtc).epochSeconds } catch(e: Exception) { 0L }
+                        val fUtc = try { java.time.Instant.parse(fitStartUtc).epochSeconds } catch(e: Exception) { 0L }
+                        (vUtc - fUtc).toDouble()
+                    } else 0.0
+
                     for (i in 0..ticks) {
                         val ratio = i.toFloat() / ticks.toFloat()
                         val tickX = ratio * w
+                        val absoluteSec = ratio * timelineDurationSec
+                        val tickSec = absoluteSec - startDiffSec
+                        
+                        // Draw a tiny Ruler Tick mark (メモリ線)
                         drawLine(
                             color = Color(0xFFC7C7CC),
                             start = Offset(tickX, 0f),
                             end = Offset(tickX, 5.dp.toPx()),
                             strokeWidth = 1.2.dp.toPx()
                         )
-                    }
-                }
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    val ticks = 5
-                    for (i in 0..ticks) {
-                        val ratio = i.toFloat() / ticks.toFloat()
-                        val tickSec = ratio * timelineDurationSec
-                        val labelStr = formatTime((tickSec * 1000).toLong())
-                        Text(
+                        
+                        val labelStr = if (tickSec < 0.0) {
+                            "-" + formatTime((-tickSec * 1000).toLong())
+                        } else {
+                            formatTime((tickSec * 1000).toLong())
+                        }
+                        val labelLayout = textMeasurer.measure(
                             text = labelStr,
-                            color = Color(0xFF3A3A3C),
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Medium
+                            style = TextStyle(
+                                color = Color(0xFF3A3A3C), 
+                                fontSize = 10.sp, 
+                                fontWeight = FontWeight.Medium
+                            )
+                        )
+                        drawText(
+                            textLayoutResult = labelLayout,
+                            topLeft = Offset(
+                                x = (tickX - labelLayout.size.width / 2f).coerceIn(4f, w - labelLayout.size.width - 4f),
+                                y = 9.dp.toPx()
+                            )
                         )
                     }
                 }
