@@ -3,12 +3,16 @@ import androidx.compose.ui.use
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.requiredHeight
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.lightColors
 import androidx.compose.ui.graphics.Color
 import org.junit.Test
+import components.TelemetryTimelineGraph
 import java.io.File
 import javax.imageio.ImageIO
 import java.io.ByteArrayInputStream
@@ -143,6 +147,26 @@ class VrtTest {
                 viewModel = viewModel,
                 videoCurrentTimeMs = 30000L,
                 isEncoding = false
+            )
+        }
+    }
+
+    @Test
+    fun testTelemetryTimelineGraphAppearance() {
+        verifyComponentVrt("telemetry_timeline_graph", width = 360, height = 240) {
+            TelemetryTimelineGraph(
+                videoLengthMs = 60000L,
+                adjustedStartUtc = "2026-07-05T11:00:00Z",
+                telemetryPoints = emptyList(),
+                trimStartSeconds = 10.0,
+                trimEndSeconds = 50.0,
+                splitPoints = emptyList(),
+                videoCurrentTimeMs = 30000L,
+                onTrimStartChange = {},
+                onTrimEndChange = {},
+                isFolded = false,
+                videoStartUtc = "2026-07-05T11:00:00Z",
+                modifier = Modifier.fillMaxWidth().requiredHeight(240.dp)
             )
         }
     }
