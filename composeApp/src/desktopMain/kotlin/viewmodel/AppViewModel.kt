@@ -750,6 +750,8 @@ class AppViewModel(
 
     var syncCorrelation by mutableStateOf<Double?>(null)
 
+    var syncCandidates by mutableStateOf<List<utils.TelemetryAligner.AlignmentCandidate>>(emptyList())
+
     var encodePhase by mutableStateOf(EncodePhase.Idle)
 
     var isEncoding: Boolean
@@ -896,7 +898,28 @@ class AppViewModel(
         }
     }
 
-    
+    fun confirmTelemetryRangeForVideo(alignedVideoStartUtcStr: String, videoDurationSec: Double) {
+        if (originalTelemetryPoints.isEmpty() || alignedVideoStartUtcStr.isEmpty() || videoDurationSec <= 0.0) return
+        try {
+            val fitEpoch = java.time.Instant.parse("1989-12-31T00:00:00Z").epochSecond.toDouble()
+            val alignedVideoStart = java.time.Instant.parse(alignedVideoStartUtcStr)
+            val cutStartFit = alignedVideoStart.toEpochMilli() / 1000.0 - fitEpoch
+            val cutEndFit = cutStartFit + videoDurationSec
+
+            telemetryPoints = originalTelemetryPoints.filter { pt ->
+                pt.timestamp in cutStartFit..cutEndFit
+            }
+            isTelemetryCut = true
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    fun resetTelemetryCut() {
+        if (originalTelemetryPoints.isEmpty()) return
+        telemetryPoints = originalTelemetryPoints
+        isTelemetryCut = false
+    }
 
     private var _videoLengthMs by mutableStateOf(0L)
 

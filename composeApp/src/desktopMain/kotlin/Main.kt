@@ -1680,7 +1680,7 @@ fun SourceRangeSummary(
     if (fitStartInstant == null || fitEndInstant == null) return
 
     val formatter = remember {
-        java.time.format.DateTimeFormatter.ofPattern("MM/dd HH:mm")
+        java.time.format.DateTimeFormatter.ofPattern("MM/dd HH:mm:ss")
             .withZone(java.time.ZoneId.systemDefault())
     }
     val fitStartStr = formatter.format(fitStartInstant)
@@ -1705,6 +1705,15 @@ fun SourceRangeSummary(
         isVideoInFitRange -> "範囲OK"
         else -> "範囲外"
     }
+    val videoStartSecInFit = videoStartInstant?.let {
+        java.time.Duration.between(fitStartInstant, it).toMillis() / 1000.0
+    }
+    val videoEndSecInFit = videoEndInstant?.let {
+        java.time.Duration.between(fitStartInstant, it).toMillis() / 1000.0
+    }
+    fun formatSignedSeconds(seconds: Float): String {
+        return "${if (seconds >= 0f) "+" else ""}${String.format(java.util.Locale.US, "%.3f", seconds)} s"
+    }
 
     Column(
         modifier = Modifier
@@ -1723,6 +1732,14 @@ fun SourceRangeSummary(
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text("FIT: $fitStartStr - $fitEndStr", color = Color(0xFF1C1C1E), fontSize = 9.sp, maxLines = 1)
                 Text("動画: $videoRangeText", color = Color(0xFF1C1C1E), fontSize = 9.sp, maxLines = 1)
+                if (videoStartSecInFit != null && videoEndSecInFit != null) {
+                    Text(
+                        "FIT内の動画範囲: %.3fs - %.3fs".format(java.util.Locale.US, videoStartSecInFit, videoEndSecInFit),
+                        color = Color(0xFF636366),
+                        fontSize = 9.sp,
+                        maxLines = 1
+                    )
+                }
             }
             Text(
                 text = statusText,
@@ -1733,6 +1750,52 @@ fun SourceRangeSummary(
                     .background(bgColor, shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
                     .padding(horizontal = 8.dp, vertical = 4.dp)
             )
+        }
+        if (timeOffsetState != null && videoStartUtc.isNotEmpty()) {
+            Divider(color = Color(0xFFE5E5EA))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("テレメトリ範囲の秒調整", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                    Text("現在の補正: ${formatSignedSeconds(timeOffsetState.seconds)}", color = Color(0xFF007AFF), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                }
+                OutlinedButton(
+                    onClick = { timeOffsetState.update(0) },
+                    enabled = !isEncoding,
+                    modifier = Modifier.height(28.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF636366)),
+                    border = BorderStroke(1.dp, Color(0xFFD1D1D6)),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                ) {
+                    Text("0", fontSize = 10.sp)
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                listOf(
+                    "-10s" to -10000,
+                    "-1s" to -1000,
+                    "+1s" to 1000,
+                    "+10s" to 10000
+                ).forEach { (label, deltaMs) ->
+                    OutlinedButton(
+                        onClick = { timeOffsetState.update(timeOffsetState.millis + deltaMs) },
+                        enabled = !isEncoding,
+                        modifier = Modifier.weight(1f).height(28.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF1C1C1E)),
+                        border = BorderStroke(1.dp, Color(0xFFD1D1D6)),
+                        contentPadding = PaddingValues(0.dp)
+                    ) {
+                        Text(label, fontSize = 10.sp)
+                    }
+                }
+            }
         }
         if (isHudBurned) {
             Text(
@@ -1759,6 +1822,8 @@ fun TimeAlignmentCard(
     onAlignTelemetryClick: () -> Unit,
     isEncoding: Boolean,
     videoStartUtc: String = "",
+    syncCandidates: List<TelemetryAligner.AlignmentCandidate> = emptyList(),
+    onApplySyncCandidate: ((TelemetryAligner.AlignmentCandidate) -> Unit)? = null,
     onOpenSyncPanelClick: (() -> Unit)? = null,
     onOpenManualJstSyncClick: (() -> Unit)? = null
 ) {
@@ -1965,6 +2030,50 @@ fun TimeAlignmentCard(
             ) {
                 Text("マイナス: HUDを戻す", color = Color(0xFF8E8E93), fontSize = 9.sp)
                 Text("プラス: HUDを進める", color = Color(0xFF8E8E93), fontSize = 9.sp)
+            }
+            if (syncCandidates.isNotEmpty()) {
+                Divider(color = Color(0xFFE5E5EA))
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("IMU同期候補", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                    syncCandidates.take(5).forEach { candidate ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFFF2F2F7), androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                                .padding(horizontal = 8.dp, vertical = 5.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                                val offsetText = candidate.offsetSeconds?.let {
+                                    "${if (it >= 0.0) "+" else ""}${String.format(java.util.Locale.US, "%.3f", it)}s"
+                                } ?: "--"
+                                Text(
+                                    "#${candidate.rank}  $offsetText  r=${String.format(java.util.Locale.US, "%.3f", candidate.correlation)}",
+                                    color = Color(0xFF1C1C1E),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    "FIT ${String.format(java.util.Locale.US, "%.1f", candidate.fitStartSeconds)}s / ${candidate.alignedUtc}",
+                                    color = Color(0xFF636366),
+                                    fontSize = 9.sp,
+                                    maxLines = 1
+                                )
+                            }
+                            OutlinedButton(
+                                onClick = { onApplySyncCandidate?.invoke(candidate) },
+                                enabled = !isEncoding && onApplySyncCandidate != null,
+                                modifier = Modifier.height(28.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF007AFF)),
+                                border = BorderStroke(1.dp, Color(0xFF007AFF)),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Text("適用", fontSize = 10.sp)
+                            }
+                        }
+                    }
+                }
             }
             Divider(color = Color(0xFFE5E5EA))
             Row(

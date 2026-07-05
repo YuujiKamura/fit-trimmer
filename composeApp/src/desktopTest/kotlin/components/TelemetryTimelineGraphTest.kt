@@ -42,22 +42,26 @@ class TelemetryTimelineGraphTest {
     fun testDragVideoRangeCalculatesCorrectOffset() {
         val fitStartUtc = "2026-07-05T11:00:00Z"
         val videoStartUtc = "2026-07-05T11:02:00Z" // startDiffSec = 120.0
-        val vDuration = 600.0
-        
-        val dragStartStartDiffSec = 120.0
-        val dragStartRatio = 0.2f
-        
-        val currentRatio = 0.3f
-        val deltaRatio = currentRatio - dragStartRatio
-        val deltaSec = deltaRatio * vDuration
-        val targetSec = dragStartStartDiffSec + deltaSec // 120.0 + 60.0 = 180.0
-        
-        val newOffsetMs = utils.TelemetryAligner.calculateOffsetFromTargetSec(
+        val coords = TimelineCoordinateSystem(
+            timelineDurationSec = 3600.0,
+            videoDurationSec = 600.0,
+            startDiffSec = 120.0,
+            isTelemetryCut = false
+        )
+
+        val targetSec = coords.videoRangeDragTargetStartSec(
+            dragStartStartDiffSec = 120.0,
+            dragStartX = 200f,
+            currentX = 300f,
+            w = 1000f
+        )
+
+        val newOffsetMs = utils.TelemetryAligner.calculateOffsetForVideoStartAtFitSec(
             videoStartUtc = videoStartUtc,
             fitStartUtc = fitStartUtc,
-            targetSec = targetSec
+            videoStartFitSec = targetSec
         )
-        
-        assertEquals(-300000L, newOffsetMs)
+
+        assertEquals(360000L, newOffsetMs)
     }
 }
