@@ -351,7 +351,7 @@ fun TelemetryTimelineGraph(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(if (isFolded) 28.dp else 130.dp)
+                    .height(if (isFolded) 28.dp else 100.dp)
                     .clip(RoundedCornerShape(6.dp))
                     .alpha(if (isEncoding || isDetectingPlates) 0.6f else 1f)
                     .background(if (isEncoding || isDetectingPlates) Color(0xFFE5E5EA).copy(alpha = 0.5f) else Color(0xFFF2F2F7))
@@ -809,39 +809,35 @@ fun TelemetryTimelineGraph(
             if (!isFolded) {
                 Spacer(Modifier.height(4.dp))
                 Canvas(
-                    modifier = Modifier.fillMaxWidth().height(32.dp)
+                    modifier = Modifier.fillMaxWidth().height(6.dp)
                 ) {
                     val w = size.width.toFloat()
-                    val h = size.height.toFloat()
                     val ticks = 5
                     for (i in 0..ticks) {
                         val ratio = i.toFloat() / ticks.toFloat()
                         val tickX = ratio * w
-                        val tickSec = ratio * timelineDurationSec
-                        
-                        // Draw a tiny Ruler Tick mark (メモリ線)
                         drawLine(
                             color = Color(0xFFC7C7CC),
                             start = Offset(tickX, 0f),
                             end = Offset(tickX, 5.dp.toPx()),
                             strokeWidth = 1.2.dp.toPx()
                         )
-                        
-                        val labelStr = formatTime((tickSec * 1000).toLong()) // mm:ss or mmm:ss
-                        val labelLayout = textMeasurer.measure(
+                    }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    val ticks = 5
+                    for (i in 0..ticks) {
+                        val ratio = i.toFloat() / ticks.toFloat()
+                        val tickSec = ratio * timelineDurationSec
+                        val labelStr = formatTime((tickSec * 1000).toLong())
+                        Text(
                             text = labelStr,
-                            style = TextStyle(
-                                color = Color(0xFF3A3A3C), 
-                                fontSize = 10.sp, 
-                                fontWeight = FontWeight.Medium
-                            )
-                        )
-                        drawText(
-                            textLayoutResult = labelLayout,
-                            topLeft = Offset(
-                                x = (tickX - labelLayout.size.width / 2f).coerceIn(4f, w - labelLayout.size.width - 4f),
-                                y = 9.dp.toPx()
-                            )
+                            color = Color(0xFF3A3A3C),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Medium
                         )
                     }
                 }
