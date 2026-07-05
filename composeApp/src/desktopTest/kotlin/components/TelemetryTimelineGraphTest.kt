@@ -86,4 +86,20 @@ class TelemetryTimelineGraphTest {
         assertEquals(200.0, clampedTrimStart, 0.001)
         assertEquals(300.0, clampedTrimEnd, 0.001)
     }
+    @Test
+    fun testTrimDragCoerceSafety() {
+        val vDuration = 10.0
+        val currentTrimStartSeconds = 9.5
+        val currentTrimEndSeconds = 0.5
+        
+        val targetSecStart = -5.0
+        val maxStart = (currentTrimEndSeconds - 1.0).coerceAtLeast(0.0)
+        val safeTrimStart = targetSecStart.coerceIn(0.0, maxStart)
+        assertEquals(0.0, safeTrimStart, 0.001)
+        
+        val targetSecEnd = 20.0
+        val minEnd = (currentTrimStartSeconds + 1.0).coerceAtMost(vDuration)
+        val safeTrimEnd = targetSecEnd.coerceIn(minEnd, vDuration)
+        assertEquals(10.0, safeTrimEnd, 0.001)
+    }
 }

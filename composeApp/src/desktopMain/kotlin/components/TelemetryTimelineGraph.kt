@@ -420,10 +420,12 @@ fun TelemetryTimelineGraph(
 
                             when (activeDragHandle) {
                                 DragHandle.TRIM_START -> {
-                                    currentOnTrimStartChange(targetSec.coerceIn(0.0, currentTrimEndSeconds - 1.0))
+                                    val maxStart = (currentTrimEndSeconds - 1.0).coerceAtLeast(0.0)
+                                    currentOnTrimStartChange(targetSec.coerceIn(0.0, maxStart))
                                 }
                                 DragHandle.TRIM_END -> {
-                                    currentOnTrimEndChange(targetSec.coerceIn(currentTrimStartSeconds + 1.0, vDuration))
+                                    val minEnd = (currentTrimStartSeconds + 1.0).coerceAtMost(vDuration)
+                                    currentOnTrimEndChange(targetSec.coerceIn(minEnd, vDuration))
                                 }
                                 DragHandle.PLAYHEAD -> {
                                     val targetTimeMs = (targetSec * 1000.0).toLong()
