@@ -826,8 +826,7 @@ fun TelemetryTimelineGraph(
                     for (i in 0..ticks) {
                         val ratio = i.toFloat() / ticks.toFloat()
                         val tickX = ratio * w
-                        val absoluteSec = ratio * timelineDurationSec
-                        val tickSec = absoluteSec - startDiffSec
+                        val tickSec = calculateTickSeconds(ratio, timelineDurationSec, startDiffSec)
                         
                         // Draw a tiny Ruler Tick mark (メモリ線)
                         drawLine(
@@ -887,3 +886,7 @@ data class TimelineEvent(
     val seconds: Double,
     val color: Color
 )
+
+fun calculateTickSeconds(ratio: Float, timelineDurationSec: Double, startDiffSec: Double): Double {
+    return (ratio.toDouble() * timelineDurationSec)
+}
