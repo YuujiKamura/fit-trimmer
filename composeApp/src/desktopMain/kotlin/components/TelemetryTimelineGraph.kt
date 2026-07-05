@@ -290,9 +290,9 @@ fun TelemetryTimelineGraph(
     var dragStartRatio by remember { mutableStateOf(0.0f) }
     var dragStartTrimStart by remember { mutableStateOf(0.0) }
     var dragStartTrimEnd by remember { mutableStateOf(0.0) }
-    var isHoveringVideoRange by remember { mutableStateOf(false) }
+    var isHoveringTrimRange by remember { mutableStateOf(false) }
 
-    val customCursor = if (!isTelemetryCut && (isHoveringVideoRange || activeDragHandle == DragHandle.VIDEO_RANGE)) {
+    val customCursor = if (isHoveringTrimRange || activeDragHandle == DragHandle.TRIM_RANGE) {
         PointerIcon(java.awt.Cursor(java.awt.Cursor.HAND_CURSOR))
     } else {
         PointerIcon.Default
@@ -302,12 +302,12 @@ fun TelemetryTimelineGraph(
         modifier = modifier
             .fillMaxWidth()
             .pointerHoverIcon(customCursor)
-            .pointerInput(videoStartUtc, fitStartUtc, timelineDurationSec, isTelemetryCut, videoDurationSec) {
+            .pointerInput(videoStartUtc, fitStartUtc, timelineDurationSec, isTelemetryCut, videoDurationSec, trimStartSeconds, trimEndSeconds) {
                 awaitPointerEventScope {
                     while (true) {
                         val event = awaitPointerEvent()
                         val change = event.changes.firstOrNull()
-                        if (change != null && !isTelemetryCut && timelineDurationSec > 0) {
+                        if (change != null && timelineDurationSec > 0) {
                             val w = size.width.toFloat()
                             val h = size.height.toFloat()
                             if (w > 0f) {
@@ -316,17 +316,23 @@ fun TelemetryTimelineGraph(
                                     val fUtc = try { java.time.Instant.parse(fitStartUtc).epochSecond } catch(e: Exception) { 0L }
                                     (vUtc - fUtc).toDouble()
                                 } else 0.0
-                                val xVideoStart = (((startDiffSec / timelineDurationSec) * w).toFloat().takeIf { it.isFinite() } ?: 0f)
-                                val xVideoEnd = ((((startDiffSec + videoDurationSec) / timelineDurationSec) * w).toFloat().takeIf { it.isFinite() } ?: w)
+                                val safeTrimStart = if (trimStartSeconds.isNaN() || trimStartSeconds.isInfinite()) 0.0 else trimStartSeconds
+                                val safeTrimEnd = if (trimEndSeconds.isNaN() || trimEndSeconds.isInfinite()) timelineDurationSec else trimEndSeconds
+                                val absoluteTrimStart = if (isTelemetryCut) safeTrimStart else (startDiffSec + safeTrimStart)
+                                val absoluteTrimEnd = if (isTelemetryCut) safeTrimEnd else (startDiffSec + safeTrimEnd)
+                                val xStart = (((absoluteTrimStart / timelineDurationSec) * w).toFloat().takeIf { it.isFinite() } ?: 0f)
+                                val xEnd = (((absoluteTrimEnd / timelineDurationSec) * w).toFloat().takeIf { it.isFinite() } ?: w)
                                 
+                                val rulerHeightPx = 40.dp.toPx()
+                                val isInRuler = change.position.y >= (h - rulerHeightPx)
                                 if (change.position.x in 0f..w && change.position.y in 0f..h) {
-                                    isHoveringVideoRange = change.position.x in xVideoStart..xVideoEnd
+                                    isHoveringTrimRange = isInRuler && (change.position.x in xStart..xEnd)
                                 } else {
-                                    isHoveringVideoRange = false
+                                    isHoveringTrimRange = false
                                 }
                             }
                         } else {
-                            isHoveringVideoRange = false
+                            isHoveringTrimRange = false
                         }
                     }
                 }
@@ -359,13 +365,26 @@ fun TelemetryTimelineGraph(
                         val vDuration = currentTimelineDurationSec
                         if (vDuration > 0) {
                             val w = size.width.toFloat()
+                            val h = size.height.toFloat()
                             if (w > 0f) {
+                                val startDiffSec = if (currentVideoStartUtc.isNotEmpty() && currentFitStartUtc.isNotEmpty()) {
+                                    val vUtc = try { java.time.Instant.parse(currentVideoStartUtc).epochSecond } catch(e: Exception) { 0L }
+                                    val fUtc = try { java.time.Instant.parse(currentFitStartUtc).epochSecond } catch(e: Exception) { 0L }
+                                    (vUtc - fUtc).toDouble()
+                                } else 0.0
+
+                                val safeTrimStart = if (currentTrimStartSeconds.isNaN() || currentTrimStartSeconds.isInfinite()) 0.0 else currentTrimStartSeconds
+                                val safeTrimEnd = if (currentTrimEndSeconds.isNaN() || currentTrimEndSeconds.isInfinite()) vDuration else currentTrimEndSeconds
+                                val absoluteTrimStart = if (currentIsTelemetryCut) safeTrimStart else (startDiffSec + safeTrimStart)
+                                val absoluteTrimEnd = if (currentIsTelemetryCut) safeTrimEnd else (startDiffSec + safeTrimEnd)
+
                                 val xStart = if (vDuration > 0.0) {
-                                    ((currentTrimStartSeconds / vDuration) * w).takeIf { it.isFinite() } ?: 0.0
+                                    (((absoluteTrimStart / vDuration) * w).toFloat().takeIf { it.isFinite() } ?: 0f).toDouble()
                                 } else 0.0
                                 val xEnd = if (vDuration > 0.0) {
-                                    ((currentTrimEndSeconds / vDuration) * w).takeIf { it.isFinite() } ?: w.toDouble()
+                                    (((absoluteTrimEnd / vDuration) * w).toFloat().takeIf { it.isFinite() } ?: w).toDouble()
                                 } else w.toDouble()
+
                                 val xPlayhead = if (vDuration > 0.0) {
                                     (((currentVideoCurrentTimeMs / 1000.0) / vDuration) * w).takeIf { it.isFinite() } ?: 0.0
                                 } else 0.0
@@ -373,13 +392,8 @@ fun TelemetryTimelineGraph(
                                     ((fitStartRelativeSec / vDuration) * w).takeIf { it.isFinite() } ?: 0.0
                                 } else 0.0
 
-                                val startDiffSec = if (currentVideoStartUtc.isNotEmpty() && currentFitStartUtc.isNotEmpty()) {
-                                    val vUtc = try { java.time.Instant.parse(currentVideoStartUtc).epochSecond } catch(e: Exception) { 0L }
-                                    val fUtc = try { java.time.Instant.parse(currentFitStartUtc).epochSecond } catch(e: Exception) { 0L }
-                                    (vUtc - fUtc).toDouble()
-                                } else 0.0
-                                val xVideoStart = (((startDiffSec / vDuration) * w).toFloat().takeIf { it.isFinite() } ?: 0f)
-                                val xVideoEnd = ((((startDiffSec + currentVideoDurationSec) / vDuration) * w).toFloat().takeIf { it.isFinite() } ?: w)
+                                val rulerHeightPx = 40.dp.toPx()
+                                val isInRuler = offset.y >= (h - rulerHeightPx)
 
                                 val threshold = 20.dp.toPx()
                                 activeDragHandle = when {
@@ -387,14 +401,14 @@ fun TelemetryTimelineGraph(
                                     kotlin.math.abs(offset.x - xEnd) < threshold -> DragHandle.TRIM_END
                                     kotlin.math.abs(offset.x - xPlayhead) < threshold -> DragHandle.PLAYHEAD
                                     kotlin.math.abs(offset.x - xFitStart) < threshold -> DragHandle.FIT_START
-                                    !currentIsTelemetryCut && offset.x in xVideoStart..xVideoEnd -> DragHandle.VIDEO_RANGE
+                                    isInRuler && offset.x in xStart..xEnd -> DragHandle.TRIM_RANGE
                                     else -> null
                                 }
 
                                 if (activeDragHandle == DragHandle.PLAYHEAD) {
                                     currentOnSeekStart()
                                 }
-                                if (activeDragHandle == DragHandle.VIDEO_RANGE) {
+                                if (activeDragHandle == DragHandle.TRIM_RANGE) {
                                     dragStartStartDiffSec = startDiffSec
                                     dragStartRatio = offset.x / w
                                     dragStartTrimStart = currentTrimStartSeconds
@@ -441,7 +455,7 @@ fun TelemetryTimelineGraph(
                                         currentOnTimeOffsetChange(newOffsetMs)
                                     }
                                 }
-                                DragHandle.VIDEO_RANGE -> {
+                                DragHandle.TRIM_RANGE -> {
                                     val deltaRatio = ratio - dragStartRatio
                                     val deltaSec = deltaRatio * vDuration
 
@@ -550,147 +564,6 @@ fun TelemetryTimelineGraph(
                     .alpha(if (isEncoding || isDetectingPlates) 0.6f else 1f)
                     .background(if (isEncoding || isDetectingPlates) Color(0xFFE5E5EA).copy(alpha = 0.5f) else Color(0xFFF2F2F7))
                     .border(1.dp, Color(0xFFE5E5EA), RoundedCornerShape(6.dp))
-                    .pointerInput(isEncoding || isDetectingPlates) {
-                        if (isEncoding || isDetectingPlates) return@pointerInput
-                        detectTapGestures(
-                            onDoubleTap = { offset ->
-                                val w = size.width.toFloat()
-                                if (w > 0f && currentTimelineDurationSec > 0) {
-                                    val ratio = (offset.x / w).coerceIn(0f, 1f)
-                                    val targetSec = ratio * currentTimelineDurationSec
-                                    if (currentVideoStartUtc.isNotEmpty() && currentFitStartUtc.isNotEmpty()) {
-                                        val newOffsetMs = utils.TelemetryAligner.calculateOffsetFromTargetSec(
-                                            videoStartUtc = currentVideoStartUtc,
-                                            fitStartUtc = currentFitStartUtc,
-                                            targetSec = targetSec
-                                        )
-                                        currentOnTimeOffsetChange(newOffsetMs)
-                                    }
-                                }
-                            }
-                        )
-                    }
-                    .pointerInput(isEncoding || isDetectingPlates) {
-                        if (isEncoding || isDetectingPlates) return@pointerInput
-                        detectDragGestures(
-                            onDragStart = { offset ->
-                                val vLength = currentVideoLengthMs
-                                val vDuration = currentTimelineDurationSec
-                                if (vDuration > 0) {
-                                    val w = size.width.toFloat()
-                                    if (w > 0f) {
-                                        val xStart = if (vDuration > 0.0) ((currentTrimStartSeconds / vDuration) * w).takeIf { it.isFinite() } ?: 0.0 else 0.0
-                                        val xEnd = if (vDuration > 0.0) ((currentTrimEndSeconds / vDuration) * w).takeIf { it.isFinite() } ?: w.toDouble() else w.toDouble()
-                                        val xPlayhead = if (vDuration > 0.0) ((currentVideoCurrentTimeMs / 1000.0 / vDuration) * w).takeIf { it.isFinite() } ?: 0.0 else 0.0
-                                        val xFitStart = if (vDuration > 0.0 && !fitStartRelativeSec.isNaN()) {
-                                            ((fitStartRelativeSec / vDuration) * w).toFloat().takeIf { it.isFinite() } ?: -999f
-                                        } else -999f
-                                        
-                                        val startDiffSec = if (currentVideoStartUtc.isNotEmpty() && currentFitStartUtc.isNotEmpty()) {
-                                            val vUtc = try { java.time.Instant.parse(currentVideoStartUtc).epochSecond } catch(e: Exception) { 0L }
-                                            val fUtc = try { java.time.Instant.parse(currentFitStartUtc).epochSecond } catch(e: Exception) { 0L }
-                                            (vUtc - fUtc).toDouble()
-                                        } else 0.0
-                                        val xVideoStart = if (vDuration > 0.0) (((startDiffSec / vDuration) * w).toFloat().takeIf { it.isFinite() } ?: 0f) else 0f
-                                        val xVideoEnd = if (vDuration > 0.0) ((((startDiffSec + currentVideoDurationSec) / vDuration) * w).toFloat().takeIf { it.isFinite() } ?: w) else w
-
-                                        val threshold = 20.dp.toPx()
-                                        activeDragHandle = when {
-                                            kotlin.math.abs(offset.x - xStart) < threshold -> DragHandle.TRIM_START
-                                            kotlin.math.abs(offset.x - xEnd) < threshold -> DragHandle.TRIM_END
-                                            kotlin.math.abs(offset.x - xPlayhead) < threshold -> DragHandle.PLAYHEAD
-                                            kotlin.math.abs(offset.x - xFitStart) < threshold -> DragHandle.FIT_START
-                                            !currentIsTelemetryCut && offset.x in xVideoStart..xVideoEnd -> DragHandle.VIDEO_RANGE
-                                            else -> null
-                                        }
-                                        
-                                        if (activeDragHandle == DragHandle.PLAYHEAD) {
-                                            currentOnSeekStart()
-                                        }
-                                        if (activeDragHandle == DragHandle.VIDEO_RANGE) {
-                                            dragStartStartDiffSec = startDiffSec
-                                            dragStartRatio = offset.x / w
-                                            dragStartTrimStart = currentTrimStartSeconds
-                                            dragStartTrimEnd = currentTrimEndSeconds
-                                        }
-                                        
-                                        // If no handle is grabbed, perform a seek click
-                                        if (activeDragHandle == null) {
-                                            val ratio = (offset.x / w).coerceIn(0f, 1f)
-                                            currentOnSeekEnd((ratio * vLength).toLong())
-                                        }
-                                    }
-                                }
-                            },
-                            onDrag = { change, _ ->
-                                change.consume()
-                                val vLength = currentVideoLengthMs
-                                val vDuration = currentTimelineDurationSec
-                                val w = size.width.toFloat()
-                                if (vDuration > 0 && w > 0f && activeDragHandle != null) {
-                                    val ratio = (change.position.x / w).coerceIn(0f, 1f)
-                                    val targetSec = ratio * vDuration
-                                    
-                                    when (activeDragHandle) {
-                                        DragHandle.TRIM_START -> {
-                                            currentOnTrimStartChange(targetSec.coerceIn(0.0, currentTrimEndSeconds - 1.0))
-                                        }
-                                        DragHandle.TRIM_END -> {
-                                            currentOnTrimEndChange(targetSec.coerceIn(currentTrimStartSeconds + 1.0, vDuration))
-                                        }
-                                        DragHandle.PLAYHEAD -> {
-                                            val targetTimeMs = (targetSec * 1000.0).toLong()
-                                            currentOnSeekProgress(targetTimeMs)
-                                        }
-                                        DragHandle.FIT_START -> {
-                                            if (currentVideoStartUtc.isNotEmpty() && currentFitStartUtc.isNotEmpty()) {
-                                                val newOffsetMs = utils.TelemetryAligner.calculateOffsetFromTargetSec(
-                                                    videoStartUtc = currentVideoStartUtc,
-                                                    fitStartUtc = currentFitStartUtc,
-                                                    targetSec = targetSec
-                                                )
-                                                currentOnTimeOffsetChange(newOffsetMs)
-                                            }
-                                        }
-                                        DragHandle.VIDEO_RANGE -> {
-                                            val deltaRatio = ratio - dragStartRatio
-                                            val deltaSec = deltaRatio * vDuration
-                                            
-                                            val trimLength = dragStartTrimEnd - dragStartTrimStart
-                                            var newTrimStart = dragStartTrimStart + deltaSec
-                                            var newTrimEnd = dragStartTrimEnd + deltaSec
-                                            
-                                            val vLimit = currentVideoDurationSec
-                                            if (newTrimStart < 0.0) {
-                                                newTrimStart = 0.0
-                                                newTrimEnd = trimLength
-                                            }
-                                            if (newTrimEnd > vLimit) {
-                                                newTrimEnd = vLimit
-                                                newTrimStart = (vLimit - trimLength).coerceAtLeast(0.0)
-                                            }
-                                            
-                                            currentOnTrimStartChange(newTrimStart)
-                                            currentOnTrimEndChange(newTrimEnd)
-                                        }
-                                        null -> {}
-                                    }
-                                }
-                            },
-                            onDragEnd = {
-                                if (activeDragHandle == DragHandle.PLAYHEAD) {
-                                    currentOnSeekEnd(currentVideoCurrentTimeMs)
-                                }
-                                activeDragHandle = null
-                            },
-                            onDragCancel = {
-                                if (activeDragHandle == DragHandle.PLAYHEAD) {
-                                    currentOnSeekEnd(currentVideoCurrentTimeMs)
-                                }
-                                activeDragHandle = null
-                            }
-                        )
-                    }
             ) {
                 // 1. Static Graph Background & Controls (Not depending on videoCurrentTimeMs)
                 Canvas(modifier = Modifier.fillMaxSize()) {
@@ -1120,30 +993,34 @@ fun TelemetryTimelineGraph(
                         (vUtc - fUtc).toDouble()
                     } else 0.0
 
-                    val xVideoStart = if (timelineDurationSec > 0.0) (((startDiffSec / timelineDurationSec) * w).toFloat().takeIf { it.isFinite() } ?: 0f) else 0f
-                    val xVideoEnd = if (timelineDurationSec > 0.0) ((((startDiffSec + videoDurationSec) / timelineDurationSec) * w).toFloat().takeIf { it.isFinite() } ?: w) else w
+                    val safeTrimStart = if (trimStartSeconds.isNaN() || trimStartSeconds.isInfinite()) 0.0 else trimStartSeconds
+                    val safeTrimEnd = if (trimEndSeconds.isNaN() || trimEndSeconds.isInfinite()) timelineDurationSec else trimEndSeconds
+                    val absoluteTrimStart = if (isTelemetryCut) safeTrimStart else (startDiffSec + safeTrimStart)
+                    val absoluteTrimEnd = if (isTelemetryCut) safeTrimEnd else (startDiffSec + safeTrimEnd)
+                    val xStart = if (timelineDurationSec > 0.0) (((absoluteTrimStart / timelineDurationSec) * w).toFloat().takeIf { it.isFinite() } ?: 0f) else 0f
+                    val xEnd = if (timelineDurationSec > 0.0) (((absoluteTrimEnd / timelineDurationSec) * w).toFloat().takeIf { it.isFinite() } ?: w) else w
 
-                    // Draw a subtle horizontal bar showing video range in the ruler background
-                    if (!isTelemetryCut && timelineDurationSec > 0.0) {
-                        val isDragging = activeDragHandle == DragHandle.VIDEO_RANGE
+                    // Draw a subtle horizontal bar showing trim range in the ruler background
+                    if (timelineDurationSec > 0.0) {
+                        val isDragging = activeDragHandle == DragHandle.TRIM_RANGE
                         val barColor = when {
-                            isDragging -> Color(0xBB30D158) // High opacity green when dragging
-                            isHoveringVideoRange -> Color(0x7730D158) // Medium opacity green when hovering
-                            else -> Color(0x3330D158) // Subtle soft green default
+                            isDragging -> Color(0xBB34C759) // High opacity green when dragging
+                            isHoveringTrimRange -> Color(0x7734C759) // Medium opacity green when hovering
+                            else -> Color(0x3334C759) // Subtle soft green default
                         }
-                        val barHeight = if (isDragging || isHoveringVideoRange) rangeBarHeightPx * 1.5f else rangeBarHeightPx
+                        val barHeight = if (isDragging || isHoveringTrimRange) rangeBarHeightPx * 1.5f else rangeBarHeightPx
 
                         drawRect(
                             color = barColor,
-                            topLeft = Offset(xVideoStart, 0f),
-                            size = Size(xVideoEnd - xVideoStart, barHeight)
+                            topLeft = Offset(xStart, 0f),
+                            size = Size(xEnd - xStart, barHeight)
                         )
 
-                        if (isDragging || isHoveringVideoRange) {
+                        if (isDragging || isHoveringTrimRange) {
                             drawLine(
-                                color = Color(0xFF30D158),
-                                start = Offset(xVideoStart, barHeight),
-                                end = Offset(xVideoEnd, barHeight),
+                                color = Color(0xFF34C759),
+                                start = Offset(xStart, barHeight),
+                                end = Offset(xEnd, barHeight),
                                 strokeWidth = 1.dp.toPx()
                             )
                         }
