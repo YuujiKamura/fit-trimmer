@@ -542,4 +542,22 @@ object TelemetryAligner {
             return 0L
         }
     }
+
+    fun calculateOffsetForVideoStartAtFitSec(
+        videoStartUtc: String,
+        fitStartUtc: String,
+        videoStartFitSec: Double
+    ): Long {
+        if (videoStartUtc.isEmpty() || fitStartUtc.isEmpty()) return 0L
+        return try {
+            val videoInstant = java.time.Instant.parse(videoStartUtc)
+            val fitInstant = java.time.Instant.parse(fitStartUtc)
+
+            val desiredAdjustedStartMs = fitInstant.toEpochMilli() + (videoStartFitSec * 1000.0).toLong()
+            desiredAdjustedStartMs - videoInstant.toEpochMilli()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            0L
+        }
+    }
 }
