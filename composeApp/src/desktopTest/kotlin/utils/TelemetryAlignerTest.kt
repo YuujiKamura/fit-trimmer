@@ -492,5 +492,20 @@ class TelemetryAlignerTest {
         println("DEBUG TEST GLOBAL: alignedUtc=$alignedUtc, expectedUtc=2026-06-25T08:19:55.335Z, diff=$diffSeconds seconds")
         assertTrue(diffSeconds < 10, "Global alignment failed to find correct match, diff was $diffSeconds seconds")
     }
+
+    @Test
+    fun testManualOffsetCalculation() {
+        val videoStartUtc = "2026-07-05T00:00:00Z"
+        val fitStartUtc = "2026-07-05T00:00:10Z"
+        val targetSec = 15.0
+
+        val newOffsetMs = TelemetryAligner.calculateOffsetFromTargetSec(
+            videoStartUtc = videoStartUtc,
+            fitStartUtc = fitStartUtc,
+            targetSec = targetSec
+        )
+
+        assertEquals(-5000L, newOffsetMs)
+    }
 }
 

@@ -93,6 +93,13 @@ class AppViewModel(
 
         set(value) {
 
+            if (_videoPath == value) {
+                isTelemetryCut = false
+                if (originalTelemetryPoints.isNotEmpty()) {
+                    telemetryPoints = originalTelemetryPoints
+                }
+            }
+
             if (_videoPath != value) {
 
                 val oldPath = _videoPath
@@ -134,7 +141,10 @@ class AppViewModel(
 
 
                 _videoPath = value
-
+                isTelemetryCut = false
+                if (originalTelemetryPoints.isNotEmpty()) {
+                    telemetryPoints = originalTelemetryPoints
+                }
                 refreshAvailableCacheJobs()
 
                 val history = utils.GuiCache.loadHistory(value)
@@ -736,6 +746,10 @@ class AppViewModel(
 
     var isAligningTelemetry by mutableStateOf(false)
 
+    var syncAnchorSec by mutableStateOf<Double?>(null)
+
+    var syncCorrelation by mutableStateOf<Double?>(null)
+
     var encodePhase by mutableStateOf(EncodePhase.Idle)
 
     var isEncoding: Boolean
@@ -843,6 +857,44 @@ class AppViewModel(
     // Telemetry and video metadata
 
     var telemetryPoints by mutableStateOf<List<FitParser.TelemetryPoint>>(emptyList())
+
+    var isTelemetryCut by mutableStateOf(false)
+    var originalTelemetryPoints by mutableStateOf<List<FitParser.TelemetryPoint>>(emptyList())
+
+    fun updateTelemetry(points: List<FitParser.TelemetryPoint>) {
+        originalTelemetryPoints = points
+        telemetryPoints = points
+        isTelemetryCut = false
+    }
+
+    fun cutTelemetry(trimStartSec: Double, trimEndSec: Double, videoStartUtcStr: String) {
+        if (originalTelemetryPoints.isEmpty()) return
+        try {
+            val fitEpoch = java.time.Instant.parse("1989-12-31T00:00:00Z").epochSecond
+            val firstPoint = originalTelemetryPoints.firstOrNull() ?: return
+            val fitStartUtcEpoch = firstPoint.timestamp + fitEpoch
+            
+            val cutStartEpoch = fitStartUtcEpoch + trimStartSec
+            val cutEndEpoch = fitStartUtcEpoch + trimEndSec
+            
+            val filtered = originalTelemetryPoints.filter { pt ->
+                val ptEpoch = pt.timestamp + fitEpoch
+                ptEpoch in cutStartEpoch..cutEndEpoch
+            }
+            
+            telemetryPoints = filtered
+            isTelemetryCut = true
+            
+            if (videoStartUtcStr.isNotEmpty()) {
+                val videoInstant = java.time.Instant.parse(videoStartUtcStr)
+                val cutStartInstant = java.time.Instant.ofEpochSecond(cutStartEpoch.toLong())
+                val diffMs = cutStartInstant.toEpochMilli() - videoInstant.toEpochMilli()
+                timeOffsetState.update(diffMs.toInt())
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
 
     
 

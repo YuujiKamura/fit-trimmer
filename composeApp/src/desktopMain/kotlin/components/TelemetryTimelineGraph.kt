@@ -52,10 +52,109 @@ fun TelemetryTimelineGraph(
     blurLicensePlates: Boolean = false,
     language: String = "ja",
     isFolded: Boolean = false,
-    onFoldToggle: (Boolean) -> Unit = {}
+    onFoldToggle: (Boolean) -> Unit = {},
+    videoStartUtc: String = "",
+    timeOffsetMillis: Long = 0L,
+    onTimeOffsetChange: (Long) -> Unit = {},
+    syncAnchorSec: Double? = null,
+    syncCorrelation: Double? = null,
+    isTelemetryCut: Boolean = false
 ) {
     val textMeasurer = rememberTextMeasurer()
     val videoDurationSec = videoLengthMs / 1000.0
+    val fitDurationSec = remember(telemetryPoints) {
+        if (telemetryPoints.isEmpty()) 0.0
+        else {
+            val fitTs = telemetryPoints.map { it.timestamp }
+            fitTs.last() - fitTs.first()
+        }
+    }
+    val timelineDurationSec = if (!isTelemetryCut && fitDurationSec > 0.0) fitDurationSec else videoDurationSec
+
+    val fitStartUtc = remember(telemetryPoints) {
+        if (telemetryPoints.isEmpty()) ""
+        else {
+            try {
+                val fitEpoch = java.time.Instant.parse("1989-12-31T00:00:00Z").epochSecond
+                val fitStartSec = telemetryPoints.first().timestamp
+                val fitInstant = java.time.Instant.ofEpochSecond((fitStartSec + fitEpoch).toLong())
+                fitInstant.toString()
+            } catch (e: Exception) {
+                ""
+            }
+        }
+    }
+
+    val fitStartRelativeSec = remember(fitStartUtc, adjustedStartUtc) {
+        if (fitStartUtc.isEmpty() || adjustedStartUtc.isEmpty()) Double.NaN
+        else {
+            try {
+                val fitInstant = java.time.Instant.parse(fitStartUtc)
+                val adjustedInstant = java.time.Instant.parse(adjustedStartUtc)
+                (fitInstant.toEpochMilli() - adjustedInstant.toEpochMilli()) / 1000.0
+            } catch (e: Exception) {
+                Double.NaN
+            }
+        }
+    }
+
+    val telemetryEvents = remember(telemetryPoints, adjustedStartUtc) {
+        if (telemetryPoints.isEmpty() || adjustedStartUtc.isEmpty()) emptyList<TimelineEvent>()
+        else {
+            try {
+                val startTime = java.time.Instant.parse(adjustedStartUtc)
+                val fitEpoch = java.time.Instant.parse("1989-12-31T00:00:00Z").epochSecond
+                val startFitTs = startTime.toEpochMilli() / 1000.0 - fitEpoch
+                
+                val events = mutableListOf<TimelineEvent>()
+                
+                // Max Power Point
+                val maxPowerPt = telemetryPoints.maxByOrNull { it.power }
+                if (maxPowerPt != null && maxPowerPt.power > 50.0) {
+                    events.add(TimelineEvent(
+                        label = "Max Power (${maxPowerPt.power.toInt()}W)",
+                        seconds = maxPowerPt.timestamp - startFitTs,
+                        color = Color(0xFFFF9500) // Orange
+                    ))
+                }
+
+                // Elevation Peak
+                val maxElevPt = telemetryPoints.maxByOrNull { it.elevation }
+                if (maxElevPt != null) {
+                    events.add(TimelineEvent(
+                        label = "Max Elev (${maxElevPt.elevation.toInt()}m)",
+                        seconds = maxElevPt.timestamp - startFitTs,
+                        color = Color(0xFF34C759) // Green
+                    ))
+                }
+
+                // Elevation Valley
+                val minElevPt = telemetryPoints.minByOrNull { it.elevation }
+                if (minElevPt != null && maxElevPt != null && (maxElevPt.elevation - minElevPt.elevation) > 20.0) {
+                    events.add(TimelineEvent(
+                        label = "Min Elev (${minElevPt.elevation.toInt()}m)",
+                        seconds = minElevPt.timestamp - startFitTs,
+                        color = Color(0xFF30D158) // Light Green
+                    ))
+                }
+
+                // Max Speed Point
+                val maxSpeedPt = telemetryPoints.maxByOrNull { it.speed }
+                if (maxSpeedPt != null && maxSpeedPt.speed > 5.0) {
+                    events.add(TimelineEvent(
+                        label = "Max Speed (${String.format(java.util.Locale.US, "%.1f", maxSpeedPt.speed)} km/h)",
+                        seconds = maxSpeedPt.timestamp - startFitTs,
+                        color = Color(0xFF007AFF) // Blue
+                    ))
+                }
+
+                events
+            } catch (e: Exception) {
+                e.printStackTrace()
+                emptyList()
+            }
+        }
+    }
 
     val currentVideoLengthMs by rememberUpdatedState(videoLengthMs)
     val currentTrimStartSeconds by rememberUpdatedState(trimStartSeconds)
@@ -251,22 +350,46 @@ fun TelemetryTimelineGraph(
                     .border(1.dp, Color(0xFFE5E5EA), RoundedCornerShape(6.dp))
                     .pointerInput(isEncoding || isDetectingPlates) {
                         if (isEncoding || isDetectingPlates) return@pointerInput
+                        detectTapGestures(
+                            onDoubleTap = { offset ->
+                                val w = size.width.toFloat()
+                                if (w > 0f && timelineDurationSec > 0) {
+                                    val ratio = (offset.x / w).coerceIn(0f, 1f)
+                                    val targetSec = ratio * timelineDurationSec
+                                    if (videoStartUtc.isNotEmpty() && fitStartUtc.isNotEmpty()) {
+                                        val newOffsetMs = utils.TelemetryAligner.calculateOffsetFromTargetSec(
+                                            videoStartUtc = videoStartUtc,
+                                            fitStartUtc = fitStartUtc,
+                                            targetSec = targetSec
+                                        )
+                                        onTimeOffsetChange(newOffsetMs)
+                                    }
+                                }
+                            }
+                        )
+                    }
+                    .pointerInput(isEncoding || isDetectingPlates) {
+                        if (isEncoding || isDetectingPlates) return@pointerInput
                         detectDragGestures(
                             onDragStart = { offset ->
                                 val vLength = currentVideoLengthMs
-                                val vDuration = vLength / 1000.0
+                                val vDuration = timelineDurationSec
                                 if (vDuration > 0) {
                                     val w = size.width.toFloat()
                                     if (w > 0f) {
                                         val xStart = if (vDuration > 0.0) ((currentTrimStartSeconds / vDuration) * w).takeIf { it.isFinite() } ?: 0.0 else 0.0
                                         val xEnd = if (vDuration > 0.0) ((currentTrimEndSeconds / vDuration) * w).takeIf { it.isFinite() } ?: w.toDouble() else w.toDouble()
                                         val xPlayhead = if (vDuration > 0.0) ((currentVideoCurrentTimeMs / 1000.0 / vDuration) * w).takeIf { it.isFinite() } ?: 0.0 else 0.0
+                                        val xFitStart = if (vDuration > 0.0 && !fitStartRelativeSec.isNaN()) {
+                                            ((fitStartRelativeSec / vDuration) * w).toFloat().takeIf { it.isFinite() } ?: -999f
+                                        } else -999f
                                         
                                         val threshold = 20.dp.toPx()
                                         activeDragHandle = when {
                                             kotlin.math.abs(offset.x - xStart) < threshold -> DragHandle.TRIM_START
                                             kotlin.math.abs(offset.x - xEnd) < threshold -> DragHandle.TRIM_END
                                             kotlin.math.abs(offset.x - xPlayhead) < threshold -> DragHandle.PLAYHEAD
+                                            kotlin.math.abs(offset.x - xFitStart) < threshold -> DragHandle.FIT_START
                                             else -> null
                                         }
                                         
@@ -285,7 +408,7 @@ fun TelemetryTimelineGraph(
                             onDrag = { change, _ ->
                                 change.consume()
                                 val vLength = currentVideoLengthMs
-                                val vDuration = vLength / 1000.0
+                                val vDuration = timelineDurationSec
                                 val w = size.width.toFloat()
                                 if (vDuration > 0 && w > 0f && activeDragHandle != null) {
                                     val ratio = (change.position.x / w).coerceIn(0f, 1f)
@@ -301,6 +424,16 @@ fun TelemetryTimelineGraph(
                                         DragHandle.PLAYHEAD -> {
                                             val targetTimeMs = (targetSec * 1000.0).toLong()
                                             currentOnSeekProgress(targetTimeMs)
+                                        }
+                                        DragHandle.FIT_START -> {
+                                            if (videoStartUtc.isNotEmpty() && fitStartUtc.isNotEmpty()) {
+                                                val newOffsetMs = utils.TelemetryAligner.calculateOffsetFromTargetSec(
+                                                    videoStartUtc = videoStartUtc,
+                                                    fitStartUtc = fitStartUtc,
+                                                    targetSec = targetSec
+                                                )
+                                                onTimeOffsetChange(newOffsetMs)
+                                            }
                                         }
                                         null -> {}
                                     }
@@ -359,20 +492,6 @@ fun TelemetryTimelineGraph(
                                 start = Offset(tickX, 0f),
                                 end = Offset(tickX, h),
                                 strokeWidth = 1f
-                            )
-                            // Label
-                            val tickSec = ratio * videoDurationSec
-                            val labelStr = formatTime((tickSec * 1000).toLong()).substring(0, 5) // mm:ss
-                            val labelLayout = textMeasurer.measure(
-                                text = labelStr,
-                                style = TextStyle(color = Color(0xFF8E8E93), fontSize = 8.sp)
-                            )
-                            drawText(
-                                textLayoutResult = labelLayout,
-                                topLeft = Offset(
-                                    x = (tickX - labelLayout.size.width / 2f).coerceIn(4f, w - labelLayout.size.width - 4f),
-                                    y = h - labelLayout.size.height - 2f
-                                )
                             )
                         }
 
@@ -505,9 +624,9 @@ fun TelemetryTimelineGraph(
 
                     // 6. Draw Trim Boundary Excluded Overlays
                      val safeTrimStart = if (trimStartSeconds.isNaN() || trimStartSeconds.isInfinite()) 0.0 else trimStartSeconds
-                     val safeTrimEnd = if (trimEndSeconds.isNaN() || trimEndSeconds.isInfinite()) videoDurationSec else trimEndSeconds
-                     val xStart = if (videoDurationSec > 0.0) (((safeTrimStart / videoDurationSec) * w).toFloat().takeIf { it.isFinite() } ?: 0f) else 0f
-                     val xEnd = if (videoDurationSec > 0.0) (((safeTrimEnd / videoDurationSec) * w).toFloat().takeIf { it.isFinite() } ?: w) else w
+                     val safeTrimEnd = if (trimEndSeconds.isNaN() || trimEndSeconds.isInfinite()) timelineDurationSec else trimEndSeconds
+                     val xStart = if (timelineDurationSec > 0.0) (((safeTrimStart / timelineDurationSec) * w).toFloat().takeIf { it.isFinite() } ?: 0f) else 0f
+                     val xEnd = if (timelineDurationSec > 0.0) (((safeTrimEnd / timelineDurationSec) * w).toFloat().takeIf { it.isFinite() } ?: w) else w
 
                     drawRect(
                         color = Color(0x77000000),
@@ -519,6 +638,91 @@ fun TelemetryTimelineGraph(
                         topLeft = Offset(xEnd, 0f),
                         size = Size(w - xEnd, h)
                     )
+
+                    // Draw Telemetry Start Indicator (Magenta)
+                    val xFitStart = if (isTelemetryCut && timelineDurationSec > 0.0 && !fitStartRelativeSec.isNaN()) {
+                        ((fitStartRelativeSec / timelineDurationSec) * w).toFloat().takeIf { it.isFinite() } ?: null
+                    } else null
+
+                    if (xFitStart != null) {
+                        drawLine(
+                            color = Color(0xFFE040FB), // Vivid Magenta
+                            start = Offset(xFitStart, 0f),
+                            end = Offset(xFitStart, h),
+                            strokeWidth = 2.5.dp.toPx()
+                        )
+                        drawCircle(
+                            color = Color(0xFFE040FB),
+                            radius = 6.dp.toPx(),
+                            center = Offset(xFitStart, 6.dp.toPx())
+                        )
+                        drawCircle(
+                            color = Color.White,
+                            radius = 3.dp.toPx(),
+                            center = Offset(xFitStart, 6.dp.toPx())
+                        )
+                    }
+
+                    // Draw Peak Events (Max Power, Max Speed, Max/Min Elevation)
+                    telemetryEvents.forEach { event ->
+                        val x = if (videoDurationSec > 0.0) {
+                            ((event.seconds / videoDurationSec) * w).toFloat().takeIf { it.isFinite() } ?: null
+                        } else null
+
+                        if (x != null && x in 0f..w) {
+                            drawLine(
+                                color = event.color.copy(alpha = 0.6f),
+                                start = Offset(x, 0f),
+                                end = Offset(x, h),
+                                strokeWidth = 1.dp.toPx(),
+                                pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(5f, 5f), 0f)
+                            )
+                            val labelLayout = textMeasurer.measure(
+                                text = event.label,
+                                style = TextStyle(color = event.color, fontSize = 7.5.sp, fontWeight = FontWeight.Bold)
+                            )
+                            drawText(
+                                textLayoutResult = labelLayout,
+                                topLeft = Offset(
+                                    x = (x + 3.dp.toPx()).coerceIn(4f, w - labelLayout.size.width - 4f),
+                                    y = 20.dp.toPx()
+                                )
+                            )
+                        }
+                    }
+
+                    // Draw IMU Auto-Sync Anchor
+                    if (syncAnchorSec != null) {
+                        val xSync = if (videoDurationSec > 0.0) {
+                            ((syncAnchorSec / videoDurationSec) * w).toFloat().takeIf { it.isFinite() } ?: null
+                        } else null
+
+                        if (xSync != null && xSync in 0f..w) {
+                            val anchorColor = Color(0xFFFFCC00)
+                            drawLine(
+                                color = anchorColor,
+                                start = Offset(xSync, 0f),
+                                end = Offset(xSync, h),
+                                strokeWidth = 2.5.dp.toPx(),
+                                pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(15f, 10f), 0f)
+                            )
+                            val corrLabel = if (syncCorrelation != null) {
+                                "IMU Anchor (r=${String.format(java.util.Locale.US, "%.2f", syncCorrelation)})"
+                            } else "IMU Sync Anchor"
+                            
+                            val labelLayout = textMeasurer.measure(
+                                text = corrLabel,
+                                style = TextStyle(color = anchorColor, fontSize = 8.sp, fontWeight = FontWeight.ExtraBold)
+                            )
+                            drawText(
+                                textLayoutResult = labelLayout,
+                                topLeft = Offset(
+                                    x = (xSync - labelLayout.size.width / 2f).coerceIn(4f, w - labelLayout.size.width - 4f),
+                                    y = h / 2f - labelLayout.size.height / 2f
+                                )
+                            )
+                        }
+                    }
 
                     // 7. Draw Trim Handles and lines
                     // Trim Start (Green)
@@ -594,6 +798,34 @@ fun TelemetryTimelineGraph(
                 }
             }
 
+            if (!isFolded) {
+                Spacer(Modifier.height(4.dp))
+                Canvas(
+                    modifier = Modifier.fillMaxWidth().height(14.dp)
+                ) {
+                    val w = size.width.toFloat()
+                    val h = size.height.toFloat()
+                    val ticks = 10
+                    for (i in 0..ticks) {
+                        val ratio = i.toFloat() / ticks.toFloat()
+                        val tickX = ratio * w
+                        val tickSec = ratio * timelineDurationSec
+                        val labelStr = formatTime((tickSec * 1000).toLong()).substring(0, 5) // mm:ss
+                        val labelLayout = textMeasurer.measure(
+                            text = labelStr,
+                            style = TextStyle(color = Color(0xFF8E8E93), fontSize = 8.sp)
+                        )
+                        drawText(
+                            textLayoutResult = labelLayout,
+                            topLeft = Offset(
+                                x = (tickX - labelLayout.size.width / 2f).coerceIn(4f, w - labelLayout.size.width - 4f),
+                                y = h / 2f - labelLayout.size.height / 2f
+                            )
+                        )
+                    }
+                }
+            }
+
             // Quick Info row
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -614,3 +846,9 @@ fun TelemetryTimelineGraph(
         }
     }
 }
+
+data class TimelineEvent(
+    val label: String,
+    val seconds: Double,
+    val color: Color
+)
