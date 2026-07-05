@@ -327,7 +327,7 @@ fun buildEncodeOutputFileName(
     trimEndSeconds: Double? = null,
     dateTag: String? = null
 ): String {
-    return fit.CacheRegistry.buildEncodeOutputFileName(
+    return fit.HudFileNameFormatter.buildEncodeOutputFileName(
         settings,
         videoPath,
         partIndex,
@@ -797,14 +797,13 @@ object BatchJobRunner {
             outputFileNames = job.outputFileNames
         )
         
-        val availableJobs = fit.CacheRegistry.scanAvailableJobs(job.videoPath)
+        val availableJobs = fit.CacheJobManager.getInstance().scanJobs(job.videoPath)
         val targetJob = availableJobs.firstOrNull() ?: throw Exception("結合する一時エンコードデータ（キャッシュ）が見つかりません。")
         
         val finalDestFile = encodePlan.segments.first().finalOutputFile
         
-        fit.CacheRegistry.salvageAndMerge(
-            jobDir = targetJob.folder,
-            output = finalDestFile.absolutePath,
+        targetJob.salvageAndMerge(
+            outputFile = finalDestFile,
             onProgress = { prog, status ->
                 mainScope.launch {
                     phase.progress = prog

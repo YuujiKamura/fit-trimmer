@@ -343,7 +343,7 @@ fun BatchQueueDialog(
                                     
                                     // キャッシュサルベージ支援UI
                                     if (canEditJob) {
-                                        val availableJobs = remember(job.videoPath) { fit.CacheRegistry.scanAvailableJobs(job.videoPath) }
+                                        val availableJobs = remember(job.videoPath) { fit.CacheJobManager.getInstance().scanJobs(job.videoPath) }
                                         if (availableJobs.isNotEmpty()) {
                                             val jobCache = availableJobs.first()
                                             Row(
@@ -389,8 +389,7 @@ fun BatchQueueDialog(
                                                     }
                                                     OutlinedButton(
                                                         onClick = {
-                                                            fit.CacheRegistry.deleteCacheJob(jobCache)
-                                                            viewModel.refreshAvailableCacheJobs()
+                                                            viewModel.deleteCacheJob(jobCache)
                                                         },
                                                         modifier = Modifier.height(28.dp),
                                                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),

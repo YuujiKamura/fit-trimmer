@@ -1,0 +1,14 @@
+{
+  "version": "1",
+  "appliedTeam": "generalist",
+  "appliedAt": "2026-07-04T06:11:30.135Z",
+  "placedFiles": [
+    "C:\\Users\\yuuji\\fit-trimmer\\.agents\\skills\\architect\\SKILL.md",
+    "C:\\Users\\yuuji\\fit-trimmer\\.agents\\skills\\builder\\SKILL.md",
+    "C:\\Users\\yuuji\\fit-trimmer\\.agents\\skills\\qa-reviewer\\SKILL.md",
+    "C:\\Users\\yuuji\\fit-trimmer\\.agents\\skills\\scope-planner\\SKILL.md",
+    "C:\\Users\\yuuji\\fit-trimmer\\.agents\\skills\\shipper\\SKILL.md",
+    "C:\\Users\\yuuji\\fit-trimmer\\.agents\\rules\\active-team.md"
+  ],
+  "agentTeamsFlagSet": false
+}

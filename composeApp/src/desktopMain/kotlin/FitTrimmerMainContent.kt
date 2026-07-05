@@ -932,7 +932,7 @@ fun FitTrimmerMainContent(
             val job = availableCacheJobs.first()
             if (viewModel.lastPromptedJobHash != job.jobHash) {
                 viewModel.lastPromptedJobHash = job.jobHash
-                val salvageOutFile = fit.CacheRegistry.getSalvageOutputPath(videoPath, outputDir, settings)
+                val salvageOutFile = fit.CacheJobManager.getInstance().getSalvageOutputPath(videoPath, outputDir, settings)
                 val uniqueFileName = salvageOutFile.name
                 val salvageOutPath = salvageOutFile.absolutePath
 
@@ -1847,7 +1847,7 @@ fun FitTrimmerMainContent(
                                                       Spacer(Modifier.width(6.dp))
                                                       Button(
                                                           onClick = {
-                                                              val salvageOutFile = fit.CacheRegistry.getSalvageOutputPath(videoPath, outputDir, settings)
+                                                              val salvageOutFile = fit.CacheJobManager.getInstance().getSalvageOutputPath(videoPath, outputDir, settings)
                                                               val uniqueFileName = salvageOutFile.name
                                                               val salvageOutPath = salvageOutFile.absolutePath
 
