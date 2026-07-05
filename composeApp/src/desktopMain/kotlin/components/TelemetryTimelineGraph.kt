@@ -21,6 +21,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
@@ -279,9 +281,47 @@ fun TelemetryTimelineGraph(
     var activeDragHandle by remember { mutableStateOf<DragHandle?>(null) }
     var dragStartStartDiffSec by remember { mutableStateOf(0.0) }
     var dragStartRatio by remember { mutableStateOf(0.0f) }
+    var isHoveringVideoRange by remember { mutableStateOf(false) }
+
+    val customCursor = if (!isTelemetryCut && (isHoveringVideoRange || activeDragHandle == DragHandle.VIDEO_RANGE)) {
+        PointerIcon(java.awt.Cursor(java.awt.Cursor.HAND_CURSOR))
+    } else {
+        PointerIcon.Default
+    }
 
     Column(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .pointerHoverIcon(customCursor)
+            .pointerInput(videoStartUtc, fitStartUtc, timelineDurationSec, isTelemetryCut, videoDurationSec) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull()
+                        if (change != null && !isTelemetryCut && timelineDurationSec > 0) {
+                            val w = size.width.toFloat()
+                            val h = size.height.toFloat()
+                            if (w > 0f) {
+                                val startDiffSec = if (videoStartUtc.isNotEmpty() && fitStartUtc.isNotEmpty()) {
+                                    val vUtc = try { java.time.Instant.parse(videoStartUtc).epochSecond } catch(e: Exception) { 0L }
+                                    val fUtc = try { java.time.Instant.parse(fitStartUtc).epochSecond } catch(e: Exception) { 0L }
+                                    (vUtc - fUtc).toDouble()
+                                } else 0.0
+                                val xVideoStart = (((startDiffSec / timelineDurationSec) * w).toFloat().takeIf { it.isFinite() } ?: 0f)
+                                val xVideoEnd = ((((startDiffSec + videoDurationSec) / timelineDurationSec) * w).toFloat().takeIf { it.isFinite() } ?: w)
+                                
+                                if (change.position.x in 0f..w && change.position.y in 0f..h) {
+                                    isHoveringVideoRange = change.position.x in xVideoStart..xVideoEnd
+                                } else {
+                                    isHoveringVideoRange = false
+                                }
+                            }
+                        } else {
+                            isHoveringVideoRange = false
+                        }
+                    }
+                }
+            },
         verticalArrangement = Arrangement.spacedBy(if (isFolded) 4.dp else 8.dp)
     ) {
             Row(
@@ -918,11 +958,28 @@ fun TelemetryTimelineGraph(
 
                     // Draw a subtle horizontal bar showing video range in the ruler background
                     if (!isTelemetryCut && timelineDurationSec > 0.0) {
+                        val isDragging = activeDragHandle == DragHandle.VIDEO_RANGE
+                        val barColor = when {
+                            isDragging -> Color(0xBB30D158) // High opacity green when dragging
+                            isHoveringVideoRange -> Color(0x7730D158) // Medium opacity green when hovering
+                            else -> Color(0x3330D158) // Subtle soft green default
+                        }
+                        val barHeight = if (isDragging || isHoveringVideoRange) rangeBarHeightPx * 1.5f else rangeBarHeightPx
+
                         drawRect(
-                            color = Color(0x3330D158), // Soft system green with transparency
+                            color = barColor,
                             topLeft = Offset(xVideoStart, 0f),
-                            size = Size(xVideoEnd - xVideoStart, rangeBarHeightPx)
+                            size = Size(xVideoEnd - xVideoStart, barHeight)
                         )
+
+                        if (isDragging || isHoveringVideoRange) {
+                            drawLine(
+                                color = Color(0xFF30D158),
+                                start = Offset(xVideoStart, barHeight),
+                                end = Offset(xVideoEnd, barHeight),
+                                strokeWidth = 1.dp.toPx()
+                            )
+                        }
                     }
 
                     for (i in 0..ticks) {
