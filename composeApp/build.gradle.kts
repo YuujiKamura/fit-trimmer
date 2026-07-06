@@ -57,14 +57,7 @@ val gitVersion: String by lazy {
     if (!envVersion.isNullOrBlank()) {
         envVersion.removePrefix("v").trim()
     } else {
-        try {
-            project.providers.exec {
-                workingDir = project.rootDir
-                commandLine("git", "describe", "--tags")
-            }.standardOutput.asText.get().trim().removePrefix("v")
-        } catch (e: Exception) {
-            "${project.version}-dev"
-        }
+        project.version.toString()
     }
 }
 
