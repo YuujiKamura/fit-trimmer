@@ -139,6 +139,18 @@ internal class DefaultCacheJob(
         if (outputFile.exists()) outputFile.delete()
 
         onProgress(0.3f, "Merging video segments (Direct Concat)...")
+        val jobState = JobStateManager.loadState(folder, jobHash)
+        val metadataArgs = if (jobState.alignedVideoStartUtc != null || jobState.timeOffsetMillis != null) {
+            EncodeGroundTruthMetadata(
+                sourceVideoPath = jobState.videoPath ?: parts.firstOrNull()?.absolutePath.orEmpty(),
+                sourceVideoStartUtc = jobState.sourceVideoStartUtc.orEmpty(),
+                alignedVideoStartUtc = jobState.alignedVideoStartUtc.orEmpty(),
+                timeOffsetMillis = jobState.timeOffsetMillis ?: 0L
+            ).toFfmpegMetadataArgs()
+        } else {
+            listOf("-metadata", "comment=fit-trimmer-hud-burned-salvaged")
+        }
+
         val concatArgs = listOf(
             ffmpegPath, "-y",
             "-nostdin",
@@ -146,9 +158,7 @@ internal class DefaultCacheJob(
             "-safe", "0",
             "-i", partsListFile.absolutePath,
             "-c", "copy",
-            "-metadata", "comment=fit-trimmer-hud-burned-salvaged",
-            outputFile.absolutePath
-        )
+        ) + metadataArgs + outputFile.absolutePath
 
         val totalBytes = parts.sumOf { it.length() }
         val pb = ProcessBuilder(concatArgs)

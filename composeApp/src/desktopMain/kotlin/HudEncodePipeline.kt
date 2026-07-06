@@ -7,6 +7,7 @@ import java.nio.file.StandardCopyOption
 import fit.HudConfig
 import fit.DynamicRendererProxy
 import fit.NativeHudEncoder
+import fit.EncodeGroundTruthMetadata
 import fit.HudSettings
 import fit.FitParser
 import fit.PlateCacheManager
@@ -88,6 +89,8 @@ object HudEncodePipeline {
         videoPath: String,
         outputDir: String,
         videoStartUtc: String,
+        sourceVideoStartUtc: String = videoStartUtc,
+        timeOffsetMillis: Long = 0L,
         ranges: List<Pair<Double, Double>>,
         destFiles: List<File>,
         isSample: Boolean = false,
@@ -203,7 +206,13 @@ object HudEncodePipeline {
                     trimStartSeconds = pStart,
                     trimEndSeconds = pEnd,
                     shouldResume = shouldResume,
-                    skipConcat = skipConcat
+                    skipConcat = skipConcat,
+                    groundTruthMetadata = EncodeGroundTruthMetadata(
+                        sourceVideoPath = videoPath,
+                        sourceVideoStartUtc = sourceVideoStartUtc,
+                        alignedVideoStartUtc = videoStartUtc,
+                        timeOffsetMillis = timeOffsetMillis
+                    )
                 )
 
                 if (!skipConcat && destFiles.isNotEmpty() && !cancelSupplier()) {

@@ -733,6 +733,8 @@ object BatchJobRunner {
             videoPath = job.videoPath,
             outputDir = outputDir,
             videoStartUtc = job.adjustedStartUtc,
+            sourceVideoStartUtc = job.videoStartUtc,
+            timeOffsetMillis = job.timeOffsetMillis,
             ranges = ranges,
             destFiles = destFiles,
             isSample = false,

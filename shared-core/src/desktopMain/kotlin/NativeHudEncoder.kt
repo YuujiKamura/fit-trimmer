@@ -92,6 +92,33 @@ data class EncodeProfileReport(
     }
 }
 
+data class EncodeGroundTruthMetadata(
+    val sourceVideoPath: String,
+    val sourceVideoStartUtc: String,
+    val alignedVideoStartUtc: String,
+    val timeOffsetMillis: Long
+) {
+    fun toFfmpegMetadataArgs(): List<String> {
+        val args = mutableListOf(
+            "-movflags", "+use_metadata_tags",
+            "-metadata", "comment=fit-trimmer-hud-burned",
+            "-metadata", "fit_trimmer_ground_truth=manual_time_offset",
+            "-metadata", "fit_trimmer_source_video_path=$sourceVideoPath"
+        )
+        if (sourceVideoStartUtc.isNotEmpty()) {
+            args.add("-metadata")
+            args.add("fit_trimmer_source_video_start_utc=$sourceVideoStartUtc")
+        }
+        if (alignedVideoStartUtc.isNotEmpty()) {
+            args.add("-metadata")
+            args.add("fit_trimmer_aligned_video_start_utc=$alignedVideoStartUtc")
+        }
+        args.add("-metadata")
+        args.add("fit_trimmer_time_offset_ms=$timeOffsetMillis")
+        return args
+    }
+}
+
 private class EncodeProfiler {
     private val startNs = System.nanoTime()
     private val frameCount = java.util.concurrent.atomic.AtomicLong(0)
@@ -904,15 +931,16 @@ class NativeHudEncoder(
     }
 
     fun encode(
-        fitPath: String, 
-        videoPath: String, 
-        output: String, 
-        startUtc: String, 
+        fitPath: String,
+        videoPath: String,
+        output: String,
+        startUtc: String,
         maxDurationSeconds: Int = -1,
         trimStartSeconds: Double = 0.0,
         trimEndSeconds: Double = -1.0,
         shouldResume: Boolean = false,
-        skipConcat: Boolean = false
+        skipConcat: Boolean = false,
+        groundTruthMetadata: EncodeGroundTruthMetadata? = null
     ) {
         val profiler = EncodeProfiler()
         try {
@@ -1081,6 +1109,7 @@ class NativeHudEncoder(
             pbArgs.add(localVideoPath)
             pbArgs.add("-c")
             pbArgs.add("copy")
+            pbArgs.addAll(groundTruthMetadata?.toFfmpegMetadataArgs() ?: emptyList())
             pbArgs.add(tempOutput.absolutePath)
             
             val pb = ProcessBuilder(pbArgs)
@@ -1425,8 +1454,13 @@ class NativeHudEncoder(
                 emptyList()
             }
             val jobState = JobStateManager.loadState(jobDir, jobHash).let {
-                if (it.videoPath == null) {
-                    val updated = it.copy(videoPath = videoPath)
+                if (it.videoPath == null || groundTruthMetadata != null) {
+                    val updated = it.copy(
+                        videoPath = videoPath,
+                        sourceVideoStartUtc = groundTruthMetadata?.sourceVideoStartUtc ?: it.sourceVideoStartUtc,
+                        alignedVideoStartUtc = groundTruthMetadata?.alignedVideoStartUtc ?: it.alignedVideoStartUtc,
+                        timeOffsetMillis = groundTruthMetadata?.timeOffsetMillis ?: it.timeOffsetMillis
+                    )
                     JobStateManager.saveState(jobDir, updated)
                     updated
                 } else it
@@ -1919,15 +1953,16 @@ class NativeHudEncoder(
             finalDest.parentFile?.let { if (!it.exists()) it.mkdirs() }
             if (finalDest.exists()) finalDest.delete()
             
+            val metadataArgs = groundTruthMetadata?.toFfmpegMetadataArgs()
+                ?: listOf("-metadata", "comment=fit-trimmer-hud-burned")
+
             val concatArgs = listOf(
                 ffmpegPath, "-y",
                 "-f", "concat",
                 "-safe", "0",
                 "-i", partsListFile.absolutePath,
                 "-c", "copy",
-                "-metadata", "comment=fit-trimmer-hud-burned",
-                finalDest.absolutePath
-            )
+            ) + metadataArgs + finalDest.absolutePath
             
             val pb = ProcessBuilder(concatArgs)
             pb.redirectErrorStream(true)
