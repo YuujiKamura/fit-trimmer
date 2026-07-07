@@ -408,42 +408,58 @@ object TelemetryAligner {
         }
 
         val corr: DoubleArray
+        val fitSigSmooth: DoubleArray
+        val vSigSmooth: DoubleArray
 
         if (method == "binary") {
             val maxPower = fitPowerGrid.maxOrNull() ?: 0.0
             val usablePowerSamples = fitPowerGrid.count { it > 10.0 }
             if (maxPower < 30.0 || usablePowerSamples < 5) {
-                println("ERROR: Power-based sync requires FIT power data. maxPower=$maxPower usableSamples=$usablePowerSamples")
-                return emptyList()
-            }
+                println("WARNING: Power data insufficient (maxPower=$maxPower, usableSamples=$usablePowerSamples). Falling back to speed-based sync signal.")
+                
+                // Speed-based logic (old binary method logic)
+                val vSig = gaussianFilter1D(vVib, 3.0)
+                
+                // 10th percentile
+                val sortedVSig = vSig.sorted()
+                val pct10Idx = (sortedVSig.size * 0.10).toInt()
+                val pct10 = sortedVSig[Math.max(0, Math.min(sortedVSig.size - 1, pct10Idx))]
+                val vThresh = Math.max(20.0, pct10 * 1.5)
+                
+                val vMov = DoubleArray(vSig.size) { if (vSig[it] > vThresh) 1.0 else 0.0 }
+                val fitMov = DoubleArray(fitSpeedGrid.size) { if (fitSpeedGrid[it] > 2.0) 1.0 else 0.0 }
 
-            val powerThreshold = Math.max(30.0, Math.min(120.0, maxPower * 0.15))
-            val fitPowerSmooth = gaussianFilter1D(fitPowerGrid, 1.0)
-            val fitPowerDelta = DoubleArray(fitPowerSmooth.size)
-            for (i in 1 until fitPowerSmooth.size) {
-                fitPowerDelta[i] = Math.abs(fitPowerSmooth[i] - fitPowerSmooth[i - 1])
-            }
-            val maxPowerDelta = fitPowerDelta.maxOrNull()?.takeIf { it > 1e-6 } ?: 1.0
-            val fitPowerEvent = DoubleArray(fitPowerSmooth.size) { i ->
-                val active = if (fitPowerSmooth[i] > powerThreshold) 1.0 else 0.0
-                val edge = fitPowerDelta[i] / maxPowerDelta
-                0.35 * active + 0.65 * edge
-            }
+                fitSigSmooth = gaussianFilter1D(fitMov, 3.0)
+                vSigSmooth = gaussianFilter1D(vMov, 3.0)
+            } else {
+                val powerThreshold = Math.max(30.0, Math.min(120.0, maxPower * 0.15))
+                val fitPowerSmooth = gaussianFilter1D(fitPowerGrid, 1.0)
+                val fitPowerDelta = DoubleArray(fitPowerSmooth.size)
+                for (i in 1 until fitPowerSmooth.size) {
+                    fitPowerDelta[i] = Math.abs(fitPowerSmooth[i] - fitPowerSmooth[i - 1])
+                }
+                val maxPowerDelta = fitPowerDelta.maxOrNull()?.takeIf { it > 1e-6 } ?: 1.0
+                val fitPowerEvent = DoubleArray(fitPowerSmooth.size) { i ->
+                    val active = if (fitPowerSmooth[i] > powerThreshold) 1.0 else 0.0
+                    val edge = fitPowerDelta[i] / maxPowerDelta
+                    0.35 * active + 0.65 * edge
+                }
 
-            val vSig = gaussianFilter1D(vVib, 2.0)
-            val vDelta = DoubleArray(vSig.size)
-            for (i in 1 until vSig.size) {
-                vDelta[i] = Math.abs(vSig[i] - vSig[i - 1])
-            }
-            val maxVDelta = vDelta.maxOrNull()?.takeIf { it > 1e-6 } ?: 1.0
-            val vEvent = DoubleArray(vSig.size) { i -> vDelta[i] / maxVDelta }
+                val vSig = gaussianFilter1D(vVib, 2.0)
+                val vDelta = DoubleArray(vSig.size)
+                for (i in 1 until vSig.size) {
+                    vDelta[i] = Math.abs(vSig[i] - vSig[i - 1])
+                }
+                val maxVDelta = vDelta.maxOrNull()?.takeIf { it > 1e-6 } ?: 1.0
+                val vEvent = DoubleArray(vSig.size) { i -> vDelta[i] / maxVDelta }
 
-            val fitSigSmooth = gaussianFilter1D(fitPowerEvent, 2.0)
-            val vSigSmooth = gaussianFilter1D(vEvent, 2.0)
-            println(
-                "DEBUG: Using power-event sync signal. " +
-                    "maxPower=$maxPower threshold=$powerThreshold usableSamples=$usablePowerSamples"
-            )
+                fitSigSmooth = gaussianFilter1D(fitPowerEvent, 2.0)
+                vSigSmooth = gaussianFilter1D(vEvent, 2.0)
+                println(
+                    "DEBUG: Using power-event sync signal. " +
+                        "maxPower=$maxPower threshold=$powerThreshold usableSamples=$usablePowerSamples"
+                )
+            }
 
             // Calculate Pearson's Local Normalized Cross-Correlation (NCC)
             val outSize = fitSigSmooth.size - vSigSmooth.size + 1
