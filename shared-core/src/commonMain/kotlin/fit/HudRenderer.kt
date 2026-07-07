@@ -74,9 +74,7 @@ class HudRenderer(val config: HudConfig) {
     private var lastTimestampSeconds = -1L
     private var lastFormattedDateTime = "----- --:--:--"
     private val systemTimeZone by lazy { TimeZone.currentSystemDefault() }
-    
-    // Bearing cache to maintain direction during static / slow periods
-    private var lastBearing: Double? = null
+
 
 
     // Cache fields for elevation points to avoid recalculation/reallocation every frame
@@ -837,53 +835,16 @@ class HudRenderer(val config: HudConfig) {
         return (bearingRad * 180.0 / kotlin.math.PI + 360.0) % 360.0
     }
 
-    private fun calculateStableBearing(points: List<FitParser.TelemetryPoint>, centerIdx: Int): Double? {
-        if (points.size < 2 || centerIdx !in points.indices) return null
-        val centerPt = points[centerIdx]
-        
-        // 1. Try forward displacement (>= 5.0 meters)
-        for (i in centerIdx + 1 until points.size) {
-            val pt = points[i]
-            if (pt.lat != 0.0 && pt.lon != 0.0) {
-                val dist = pt.distance - centerPt.distance
-                if (kotlin.math.abs(dist) >= 5.0) {
-                    val b = calculateBearing(centerPt, pt)
-                    if (b != null) return b
-                }
-            }
+    private fun bearingAtDistance(points: List<FitParser.TelemetryPoint>, distance: Double, fallback: Double): Double {
+        if (points.size < 2) return fallback
+        // Binary search for the segment that brackets the current distance
+        var lo = 0
+        var hi = points.size - 1
+        while (lo < hi - 1) {
+            val mid = (lo + hi) / 2
+            if (points[mid].distance <= distance) lo = mid else hi = mid
         }
-        
-        // 2. Fallback to backward displacement (>= 5.0 meters)
-        for (i in centerIdx - 1 downTo 0) {
-            val pt = points[i]
-            if (pt.lat != 0.0 && pt.lon != 0.0) {
-                val dist = centerPt.distance - pt.distance
-                if (kotlin.math.abs(dist) >= 5.0) {
-                    val b = calculateBearing(pt, centerPt)
-                    if (b != null) return b
-                }
-            }
-        }
-        
-        // 3. Fallback to adjacent points (GPS noise may persist, but best effort)
-        // Only if the distance is at least 1.0 meter to suppress noise while static
-        if (centerIdx < points.size - 1) {
-            val pt = points[centerIdx + 1]
-            val dist = kotlin.math.abs(pt.distance - centerPt.distance)
-            if (dist >= 1.0) {
-                val b = calculateBearing(centerPt, pt)
-                if (b != null) return b
-            }
-        }
-        if (centerIdx > 0) {
-            val pt = points[centerIdx - 1]
-            val dist = kotlin.math.abs(centerPt.distance - pt.distance)
-            if (dist >= 1.0) {
-                val b = calculateBearing(pt, centerPt)
-                if (b != null) return b
-            }
-        }
-        return null
+        return calculateBearing(points[lo], points[hi]) ?: fallback
     }
 
 
@@ -1090,15 +1051,7 @@ class HudRenderer(val config: HudConfig) {
         if (isValid && telemetry.lat != 0.0 && telemetry.lon != 0.0) {
             val currentMapPt = projectPoint(telemetry)
             
-            // Find the closest point index in videoPoints to compute current bearing
-            val telemetryIndex = videoPoints.indexOfFirst { 
-                kotlin.math.abs(it.timestamp - telemetry.timestamp) < 0.01 
-            }.takeIf { it >= 0 } ?: videoPoints.indexOfFirst { 
-                kotlin.math.abs(it.distance - telemetry.distance) < 1.0 
-            }.coerceAtLeast(0)
-            
-            val currentBearing = calculateStableBearing(videoPoints, telemetryIndex) ?: lastBearing ?: pathBearing
-            lastBearing = currentBearing
+            val currentBearing = bearingAtDistance(validRoutePoints, telemetry.distance, pathBearing)
             val phi = (currentBearing - pathBearing) * kotlin.math.PI / 180.0
 
             val sinPhi = kotlin.math.sin(phi).toFloat()

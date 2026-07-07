@@ -888,7 +888,7 @@ class HudRendererTest {
         
         val canvas = TestHudCanvas()
         renderer.renderFrame(canvas, p2, allPoints, emptyList(), emptyList(), 100.0f, isValid = true)
-        
+
         // sf = 1.0f (valSizeが40fのため)
         // R = 110f
         // marginY = 40f
@@ -900,54 +900,108 @@ class HudRendererTest {
     }
 
     @Test
-    fun testMiniMap_BearingStabilization() {
+    fun testMiniMap_BearingByDistanceBinarySearch() {
         val config = HudConfig(
             valSize = 40f, tightness = 1f, spacing = 20f,
             xOffset = 40f, yOffset = 100f, graphH = 60f, graphW = 300f,
             language = "ja"
         )
         val renderer = HudRenderer(config)
-        
-        // P1: Start
+
+        // Route: Start -> North 100m -> Turn East 100m -> End
         val p1 = FitParser.TelemetryPoint(
-            timestamp = 1000.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 50.0, grade = 2.0,
-            distance = 1000.0, elapsedSeconds = 10, lat = 35.0, lon = 135.0
+            timestamp = 1000.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 50.0, grade = 0.0,
+            distance = 0.0, elapsedSeconds = 0, lat = 35.0, lon = 135.0
         )
-        // P2: Move North by ~11m
         val p2 = FitParser.TelemetryPoint(
-            timestamp = 1001.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 50.0, grade = 2.0,
-            distance = 1011.0, elapsedSeconds = 11, lat = 35.0001, lon = 135.0
+            timestamp = 1010.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 50.0, grade = 0.0,
+            distance = 100.0, elapsedSeconds = 10, lat = 35.001, lon = 135.0
         )
-        // P3: Turn East and move by ~9m (heading East = 90 deg)
         val p3 = FitParser.TelemetryPoint(
-            timestamp = 1002.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 50.0, grade = 2.0,
-            distance = 1020.0, elapsedSeconds = 12, lat = 35.0001, lon = 135.0001
+            timestamp = 1020.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 50.0, grade = 0.0,
+            distance = 200.0, elapsedSeconds = 20, lat = 35.001, lon = 135.001
         )
-        // P4: Static/noise (distance diff 0.1m)
-        val p4 = FitParser.TelemetryPoint(
-            timestamp = 1003.0, speed = 0.1, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 50.0, grade = 2.0,
-            distance = 1020.1, elapsedSeconds = 13, lat = 35.0001, lon = 135.0001001
+        val allPoints = listOf(p1, p2, p3)
+
+        // Render with telemetry at distance=150m (midpoint of East segment, between p2 and p3)
+        // This telemetry has an interpolated timestamp that does NOT match any point exactly
+        val telemetry = FitParser.TelemetryPoint(
+            timestamp = 1015.5, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 50.0, grade = 0.0,
+            distance = 150.0, elapsedSeconds = 15, lat = 35.001, lon = 135.0005
         )
-        val allPoints = listOf(p1, p2, p3, p4)
-        
-        // 1. Render p3 to cache East bearing (90 degrees)
-        val canvas1 = TestHudCanvas()
-        renderer.renderFrame(canvas1, p3, allPoints, emptyList(), emptyList(), 100.0f, isValid = true)
-        
-        // 2. Render p4 (noise/static)
-        val canvas2 = TestHudCanvas()
-        renderer.renderFrame(canvas2, p4, allPoints, emptyList(), emptyList(), 100.0f, isValid = true)
-        
-        val pinPoly = canvas2.drawnPolygons.filter { it.color == "#ef4444" }.lastOrNull()
-        assertTrue(pinPoly != null, "Should find current location pin polygon")
-        
-        // If it maintains the East heading (90 degrees), phi = currentBearing (90) - pathBearing (approx 45) = 45 degrees.
-        // sin(45) > 0, so tip X (points[0]) should be greater than rear X (points[2]).
-        // If it falls back to pathBearing (approx 45 degrees), phi becomes 0, so tip X and rear X would be equal.
+
+        val canvas = TestHudCanvas()
+        renderer.renderFrame(canvas, telemetry, allPoints, allPoints, emptyList(), 150.0f, isValid = true)
+
+        // The arrowhead polygon for current location (last red #ef4444 polygon)
+        val pinPoly = canvas.drawnPolygons.filter { it.color == "#ef4444" }.lastOrNull()
+        assertTrue(pinPoly != null, "Should find current location arrowhead polygon")
+
+        // Bearing between p2 and p3 is East (90 degrees).
+        // pathBearing (p1 -> p3) is ~NE (roughly 45 degrees).
+        // phi = currentBearing(90) - pathBearing(~45) ≈ 45 degrees
+        // sin(45°) > 0, so tip X should be to the right of the rear indent X.
         val points = pinPoly!!.points
-        val tipX = points[0].first // p1 is tip
-        val rearX = points[2].first // p3 is rear inner indentation
-        assertTrue(tipX > rearX, "Tip X ($tipX) should be greater than rear X ($rearX) when maintaining cached East bearing (got points: $points)")
+        val tipX = points[0].first  // p1 = tip (forward)
+        val rearX = points[2].first // p3 = rear inner indentation
+        assertTrue(tipX > rearX, "Arrowhead should point East (tip X=$tipX > rear X=$rearX), not flicker to path bearing")
+    }
+
+    @Test
+    fun testMiniMap_BearingStableWithDuplicateCoords() {
+        // Simulates GPS points where consecutive points have identical coordinates (stopped)
+        // The bearing should still be stable — derived from the nearest segment with actual displacement.
+        val config = HudConfig(
+            valSize = 40f, tightness = 1f, spacing = 20f,
+            xOffset = 40f, yOffset = 100f, graphH = 60f, graphW = 300f,
+            language = "ja"
+        )
+
+        // Route with a cluster of identical-coordinate points in the middle
+        val p1 = FitParser.TelemetryPoint(
+            timestamp = 1000.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 50.0, grade = 0.0,
+            distance = 0.0, elapsedSeconds = 0, lat = 35.0, lon = 135.0
+        )
+        val p2 = FitParser.TelemetryPoint(
+            timestamp = 1010.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 50.0, grade = 0.0,
+            distance = 100.0, elapsedSeconds = 10, lat = 35.001, lon = 135.0
+        )
+        // Stopped: same coords, same distance
+        val p3 = FitParser.TelemetryPoint(
+            timestamp = 1011.0, speed = 0.0, power = 0.0, cadence = 0.0, heartRate = 120.0, elevation = 50.0, grade = 0.0,
+            distance = 100.0, elapsedSeconds = 11, lat = 35.001, lon = 135.0
+        )
+        val p4 = FitParser.TelemetryPoint(
+            timestamp = 1012.0, speed = 0.0, power = 0.0, cadence = 0.0, heartRate = 120.0, elevation = 50.0, grade = 0.0,
+            distance = 100.0, elapsedSeconds = 12, lat = 35.001, lon = 135.0
+        )
+        // Resume East
+        val p5 = FitParser.TelemetryPoint(
+            timestamp = 1020.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 50.0, grade = 0.0,
+            distance = 200.0, elapsedSeconds = 20, lat = 35.001, lon = 135.001
+        )
+        val allPoints = listOf(p1, p2, p3, p4, p5)
+
+        // Render frame 1 at p3 (stopped, distance=100)
+        val renderer1 = HudRenderer(config)
+        val canvas1 = TestHudCanvas()
+        renderer1.renderFrame(canvas1, p3, allPoints, allPoints, emptyList(), 100.0f, isValid = true)
+        val pin1 = canvas1.drawnPolygons.filter { it.color == "#ef4444" }.lastOrNull()
+
+        // Render frame 2 at p4 (still stopped, distance=100)
+        val canvas2 = TestHudCanvas()
+        renderer1.renderFrame(canvas2, p4, allPoints, allPoints, emptyList(), 100.0f, isValid = true)
+        val pin2 = canvas2.drawnPolygons.filter { it.color == "#ef4444" }.lastOrNull()
+
+        assertTrue(pin1 != null && pin2 != null, "Both frames should render arrowheads")
+
+        // Both arrowheads should point in the same direction (no flickering)
+        val tip1 = pin1!!.points[0]
+        val tip2 = pin2!!.points[0]
+        val tolerance = 0.5f
+        assertTrue(
+            kotlin.math.abs(tip1.first - tip2.first) < tolerance && kotlin.math.abs(tip1.second - tip2.second) < tolerance,
+            "Arrowhead should be stable across consecutive stopped frames (tip1=$tip1, tip2=$tip2)"
+        )
     }
 }
-
