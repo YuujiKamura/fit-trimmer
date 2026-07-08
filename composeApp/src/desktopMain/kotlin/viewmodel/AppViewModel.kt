@@ -321,51 +321,35 @@ class AppViewModel(
 
             try {
 
+                val ranges = if (trimEndSeconds > trimStartSeconds) {
+                    listOf(trimStartSeconds to trimEndSeconds)
+                } else null
+
                 val cache = utils.PlateDetectionManager.runDetection(
                     videoPath = path,
                     telemetryPoints = telemetryPoints,
                     adjustedStartUtc = adjustedStartUtc,
-
                     onProgress = { progress ->
-
                         val suffix = if (telemetryPoints.isNotEmpty() && videoStartUtc.isNotEmpty()) "" else " (No Telemetry)"
-
                         coroutineScope.launch(kotlinx.coroutines.Dispatchers.Main) {
-
                             plateDetectionProgress = String.format(java.util.Locale.US, "%.1f%%", progress) + suffix
-
                         }
-
                     },
-
                     onCancel = { plateDetectionStopRequested || !isActive },
-
                     onPartialResult = { partialCache ->
-
                         coroutineScope.launch(kotlinx.coroutines.Dispatchers.Main) {
-
                             plateCache = partialCache
-
                         }
-
                     },
-
                     maxRecords = maxRecords,
-
                     saveCache = true,
-
                     settings = fit.HudSettings(
-
                         plateMaxSpeedKmh = plateDetectionMaxSpeedKmh,
-
                         plateDetectionFps = plateDetectionFps,
-
                         platePaddingSeconds = plateDetectionPaddingSeconds,
-
                         plateMergeGapSeconds = plateDetectionMergeGapSeconds
-
-                    )
-
+                    ),
+                    scanRanges = ranges
                 )
 
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
