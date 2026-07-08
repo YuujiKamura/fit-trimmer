@@ -1339,6 +1339,46 @@ class AppViewModelTest {
     }
 
     @Test
+    fun testCrashSimulationFlow() {
+        kotlinx.coroutines.runBlocking {
+            val mockVideoPath = utils.CrashSimulator.setupSimulation()
+            assertTrue(mockVideoPath.isNotEmpty(), "Simulated video path should not be empty")
+            val mockVideoFile = File(mockVideoPath)
+            assertTrue(mockVideoFile.exists(), "Simulated mock video file should exist")
+            
+            val viewModel = AppViewModel(null)
+            viewModel.outputDir = mockVideoFile.parentFile.absolutePath
+            
+            assertTrue(viewModel.showBatchRestoreDialog, "Restore dialog should be visible after crash simulation")
+            assertEquals(1, viewModel.pendingRestorableJobs.size, "Should have 1 restorable job")
+            assertEquals("simulated-crash-job", viewModel.pendingRestorableJobs[0].id)
+            
+            viewModel.restorePendingBatchJobs(this)
+            
+            val expectedOutputFile = fit.CacheJobManager.getInstance().getSalvageOutputPath(
+                videoPath = mockVideoFile.absolutePath,
+                outputDir = mockVideoFile.parentFile.absolutePath,
+                settings = viewModel.settings
+            )
+            
+            var completed = false
+            for (i in 1..100) {
+                if (!viewModel.isSalvaging && expectedOutputFile.exists()) {
+                    completed = true
+                    break
+                }
+                kotlinx.coroutines.delay(100)
+            }
+            
+            assertTrue(completed, "Simulated crash restore should complete and merge segments successfully")
+            assertTrue(viewModel.batchQueue.isEmpty(), "Batch queue should be cleared because it salvaged directly")
+            
+            mockVideoFile.parentFile.deleteRecursively()
+            fit.CacheJobManager.getInstance().clearAll(mockVideoFile.absolutePath)
+        }
+    }
+
+    @Test
     fun testBatchJobPhasesAutoInitialization() {
         val viewModel = AppViewModel(null)
         viewModel.videoPath = "/path/to/video1.mp4"
