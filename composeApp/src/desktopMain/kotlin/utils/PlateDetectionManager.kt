@@ -419,16 +419,30 @@ object PlateDetectionManager {
 
         // Consumer Loop: Processes frames as they arrive from the background decoder
         var frameIndex = 0L
+        var skipInferenceFramesLeft = 0
+        var cachedBoxes = emptyList<fit.PlateBox>()
+        
+        // Skip subsequent frames for up to 1.0 second after a successful plate detection.
+        // During skip, we reuse the last detected bounding boxes, relying on expandRatio/padding
+        // to maintain continuous coverage.
+        val skipStepLimit = (1.0 * effectiveDetectionFps).toInt().coerceAtLeast(1)
+
         try {
             for (frame in frameChannel) {
                 if (onCancel()) break
 
                 val tConsumeStart = System.nanoTime()
                 totalDecodeMs += frame.decodeMs
+                var inferencePerformed = false
                 val boxes = if (frame.skipDetection) {
                     skippedFrames++
                     emptyList()
+                } else if (skipInferenceFramesLeft > 0 && cachedBoxes.isNotEmpty()) {
+                    skipInferenceFramesLeft--
+                    skippedFrames++
+                    cachedBoxes
                 } else {
+                    inferencePerformed = true
                     // Populate reusable BufferedImage directly from frame buffer and detect
                     System.arraycopy(frame.buffer, 0, imgData, 0, frameBytes)
                     if (frame.frameIndex < 5L || (frame.frameIndex in 48L..54L)) {
@@ -451,11 +465,19 @@ object PlateDetectionManager {
                             y2 = (box.y2 * scaleY).toInt().coerceAtMost(videoHeight)
                         )
                     }
+                    
+                    if (scaledBoxes.isNotEmpty()) {
+                        skipInferenceFramesLeft = skipStepLimit
+                        cachedBoxes = scaledBoxes
+                    } else {
+                        skipInferenceFramesLeft = 0
+                        cachedBoxes = emptyList()
+                    }
                     scaledBoxes
                 }
                 val tDetectEnd = System.nanoTime()
                 val dDetect = (tDetectEnd - tConsumeStart) / 1_000_000.0
-                if (!frame.skipDetection) {
+                if (inferencePerformed) {
                     totalYoloMs += dDetect
                     yoloCount++
                 }
