@@ -1099,42 +1099,7 @@ class HudRenderer(val config: HudConfig) {
         canvas.drawRect(endMapPt.first - houtSize, endMapPt.second - houtSize, outSize, outSize, "#555555", alpha = 0.8f)
         canvas.drawRect(endMapPt.first - hmSize, endMapPt.second - hmSize, mSize, mSize, "#ef4444", alpha = 1.0f)
 
-        // Draw distance labels near start/end & midpoint (Scaled font size & adjusted spacing, Metric is in meters 'm')
-        val totalDist = endPt.distance - startPt.distance
-        val totalDistText = if (config.useImperialUnits) {
-            "${formatTwoDecimals(totalDist * 0.000621371)} mi"
-        } else {
-            "${formatTwoDecimals(totalDist / 1000.0)} km"
-        }
-        val startDistText = if (config.useImperialUnits) "0.00 mi" else "0.00 km"
-        val distTextSize = 10.5f * sf * config.mapTextSizeScale
-        
-        // Midpoint calculation
-        val midIdx = validRoutePoints.size / 2
-        val midPt = validRoutePoints[midIdx]
-        val midMapPt = projectPoint(midPt)
-        val midDist = midPt.distance - startPt.distance
-        val midDistText = if (config.useImperialUnits) {
-            "${formatTwoDecimals(midDist * 0.000621371)} mi"
-        } else {
-            "${formatTwoDecimals(midDist / 1000.0)} km"
-        }
-        
-        // Offset midpoint text away from the circle center to prevent overlapping
-        val midDx = midMapPt.first - mcx
-        val midDy = midMapPt.second - mcy
-        val midAngle = kotlin.math.atan2(midDy, midDx)
-        val midOffset = 8f * sf
-        val midTx = midMapPt.first + midOffset * kotlin.math.cos(midAngle).toFloat()
-        val midTy = midMapPt.second + midOffset * kotlin.math.sin(midAngle).toFloat()
-        val midAnchor = when {
-            kotlin.math.abs(kotlin.math.cos(midAngle)) > 0.707 -> if (midDx > 0) "left-center" else "right-center"
-            else -> if (midDy > 0) "top-center" else "bottom-center"
-        }
-        
-        drawShadowedText(canvas, startDistText, startMapPt.first, startMapPt.second + 4f * sf, distTextSize, "#ffffff", bold = true, anchor = "top-center", sf = sf)
-        drawShadowedText(canvas, totalDistText, endMapPt.first, endMapPt.second - (distTextSize + 4f * sf), distTextSize, "#ffffff", bold = true, anchor = "bottom-center", sf = sf)
-        drawShadowedText(canvas, midDistText, midTx, midTy, distTextSize, "#ffffff", bold = true, anchor = midAnchor, sf = sf)
+
 
         // 6. Draw Arrowhead Pin for Current Location
         if (isValid && telemetry.lat != 0.0 && telemetry.lon != 0.0) {
@@ -1178,23 +1143,7 @@ class HudRenderer(val config: HudConfig) {
             canvas.drawPolygon(pinPoly, "#ef4444", alpha = 1.0f)
         }
 
-        // 7. Draw 4 Directions (N, E, S, W) along the inner circle margin (Scaled & centered alignment)
-        val angleN = -90.0 - effectiveBearing
-        val compassPoints = mapOf(
-            "N" to angleN,
-            "E" to (angleN + 90.0),
-            "S" to (angleN + 180.0),
-            "W" to (angleN + 270.0)
-        )
-        
-        val compR = R + 15f * sf // Position compass labels strictly OUTSIDE the circle boundary (R + 15f)
-        val compassTextSize = 14f * sf * config.mapTextSizeScale
-        for ((label, angleDeg) in compassPoints) {
-            val angleRad = angleDeg * kotlin.math.PI / 180.0
-            val tx = mcx + compR * kotlin.math.cos(angleRad).toFloat()
-            val ty = mcy + compR * kotlin.math.sin(angleRad).toFloat()
-            drawShadowedText(canvas, label, tx, ty, compassTextSize, "#ffffff", bold = true, anchor = "center", sf = sf)
-        }
+
     }
 
     private fun drawShadowedText(
