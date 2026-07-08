@@ -74,8 +74,10 @@ tasks.named("wasmJsBrowserDevelopmentExecutableDistribution") {
 }
 
 val verifyNoFileLock = tasks.register("verifyNoFileLock") {
+    val rootDir = project.rootDir
+    val buildDirProvider = layout.buildDirectory.asFile
     doFirst {
-        val lockFile = File(project.rootDir, "temp_work/encoding.lock")
+        val lockFile = File(rootDir, "temp_work/encoding.lock")
         var isEncodingActive = false
         if (lockFile.exists()) {
             try {
@@ -92,7 +94,7 @@ val verifyNoFileLock = tasks.register("verifyNoFileLock") {
             )
         }
 
-        val libsDir = layout.buildDirectory.dir("libs").get().asFile
+        val libsDir = File(buildDirProvider.get(), "libs")
         if (libsDir.exists()) {
             libsDir.listFiles()?.forEach { file ->
                 if (file.extension == "jar") {

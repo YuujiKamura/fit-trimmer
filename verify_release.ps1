@@ -71,20 +71,22 @@ Write-Host "Using test FIT: $realFitPath" -ForegroundColor Green
 Write-Host "=== 4. Executing E2E Tests ===" -ForegroundColor Cyan
 # Run the extracted production binary in E2E test mode
 $e2eArgs = @("--test-e2e", "--fit", "`"$realFitPath`"", "--video", "`"$dummyVideoPath`"", "--output", "`"$testOutputVideoPath`"")
-$process = Start-Process -FilePath $exePath.FullName -ArgumentList $e2eArgs -PassThru -NoNewWindow
-$process.WaitForExit()
+# Execute sync via call operator & to reliably capture exit codes
+& $exePath.FullName $e2eArgs
+$e2eExit = $LASTEXITCODE
 
 # Check E2E test exit code
-if ($process.ExitCode -ne 0) {
-    Write-Error "E2E Test Failed (Exit Code: $($process.ExitCode))"
+if ($e2eExit -ne 0) {
+    Write-Error "E2E Test Failed (Exit Code: $e2eExit)"
 }
 
 Write-Host "=== 5. Executing Auto-Update Verification ===" -ForegroundColor Cyan
 $updateArgs = @("--test-update", "`"$($msiPath.FullName)`"")
-$updateProcess = Start-Process -FilePath $exePath.FullName -ArgumentList $updateArgs -PassThru -NoNewWindow
-$updateProcess.WaitForExit()
-if ($updateProcess.ExitCode -ne 0) {
-    Write-Error "Auto-Update Verification Failed (Exit Code: $($updateProcess.ExitCode))"
+& $exePath.FullName $updateArgs
+$updateExit = $LASTEXITCODE
+
+if ($updateExit -ne 0) {
+    Write-Error "Auto-Update Verification Failed (Exit Code: $updateExit)"
 }
 Write-Host "Auto-Update trigger verified successfully." -ForegroundColor Green
 
