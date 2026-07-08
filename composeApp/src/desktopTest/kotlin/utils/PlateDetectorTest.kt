@@ -488,6 +488,56 @@ class PlateDetectorTest {
         kotlin.test.assertTrue(cache.records.isEmpty(), "Should skip all plates at high speeds (>= 10km/h)")
         println("✅ High Speed Plate Detection Test Completed Successfully!")
     }
+
+    @Test
+    fun testPlateDetectionPaddingAndBufferExtension() {
+        val cropTestMp4 = File("C:\\Users\\yuuji\\fit-trimmer\\composeApp\\scratch\\crop_test.mp4")
+        if (!cropTestMp4.exists()) {
+            println("Skipping padding and buffer extension test: crop_test.mp4 not found")
+            return
+        }
+
+        // 1. Verify PlateCache boxesForTargetTime maintains boxes within timeBufferMs (5.0s)
+        val dummyRecord = fit.PlateRecord(timeMs = 10000L, boxes = listOf(fit.PlateBox(10, 10, 50, 50)))
+        val cache = fit.VideoPlatesCache(
+            videoPath = "dummy.mp4",
+            records = listOf(dummyRecord),
+            sourceWidth = 640,
+            sourceHeight = 640
+        )
+        
+        // Test at target time 6000ms (4.0s before record, which is within 5.0s buffer but outside default 300ms/2.0s buffer)
+        val boxesAt6s = cache.boxesForTargetTime(
+            targetTimeMs = 6000L,
+            prev = null,
+            next = dummyRecord,
+            timeBufferMs = 5000L
+        )
+        kotlin.test.assertTrue(boxesAt6s.isNotEmpty(), "Boxes should be maintained at 6.0s with 5.0s timeBufferMs")
+
+        // Test at target time 4000ms (6.0s before record, which is outside 5.0s buffer)
+        val boxesAt4s = cache.boxesForTargetTime(
+            targetTimeMs = 4000L,
+            prev = null,
+            next = dummyRecord,
+            timeBufferMs = 5000L
+        )
+        kotlin.test.assertTrue(boxesAt4s.isEmpty(), "Boxes should be empty at 4.0s (outside 5.0s buffer)")
+
+        // 2. Verify settings has plateMaskTimeBufferMs up to 5000L
+        val settings = fit.HudSettings(plateMaskTimeBufferMs = 5000L)
+        kotlin.test.assertEquals(5000L, settings.plateMaskTimeBufferMs)
+    }
+
+    @Test
+    fun testPlateDetectionTimeAlignment() {
+        val viewModel = viewmodel.AppViewModel(initialCache = null)
+        viewModel.videoStartUtc = "2026-06-14T08:02:00Z"
+        viewModel.timeOffsetState.adjust("2026-06-14T08:02:10Z") // 10s offset
+        
+        kotlin.test.assertEquals("2026-06-14T08:02:10Z", viewModel.adjustedStartUtc)
+    }
+
     private class SGObserver : java.awt.image.ImageObserver {
         override fun imageUpdate(img: java.awt.Image?, infoflags: Int, x: Int, y: Int, width: Int, height: Int): Boolean {
             return false
