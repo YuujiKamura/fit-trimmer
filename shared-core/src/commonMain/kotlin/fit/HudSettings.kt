@@ -51,6 +51,7 @@ data class HudSettings(
     val bodyWeightKg: Double = 0.0,
     val mapSizeScale: Float = 1.0f,
     val mapType: String = "openstreetmap",
-    val mapPosition: String = "top_right"
+    val mapPosition: String = "top_right",
+    val hudBgAlpha: Float = 0.0f
 )
 

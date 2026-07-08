@@ -15,7 +15,7 @@ class HudRendererTest {
         var drawTextCalled = false
         var lastDrawnText = ""
         
-        data class RectInfo(val x: Float, val y: Float, val w: Float, val h: Float, val color: String)
+        data class RectInfo(val x: Float, val y: Float, val w: Float, val h: Float, val color: String, val alpha: Float = 1.0f)
         data class LineInfo(val points: List<Pair<Float, Float>>, val color: String, val width: Float)
         data class PolygonInfo(val points: List<Pair<Float, Float>>, val color: String)
         data class TextInfo(val text: String, val x: Float, val y: Float, val size: Float, val color: String, val bold: Boolean, val anchor: String)
@@ -40,7 +40,7 @@ class HudRendererTest {
         }
         
         override fun drawRect(x: Float, y: Float, w: Float, h: Float, color: String, alpha: Float, outline: Boolean) {
-            drawnRects.add(RectInfo(x, y, w, h, color))
+            drawnRects.add(RectInfo(x, y, w, h, color, alpha))
         }
         
         override fun drawLine(points: List<Pair<Float, Float>>, color: String, width: Float, alpha: Float) {
@@ -1003,5 +1003,67 @@ class HudRendererTest {
             kotlin.math.abs(tip1.first - tip2.first) < tolerance && kotlin.math.abs(tip1.second - tip2.second) < tolerance,
             "Arrowhead should be stable across consecutive stopped frames (tip1=$tip1, tip2=$tip2)"
         )
+    }
+
+    @Test
+    fun testHudBackgroundShadowAlpha() {
+        val config = HudConfig(
+            valSize = 40f, tightness = 0f, spacing = 20f,
+            xOffset = 50f, yOffset = 100f, graphH = 60f, graphW = 300f,
+            hudBgAlpha = 0.5f,
+            showSpeed = true,
+            showCadence = true,
+            showElevation = true,
+            showDistanceTime = true
+        )
+        val renderer = HudRenderer(config)
+        val canvas = TestHudCanvas()
+        
+        val telemetry = FitParser.TelemetryPoint(
+            timestamp = 1000.0, speed = 10.0, cadence = 90.0, heartRate = 150.0, power = 200.0, elevation = 100.0, distance = 5000.0, elapsedSeconds = 600, grade = 2.0, lat = 35.0, lon = 135.0
+        )
+
+        renderer.renderFrame(canvas, telemetry, listOf(telemetry), listOf(telemetry), emptyList(), 0.5f, isValid = true)
+
+        val bgShadowCalls = canvas.drawnRects.filter { 
+            it.color == "#000000" && it.alpha == 0.5f && it.y >= 80f
+        }
+        assertEquals(1, bgShadowCalls.size, "Should have exactly one background shadow rect with alpha 0.5f")
+    }
+
+    @Test
+    fun testDistanceAndTimePositionIsAboveElevationLabel() {
+        val config = HudConfig(
+            valSize = 40f, tightness = 0f, spacing = 20f,
+            xOffset = 50f, yOffset = 100f, graphH = 60f, graphW = 300f,
+            hudBgAlpha = 0.0f,
+            showSpeed = false,
+            showCadence = false,
+            showHeartRate = false,
+            showPower = false,
+            showWkg = false,
+            showPowerTrend = false,
+            showGrade = false,
+            showElevation = true,
+            showDistanceTime = true
+        )
+        val renderer = HudRenderer(config)
+        val canvas = TestHudCanvas()
+        
+        val telemetry = FitParser.TelemetryPoint(
+            timestamp = 1000.0, speed = 10.0, cadence = 90.0, heartRate = 150.0, power = 200.0, elevation = 100.0, distance = 5000.0, elapsedSeconds = 600, grade = 2.0, lat = 0.0, lon = 0.0
+        )
+
+        renderer.renderFrame(canvas, telemetry, listOf(telemetry), listOf(telemetry), emptyList(), 0.5f, isValid = true)
+
+        // Combine text lists to verify absolute order
+        val allTextList = canvas.drawnTextInfos.map { it.text } + canvas.drawnShadowTextInfos.map { it.text }
+        
+        val distanceIdx = allTextList.indexOfFirst { it.contains("Distance:") || it.contains("距離:") || it.contains("Distance") }
+        val elevationIdx = allTextList.indexOfFirst { it.contains("ELEVATION") || it.contains("標高") }
+
+        assertTrue(distanceIdx != -1, "Distance text should be rendered")
+        assertTrue(elevationIdx != -1, "Elevation text should be rendered")
+        assertTrue(distanceIdx < elevationIdx, "Distance text ($distanceIdx) must be drawn before Elevation text ($elevationIdx). All texts: $allTextList")
     }
 }
