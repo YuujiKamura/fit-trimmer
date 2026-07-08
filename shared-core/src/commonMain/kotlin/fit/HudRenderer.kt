@@ -130,7 +130,7 @@ class HudRenderer(val config: HudConfig) {
         var cx = config.xOffset
         var cy = config.yOffset
         
-        val labelSize = 13f
+        val labelSize = 16f
         val valSize = config.valSize // 40f
         val unitSize = 18f
         val tightness = config.tightness // 1f
