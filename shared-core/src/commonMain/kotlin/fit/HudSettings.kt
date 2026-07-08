@@ -52,6 +52,7 @@ data class HudSettings(
     val mapSizeScale: Float = 1.0f,
     val mapType: String = "openstreetmap",
     val mapPosition: String = "top_right",
-    val hudBgAlpha: Float = 0.0f
+    val hudBgAlpha: Float = 0.0f,
+    val mapZoomScale: Float = 0.55f
 )
 

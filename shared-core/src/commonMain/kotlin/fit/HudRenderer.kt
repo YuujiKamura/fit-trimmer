@@ -36,7 +36,8 @@ data class HudConfig(
     val mapSizeScale: Float = 1.0f,
     val mapType: String = "openstreetmap",
     val mapPosition: String = "top_right",
-    val hudBgAlpha: Float = 0.0f
+    val hudBgAlpha: Float = 0.0f,
+    val mapZoomScale: Float = 0.55f
 )
 
 
@@ -950,7 +951,7 @@ class HudRenderer(val config: HudConfig) {
         val L = kotlin.math.sqrt(dx * dx + dy * dy)
         
         // Target path length on the map is 2 * padR to leave padding inside circle
-        val padR = R * 0.55f
+        val padR = R * config.mapZoomScale
 
         // Heading angle (Start to End) in degrees for compass rotation
         val pathBearing = calculateBearing(startPt, endPt) ?: 0.0
@@ -1043,16 +1044,23 @@ class HudRenderer(val config: HudConfig) {
             }
         }
 
-        // Draw route line (with scaled line width)
+        // Draw route line (with scaled line width and black outline shadow)
         val routeLinePoints = drawPoints.map { projectPoint(it) }
+        canvas.drawLine(routeLinePoints, "#000000", width = 4.2f * sf, alpha = 0.8f)
         canvas.drawLine(routeLinePoints, "#ff9100", width = 2.8f * sf, alpha = 0.9f)
 
-        // 5. Draw Start/End Markers (Scaled)
+        // 5. Draw Start/End Markers (Scaled with black outline shadow)
         val startMapPt = projectPoint(startPt)
         val endMapPt = projectPoint(endPt)
         val mSize = 8f * sf
         val hmSize = mSize / 2f
+        val outSize = mSize + 2f * sf
+        val houtSize = outSize / 2f
+        
+        canvas.drawRect(startMapPt.first - houtSize, startMapPt.second - houtSize, outSize, outSize, "#000000", alpha = 0.8f)
         canvas.drawRect(startMapPt.first - hmSize, startMapPt.second - hmSize, mSize, mSize, "#00e676", alpha = 1.0f)
+        
+        canvas.drawRect(endMapPt.first - houtSize, endMapPt.second - houtSize, outSize, outSize, "#000000", alpha = 0.8f)
         canvas.drawRect(endMapPt.first - hmSize, endMapPt.second - hmSize, mSize, mSize, "#ef4444", alpha = 1.0f)
 
         // Draw distance labels near start/end & midpoint (Scaled font size & adjusted spacing, Metric is in meters 'm')
@@ -1121,6 +1129,15 @@ class HudRenderer(val config: HudConfig) {
             val angleRight = phi + (135.0 * kotlin.math.PI / 180.0)
             val p4 = currentMapPt.first + L2 * kotlin.math.sin(angleRight).toFloat() to currentMapPt.second - L2 * kotlin.math.cos(angleRight).toFloat()
             
+            val L1_out = L1 + 2f * sf
+            val L2_out = L2 + 2f * sf
+            val L3_out = L3 + 2f * sf
+            val p1_out = currentMapPt.first + L1_out * sinPhi to currentMapPt.second - L1_out * cosPhi
+            val p2_out = currentMapPt.first + L2_out * kotlin.math.sin(angleLeft).toFloat() to currentMapPt.second - L2_out * kotlin.math.cos(angleLeft).toFloat()
+            val p3_out = currentMapPt.first - L3_out * sinPhi to currentMapPt.second + L3_out * cosPhi
+            val p4_out = currentMapPt.first + L2_out * kotlin.math.sin(angleRight).toFloat() to currentMapPt.second - L2_out * kotlin.math.cos(angleRight).toFloat()
+            canvas.drawPolygon(listOf(p1_out, p2_out, p3_out, p4_out), "#000000", alpha = 0.8f)
+
             val pinPoly = listOf(p1, p2, p3, p4)
             canvas.drawPolygon(pinPoly, "#ef4444", alpha = 1.0f)
         }
@@ -1155,6 +1172,11 @@ class HudRenderer(val config: HudConfig) {
         anchor: String = "left-center",
         sf: Float
     ) {
+        val offset = 1.2f * sf
+        canvas.drawText(text, x - offset, y - offset, size, "#000000", bold = bold, anchor = anchor)
+        canvas.drawText(text, x + offset, y - offset, size, "#000000", bold = bold, anchor = anchor)
+        canvas.drawText(text, x - offset, y + offset, size, "#000000", bold = bold, anchor = anchor)
+        canvas.drawText(text, x + offset, y + offset, size, "#000000", bold = bold, anchor = anchor)
         canvas.drawText(text, x, y, size, color, bold = bold, anchor = anchor)
     }
 
