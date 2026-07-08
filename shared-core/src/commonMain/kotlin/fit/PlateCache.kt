@@ -112,11 +112,13 @@ data class VideoPlatesCache(
             return prev.boxes
         }
         
+        val width = if (sourceWidth > 0) sourceWidth else 2704 // fallback to 2.7K width
+
         if (prev != null && next != null) {
             val interval = next.timeMs - prev.timeMs
             if (interval <= 1000) { // Interpolate if interval is within 1.0 second
                 val alpha = (targetTimeMs - prev.timeMs).toFloat() / interval.toFloat()
-                return interpolateBoxes(prev.boxes, next.boxes, alpha)
+                return interpolateBoxes(prev.boxes, next.boxes, alpha, width)
             } else {
                 // Interval too large, only apply close to boundaries (within timeBufferMs)
                 val distPrev = targetTimeMs - prev.timeMs
@@ -157,14 +159,17 @@ data class VideoPlatesCache(
     private fun interpolateBoxes(
         prevBoxes: List<PlateBox>,
         nextBoxes: List<PlateBox>,
-        alpha: Float
+        alpha: Float,
+        width: Int
     ): List<PlateBox> {
         val result = mutableListOf<PlateBox>()
         val matchedNextIndices = mutableSetOf<Int>()
+        val maxDist = (width.toDouble() * 0.5).coerceAtLeast(400.0) // 50% of screen width tracking limit
         
         for (pb in prevBoxes) {
             val pCx = (pb.x1 + pb.x2) / 2.0
             val pCy = (pb.y1 + pb.y2) / 2.0
+            val pArea = (pb.x2 - pb.x1).coerceAtLeast(1) * (pb.y2 - pb.y1).coerceAtLeast(1)
             
             var bestIdx = -1
             var minDistance = Double.MAX_VALUE
@@ -174,9 +179,14 @@ data class VideoPlatesCache(
                 val nb = nextBoxes[i]
                 val nCx = (nb.x1 + nb.x2) / 2.0
                 val nCy = (nb.y1 + nb.y2) / 2.0
+                val nArea = (nb.x2 - nb.x1).coerceAtLeast(1) * (nb.y2 - nb.y1).coerceAtLeast(1)
                 
+                // Exclude matches with extreme size scaling mismatch (e.g. area ratio >= 3.0) to prevent ghost mapping between different vehicles
+                val areaRatio = if (pArea > nArea) pArea.toDouble() / nArea.toDouble() else nArea.toDouble() / pArea.toDouble()
+                if (areaRatio >= 3.0) continue
+
                 val dist = kotlin.math.hypot(nCx - pCx, nCy - pCy)
-                if (dist < minDistance && dist < 400.0) { // Limit to 400px of movement
+                if (dist < minDistance && dist < maxDist) {
                     minDistance = dist
                     bestIdx = i
                 }
