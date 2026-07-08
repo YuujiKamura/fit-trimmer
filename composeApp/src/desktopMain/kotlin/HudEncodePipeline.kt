@@ -127,7 +127,9 @@ object HudEncodePipeline {
                 trimStartSeconds = ranges.firstOrNull()?.first ?: 0.0,
                 mapSizeScale = s.mapSizeScale,
                 mapType = s.mapType,
-                mapPosition = s.mapPosition
+                mapPosition = s.mapPosition,
+                hudBgAlpha = s.hudBgAlpha,
+                mapZoomScale = s.mapZoomScale
             )
             val proxy = DynamicRendererProxy(config)
             globalRendererProxy = proxy

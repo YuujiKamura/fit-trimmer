@@ -143,7 +143,8 @@ fun FitTrimmerMainContent(
             mapSizeScale = settings.mapSizeScale,
             mapType = settings.mapType,
             mapPosition = settings.mapPosition,
-            hudBgAlpha = settings.hudBgAlpha
+            hudBgAlpha = settings.hudBgAlpha,
+            mapZoomScale = settings.mapZoomScale
         )
     }
     var reloadTrigger by remember { mutableStateOf(0) }
@@ -2403,6 +2404,7 @@ fun FitTrimmerMainContent(
                             ControlSlider("GRAPH W", settings.graphW, 50f, 800f, enabled = !isEncoding) { settings = settings.copy(graphW = it) }
                             ControlSlider("MAP SIZE", settings.mapSizeScale, 0.2f, 3.0f, enabled = !isEncoding) { settings = settings.copy(mapSizeScale = it) }
                             ControlSlider("HUD BG ALPHA", settings.hudBgAlpha, 0f, 1f, enabled = !isEncoding) { settings = settings.copy(hudBgAlpha = it) }
+                            ControlSlider("MAP ZOOM", settings.mapZoomScale, 0.3f, 0.9f, enabled = !isEncoding) { settings = settings.copy(mapZoomScale = it) }
                             Text("MAP TYPE", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 0.5.sp)
                             var mapTypeDropdownExpanded by remember { mutableStateOf(false) }
                             Box(modifier = Modifier.fillMaxWidth()) {
