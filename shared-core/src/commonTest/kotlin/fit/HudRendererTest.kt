@@ -441,9 +441,9 @@ class HudRendererTest {
         assertTrue(texts.contains("S"), "Mini-map compass should draw 'S' (got $texts)")
         assertTrue(texts.contains("W"), "Mini-map compass should draw 'W' (got $texts)")
         
-        // Check Distance labels: start distance "0 m" and total distance "1500 m"
-        assertTrue(texts.contains("0 m"), "Mini-map should label start distance '0 m' (got $texts)")
-        assertTrue(texts.contains("1500 m"), "Mini-map should draw total/midpoint distance (got $texts)")
+        // Check Distance labels: start distance "0.00 km" and total distance "1.50 km"
+        assertTrue(texts.contains("0.00 km"), "Mini-map should label start distance '0.00 km' (got $texts)")
+        assertTrue(texts.contains("1.50 km"), "Mini-map should draw total/midpoint distance (got $texts)")
         assertTrue(canvas.drawMapBackgroundCalled, "Should call drawMapBackground on canvas")
     }
 
@@ -1209,12 +1209,49 @@ class HudRendererTest {
         val allPoints = listOf(p1, p2, p3)
         
         val canvas = TestHudCanvas()
-        renderer.renderFrame(canvas, p3, allPoints, emptyList(), emptyList(), 100.0f, isValid = true)
+        // Current location is p2 (peak), restriction must remain active
+        renderer.renderFrame(canvas, p2, allPoints, emptyList(), emptyList(), 100.0f, isValid = true)
         
         val routeLines = canvas.drawnLines.filter { it.color == "#007AFF" }
         assertTrue(routeLines.isNotEmpty())
         
         val totalDrawnPointsCount = routeLines.flatMap { it.points }.distinct().size
         assertTrue(totalDrawnPointsCount <= 2, "Drawn route points count should be at most 2, excluding p3 (got $totalDrawnPointsCount)")
+    }
+
+    @Test
+    fun testMiniMap_HighestElevationRestriction_SwitchesToFullAfterPeak() {
+        val config = HudConfig(
+            valSize = 59.27f,
+            tightness = 1f, spacing = 20f,
+            xOffset = 40f, yOffset = 100f, graphH = 60f, graphW = 300f,
+            language = "ja",
+            mapRangeMode = "highest_elevation"
+        )
+        val renderer = HudRenderer(config)
+        
+        val p1 = FitParser.TelemetryPoint(
+            timestamp = 1000.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 50.0, grade = 2.0,
+            distance = 1000.0, elapsedSeconds = 10, lat = 35.0, lon = 135.0
+        )
+        val p2 = FitParser.TelemetryPoint(
+            timestamp = 1005.0, speed = 11.0, power = 105.0, cadence = 81.0, heartRate = 121.0, elevation = 100.0, grade = 2.1,
+            distance = 1750.0, elapsedSeconds = 15, lat = 35.01, lon = 135.0
+        )
+        val p3 = FitParser.TelemetryPoint(
+            timestamp = 1010.0, speed = 12.0, power = 110.0, cadence = 82.0, heartRate = 122.0, elevation = 30.0, grade = 2.2,
+            distance = 2500.0, elapsedSeconds = 20, lat = 35.02, lon = 135.0
+        )
+        val allPoints = listOf(p1, p2, p3)
+        
+        val canvas = TestHudCanvas()
+        // Current location is p3 (past peak), map must switch to full range automatically
+        renderer.renderFrame(canvas, p3, allPoints, emptyList(), emptyList(), 100.0f, isValid = true)
+        
+        val routeLines = canvas.drawnLines.filter { it.color == "#007AFF" }
+        assertTrue(routeLines.isNotEmpty())
+        
+        val totalDrawnPointsCount = routeLines.flatMap { it.points }.distinct().size
+        assertTrue(totalDrawnPointsCount >= 3, "Drawn route points count should be at least 3, including p3 (got $totalDrawnPointsCount)")
     }
 }

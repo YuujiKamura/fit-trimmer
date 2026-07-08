@@ -936,15 +936,13 @@ class HudRenderer(val config: HudConfig) {
         val baseRoutePoints = videoPoints.filter { it.lat != 0.0 || it.lon != 0.0 }
         if (baseRoutePoints.size < 2) return
 
-        val validRoutePoints = if (config.mapRangeMode == "highest_elevation") {
-            val highestPt = baseRoutePoints.maxByOrNull { it.elevation }
-            if (highestPt != null) {
-                val idx = baseRoutePoints.indexOf(highestPt)
-                if (idx >= 1) {
-                    baseRoutePoints.subList(0, idx + 1)
-                } else {
-                    baseRoutePoints
-                }
+        val highestPt = baseRoutePoints.maxByOrNull { it.elevation }
+        val isBeforeHighest = highestPt != null && telemetry.timestamp <= highestPt.timestamp
+
+        val validRoutePoints = if (config.mapRangeMode == "highest_elevation" && isBeforeHighest) {
+            val idx = baseRoutePoints.indexOf(highestPt!!)
+            if (idx >= 1) {
+                baseRoutePoints.subList(0, idx + 1)
             } else {
                 baseRoutePoints
             }
@@ -1104,11 +1102,11 @@ class HudRenderer(val config: HudConfig) {
         // Draw distance labels near start/end & midpoint (Scaled font size & adjusted spacing, Metric is in meters 'm')
         val totalDist = endPt.distance - startPt.distance
         val totalDistText = if (config.useImperialUnits) {
-            "${formatOneDecimal(totalDist * 0.000621371)} mi"
+            "${formatTwoDecimals(totalDist * 0.000621371)} mi"
         } else {
-            "${totalDist.roundToInt()} m"
+            "${formatTwoDecimals(totalDist / 1000.0)} km"
         }
-        val startDistText = "0 m"
+        val startDistText = if (config.useImperialUnits) "0.00 mi" else "0.00 km"
         val distTextSize = 10.5f * sf * config.mapTextSizeScale
         
         // Midpoint calculation
@@ -1117,9 +1115,9 @@ class HudRenderer(val config: HudConfig) {
         val midMapPt = projectPoint(midPt)
         val midDist = midPt.distance - startPt.distance
         val midDistText = if (config.useImperialUnits) {
-            "${formatOneDecimal(midDist * 0.000621371)} mi"
+            "${formatTwoDecimals(midDist * 0.000621371)} mi"
         } else {
-            "${midDist.roundToInt()} m"
+            "${formatTwoDecimals(midDist / 1000.0)} km"
         }
         
         // Offset midpoint text away from the circle center to prevent overlapping
@@ -1167,6 +1165,20 @@ class HudRenderer(val config: HudConfig) {
             val angleRight = phi + (135.0 * kotlin.math.PI / 180.0)
             val p4 = currentMapPt.first + L2 * kotlin.math.sin(angleRight).toFloat() to currentMapPt.second - L2 * kotlin.math.cos(angleRight).toFloat()
             
+            // Draw white shadow circle underneath the arrowhead marker
+            val shR = L1 + 3f * sf
+            val shSize = shR * 2f
+            canvas.drawRect(
+                x = currentMapPt.first - shR,
+                y = currentMapPt.second - shR,
+                w = shSize,
+                h = shSize,
+                color = "#ffffff",
+                alpha = 1.0f,
+                rx = shR,
+                ry = shR
+            )
+
             val L1_out = L1 + 2f * sf
             val L2_out = L2 + 2f * sf
             val L3_out = L3 + 2f * sf
