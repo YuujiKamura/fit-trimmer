@@ -28,7 +28,7 @@ object PlateDetectionManager {
         videoPath: String,
         telemetryPoints: List<fit.FitParser.TelemetryPoint> = emptyList(),
         adjustedStartUtc: String = "",
-        onProgress: (Float) -> Unit,
+        onProgress: (Float, String) -> Unit,
         onCancel: () -> Boolean,
         onPartialResult: (VideoPlatesCache) -> Unit = {},
         maxRecords: Int? = null,
@@ -422,6 +422,10 @@ object PlateDetectionManager {
         var skipInferenceFramesLeft = 0
         var cachedBoxes = emptyList<fit.PlateBox>()
         
+        // Keep track of granular skip statistics for diagnostic logging
+        var skippedSpeedTrimFrames = 0L
+        var skippedTrackingFrames = 0L
+        
         // Skip subsequent frames for up to 1.0 second after a successful plate detection.
         // During skip, we reuse the last detected bounding boxes, relying on expandRatio/padding
         // to maintain continuous coverage.
@@ -434,15 +438,21 @@ object PlateDetectionManager {
                 val tConsumeStart = System.nanoTime()
                 totalDecodeMs += frame.decodeMs
                 var inferencePerformed = false
+                val skipReason: String
                 val boxes = if (frame.skipDetection) {
                     skippedFrames++
+                    skippedSpeedTrimFrames++
+                    skipReason = "Skip (Speed/Trim)"
                     emptyList()
                 } else if (skipInferenceFramesLeft > 0 && cachedBoxes.isNotEmpty()) {
                     skipInferenceFramesLeft--
                     skippedFrames++
+                    skippedTrackingFrames++
+                    skipReason = "Skip (Active Tracking)"
                     cachedBoxes
                 } else {
                     inferencePerformed = true
+                    skipReason = "Scan (ONNX)"
                     // Populate reusable BufferedImage directly from frame buffer and detect
                     System.arraycopy(frame.buffer, 0, imgData, 0, frameBytes)
                     if (frame.frameIndex < 5L || (frame.frameIndex in 48L..54L)) {
@@ -504,11 +514,12 @@ object PlateDetectionManager {
                 frameIndex++
                 
                 val tProgressStart = System.nanoTime()
+                val statusText = "Frame $frameIndex/$totalFrames: $skipReason"
                 if (totalFrames > 0) {
                     val progress = (frameIndex.toFloat() / totalFrames.toFloat()).coerceIn(0f, 1f)
                     val currentPercent = progress * 100f
                     if (currentPercent - lastProgressPercent >= 0.5f || frameIndex == totalFrames) {
-                        onProgress(currentPercent)
+                        onProgress(currentPercent, statusText)
                         lastProgressPercent = currentPercent
                     }
                 }
@@ -533,7 +544,7 @@ object PlateDetectionManager {
                     val estSavedMs = skippedFrames * (if (yoloCount > 0L) avgYoloMs else 80.0)
                     val estSavedSec = estSavedMs / 1000.0
                     
-                    println("DEBUG: Plate Scan Progress: ${String.format(java.util.Locale.US, "%.1f", progressPercent)}% ($frameIndex/$totalFrames) | Speed: ${String.format(java.util.Locale.US, "%.1f", avgFps)} fps | Skipped: $skippedFrames (${String.format(java.util.Locale.US, "%.1f", skipRatio)}%) | Elapsed: $elapsedStr | ETA: $etaStr | AvgDecode: ${String.format(java.util.Locale.US, "%.1f", avgDecodeMs)}ms | AvgYolo: ${String.format(java.util.Locale.US, "%.1f", avgYoloMs)}ms | Saved: ~${String.format(java.util.Locale.US, "%.1f", estSavedSec)}s")
+                    println("DEBUG: Plate Scan Progress: ${String.format(java.util.Locale.US, "%.1f", progressPercent)}% ($frameIndex/$totalFrames) | Speed: ${String.format(java.util.Locale.US, "%.1f", avgFps)} fps | Skipped: $skippedFrames (Speed/Trim=$skippedSpeedTrimFrames, Tracking=$skippedTrackingFrames) (${String.format(java.util.Locale.US, "%.1f", skipRatio)}%) | Elapsed: $elapsedStr | ETA: $etaStr | AvgDecode: ${String.format(java.util.Locale.US, "%.1f", avgDecodeMs)}ms | AvgYolo: ${String.format(java.util.Locale.US, "%.1f", avgYoloMs)}ms | Saved: ~${String.format(java.util.Locale.US, "%.1f", estSavedSec)}s")
                     
                     val jsonProgress = String.format(java.util.Locale.US, 
                         "{\"percent\":%.1f,\"current\":%d,\"total\":%d,\"fps\":%.1f,\"skipped\":%d,\"elapsed_ms\":%d,\"eta_sec\":%d,\"yolo_count\":%d,\"skipped_count\":%d,\"avg_decode_ms\":%.2f,\"avg_yolo_ms\":%.2f,\"saved_ms\":%.1f}",

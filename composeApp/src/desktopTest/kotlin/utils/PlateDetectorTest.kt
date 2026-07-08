@@ -200,7 +200,7 @@ class PlateDetectorTest {
             videoPath = videoPath,
             telemetryPoints = telemetryPoints,
             adjustedStartUtc = cache.videoStartUtc,
-            onProgress = { progress ->
+            onProgress = { progress, _ ->
                 // Collect and output progress metrics
                 totalFramesScanned++
             },
@@ -346,7 +346,7 @@ class PlateDetectorTest {
                 videoPath = cropTestMp4.absolutePath,
                 telemetryPoints = telemetryPoints,
                 adjustedStartUtc = "2026-06-14T08:02:06Z", // Matches video metadata start
-                onProgress = { println("Detection: ${String.format("%.1f", it)}%") },
+                onProgress = { percent, _ -> println("Detection: ${String.format("%.1f", percent)}%") },
                 onCancel = { false }
             )
         }
@@ -479,7 +479,7 @@ class PlateDetectorTest {
                 videoPath = cropTestMp4.absolutePath,
                 telemetryPoints = telemetry,
                 adjustedStartUtc = "2026-06-14T08:02:06Z",
-                onProgress = {},
+                onProgress = { _, _ -> },
                 onCancel = { false },
                 settings = fit.HudSettings(plateMaxSpeedKmh = 10.0)
             )
@@ -687,7 +687,7 @@ class PlateDetectorTest {
                 videoPath = cropTestMp4.absolutePath,
                 telemetryPoints = emptyList(),
                 adjustedStartUtc = "2026-06-14T08:02:06Z",
-                onProgress = {},
+                onProgress = { _, _ -> },
                 onCancel = { false },
                 settings = settings
             )
