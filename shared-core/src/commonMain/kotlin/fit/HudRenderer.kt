@@ -950,7 +950,7 @@ class HudRenderer(val config: HudConfig) {
         val L = kotlin.math.sqrt(dx * dx + dy * dy)
         
         // Target path length on the map is 2 * padR to leave padding inside circle
-        val padR = R - 10f * sf // Compass texts are now outside, so route can utilize more circle space safely
+        val padR = R * 0.55f
 
         // Heading angle (Start to End) in degrees for compass rotation
         val pathBearing = calculateBearing(startPt, endPt) ?: 0.0
