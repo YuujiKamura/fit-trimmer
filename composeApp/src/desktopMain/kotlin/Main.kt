@@ -594,7 +594,9 @@ object BatchJobRunner {
     ) {
         viewModel.batchStatusText = "[${jobIdx + 1}/$totalJobs] プレートスキャンを実行中..."
         val points = loadTelemetryPointsForRoadDetection(job.fitPath) { viewModel.isCanceled }
-        val cache = utils.PlateDetectionManager.runDetection(
+        val cache = viewModel.executePlateScanCore(
+            trimStart = job.trimStartSeconds,
+            trimEnd = job.trimEndSeconds,
             videoPath = job.videoPath,
             telemetryPoints = points,
             adjustedStartUtc = job.adjustedStartUtc,
@@ -612,7 +614,7 @@ object BatchJobRunner {
                 }
             },
             onCancel = { viewModel.isCanceled || !mainScope.isActive },
-            saveCache = true,
+
             settings = job.settings
         )
         if (viewModel.isCanceled) throw Exception("Canceled")
