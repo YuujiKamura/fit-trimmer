@@ -539,6 +539,91 @@ class PlateDetectorTest {
         kotlin.test.assertEquals("2026-06-14T08:02:10Z", viewModel.adjustedStartUtc)
     }
 
+    @Test
+    fun testNmsPerformanceAndCorrectness() {
+        val detector = PlateDetector.getInstance()
+        
+        // Generate 2000 overlapping boxes to simulate heavy detection scenarios with high density
+        val random = java.util.Random(42)
+        val boxes = List(2000) {
+            val cx = random.nextFloat() * 150f
+            val cy = random.nextFloat() * 150f
+            val w = random.nextFloat() * 100f + 10f
+            val h = random.nextFloat() * 50f + 5f
+            val score = random.nextFloat() * 0.5f + 0.05f // Scores between 0.05 and 0.55
+            PlateDetector.DetectedBox(cx - w/2, cy - h/2, cx + w/2, cy + h/2, score)
+        }
+        
+        // Native naive NMS (equivalent to original implementation)
+        fun naiveNms(boxes: List<PlateDetector.DetectedBox>, iouThreshold: Float): List<PlateDetector.DetectedBox> {
+            val sortedBoxes = boxes.sortedByDescending { it.score }.toMutableList()
+            val selectedBoxes = mutableListOf<PlateDetector.DetectedBox>()
+            
+            while (sortedBoxes.isNotEmpty()) {
+                val best = sortedBoxes.removeAt(0)
+                selectedBoxes.add(best)
+                fun localIou(b1: PlateDetector.DetectedBox, b2: PlateDetector.DetectedBox): Float {
+                    val x1 = maxOf(b1.x1, b2.x1)
+                    val y1 = maxOf(b1.y1, b2.y1)
+                    val x2 = minOf(b1.x2, b2.x2)
+                    val y2 = minOf(b1.y2, b2.y2)
+                    val intersection = maxOf(0f, x2 - x1) * maxOf(0f, y2 - y1)
+                    val area1 = (b1.x2 - b1.x1) * (b1.y2 - b1.y1)
+                    val area2 = (b2.x2 - b2.x1) * (b2.y2 - b2.y1)
+                    val union = area1 + area2 - intersection
+                    return if (union <= 0f) 0f else intersection / union
+                }
+                sortedBoxes.removeAll { localIou(best, it) >= iouThreshold }
+            }
+            return selectedBoxes
+        }
+        
+        val iouThreshold = 0.45f
+        
+        // 1. Warm up JVM JIT compiler to ensure hot-spot compilation is triggered
+        println("DEBUG: Warming up JIT compiler...")
+        for (w in 0 until 150) {
+            naiveNms(boxes, iouThreshold)
+            detector.nms(boxes, iouThreshold)
+        }
+        
+        // 2. Measure naive NMS (Average of 50 runs)
+        val runs = 50
+        val tNaiveStart = System.nanoTime()
+        for (r in 0 until runs) {
+            naiveNms(boxes, iouThreshold)
+        }
+        val tNaiveEnd = System.nanoTime()
+        val naiveDurationMs = ((tNaiveEnd - tNaiveStart) / 1_000_000.0) / runs
+        val naiveResult = naiveNms(boxes, iouThreshold)
+        println("DEBUG: Naive NMS average took $naiveDurationMs ms (Results count: ${naiveResult.size})")
+        
+        // 3. Measure optimized detector NMS (Average of 50 runs)
+        val tOptStart = System.nanoTime()
+        for (r in 0 until runs) {
+            detector.nms(boxes, iouThreshold)
+        }
+        val tOptEnd = System.nanoTime()
+        val optDurationMs = ((tOptEnd - tOptStart) / 1_000_000.0) / runs
+        val optResult = detector.nms(boxes, iouThreshold)
+        println("DEBUG: Optimized NMS average took $optDurationMs ms (Results count: ${optResult.size})")
+        
+        // Verify correctness (they must produce identical results)
+        kotlin.test.assertEquals(naiveResult.size, optResult.size, "NMS count mismatch")
+        for (i in naiveResult.indices) {
+            val b1 = naiveResult[i]
+            val b2 = optResult[i]
+            kotlin.test.assertEquals(b1.x1, b2.x1, "Box $i x1 mismatch")
+            kotlin.test.assertEquals(b1.y1, b2.y1, "Box $i y1 mismatch")
+            kotlin.test.assertEquals(b1.x2, b2.x2, "Box $i x2 mismatch")
+            kotlin.test.assertEquals(b1.y2, b2.y2, "Box $i y2 mismatch")
+            kotlin.test.assertEquals(b1.score, b2.score, "Box $i score mismatch")
+        }
+        
+        // Assert speedup: Optimized NMS should be faster than naive NMS on 2000 boxes.
+        assertTrue(optDurationMs < naiveDurationMs, "Optimized NMS ($optDurationMs ms) is not faster than Naive NMS ($naiveDurationMs ms)")
+    }
+
     private class SGObserver : java.awt.image.ImageObserver {
         override fun imageUpdate(img: java.awt.Image?, infoflags: Int, x: Int, y: Int, width: Int, height: Int): Boolean {
             return false
