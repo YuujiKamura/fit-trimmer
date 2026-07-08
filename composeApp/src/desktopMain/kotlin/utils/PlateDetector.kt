@@ -108,7 +108,7 @@ class PlateDetector private constructor() : AutoCloseable {
         }
     }
 
-    data class DetectedBox(val x1: Float, val y1: Float, val x2: Float, val y2: Float, val score: Float)
+    data class DetectedBox(val x1: Float, val y1: Float, val x2: Float, val y2: Float, val score: Float, val classId: Int)
 
     fun detect(image: BufferedImage, confThreshold: Float = 0.25f, iouThreshold: Float = 0.45f): List<PlateBox> {
         val t0 = System.nanoTime()
@@ -185,10 +185,12 @@ class PlateDetector private constructor() : AutoCloseable {
 
                 for (i in 0 until 8400) {
                     var maxScore = 0f
+                    var bestClassId = -1
                     for (offset in targetOffsets) {
                         val score = outputData[offset * 8400 + i]
                         if (score > maxScore) {
                             maxScore = score
+                            bestClassId = offset - 4 // classIndex (2, 3, 5, 7)
                         }
                     }
 
@@ -203,7 +205,7 @@ class PlateDetector private constructor() : AutoCloseable {
                         val x2 = cx + w / 2f
                         val y2 = cy + h / 2f
                         
-                        boxes.add(DetectedBox(x1, y1, x2, y2, maxScore))
+                        boxes.add(DetectedBox(x1, y1, x2, y2, maxScore, bestClassId))
                     }
                 }
                 
@@ -216,9 +218,10 @@ class PlateDetector private constructor() : AutoCloseable {
                     val bx2 = (box.x2 * scaleX).coerceIn(0f, width.toFloat())
                     val by2 = (box.y2 * scaleY).coerceIn(0f, height.toFloat())
 
-                    // Crop to vehicle bottom 50% where plates are safely located
+                    // Crop to vehicle bottom 50% for standard cars, or 75% for motorcycles to handle rider height overhead safely
                     val carHeight = by2 - by1
-                    val finalY1 = by1 + (carHeight * 0.50f)
+                    val cropRatio = if (box.classId == 3) 0.25f else 0.50f // classId 3 is motorcycle
+                    val finalY1 = by1 + (carHeight * cropRatio)
 
                     PlateBox(
                         x1 = bx1.toInt(),
