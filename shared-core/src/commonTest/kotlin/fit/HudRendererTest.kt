@@ -1034,6 +1034,8 @@ class HudRendererTest {
             it.color == "#000000" && it.alpha == 0.5f && it.y >= 80f
         }
         assertEquals(3, bgShadowCalls.size, "Should have exactly three background shadow rects for speed, cadence, and elevation with alpha 0.5f")
+        assertTrue(bgShadowCalls[0].w < 200f, "Speed cell shadow width (${bgShadowCalls[0].w}) should be tightly sized, not excessive")
+        assertTrue(bgShadowCalls[1].w < 200f, "Cadence cell shadow width (${bgShadowCalls[1].w}) should be tightly sized, not excessive")
     }
 
     @Test
