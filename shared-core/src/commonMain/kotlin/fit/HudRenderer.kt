@@ -1165,20 +1165,6 @@ class HudRenderer(val config: HudConfig) {
             val angleRight = phi + (135.0 * kotlin.math.PI / 180.0)
             val p4 = currentMapPt.first + L2 * kotlin.math.sin(angleRight).toFloat() to currentMapPt.second - L2 * kotlin.math.cos(angleRight).toFloat()
             
-            // Draw white shadow circle underneath the arrowhead marker
-            val shR = L1 + 3f * sf
-            val shSize = shR * 2f
-            canvas.drawRect(
-                x = currentMapPt.first - shR,
-                y = currentMapPt.second - shR,
-                w = shSize,
-                h = shSize,
-                color = "#ffffff",
-                alpha = 1.0f,
-                rx = shR,
-                ry = shR
-            )
-
             val L1_out = L1 + 2f * sf
             val L2_out = L2 + 2f * sf
             val L3_out = L3 + 2f * sf
