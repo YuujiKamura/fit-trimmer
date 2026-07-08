@@ -1031,18 +1031,18 @@ class HudRendererTest {
         renderer.renderFrame(canvas, telemetry, listOf(telemetry), listOf(telemetry), emptyList(), 0.5f, isValid = true)
 
         val bgShadowCalls = canvas.drawnRects.filter { 
-            it.color == "#000000" && it.alpha == 0.5f && it.y >= 80f
+            it.color == "#000000" && it.alpha == 0.5f
         }
-        assertEquals(3, bgShadowCalls.size, "Should have exactly three background shadow rects for speed, cadence, and elevation with alpha 0.5f")
-        assertEquals(200f, bgShadowCalls[0].w, "Speed cell shadow width should be unified to 200f")
-        assertEquals(200f, bgShadowCalls[1].w, "Cadence cell shadow width should be unified to 200f")
-        assertEquals(8f, bgShadowCalls[0].rx, "Speed cell shadow should have rounded corners rx = 8f")
-        assertEquals(8f, bgShadowCalls[1].rx, "Cadence cell shadow should have rounded corners rx = 8f")
+        assertEquals(4, bgShadowCalls.size, "Should have exactly four background shadow rects: datetime, speed, cadence, and elevation")
+        assertEquals(200f, bgShadowCalls[0].w, "Datetime cell shadow width should be unified to 200f")
+        assertEquals(200f, bgShadowCalls[1].w, "Speed cell shadow width should be unified to 200f")
+        assertEquals(200f, bgShadowCalls[2].w, "Cadence cell shadow width should be unified to 200f")
+        assertEquals(8f, bgShadowCalls[0].rx, "Datetime cell shadow should have rounded corners rx = 8f")
+        assertEquals(8f, bgShadowCalls[1].rx, "Speed cell shadow should have rounded corners rx = 8f")
+        assertEquals(8f, bgShadowCalls[2].rx, "Cadence cell shadow should have rounded corners rx = 8f")
 
-        val dateTimeShadow = canvas.drawnRects.find { it.y == 40f }
-        assertTrue(dateTimeShadow != null, "DateTime shadow should be drawn")
-        assertEquals(0.5f, dateTimeShadow.alpha, "DateTime shadow alpha should match hudBgAlpha (0.5f)")
-        assertEquals(8f, dateTimeShadow.rx, "DateTime shadow should have rounded corners rx = 8f")
+        val oldDateTimeShadow = canvas.drawnRects.find { it.x == 40f && it.y == 40f }
+        assertTrue(oldDateTimeShadow == null, "Old DateTime shadow at (40, 40) should no longer exist")
     }
 
     @Test
