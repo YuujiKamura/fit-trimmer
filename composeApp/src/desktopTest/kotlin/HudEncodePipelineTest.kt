@@ -268,6 +268,9 @@ class HudEncodePipelineTest {
             val cache = fit.PlateCacheManager.loadCache(videoPath)
             assertNotNull(cache, "Plate cache must be created after detection")
             println("TEST_RESULT: Scan complete. Total plate records found: ${cache.records.size}")
+            cache.records.forEach { record ->
+                println("TEST_RECORD_FOUND: timeMs=${record.timeMs} boxes=${record.boxes}")
+            }
         } finally {
             if (destFile.exists()) destFile.delete()
             fit.PlateCacheManager.deleteCache(videoPath)
