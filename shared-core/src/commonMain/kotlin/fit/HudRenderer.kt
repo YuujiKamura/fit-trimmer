@@ -1143,7 +1143,23 @@ class HudRenderer(val config: HudConfig) {
             canvas.drawPolygon(pinPoly, "#ef4444", alpha = 1.0f)
         }
 
-
+        // Draw 4 Directions (N, E, S, W) along the inner circle margin (Scaled & centered alignment)
+        val angleN = -90.0 - effectiveBearing
+        val compassPoints = mapOf(
+            "N" to angleN,
+            "E" to (angleN + 90.0),
+            "S" to (angleN + 180.0),
+            "W" to (angleN + 270.0)
+        )
+        
+        val compR = R + 15f * sf // Position compass labels strictly OUTSIDE the circle boundary (R + 15f)
+        val compassTextSize = 14f * sf * config.mapTextSizeScale
+        for ((label, angleDeg) in compassPoints) {
+            val angleRad = angleDeg * kotlin.math.PI / 180.0
+            val tx = mcx + compR * kotlin.math.cos(angleRad).toFloat()
+            val ty = mcy + compR * kotlin.math.sin(angleRad).toFloat()
+            drawShadowedText(canvas, label, tx, ty, compassTextSize, "#ffffff", bold = true, anchor = "center", sf = sf)
+        }
     }
 
     private fun drawShadowedText(
