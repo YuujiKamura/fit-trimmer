@@ -8,6 +8,8 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.Button
+import androidx.compose.material.ButtonDefaults
 import androidx.compose.material.Card
 import androidx.compose.material.Text
 import androidx.compose.material.IconButton
@@ -66,7 +68,9 @@ fun TelemetryTimelineGraph(
     onTimeOffsetChange: (Long) -> Unit = {},
     syncAnchorSec: Double? = null,
     syncCorrelation: Double? = null,
-    isTelemetryCut: Boolean = false
+    isTelemetryCut: Boolean = false,
+    onConfirmTelemetry: (() -> Unit)? = null,
+    onResetTelemetry: (() -> Unit)? = null
 ) {
     val textMeasurer = rememberTextMeasurer()
     val videoDurationSec = videoLengthMs / 1000.0
@@ -1119,6 +1123,52 @@ fun TelemetryTimelineGraph(
                     color = Color(0xFF8E8E93),
                     fontSize = 9.sp
                 )
+                if (onConfirmTelemetry != null && !isTelemetryCut && telemetryPoints.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Button(
+                            onClick = onConfirmTelemetry,
+                            colors = ButtonDefaults.buttonColors(
+                                backgroundColor = Color(0xFF34C759),
+                                contentColor = Color.White
+                            ),
+                            modifier = Modifier.height(36.dp)
+                        ) {
+                            Text(
+                                text = if (language == "ja") "テレメトリ確定 (Cut)" else "Confirm & Cut Telemetry",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+                if (onResetTelemetry != null && isTelemetryCut && telemetryPoints.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Button(
+                            onClick = onResetTelemetry,
+                            colors = ButtonDefaults.buttonColors(
+                                backgroundColor = Color(0xFFFF9500),
+                                contentColor = Color.White
+                            ),
+                            modifier = Modifier.height(36.dp)
+                        ) {
+                            Text(
+                                text = if (language == "ja") "FIT切り出し解除 (Reset)" else "Reset FIT Cut",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
             }
         }
     }

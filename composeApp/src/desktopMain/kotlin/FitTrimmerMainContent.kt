@@ -3917,65 +3917,22 @@ fun FitTrimmerMainContent(
                                 onTimeOffsetChange = { offset -> timeOffsetState.update(offset.toInt()) },
                                 syncAnchorSec = viewModel.syncAnchorSec,
                                 syncCorrelation = viewModel.syncCorrelation,
-                                isTelemetryCut = viewModel.isTelemetryCut)
+                                isTelemetryCut = viewModel.isTelemetryCut,
+                                onConfirmTelemetry = {
+                                    viewModel.confirmTelemetryRangeForVideo(
+                                        alignedVideoStartUtcStr = adjustedStartUtc.ifEmpty { videoStartUtc },
+                                        videoDurationSec = videoLengthMs / 1000.0
+                                    )
+                                    trimStartSeconds = 0.0
+                                    trimEndSeconds = videoLengthMs / 1000.0
+                                },
+                                onResetTelemetry = {
+                                    viewModel.resetTelemetryCut()
+                                    trimStartSeconds = 0.0
+                                    trimEndSeconds = videoLengthMs / 1000.0
+                                })
 
-                            if (!viewModel.isTelemetryCut && viewModel.telemetryPoints.isNotEmpty()) {
-                                Spacer(Modifier.height(8.dp))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-                                    horizontalArrangement = Arrangement.Center,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Button(
-                                        onClick = {
-                                            viewModel.confirmTelemetryRangeForVideo(
-                                                alignedVideoStartUtcStr = adjustedStartUtc.ifEmpty { videoStartUtc },
-                                                videoDurationSec = videoLengthMs / 1000.0
-                                            )
-                                            trimStartSeconds = 0.0
-                                            trimEndSeconds = videoLengthMs / 1000.0
-                                        },
-                                        colors = ButtonDefaults.buttonColors(
-                                            backgroundColor = Color(0xFF34C759),
-                                            contentColor = Color.White
-                                        ),
-                                        modifier = Modifier.height(36.dp)
-                                    ) {
-                                        Text(
-                                            text = if (settings.language == "ja") "\u30C6\u30EC\u30E1\u30C8\u30EA\u78BA\u5B9A (Cut)" else "Confirm & Cut Telemetry",
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
-                                }
-                            }
-                            if (viewModel.isTelemetryCut && viewModel.originalTelemetryPoints.isNotEmpty()) {
-                                Spacer(Modifier.height(8.dp))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-                                    horizontalArrangement = Arrangement.Center,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Button(
-                                        onClick = {
-                                            viewModel.resetTelemetryCut()
-                                            trimStartSeconds = 0.0
-                                            trimEndSeconds = videoLengthMs / 1000.0
-                                        },
-                                        colors = ButtonDefaults.buttonColors(
-                                            backgroundColor = Color(0xFFFF9500),
-                                            contentColor = Color.White
-                                        ),
-                                        modifier = Modifier.height(36.dp)
-                                    ) {
-                                        Text(
-                                            text = if (settings.language == "ja") "FIT\u5207\u308A\u51FA\u3057\u89E3\u9664 (Reset)" else "Reset FIT Cut",
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
-                                }
-                            }
+
                             val previewLabel = when (settings.exportResolution) {
                                 "360p" -> "360p (640x360) Overlay Preview"
                                 "720p" -> "720p (1280x720) Overlay Preview"
