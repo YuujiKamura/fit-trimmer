@@ -163,6 +163,10 @@ fun main(args: Array<String>) {
         startGui(args)
         return
     }
+    if (args.contains("--simulate-crash")) {
+        startGui(args)
+        return
+    }
     if (args.contains("--auto-sample")) {
         startGui(args)
         return
