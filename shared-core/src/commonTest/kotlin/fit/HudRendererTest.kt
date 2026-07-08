@@ -1044,6 +1044,10 @@ class HudRendererTest {
 
         val oldDateTimeShadow = canvas.drawnRects.find { it.x == 40f && it.y == 40f }
         assertTrue(oldDateTimeShadow == null, "Old DateTime shadow at (40, 40) should no longer exist")
+
+        val speedLabel = canvas.drawnTextInfos.find { it.text == "SPEED" }
+        assertTrue(speedLabel != null, "Speed label should be drawn")
+        assertEquals(16f, speedLabel.size, "Speed label size should be larger (16f)")
     }
 
     @Test
