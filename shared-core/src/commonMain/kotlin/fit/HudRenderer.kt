@@ -198,21 +198,8 @@ class HudRenderer(val config: HudConfig) {
                 } else {
                     "${tempVal.roundToInt()}°C"
                 }
-                
-                val savedCy = cy
-                drawCell("", dtText, "", "#ffffff")
-                
-                val dtValSize = if (dtText.length > 8) (valSize * 0.5f).coerceAtLeast(14f) else valSize
-                val dtW = canvas.getTextWidth(dtText, dtValSize, true)
-                val dtCellW = maxOf(160f, dtW)
-                
-                val originalCx = cx
-                cx = cx + dtCellW + 24f * sf
-                cy = savedCy
-                
-                drawCell("", tempStr, "", "#ef4444")
-                
-                cx = originalCx
+                val combinedText = "$dtText  $tempStr"
+                drawCell("", combinedText, "", "#ffffff")
             } else {
                 drawCell("", dtText, "", "#ffffff")
             }

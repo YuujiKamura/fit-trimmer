@@ -230,7 +230,7 @@ class FitParser(private val bytes: ByteArray) {
                 val rawElev = fields[78]?.value ?: fields[2]?.value
                 val elevVal = if (rawElev != null) (rawElev.toDouble() / 5.0) - 500.0 else 0.0
                 val gradeVal = 0.0 // Field 9 is temperature, not grade. We will calculate grade dynamically below.
-                val tempVal = fields[9]?.value?.toDouble() ?: 0.0
+                val tempVal = fields[13]?.value?.toDouble() ?: 0.0
                 
                 val rawLat = fields[0]?.value
                 val rawLon = fields[1]?.value
