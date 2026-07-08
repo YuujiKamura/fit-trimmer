@@ -70,6 +70,9 @@ fun main(args: Array<String>) {
     // Eagerly load and initialize DesktopLog on application startup to prevent class loader issues on native/AWT threads
     DesktopLog.info("FitTrimmer starting... Version: $APP_VERSION")
 
+    if (args.contains("--simulate-crash")) {
+        utils.CrashSimulator.setupSimulation()
+    }
     if (args.contains("--test-e2e") || args.contains("--auto-sample") || args.contains("--no-cache")) {
         utils.GuiCache.useTestCache = true
     }
