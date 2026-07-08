@@ -369,6 +369,14 @@ fun TelemetryTimelineGraph(
                                     fontWeight = FontWeight.Bold
                                 )
                             }
+                            Text(
+                                text = if (language == "ja") 
+                                    "※確定後、このGPS区間の範囲内で動画のトリミングが可能になります" 
+                                    else "*After cutting, you can trim the video within this GPS range.",
+                                color = Color(0xFF8E8E93),
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Normal
+                            )
                         }
                         if (onResetTelemetry != null && isTelemetryCut && telemetryPoints.isNotEmpty()) {
                             Button(
