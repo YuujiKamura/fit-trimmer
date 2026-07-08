@@ -147,7 +147,9 @@ fun FitTrimmerMainContent(
             hudBgAlpha = settings.hudBgAlpha,
             mapZoomScale = settings.mapZoomScale,
             mapZoomOffset = settings.mapZoomOffset,
-            fixMapNorthUp = settings.fixMapNorthUp
+            fixMapNorthUp = settings.fixMapNorthUp,
+            mapMarkerSizeScale = settings.mapMarkerSizeScale,
+            mapTextSizeScale = settings.mapTextSizeScale
         )
     }
     var reloadTrigger by remember { mutableStateOf(0) }
@@ -2409,6 +2411,8 @@ fun FitTrimmerMainContent(
                             ControlSlider("HUD BG ALPHA", settings.hudBgAlpha, 0f, 1f, enabled = !isEncoding) { settings = settings.copy(hudBgAlpha = it) }
                             ControlSlider("MAP ZOOM", settings.mapZoomScale, 0.3f, 0.9f, enabled = !isEncoding) { settings = settings.copy(mapZoomScale = it) }
                             ControlSlider("MAP LEVEL OFFSET", settings.mapZoomOffset.toFloat(), -3f, 3f, enabled = !isEncoding) { settings = settings.copy(mapZoomOffset = it.roundToInt()) }
+                            ControlSlider("MAP MARKER SIZE", settings.mapMarkerSizeScale, 0.5f, 2.5f, enabled = !isEncoding) { settings = settings.copy(mapMarkerSizeScale = it) }
+                            ControlSlider("MAP TEXT SIZE", settings.mapTextSizeScale, 0.5f, 2.5f, enabled = !isEncoding) { settings = settings.copy(mapTextSizeScale = it) }
                             Text("MAP TYPE", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 0.5.sp)
                             var mapTypeDropdownExpanded by remember { mutableStateOf(false) }
                             Box(modifier = Modifier.fillMaxWidth()) {

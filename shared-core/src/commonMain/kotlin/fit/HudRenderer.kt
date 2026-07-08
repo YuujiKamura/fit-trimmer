@@ -39,7 +39,9 @@ data class HudConfig(
     val hudBgAlpha: Float = 0.0f,
     val mapZoomScale: Float = 0.55f,
     val mapZoomOffset: Int = 0,
-    val fixMapNorthUp: Boolean = false
+    val fixMapNorthUp: Boolean = false,
+    val mapMarkerSizeScale: Float = 1.0f,
+    val mapTextSizeScale: Float = 1.0f
 )
 
 
@@ -1056,7 +1058,7 @@ class HudRenderer(val config: HudConfig) {
         // 5. Draw Start/End Markers (Scaled with black outline shadow)
         val startMapPt = projectPoint(startPt)
         val endMapPt = projectPoint(endPt)
-        val mSize = 8f * sf
+        val mSize = 8f * sf * config.mapMarkerSizeScale
         val hmSize = mSize / 2f
         val outSize = mSize + 2f * sf
         val houtSize = outSize / 2f
@@ -1075,7 +1077,7 @@ class HudRenderer(val config: HudConfig) {
             "${totalDist.roundToInt()} m"
         }
         val startDistText = "0 m"
-        val distTextSize = 10.5f * sf
+        val distTextSize = 10.5f * sf * config.mapTextSizeScale
         
         // Midpoint calculation
         val midIdx = validRoutePoints.size / 2
@@ -1115,9 +1117,9 @@ class HudRenderer(val config: HudConfig) {
             val cosPhi = kotlin.math.cos(phi).toFloat()
             
             // Arrowhead dimensions (scaled)
-            val L1 = 11f * sf  // Tip length (forward)
-            val L2 = 9f * sf   // Rear wings length
-            val L3 = 3.5f * sf // Rear inner indentation length
+            val L1 = 11f * sf * config.mapMarkerSizeScale  // Tip length (forward)
+            val L2 = 9f * sf * config.mapMarkerSizeScale   // Rear wings length
+            val L3 = 3.5f * sf * config.mapMarkerSizeScale // Rear inner indentation length
             
             // Tip point (pointing forward)
             val p1 = currentMapPt.first + L1 * sinPhi to currentMapPt.second - L1 * cosPhi
@@ -1156,7 +1158,7 @@ class HudRenderer(val config: HudConfig) {
         )
         
         val compR = R + 15f * sf // Position compass labels strictly OUTSIDE the circle boundary (R + 15f)
-        val compassTextSize = 14f * sf
+        val compassTextSize = 14f * sf * config.mapTextSizeScale
         for ((label, angleDeg) in compassPoints) {
             val angleRad = angleDeg * kotlin.math.PI / 180.0
             val tx = mcx + compR * kotlin.math.cos(angleRad).toFloat()

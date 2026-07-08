@@ -131,7 +131,9 @@ object HudEncodePipeline {
                 hudBgAlpha = s.hudBgAlpha,
                 mapZoomScale = s.mapZoomScale,
                 mapZoomOffset = s.mapZoomOffset,
-                fixMapNorthUp = s.fixMapNorthUp
+                fixMapNorthUp = s.fixMapNorthUp,
+                mapMarkerSizeScale = s.mapMarkerSizeScale,
+                mapTextSizeScale = s.mapTextSizeScale
             )
             val proxy = DynamicRendererProxy(config)
             globalRendererProxy = proxy
