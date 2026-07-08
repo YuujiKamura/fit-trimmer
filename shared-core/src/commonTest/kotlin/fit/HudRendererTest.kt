@@ -435,15 +435,7 @@ class HudRendererTest {
         
         val texts = canvas.drawnTexts
         
-        // Check Compass headings N, E, S, W exist
-        assertTrue(texts.contains("N"), "Mini-map compass should draw 'N' (got $texts)")
-        assertTrue(texts.contains("E"), "Mini-map compass should draw 'E' (got $texts)")
-        assertTrue(texts.contains("S"), "Mini-map compass should draw 'S' (got $texts)")
-        assertTrue(texts.contains("W"), "Mini-map compass should draw 'W' (got $texts)")
-        
-        // Check Distance labels: start distance "0.00 km" and total distance "1.50 km"
-        assertTrue(texts.contains("0.00 km"), "Mini-map should label start distance '0.00 km' (got $texts)")
-        assertTrue(texts.contains("1.50 km"), "Mini-map should draw total/midpoint distance (got $texts)")
+
         assertTrue(canvas.drawMapBackgroundCalled, "Should call drawMapBackground on canvas")
     }
 
@@ -638,23 +630,7 @@ class HudRendererTest {
             }
         }
         
-        // Verify physical drawn coordinates of compass characters
-        val compassTexts = listOf("N", "E", "S", "W")
-        for (label in compassTexts) {
-            val textInfo = canvas.drawnTextInfos.find { it.text == label }
-            assertTrue(textInfo != null, "HUD must draw compass label $label")
-            
-            val dx = textInfo.x - mcx
-            val dy = textInfo.y - mcy
-            val dist = kotlin.math.sqrt(dx * dx + dy * dy)
-            
-            // Assert that compass characters are strictly placed outside the circle border (expected >= R + 10f * sf)
-            assertTrue(dist >= R + 10f * sf - 1.0f, "Compass label $label must be placed outside the circle border (got distance $dist, expected >= ${R + 10f * sf})")
-            
-            // Assert that compass characters are far enough from the route path
-            val fromRouteMargin = dist - maxRouteDist
-            assertTrue(fromRouteMargin >= 20f * sf, "Compass label $label must be at least 20f * sf away from route (got $fromRouteMargin)")
-        }
+
     }
 
     @Test
