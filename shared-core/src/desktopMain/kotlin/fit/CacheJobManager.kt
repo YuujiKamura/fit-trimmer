@@ -105,7 +105,6 @@ private object DefaultCacheJobManager : CacheJobManager {
             videoPath = videoPath,
             partIndex = -1,
             numParts = 1,
-            isSample = false
         )
         val salvagedName = baseFileName.replace(Regex("""\.(mp4|mov)$""", RegexOption.IGNORE_CASE), "_salvaged.mp4")
         return File(File(outputDir), salvagedName)

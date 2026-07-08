@@ -165,10 +165,9 @@ class AppViewModelTest {
     fun testEncodingPhaseTransitionsKeepCompletionSeparateFromActiveEncoding() {
         val viewModel = AppViewModel(null)
 
-        viewModel.beginEncoding(sample = false)
+        viewModel.beginEncoding()
         assertEquals(EncodePhase.Preparing, viewModel.encodePhase)
         assertTrue(viewModel.isEncoding)
-        assertFalse(viewModel.isSampleEncoding)
         assertFalse(viewModel.isCanceled)
 
         viewModel.updateEncodingProgress(0.5f, "Merging video segments...")
@@ -187,15 +186,13 @@ class AppViewModelTest {
     fun testEncodingPhaseTransitionsPreserveFailureAndCancelAsInactiveStates() {
         val viewModel = AppViewModel(null)
 
-        viewModel.beginEncoding(sample = true)
-        assertTrue(viewModel.isSampleEncoding)
+        viewModel.beginEncoding()
         viewModel.failEncoding("boom")
         assertEquals(EncodePhase.Failed, viewModel.encodePhase)
         assertFalse(viewModel.isEncoding)
-        assertFalse(viewModel.isSampleEncoding)
         assertEquals("boom", viewModel.statusText)
 
-        viewModel.beginEncoding(sample = false)
+        viewModel.beginEncoding()
         viewModel.cancelEncoding()
         assertEquals(EncodePhase.Canceled, viewModel.encodePhase)
         assertFalse(viewModel.isEncoding)

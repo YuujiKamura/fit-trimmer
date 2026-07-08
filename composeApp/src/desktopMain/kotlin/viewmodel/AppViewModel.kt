@@ -790,20 +790,17 @@ class AppViewModel(
 
     var hasEnoughSpace by mutableStateOf(true)
 
-    var hasEnoughSpaceForSample by mutableStateOf(true)
 
-    var isSampleEncoding by mutableStateOf(false)
 
     var isHudBurned by mutableStateOf(false)
 
     var appTempSpaceGB by mutableStateOf(0.0)
 
-    fun beginEncoding(sample: Boolean) {
+    fun beginEncoding() {
         encodingPreviewImage = null
-        isSampleEncoding = sample
         isCanceled = false
         progress = 0f
-        statusText = if (sample) "Preparing sample encode..." else "Preparing encode..."
+        statusText = "Preparing encode..."
         encodePhase = EncodePhase.Preparing
     }
 
@@ -821,7 +818,6 @@ class AppViewModel(
         progress = 1f
         statusText = message
         isCanceled = false
-        isSampleEncoding = false
         encodingSegmentStart = null
         encodingSegmentEnd = null
         encodePhase = EncodePhase.Completed
@@ -829,7 +825,6 @@ class AppViewModel(
 
     fun failEncoding(message: String) {
         statusText = message
-        isSampleEncoding = false
         encodingSegmentStart = null
         encodingSegmentEnd = null
         encodePhase = EncodePhase.Failed
@@ -838,7 +833,6 @@ class AppViewModel(
     fun cancelEncoding(message: String = "Encoding Canceled") {
         statusText = message
         isCanceled = true
-        isSampleEncoding = false
         encodingSegmentStart = null
         encodingSegmentEnd = null
         encodePhase = EncodePhase.Canceled
@@ -1356,7 +1350,6 @@ class AppViewModel(
                 videoPath = jobVideoPath,
                 partIndex = if (ranges.size > 1) idx else -1,
                 numParts = ranges.size,
-                isSample = false,
                 trimStartSeconds = if (includeTrim) start else null,
                 trimEndSeconds = if (includeTrim) end else null,
                 dateTag = if (includeTrim) buildDateTagFromUtc(jobVideoStartUtc) else null
