@@ -154,11 +154,15 @@ class HudRenderer(val config: HudConfig) {
 
 
         fun drawCell(label: String, value: String, unit: String, color: String) {
+            val labelW = canvas.getTextWidth(label, labelSize, true)
+            val valW = canvas.getTextWidth(value, valSize, true)
+            val unitW = canvas.getTextWidth(unit, unitSize, true)
+            val contentW = maxOf(labelW, valW + 8f + unitW)
             if (config.hudBgAlpha > 0f) {
                 val padX = 20f * sf
                 val padY = 8f * sf
                 val cellH = labelSize + tightness + valSize
-                canvas.drawRect(cx - padX, cy - padY, graphW + padX * 2f, cellH + padY * 2f, "#000000", alpha = config.hudBgAlpha)
+                canvas.drawRect(cx - padX, cy - padY, contentW + padX * 2f, cellH + padY * 2f, "#000000", alpha = config.hudBgAlpha)
             }
             // 1. Label (Light grey #e5e7eb)
             drawShadowedText(canvas, label, cx, cy, labelSize, "#e5e7eb", bold = true, sf = sf)
@@ -168,7 +172,6 @@ class HudRenderer(val config: HudConfig) {
             drawShadowedText(canvas, value, cx, valY, valSize, "#ffffff", bold = true, sf = sf)
             
             // 3. Unit (Color specified)
-            val valW = canvas.getTextWidth(value, valSize, true)
             val unitX = cx + valW + 8f
             val unitY = valY + (valSize - unitSize)
             drawShadowedText(canvas, unit, unitX, unitY, unitSize, color, bold = true, sf = sf)
@@ -193,19 +196,23 @@ class HudRenderer(val config: HudConfig) {
 
         // 3. HEART RATE
         if (config.showHeartRate) {
+            val hrStr = if (isValid) telemetry.heartRate.roundToInt().toString() else "-"
+            val labelW = canvas.getTextWidth(getLabel("HEART RATE"), labelSize, true)
+            val valW = canvas.getTextWidth(hrStr, valSize, true)
+            val unitW = canvas.getTextWidth("bpm", unitSize, true)
+            val zoneTextDummyW = canvas.getTextWidth("ZONE 180-189: 00:00", 12f, true)
+            val contentW = maxOf(labelW, valW + 8f + unitW, zoneTextDummyW).coerceAtLeast(130f)
             if (config.hudBgAlpha > 0f) {
                 val padX = 20f * sf
                 val padY = 8f * sf
                 val cellH = labelSize + tightness + valSize + 39f
-                canvas.drawRect(cx - padX, cy - padY, graphW + padX * 2f, cellH + padY * 2f, "#000000", alpha = config.hudBgAlpha)
+                canvas.drawRect(cx - padX, cy - padY, contentW + padX * 2f, cellH + padY * 2f, "#000000", alpha = config.hudBgAlpha)
             }
-            val hrStr = if (isValid) telemetry.heartRate.roundToInt().toString() else "-"
             
             // 3.1. Draw standard HEART RATE label and value
             drawShadowedText(canvas, getLabel("HEART RATE"), cx, cy, labelSize, "#e5e7eb", bold = true, sf = sf)
             val valY = cy + labelSize + tightness
             drawShadowedText(canvas, hrStr, cx, valY, valSize, "#ffffff", bold = true, sf = sf)
-            val valW = canvas.getTextWidth(hrStr, valSize, true)
             val unitX = cx + valW + 8f
             val unitY = valY + (valSize - unitSize)
             drawShadowedText(canvas, "bpm", unitX, unitY, unitSize, "#ffffff", bold = true, sf = sf)
