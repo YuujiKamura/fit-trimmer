@@ -1034,7 +1034,8 @@ class HudRendererTest {
             it.color == "#000000" && it.alpha == 0.5f
         }
         assertEquals(4, bgShadowCalls.size, "Should have exactly four background shadow rects: datetime, speed, cadence, and elevation")
-        assertEquals(200f, bgShadowCalls[0].w, "Datetime cell shadow width should be unified to 200f")
+        assertTrue(bgShadowCalls[0].w > 200f, "Datetime cell shadow width should be auto-expanded to fit long text (got ${bgShadowCalls[0].w})")
+        assertTrue(bgShadowCalls[0].h < 50f, "Datetime cell shadow height should be compact since it has no label (got ${bgShadowCalls[0].h})")
         assertEquals(200f, bgShadowCalls[1].w, "Speed cell shadow width should be unified to 200f")
         assertEquals(200f, bgShadowCalls[2].w, "Cadence cell shadow width should be unified to 200f")
         assertEquals(8f, bgShadowCalls[0].rx, "Datetime cell shadow should have rounded corners rx = 8f")

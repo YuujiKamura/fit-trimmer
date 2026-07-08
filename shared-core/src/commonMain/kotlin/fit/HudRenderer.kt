@@ -147,33 +147,42 @@ class HudRenderer(val config: HudConfig) {
                 valSize
             }
             val valW = canvas.getTextWidth(value, actualValSize, true)
-            val cellW = 160f
+            val unitW = if (unit.isNotEmpty()) canvas.getTextWidth(unit, unitSize, true) else 0f
+            val contentW = valW + (if (unit.isNotEmpty()) 8f + unitW else 0f)
+            val cellW = maxOf(160f, contentW)
+            val hasLabel = label.isNotEmpty()
+            val cellH = if (hasLabel) labelSize + tightness + actualValSize else actualValSize
+            
             if (config.hudBgAlpha > 0f) {
                 val padX = 20f * sf
                 val padY = 8f * sf
-                val cellH = labelSize + tightness + actualValSize
                 canvas.drawRect(cx - padX, cy - padY, cellW + padX * 2f, cellH + padY * 2f, "#000000", alpha = config.hudBgAlpha, rx = 8f * sf, ry = 8f * sf)
             }
-            // 1. Label (Light grey #e5e7eb)
-            drawShadowedText(canvas, label, cx, cy, labelSize, "#e5e7eb", bold = true, sf = sf)
+            
+            // 1. Label (Light grey #e5e7eb) - only drawn if label is not empty
+            if (hasLabel) {
+                drawShadowedText(canvas, label, cx, cy, labelSize, "#e5e7eb", bold = true, sf = sf)
+            }
             
             // 2. Value (White #ffffff)
-            val valY = cy + labelSize + tightness
+            val valY = if (hasLabel) cy + labelSize + tightness else cy
             drawShadowedText(canvas, value, cx, valY, actualValSize, "#ffffff", bold = true, sf = sf)
             
             // 3. Unit (Color specified)
-            val unitX = cx + valW + 8f
-            val unitY = valY + (valSize - unitSize)
-            drawShadowedText(canvas, unit, unitX, unitY, unitSize, color, bold = true, sf = sf)
+            if (unit.isNotEmpty()) {
+                val unitX = cx + valW + 8f
+                val unitY = valY + (actualValSize - unitSize)
+                drawShadowedText(canvas, unit, unitX, unitY, unitSize, color, bold = true, sf = sf)
+            }
             
             // Increment cy for the next cell
-            cy += labelSize + tightness + actualValSize + itemSpacing
+            cy += cellH + itemSpacing
         }
 
         // 0. DATE & TIME
         if (isValid) {
             val dtText = formatDateTime(telemetry.timestamp)
-            drawCell(getLabel("DATE/TIME"), dtText, "", "#ffffff")
+            drawCell("", dtText, "", "#ffffff")
         }
 
         // 1. SPEED
