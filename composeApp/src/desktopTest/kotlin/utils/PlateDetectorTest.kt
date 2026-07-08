@@ -391,6 +391,7 @@ class PlateDetectorTest {
                     "-i", cropBlurredMp4.absolutePath,
                     "-ss", st.toString(),
                     "-vframes", "1",
+                    "-update", "1",
                     sampleImgFile.absolutePath
                 )
                 pbSample.inheritIO()
