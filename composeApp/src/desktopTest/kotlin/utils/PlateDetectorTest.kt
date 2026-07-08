@@ -534,7 +534,7 @@ class PlateDetectorTest {
     fun testPlateDetectionTimeAlignment() {
         val viewModel = viewmodel.AppViewModel(initialCache = null)
         viewModel.videoStartUtc = "2026-06-14T08:02:00Z"
-        viewModel.timeOffsetState.adjust("2026-06-14T08:02:10Z") // 10s offset
+        viewModel.timeOffsetState.update(10000) // 10s offset
         
         kotlin.test.assertEquals("2026-06-14T08:02:10Z", viewModel.adjustedStartUtc)
     }
