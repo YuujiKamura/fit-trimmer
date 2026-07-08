@@ -265,6 +265,34 @@ class AppViewModel(
 
 
 
+    suspend fun executePlateScanCore(
+        videoPath: String,
+        telemetryPoints: List<fit.FitParser.TelemetryPoint>,
+        adjustedStartUtc: String,
+        trimStart: Double,
+        trimEnd: Double,
+        settings: fit.HudSettings,
+        onProgress: (percent: Float, status: String) -> Unit,
+        onCancel: () -> Boolean,
+        onPartialResult: (fit.VideoPlatesCache) -> Unit = {}
+    ): fit.VideoPlatesCache? {
+        val ranges = if (trimEnd > trimStart) {
+            listOf(trimStart to trimEnd)
+        } else null
+
+        return utils.PlateDetectionManager.runDetection(
+            videoPath = videoPath,
+            telemetryPoints = telemetryPoints,
+            adjustedStartUtc = adjustedStartUtc,
+            onProgress = onProgress,
+            onCancel = onCancel,
+            onPartialResult = onPartialResult,
+            saveCache = true,
+            settings = settings,
+            scanRanges = ranges
+        )
+    }
+
     fun runPlateDetection(
 
         coroutineScope: kotlinx.coroutines.CoroutineScope,
@@ -321,14 +349,18 @@ class AppViewModel(
 
             try {
 
-                val ranges = if (trimEndSeconds > trimStartSeconds) {
-                    listOf(trimStartSeconds to trimEndSeconds)
-                } else null
-
-                val cache = utils.PlateDetectionManager.runDetection(
+                val cache = executePlateScanCore(
                     videoPath = path,
                     telemetryPoints = telemetryPoints,
                     adjustedStartUtc = adjustedStartUtc,
+                    trimStart = trimStartSeconds,
+                    trimEnd = trimEndSeconds,
+                    settings = fit.HudSettings(
+                        plateMaxSpeedKmh = plateDetectionMaxSpeedKmh,
+                        plateDetectionFps = plateDetectionFps,
+                        platePaddingSeconds = plateDetectionPaddingSeconds,
+                        plateMergeGapSeconds = plateDetectionMergeGapSeconds
+                    ),
                     onProgress = { progress, status ->
                         val suffix = if (telemetryPoints.isNotEmpty() && videoStartUtc.isNotEmpty()) "" else " (No Telemetry)"
                         coroutineScope.launch(kotlinx.coroutines.Dispatchers.Main) {
@@ -340,16 +372,7 @@ class AppViewModel(
                         coroutineScope.launch(kotlinx.coroutines.Dispatchers.Main) {
                             plateCache = partialCache
                         }
-                    },
-                    maxRecords = maxRecords,
-                    saveCache = true,
-                    settings = fit.HudSettings(
-                        plateMaxSpeedKmh = plateDetectionMaxSpeedKmh,
-                        plateDetectionFps = plateDetectionFps,
-                        platePaddingSeconds = plateDetectionPaddingSeconds,
-                        plateMergeGapSeconds = plateDetectionMergeGapSeconds
-                    ),
-                    scanRanges = ranges
+                    }
                 )
 
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
