@@ -61,7 +61,11 @@ object PlateDetectionManager {
                         ffmpegPath,
                         "-y",
                         "-i", videoPath,
-                        "-c", "copy",
+                        "-vf", "scale=640:-2",
+                        "-c:v", "libx264",
+                        "-preset", "ultrafast",
+                        "-crf", "32",
+                        "-an",
                         tempFile.absolutePath
                     )
                     pbCopy.redirectError(ProcessBuilder.Redirect.DISCARD)
@@ -98,7 +102,7 @@ object PlateDetectionManager {
         }
 
         // 1. Get video metadata using ffmpeg -i
-        val pbInfo = ProcessBuilder(ffmpegPath, "-i", localVideoPath)
+        val pbInfo = ProcessBuilder(ffmpegPath, "-i", videoPath)
         pbInfo.redirectErrorStream(true)
         val pInfo = pbInfo.start()
         val outputInfo = pInfo.inputStream.bufferedReader().readText()
@@ -507,9 +511,6 @@ object PlateDetectionManager {
                         sourceHeight = videoHeight,
                         scanRanges = normalizedScanRanges
                     )
-                    if (saveCache) {
-                        PlateCacheManager.saveCache(videoPath, partialCache)
-                    }
                     onPartialResult(partialCache)
                     if (maxRecords != null && records.size >= maxRecords) {
                         println("DEBUG: Plate scan early stop after ${records.size} records.")
