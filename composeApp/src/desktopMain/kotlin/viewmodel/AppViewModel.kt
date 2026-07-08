@@ -1435,13 +1435,68 @@ class AppViewModel(
         utils.BatchQueueCache.save(serializedJobs)
     }
 
-    fun restorePendingBatchJobs() {
+    fun restorePendingBatchJobs(coroutineScope: kotlinx.coroutines.CoroutineScope) {
         if (pendingRestorableJobs.isNotEmpty()) {
-            batchQueue.addAll(pendingRestorableJobs)
-            saveBatchQueue()
+            val toRestore = pendingRestorableJobs.toList()
             pendingRestorableJobs.clear()
+            showBatchRestoreDialog = false
+
+            coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                toRestore.forEach { job ->
+                    val cacheJobs = fit.CacheJobManager.getInstance().scanJobs(job.videoPath)
+                    if (cacheJobs.isNotEmpty()) {
+                        val cacheJob = cacheJobs.first()
+                        val salvageOutFile = fit.CacheJobManager.getInstance().getSalvageOutputPath(
+                            videoPath = job.videoPath,
+                            outputDir = outputDir,
+                            settings = job.settings
+                        )
+
+                        try {
+                            logBatch("Auto-salvaging job ${job.id} from cache ${cacheJob.jobHash} to ${salvageOutFile.absolutePath}")
+                            coroutineScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                                isSalvaging = true
+                                salvageProgress = 0.1f
+                                salvageStatusText = "復元中 (${job.entryName})..."
+                            }
+
+                            cacheJob.salvageAndMerge(salvageOutFile) { prog, status ->
+                                coroutineScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                                    salvageProgress = prog
+                                    salvageStatusText = "${job.entryName} を結合中: ${(prog * 100).toInt()}%"
+                                }
+                            }
+
+                            logBatch("Auto-salvage completed successfully for job ${job.id}")
+                            coroutineScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                                isSalvaging = false
+                                salvageStatusText = "✨ ${job.entryName} を復元しました"
+                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                            logBatch("Auto-salvage failed for job ${job.id}, restoring to queue: ${e.message}")
+                            coroutineScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                                isSalvaging = false
+                                salvageStatusText = "❌ 自動復旧失敗: ${e.message}"
+                                batchQueue.add(job)
+                                saveBatchQueue()
+                            }
+                        }
+                    } else {
+                        coroutineScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                            batchQueue.add(job)
+                            saveBatchQueue()
+                        }
+                    }
+                }
+
+                coroutineScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                    refreshAvailableCacheJobs()
+                }
+            }
+        } else {
+            showBatchRestoreDialog = false
         }
-        showBatchRestoreDialog = false
     }
 
     fun discardPendingBatchJobs() {
