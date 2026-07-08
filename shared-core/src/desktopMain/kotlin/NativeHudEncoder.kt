@@ -572,7 +572,7 @@ class NativeHudEncoder(
                 settings.mapType
             }
 
-            val mapKey = "${settings.mapType}_${settings.mapZoomOffset}_${minLat}_${maxLat}_${minLon}_${maxLon}"
+            val mapKey = "${settings.mapType}_${settings.mapZoomOffset}_${settings.fixMapNorthUp}_${minLat}_${maxLat}_${minLon}_${maxLon}"
             
             var mapImg = cachedMapImage
             var leftLon = cachedMapLeftLon
@@ -684,17 +684,18 @@ class NativeHudEncoder(
                     g.clip = clipCircle
                     
                     val startPt = videoPoints.first()
+                    val L_proj = if (settings.fixMapNorthUp) 0.0 else L
                     
                     fun localX(lon: Double, lat: Double): Double {
                         val px = (lon - startPt.lon) * cosLat
                         val py = lat - startPt.lat
-                        return if (L > 1e-7) (px * dy - py * dx) / L else px
+                        return if (L_proj > 1e-7) (px * dy - py * dx) / L_proj else px
                     }
                     
                     fun localY(lon: Double, lat: Double): Double {
                         val px = (lon - startPt.lon) * cosLat
                         val py = lat - startPt.lat
-                        return if (L > 1e-7) -(px * dx + py * dy) / L else -py
+                        return if (L_proj > 1e-7) -(px * dx + py * dy) / L_proj else -py
                     }
                     
                     fun screenX(lon: Double, lat: Double): Float {
