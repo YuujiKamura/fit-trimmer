@@ -189,7 +189,19 @@ class ComposeHudCanvas(
         val minLon = meanLon - maxR_local / cosLat
         val maxLon = meanLon + maxR_local / cosLat
         
-        val mapKey = "${settings.mapType}_${minLat}_${maxLat}_${minLon}_${maxLon}"
+        val calculatedZ = calculateBestZoom(minLat, maxLat, minLon, maxLon)
+        val z = (calculatedZ + settings.mapZoomOffset).coerceIn(9, 18)
+        val actualMapType = if (settings.mapType == "auto") {
+            when {
+                z >= 14 -> "openstreetmap"
+                z == 13 -> "carto_voyager"
+                else -> "carto_light"
+            }
+        } else {
+            settings.mapType
+        }
+
+        val mapKey = "${settings.mapType}_${settings.mapZoomOffset}_${minLat}_${maxLat}_${minLon}_${maxLon}"
         
         var mapImg = cachedMapImage
         var leftLon = cachedMapLeftLon
@@ -198,7 +210,6 @@ class ComposeHudCanvas(
         var bottomLat = cachedMapBottomLat
         
         if (cachedMapKey != mapKey || mapImg == null) {
-            val z = calculateBestZoom(minLat, maxLat, minLon, maxLon)
             val latRadMin = minLat * kotlin.math.PI / 180.0
             val latRadMax = maxLat * kotlin.math.PI / 180.0
             val n = 2.0.pow(z.toDouble())
@@ -225,8 +236,7 @@ class ComposeHudCanvas(
                 // Fast cache check
                 for (ty in tY1..tY2) {
                     for (tx in tX1..tX2) {
-                        val mapType = settings.mapType
-                        val tileKey = "${mapType}_${z}_${tx}_${ty}"
+                        val tileKey = "${actualMapType}_${z}_${tx}_${ty}"
                         val tileFile = java.io.File(cacheDir, "${tileKey}.png")
                         if (!tileFile.exists()) {
                             val lastFail = failedTiles[tileKey]
@@ -236,7 +246,7 @@ class ComposeHudCanvas(
                                 // Trigger background download
                                 if (downloadingTiles.add(tileKey)) {
                                     downloadExecutor.submit {
-                                        val urlStr = when (mapType) {
+                                        val urlStr = when (actualMapType) {
                                             "carto_light" -> "https://basemaps.cartocdn.com/light_all/$z/$tx/$ty.png"
                                             "carto_dark" -> "https://basemaps.cartocdn.com/dark_all/$z/$tx/$ty.png"
                                             "carto_voyager" -> "https://basemaps.cartocdn.com/rastertiles/voyager/$z/$tx/$ty.png"
@@ -389,14 +399,14 @@ class ComposeHudCanvas(
         val maxDiff = maxOf(maxLat - minLat, maxLon - minLon)
         if (maxDiff <= 0.0) return 16
         
-        for (z in 16 downTo 12) {
+        for (z in 16 downTo 9) {
             val n = 2.0.pow(z.toDouble())
             val tileSizeDeg = 360.0 / n
             if (maxDiff < tileSizeDeg * 2.0) {
                 return z
             }
         }
-        return 12
+        return 9
     }
 }
 

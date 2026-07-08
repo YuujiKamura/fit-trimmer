@@ -50,9 +50,10 @@ data class HudSettings(
     val showDistanceTime: Boolean = true,
     val bodyWeightKg: Double = 0.0,
     val mapSizeScale: Float = 1.0f,
-    val mapType: String = "openstreetmap",
+    val mapType: String = "auto",
     val mapPosition: String = "top_right",
     val hudBgAlpha: Float = 0.0f,
-    val mapZoomScale: Float = 0.55f
+    val mapZoomScale: Float = 0.55f,
+    val mapZoomOffset: Int = 0
 )
 
