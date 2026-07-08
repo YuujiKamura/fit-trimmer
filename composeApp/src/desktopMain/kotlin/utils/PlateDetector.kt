@@ -59,8 +59,8 @@ class PlateDetector private constructor() : AutoCloseable {
     }
 
     init {
-        val modelStream = PlateDetector::class.java.getResourceAsStream("/yolov8n_plate.onnx")
-            ?: throw IllegalStateException("Model yolov8n_plate.onnx not found in resources")
+        val modelStream = PlateDetector::class.java.getResourceAsStream("/yolov8n.onnx")
+            ?: throw IllegalStateException("Model yolov8n.onnx not found in resources")
         val modelBytes = modelStream.use { it.readBytes() }
         
         val availableProviders = OrtEnvironment.getAvailableProviders()
@@ -171,17 +171,28 @@ class PlateDetector private constructor() : AutoCloseable {
                 val outputTensor = outputs[0] as OnnxTensor
                 val tInference = System.nanoTime()
                 
-                // YOLOv8 output is [1, 5, 8400]
+                // Standard YOLOv8 output is [1, 84, 8400] for 80 classes.
                 // Bulk copy the output data into a JVM heap array in a single operation
                 // to eliminate DirectBuffer.get(index) JNI boundary checking overhead inside the loop.
                 val buffer = outputTensor.floatBuffer
-                val outputData = FloatArray(5 * 8400)
+                val outputData = FloatArray(84 * 8400)
                 buffer.get(outputData)
                 
                 val boxes = mutableListOf<DetectedBox>()
+                // Target COCO classes for vehicles: 2 (car), 3 (motorcycle), 5 (bus), 7 (truck)
+                // In YOLOv8, class scores start at index 4, so offset = 4 + classIndex
+                val targetOffsets = intArrayOf(6, 7, 9, 11)
+
                 for (i in 0 until 8400) {
-                    val score = outputData[4 * 8400 + i]
-                    if (score >= confThreshold) {
+                    var maxScore = 0f
+                    for (offset in targetOffsets) {
+                        val score = outputData[offset * 8400 + i]
+                        if (score > maxScore) {
+                            maxScore = score
+                        }
+                    }
+
+                    if (maxScore >= confThreshold) {
                         val cx = outputData[0 * 8400 + i]
                         val cy = outputData[1 * 8400 + i]
                         val w = outputData[2 * 8400 + i]
@@ -192,7 +203,7 @@ class PlateDetector private constructor() : AutoCloseable {
                         val x2 = cx + w / 2f
                         val y2 = cy + h / 2f
                         
-                        boxes.add(DetectedBox(x1, y1, x2, y2, score))
+                        boxes.add(DetectedBox(x1, y1, x2, y2, maxScore))
                     }
                 }
                 
@@ -200,11 +211,21 @@ class PlateDetector private constructor() : AutoCloseable {
                 val mapped = nmsBoxes.map { box ->
                     val scaleX = width.toFloat() / 640f
                     val scaleY = height.toFloat() / 640f
-                    val x1 = (box.x1 * scaleX).toInt().coerceAtLeast(0)
-                    val y1 = (box.y1 * scaleY).toInt().coerceAtLeast(0)
-                    val x2 = (box.x2 * scaleX).toInt().coerceAtMost(width)
-                    val y2 = (box.y2 * scaleY).toInt().coerceAtMost(height)
-                    PlateBox(x1, y1, x2, y2)
+                    val bx1 = (box.x1 * scaleX).coerceIn(0f, width.toFloat())
+                    val by1 = (box.y1 * scaleY).coerceIn(0f, height.toFloat())
+                    val bx2 = (box.x2 * scaleX).coerceIn(0f, width.toFloat())
+                    val by2 = (box.y2 * scaleY).coerceIn(0f, height.toFloat())
+
+                    // Crop to vehicle bottom 50% where plates are safely located
+                    val carHeight = by2 - by1
+                    val finalY1 = by1 + (carHeight * 0.50f)
+
+                    PlateBox(
+                        x1 = bx1.toInt(),
+                        y1 = finalY1.toInt(),
+                        x2 = bx2.toInt(),
+                        y2 = by2.toInt()
+                    )
                 }
                 val tPostprocess = System.nanoTime()
 

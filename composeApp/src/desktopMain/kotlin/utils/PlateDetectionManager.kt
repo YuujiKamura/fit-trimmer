@@ -465,7 +465,7 @@ object PlateDetectionManager {
                     inferencePerformed = true
                     skipReason = "Scan (ONNX)"
                     System.arraycopy(frame.buffer, 0, imgData, 0, frameBytes)
-                    val rawBoxes = detector.detect(img, confThreshold = 0.08f)
+                    val rawBoxes = detector.detect(img, confThreshold = 0.20f)
                     val scaledBoxes = rawBoxes.map { box ->
                         val scaleX = videoWidth.toFloat() / 640f
                         val scaleY = videoHeight.toFloat() / 640f
