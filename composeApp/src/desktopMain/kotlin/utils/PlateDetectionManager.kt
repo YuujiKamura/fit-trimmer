@@ -278,6 +278,7 @@ object PlateDetectionManager {
         println("  - Merge gap: ${String.format(java.util.Locale.US, "%.1f", effectiveMergeGapSeconds)}s ($mergeGapFrames frames)")
         println("  - Total target segments to decode: ${segments.size}")
         println("  - Total video frames in timeline: $totalFrames")
+        val totalActiveFrames = estimatedTargetFrames.coerceAtLeast(1L)
         println("  - Target frames to decode & process: $estimatedTargetFrames")
         println("  - Skipped frames (no decode): $skipped (${String.format(java.util.Locale.US, "%.1f", ratio)}% reduction)")
 
@@ -332,11 +333,7 @@ object PlateDetectionManager {
                         val skipEnd = currentFrame - 1
                         
                         println("DEBUG: Fast-forwarding Skip Zone - Frames [$skipStart to $skipEnd]")
-                        for (f in skipStart..skipEnd) {
-                            if (!isActive || onCancel()) break
-                            val timeMs = (f * 1000.0 / effectiveDetectionFps).toLong()
-                            frameChannel.send(DecodedFrame(f.toLong(), timeMs, ByteArray(0), skipDetection = true, decodeMs = 0.0))
-                        }
+                        // Skip sending dummy frames to avoid polluting progress denominator
                     } else {
                         // 2. Scan segment zone: Decode segment using FFmpeg
                         val seg = segments[segIdx]
@@ -514,11 +511,11 @@ object PlateDetectionManager {
                 frameIndex++
                 
                 val tProgressStart = System.nanoTime()
-                val statusText = "Frame $frameIndex/$totalFrames: $skipReason"
-                if (totalFrames > 0) {
-                    val progress = (frameIndex.toFloat() / totalFrames.toFloat()).coerceIn(0f, 1f)
+                val statusText = "Frame $frameIndex/$totalActiveFrames: $skipReason"
+                if (totalActiveFrames > 0L) {
+                    val progress = (frameIndex.toFloat() / totalActiveFrames.toFloat()).coerceIn(0f, 1f)
                     val currentPercent = progress * 100f
-                    if (currentPercent - lastProgressPercent >= 0.5f || frameIndex == totalFrames) {
+                    if (currentPercent - lastProgressPercent >= 0.5f || frameIndex == totalActiveFrames) {
                         onProgress(currentPercent, statusText)
                         lastProgressPercent = currentPercent
                     }
@@ -526,29 +523,29 @@ object PlateDetectionManager {
                 val tProgressEnd = System.nanoTime()
 
                 // Progress & ETA estimation logs
-                if (frameIndex > 0L && (frameIndex % 50 == 0L || frameIndex == totalFrames)) {
+                if (frameIndex > 0L && (frameIndex % 50 == 0L || frameIndex == totalActiveFrames)) {
                     val elapsedMs = System.currentTimeMillis() - scanStartTimeMs
                     val elapsedSec = elapsedMs / 1000.0
                     val avgFps = if (elapsedSec > 0.0) frameIndex.toDouble() / elapsedSec else 0.0
-                    val remainingFrames = totalFrames - frameIndex
+                    val remainingFrames = totalActiveFrames - frameIndex
                     val etaSec = if (avgFps > 0.0) (remainingFrames / avgFps).toLong() else 0L
                     val etaMin = etaSec / 60
                     val etaRemainingSec = etaSec % 60
                     val etaStr = if (etaMin > 0) "${etaMin}m ${etaRemainingSec}s" else "${etaRemainingSec}s"
                     val elapsedStr = if (elapsedMs >= 60000) "${elapsedMs / 60000}m ${(elapsedMs % 60000) / 1000}s" else "${String.format(java.util.Locale.US, "%.1f", elapsedSec)}s"
                     val skipRatio = if (frameIndex > 0L) (skippedFrames.toFloat() / frameIndex.toFloat() * 100f) else 0f
-                    val progressPercent = if (totalFrames > 0L) (frameIndex.toFloat() / totalFrames.toFloat() * 100f) else 0f
+                    val progressPercent = if (totalActiveFrames > 0L) (frameIndex.toFloat() / totalActiveFrames.toFloat() * 100f) else 0f
                     
                     val avgDecodeMs = totalDecodeMs / frameIndex.toDouble()
                     val avgYoloMs = if (yoloCount > 0L) totalYoloMs / yoloCount.toDouble() else 0.0
                     val estSavedMs = skippedFrames * (if (yoloCount > 0L) avgYoloMs else 80.0)
                     val estSavedSec = estSavedMs / 1000.0
                     
-                    println("DEBUG: Plate Scan Progress: ${String.format(java.util.Locale.US, "%.1f", progressPercent)}% ($frameIndex/$totalFrames) | Speed: ${String.format(java.util.Locale.US, "%.1f", avgFps)} fps | Skipped: $skippedFrames (Speed/Trim=$skippedSpeedTrimFrames, Tracking=$skippedTrackingFrames) (${String.format(java.util.Locale.US, "%.1f", skipRatio)}%) | Elapsed: $elapsedStr | ETA: $etaStr | AvgDecode: ${String.format(java.util.Locale.US, "%.1f", avgDecodeMs)}ms | AvgYolo: ${String.format(java.util.Locale.US, "%.1f", avgYoloMs)}ms | Saved: ~${String.format(java.util.Locale.US, "%.1f", estSavedSec)}s")
+                    println("DEBUG: Plate Scan Progress: ${String.format(java.util.Locale.US, "%.1f", progressPercent)}% ($frameIndex/$totalActiveFrames) | Speed: ${String.format(java.util.Locale.US, "%.1f", avgFps)} fps | Skipped: $skippedFrames (Speed/Trim=$skippedSpeedTrimFrames, Tracking=$skippedTrackingFrames) (${String.format(java.util.Locale.US, "%.1f", skipRatio)}%) | Elapsed: $elapsedStr | ETA: $etaStr | AvgDecode: ${String.format(java.util.Locale.US, "%.1f", avgDecodeMs)}ms | AvgYolo: ${String.format(java.util.Locale.US, "%.1f", avgYoloMs)}ms | Saved: ~${String.format(java.util.Locale.US, "%.1f", estSavedSec)}s")
                     
                     val jsonProgress = String.format(java.util.Locale.US, 
                         "{\"percent\":%.1f,\"current\":%d,\"total\":%d,\"fps\":%.1f,\"skipped\":%d,\"elapsed_ms\":%d,\"eta_sec\":%d,\"yolo_count\":%d,\"skipped_count\":%d,\"avg_decode_ms\":%.2f,\"avg_yolo_ms\":%.2f,\"saved_ms\":%.1f}",
-                        progressPercent, frameIndex, totalFrames, avgFps, skippedFrames, elapsedMs, etaSec, yoloCount, skippedFrames, avgDecodeMs, avgYoloMs, estSavedMs
+                        progressPercent, frameIndex, totalActiveFrames, avgFps, skippedFrames, elapsedMs, etaSec, yoloCount, skippedFrames, avgDecodeMs, avgYoloMs, estSavedMs
                     )
                     println("PROGRESS_METRIC: $jsonProgress")
                 }
