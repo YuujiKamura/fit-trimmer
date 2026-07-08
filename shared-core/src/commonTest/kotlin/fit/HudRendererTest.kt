@@ -122,6 +122,71 @@ class HudRendererTest {
     }
 
     @Test
+    fun testHudTemperatureRendering() {
+        val config = HudConfig(
+            valSize = 40f, tightness = 1f, spacing = 20f,
+            xOffset = 40f, yOffset = 100f, graphH = 60f, graphW = 300f,
+            useImperialUnits = false
+        )
+        val renderer = HudRenderer(config)
+
+        // 1. With temperature data (Metric Celsius)
+        val telemetryWithTemp = FitParser.TelemetryPoint(
+            timestamp = 1151028589.0,
+            speed = 30.0,
+            power = 150.0,
+            cadence = 90.0,
+            heartRate = 140.0,
+            elevation = 120.0,
+            grade = 0.0,
+            temperature = 25.4
+        )
+
+        val canvasCelsius = TestHudCanvas()
+        renderer.renderFrame(
+            canvasCelsius,
+            telemetryWithTemp,
+            listOf(telemetryWithTemp),
+            emptyList(),
+            emptyList(),
+            0.0f,
+            isValid = true
+        )
+
+        assertTrue(canvasCelsius.drawnTexts.contains("25°C"), "Should render 25°C in Metric mode (got ${canvasCelsius.drawnTexts})")
+
+        // 2. With temperature data (Imperial Fahrenheit)
+        val configImperial = config.copy(useImperialUnits = true)
+        val rendererImperial = HudRenderer(configImperial)
+        val canvasFahrenheit = TestHudCanvas()
+        rendererImperial.renderFrame(
+            canvasFahrenheit,
+            telemetryWithTemp,
+            listOf(telemetryWithTemp),
+            emptyList(),
+            emptyList(),
+            0.0f,
+            isValid = true
+        )
+        assertTrue(canvasFahrenheit.drawnTexts.contains("78°F"), "Should render 78°F in Imperial mode (got ${canvasFahrenheit.drawnTexts})")
+
+        // 3. Without temperature data (temperature = 0.0) -> Should not draw temp
+        val telemetryNoTemp = telemetryWithTemp.copy(temperature = 0.0)
+        val canvasNoTemp = TestHudCanvas()
+        renderer.renderFrame(
+            canvasNoTemp,
+            telemetryNoTemp,
+            listOf(telemetryNoTemp),
+            emptyList(),
+            emptyList(),
+            0.0f,
+            isValid = true
+        )
+        val hasCelsiusText = canvasNoTemp.drawnTexts.any { it.contains("°C") || it.contains("°F") }
+        assertFalse(hasCelsiusText, "Should not render temperature text when temperature is 0.0 (got ${canvasNoTemp.drawnTexts})")
+    }
+
+    @Test
     fun testHudNumericAndGradeFormatting() {
         val config = HudConfig(
             valSize = 40f, tightness = 1f, spacing = 20f,

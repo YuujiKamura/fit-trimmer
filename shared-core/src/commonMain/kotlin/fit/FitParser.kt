@@ -210,7 +210,8 @@ class FitParser(private val bytes: ByteArray) {
         val lat: Double = 0.0,
         val lon: Double = 0.0,
         val distance: Double = 0.0,
-        val elapsedSeconds: Int = 0
+        val elapsedSeconds: Int = 0,
+        val temperature: Double = 0.0
     )
 
     fun getTelemetry(cancelCheck: (() -> Boolean)? = null): List<TelemetryPoint> {
@@ -229,6 +230,7 @@ class FitParser(private val bytes: ByteArray) {
                 val rawElev = fields[78]?.value ?: fields[2]?.value
                 val elevVal = if (rawElev != null) (rawElev.toDouble() / 5.0) - 500.0 else 0.0
                 val gradeVal = 0.0 // Field 9 is temperature, not grade. We will calculate grade dynamically below.
+                val tempVal = fields[9]?.value?.toDouble() ?: 0.0
                 
                 val rawLat = fields[0]?.value
                 val rawLon = fields[1]?.value
@@ -237,7 +239,7 @@ class FitParser(private val bytes: ByteArray) {
                 val rawDistance = fields[5]?.value
                 val distanceVal = if (rawDistance != null) rawDistance.toDouble() / 100.0 else 0.0
                 
-                list.add(TelemetryPoint(ts, speedVal, powerVal, cadenceVal, hrVal, elevVal, gradeVal, latVal, lonVal, distanceVal))
+                list.add(TelemetryPoint(ts, speedVal, powerVal, cadenceVal, hrVal, elevVal, gradeVal, latVal, lonVal, distanceVal, temperature = tempVal))
             }
         }
         
