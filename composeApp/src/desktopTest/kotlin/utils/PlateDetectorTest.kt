@@ -664,6 +664,51 @@ class PlateDetectorTest {
         kotlin.test.assertEquals(1500L, range.endMs, "Scan range endMs must match trim end")
     }
 
+    @Test
+    fun testTemporalInferenceSkipping() {
+        val cropTestMp4 = File("C:\\Users\\yuuji\\fit-trimmer\\composeApp\\scratch\\crop_test.mp4")
+        if (!cropTestMp4.exists()) {
+            println("Skipping test: crop_test.mp4 not found")
+            return
+        }
+
+        val detector = PlateDetector.getInstance()
+        detector.resetPerfStats()
+
+        // Configure high density detection (4.0 FPS) over the 2-second clip.
+        // Total expected frames = 2.0s * 4.0 FPS = 8 frames.
+        val settings = fit.HudSettings(
+            plateDetectionFps = 4.0,
+            plateMaxSpeedKmh = 100.0 // Ensure it's not skipped due to dummy speed
+        )
+
+        val cache = runBlocking {
+            PlateDetectionManager.runDetection(
+                videoPath = cropTestMp4.absolutePath,
+                telemetryPoints = emptyList(),
+                adjustedStartUtc = "2026-06-14T08:02:06Z",
+                onProgress = {},
+                onCancel = { false },
+                settings = settings
+            )
+        }
+
+        kotlin.test.assertNotNull(cache, "Scan cache must be created")
+        
+        val framesWithPlates = cache.records.size
+        val totalInferences = detector.totalFramesProcessed
+        
+        println("DEBUG: Temporal skipping validation:")
+        println("  - Total records created: ${cache.records.size}")
+        println("  - Total ONNX inferences performed: $totalInferences")
+
+        // We assert that totalInferences is at most 4 (at least 50% of the 8 frames are skipped).
+        // Under current (pre-optimization) implementation, this will be 8, so the test will fail.
+        if (framesWithPlates > 0) {
+            kotlin.test.assertTrue(totalInferences <= 4, "ONNX inferences ($totalInferences) should be at most 4 due to temporal skipping")
+        }
+    }
+
     private class SGObserver : java.awt.image.ImageObserver {
         override fun imageUpdate(img: java.awt.Image?, infoflags: Int, x: Int, y: Int, width: Int, height: Int): Boolean {
             return false

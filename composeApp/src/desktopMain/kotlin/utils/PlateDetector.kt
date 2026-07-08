@@ -22,7 +22,7 @@ class PlateDetector private constructor() : AutoCloseable {
     var lastGetRgbBypassed = false
 
     // Performance tracking statistics
-    private var totalFramesProcessed = 0L
+    internal var totalFramesProcessed = 0L
     private var totalResizeMs = 0.0
     private var totalPreprocessMs = 0.0
     private var totalInferenceMs = 0.0
