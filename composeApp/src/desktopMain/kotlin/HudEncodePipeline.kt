@@ -18,7 +18,7 @@ typealias PlatePreScanner = suspend (
     videoPath: String,
     telemetryPoints: List<FitParser.TelemetryPoint>,
     adjustedStartUtc: String,
-    onProgress: (Float) -> Unit,
+    onProgress: (Float, String) -> Unit,
     onCancel: () -> Boolean,
     settings: HudSettings,
     scanRanges: List<Pair<Double, Double>>?
@@ -65,8 +65,8 @@ object HudEncodePipeline {
             videoPath,
             telemetryPoints,
             adjustedStartUtc,
-            { percent ->
-                onProgress(0f, "Scanning license plates before encoding: ${"%.1f".format(java.util.Locale.US, percent)}%")
+            { percent, status ->
+                onProgress(0f, "Scanning license plates before encoding: ${"%.1f".format(java.util.Locale.US, percent)}% ($status)")
             },
             cancelSupplier,
             settings,

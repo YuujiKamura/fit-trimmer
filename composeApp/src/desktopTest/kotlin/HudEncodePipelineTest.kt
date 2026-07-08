@@ -54,7 +54,7 @@ class HudEncodePipelineTest {
                     assertEquals(1.0, settings.plateDetectionFps)
                     assertEquals(2.0, settings.platePaddingSeconds)
                     assertEquals(5.0, settings.plateMergeGapSeconds)
-                    progress(42.5f)
+                    progress(42.5f, "Mock status")
                     VideoPlatesCache(
                         videoPath = path,
                         records = listOf(PlateRecord(1000L, listOf(PlateBox(1, 2, 30, 12)))),
