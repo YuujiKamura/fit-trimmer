@@ -357,6 +357,110 @@ class HudEncodePipelineTest {
     }
 
     @Test
+    fun testPlateMaskingGroundTruthAccuracy() = runBlocking {
+        val videoPath = "F:\\Insta360\\20260708\\VID_20260708_184458_001.mp4"
+        val fitPath = "F:\\Insta360\\20260708\\Evening_Ride.fit"
+        val videoStartUtc = "2026-07-08T09:44:58Z"
+
+        val video = java.io.File(videoPath)
+        val fitFile = java.io.File(fitPath)
+        if (!video.exists() || !fitFile.exists()) {
+            println("Skipping test: Real dataset files not found locally.")
+            return@runBlocking
+        }
+
+        val tempDir = java.io.File(System.getProperty("java.io.tmpdir"))
+        val outFileName = "test_masking_ground_truth_${System.nanoTime()}"
+        val destFile = java.io.File(tempDir, "$outFileName.mp4")
+
+        // Reset cache to ensure clean detection
+        fit.PlateCacheManager.deleteCache(videoPath)
+
+        try {
+            // Configure settings to disable Padding and Merge Gap for strict ground truth mapping
+            // Also disable HUD overlays to avoid overlapping clean road pixels with HUD widgets
+            val settings = HudSettings(
+                blurLicensePlates = true,
+                plateMaxSpeedKmh = 100.0,
+                plateDetectionFps = 1.0,
+                platePaddingSeconds = 0.0,
+                plateMergeGapSeconds = 0.0,
+                showSpeed = false,
+                showCadence = false,
+                showHeartRate = false,
+                showPower = false,
+                showWkg = false,
+                showPowerTrend = false,
+                showGrade = false,
+                showElevation = false,
+                showDistanceTime = false,
+                mapPosition = "top_right",
+                mapType = "auto"
+            )
+
+            // 1. Encode 10s video (180.0s to 190.0s)
+            val result = HudEncodePipeline.execute(
+                s = settings,
+                fitPath = fitPath,
+                videoPath = videoPath,
+                outputDir = tempDir.absolutePath,
+                videoStartUtc = videoStartUtc,
+                ranges = listOf(180.0 to 190.0),
+                destFiles = listOf(destFile),
+                shouldResume = false,
+                onProgress = { _, _ -> },
+                onFrame = {},
+                cancelSupplier = { false },
+                showLivePreviewSupplier = { false }
+            )
+
+            assertTrue(result.contains("Finished Successfully") || result.contains("Copied to Cloud"), "Encode must succeed")
+            assertTrue(destFile.exists(), "Output video file must be generated")
+
+            val width = 2704
+            val height = 1520
+
+            // ----------------------------------------------------
+            // CASE 1: VERIFY CORRECT BLUR (Plate must be masked)
+            // ----------------------------------------------------
+            // Timestamp: 187.0s (7.0s in output)
+            // Black Car Plate Area (2.7K): x=842, y=975, w=35, h=14
+            val imgOrig187 = decodeFrameAt(videoPath, 187.0, width, height)
+            val imgMasked187 = decodeFrameAt(destFile.absolutePath, 7.0, width, height)
+
+            val idOrigCar187 = calculateIdentityRate(imgOrig187, 842, 975, 35, 14)
+            val idMaskedCar187 = calculateIdentityRate(imgMasked187, 842, 975, 35, 14)
+
+            println("GROUND_TRUTH_TEST: [Correct Blur Verification at 187.0s]")
+            println("  - Black Car (187.0s): OriginalIdentity=$idOrigCar187, MaskedIdentity=$idMaskedCar187")
+            
+            // Masked identity rate must show significant increase due to mosaic injection (typically >70%)
+            assertTrue(idMaskedCar187 > 0.60, "At 187.0s, black car license plate MUST be masked. MaskedIdentity ($idMaskedCar187) must be > 0.60.")
+
+            // ----------------------------------------------------
+            // CASE 2: VERIFY NO BLUR (No plates, must NOT be masked)
+            // ----------------------------------------------------
+            // Timestamp: 185.0s (5.0s in output)
+            // The black car has not arrived yet. The plate region should be standard road texture.
+            val imgOrig185 = decodeFrameAt(videoPath, 185.0, width, height)
+            val imgMasked185 = decodeFrameAt(destFile.absolutePath, 5.0, width, height)
+
+            val idOrigCar185 = calculateIdentityRate(imgOrig185, 842, 975, 35, 14)
+            val idMaskedCar185 = calculateIdentityRate(imgMasked185, 842, 975, 35, 14)
+
+            println("GROUND_TRUTH_TEST: [No Blur Verification at 185.0s]")
+            println("  - Road Area (185.0s): OriginalIdentity=$idOrigCar185, MaskedIdentity=$idMaskedCar185")
+            
+            // Masked identity rate must remain low (typically < 30%), accounting for normal video compression smoothing
+            assertTrue(idMaskedCar185 < 0.35, "At 185.0s, road area MUST NOT be masked. MaskedIdentity ($idMaskedCar185) must be < 0.35.")
+
+        } finally {
+            if (destFile.exists()) destFile.delete()
+            fit.PlateCacheManager.deleteCache(videoPath)
+        }
+    }
+
+    @Test
     fun testPlateMaskingPixelEdgeVariance() = runBlocking {
         val videoPath = "F:\\Insta360\\20260708\\VID_20260708_184458_001.mp4"
         val fitPath = "F:\\Insta360\\20260708\\Evening_Ride.fit"
