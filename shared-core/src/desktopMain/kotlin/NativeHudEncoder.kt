@@ -2089,7 +2089,8 @@ class NativeHudEncoder(
         videoHeight: Int,
         videoFps: String,
         exportWidth: Int,
-        exportHeight: Int
+        exportHeight: Int,
+        trimStartSeconds: Double = 0.0
     ) {
         try { jobDir.mkdirs(); File(jobDir, ".video_source").writeText(videoPath) } catch(e: Exception) { e.printStackTrace() }
         val runBlur = settings.blurLicensePlates && plateCache.records.isNotEmpty()
@@ -2112,7 +2113,7 @@ class NativeHudEncoder(
             targetWidth = exportWidth.toFloat(),
             targetHeight = exportHeight.toFloat(),
             timeBufferMs = settings.plateMaskTimeBufferMs,
-            sourceStartTimeMs = 0L
+            sourceStartTimeMs = (trimStartSeconds * 1000.0).toLong()
         )
 
         val maskVideoFile = File(jobDir, "plate_mask.mkv")

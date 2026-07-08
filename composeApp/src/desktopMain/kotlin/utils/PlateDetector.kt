@@ -70,7 +70,8 @@ class PlateDetector private constructor() : AutoCloseable {
         // Single model inference achieves best CPU latency and lowest context switching overhead
         // when using 1 inter-op thread and a small number of intra-op threads.
         val cores = Runtime.getRuntime().availableProcessors().coerceAtLeast(1)
-        val intraThreads = (cores / 2).coerceIn(1, 2)
+        // Allow up to 8 threads (or half of CPU cores) for faster parallel ONNX execution on multi-core host
+        val intraThreads = (cores / 2).coerceIn(1, 8)
         opts.setIntraOpNumThreads(intraThreads)
         opts.setInterOpNumThreads(1)
         
