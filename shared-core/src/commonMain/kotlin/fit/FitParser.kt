@@ -216,6 +216,7 @@ class FitParser(private val bytes: ByteArray) {
 
     fun getTelemetry(cancelCheck: (() -> Boolean)? = null): List<TelemetryPoint> {
         val list = mutableListOf<TelemetryPoint>()
+        var lastTemp: Double? = null
         for (r in records) {
             checkCanceled(cancelCheck)
             if (r is FitRecord.Data && r.globalMessageNumber == 20) {
@@ -230,7 +231,11 @@ class FitParser(private val bytes: ByteArray) {
                 val rawElev = fields[78]?.value ?: fields[2]?.value
                 val elevVal = if (rawElev != null) (rawElev.toDouble() / 5.0) - 500.0 else 0.0
                 val gradeVal = 0.0 // Field 9 is temperature, not grade. We will calculate grade dynamically below.
-                val tempVal = fields[13]?.value?.toDouble() ?: 0.0
+                val tempRaw = fields[13]?.value?.toDouble()
+                if (tempRaw != null) {
+                    lastTemp = tempRaw
+                }
+                val tempVal = lastTemp ?: 0.0
                 
                 val rawLat = fields[0]?.value
                 val rawLon = fields[1]?.value
@@ -240,6 +245,20 @@ class FitParser(private val bytes: ByteArray) {
                 val distanceVal = if (rawDistance != null) rawDistance.toDouble() / 100.0 else 0.0
                 
                 list.add(TelemetryPoint(ts, speedVal, powerVal, cadenceVal, hrVal, elevVal, gradeVal, latVal, lonVal, distanceVal, temperature = tempVal))
+            }
+        }
+
+        // Backfill temperature if the first few points had 0.0 before any valid temp was encountered
+        if (list.isNotEmpty()) {
+            val firstValidTemp = list.firstOrNull { it.temperature != 0.0 }?.temperature
+            if (firstValidTemp != null) {
+                for (i in list.indices) {
+                    if (list[i].temperature == 0.0) {
+                        list[i] = list[i].copy(temperature = firstValidTemp)
+                    } else {
+                        break
+                    }
+                }
             }
         }
         
