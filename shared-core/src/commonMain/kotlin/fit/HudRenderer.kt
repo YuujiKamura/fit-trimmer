@@ -41,7 +41,8 @@ data class HudConfig(
     val mapZoomOffset: Int = 0,
     val fixMapNorthUp: Boolean = false,
     val mapMarkerSizeScale: Float = 1.0f,
-    val mapTextSizeScale: Float = 1.0f
+    val mapTextSizeScale: Float = 1.0f,
+    val mapRangeMode: String = "full"
 )
 
 
@@ -598,13 +599,13 @@ class HudRenderer(val config: HudConfig) {
 
                 val startAlt = elevGraphPoints.first().elevation
                 val endAlt = elevGraphPoints.last().elevation
-                val startText = startLabel + (if (config.useImperialUnits) {
+                val startText = startLabel + "▲ " + (if (config.useImperialUnits) {
                     "${(startAlt * 3.28084).roundToInt()}ft"
                 } else {
                     "${startAlt.roundToInt()}m"
                 }) + startBearingStr
                 
-                val endText = endLabel + (if (config.useImperialUnits) {
+                val endText = endLabel + "▲ " + (if (config.useImperialUnits) {
                     "${(endAlt * 3.28084).roundToInt()}ft"
                 } else {
                     "${endAlt.roundToInt()}m"
@@ -623,7 +624,7 @@ class HudRenderer(val config: HudConfig) {
                     
                     val peakBearingStr = ""
 
-                    val peakText = peakLabel + (if (config.useImperialUnits) {
+                    val peakText = peakLabel + "▲ " + (if (config.useImperialUnits) {
                         "${(maxAlt * 3.28084).roundToInt()}ft"
                     } else {
                         "${maxAlt.roundToInt()}m"
@@ -646,7 +647,7 @@ class HudRenderer(val config: HudConfig) {
                     
                     val valleyBearingStr = ""
 
-                    val valleyText = valleyLabel + (if (config.useImperialUnits) {
+                    val valleyText = valleyLabel + "▼ " + (if (config.useImperialUnits) {
                         "${(minAlt * 3.28084).roundToInt()}ft"
                     } else {
                         "${minAlt.roundToInt()}m"
@@ -932,8 +933,24 @@ class HudRenderer(val config: HudConfig) {
         sf: Float
     ) {
         // Filter out invalid GPS coordinates (0.0, 0.0)
-        val validRoutePoints = videoPoints.filter { it.lat != 0.0 || it.lon != 0.0 }
-        if (validRoutePoints.size < 2) return
+        val baseRoutePoints = videoPoints.filter { it.lat != 0.0 || it.lon != 0.0 }
+        if (baseRoutePoints.size < 2) return
+
+        val validRoutePoints = if (config.mapRangeMode == "highest_elevation") {
+            val highestPt = baseRoutePoints.maxByOrNull { it.elevation }
+            if (highestPt != null) {
+                val idx = baseRoutePoints.indexOf(highestPt)
+                if (idx >= 1) {
+                    baseRoutePoints.subList(0, idx + 1)
+                } else {
+                    baseRoutePoints
+                }
+            } else {
+                baseRoutePoints
+            }
+        } else {
+            baseRoutePoints
+        }
 
         // 1. Layout parameters (Scaled & Enlarged for high fidelity)
         val R = 110f * config.mapSizeScale * sf // 円の半径 (R) - スライダー可変対応
@@ -1067,8 +1084,8 @@ class HudRenderer(val config: HudConfig) {
 
         // Draw route line (with scaled line width and black outline shadow)
         val routeLinePoints = drawPoints.map { projectPoint(it) }
-        canvas.drawLine(routeLinePoints, "#555555", width = 4.2f * sf, alpha = 0.8f)
-        canvas.drawLine(routeLinePoints, "#ff9100", width = 2.8f * sf, alpha = 0.9f)
+        canvas.drawLine(routeLinePoints, "#ffffff", width = 4.2f * sf, alpha = 0.8f)
+        canvas.drawLine(routeLinePoints, "#007AFF", width = 2.8f * sf, alpha = 0.9f)
 
         // 5. Draw Start/End Markers (Scaled with black outline shadow)
         val startMapPt = projectPoint(startPt)

@@ -568,7 +568,7 @@ class HudRendererTest {
         val padR = 89.645875f
         
         // sf = 59.27 / 40.0 = 1.48175f. Route line width is 2.8f * sf = 4.1489f
-        val routeLines = canvas.drawnLines.filter { it.color == "#ff9100" && kotlin.math.abs(it.width - 4.1489f) < 0.01f }
+        val routeLines = canvas.drawnLines.filter { it.color == "#007AFF" && kotlin.math.abs(it.width - 4.1489f) < 0.01f }
         assertTrue(routeLines.isNotEmpty(), "Loop route must draw some line segments")
         
         var maxDistance = 0f
@@ -623,7 +623,7 @@ class HudRendererTest {
         val mcx = canvas.width - marginX - R
         val mcy = 40f * sf + R
         
-        val routeLines = canvas.drawnLines.filter { it.color == "#ff9100" && kotlin.math.abs(it.width - 4.1489f) < 0.01f }
+        val routeLines = canvas.drawnLines.filter { it.color == "#007AFF" && kotlin.math.abs(it.width - 4.1489f) < 0.01f }
         assertTrue(routeLines.isNotEmpty())
         
         var maxRouteDist = 0f
@@ -689,7 +689,7 @@ class HudRendererTest {
         val marginX = 45f * sf
         val mcx = canvas.width - marginX - R
         
-        val routeLines = canvas.drawnLines.filter { it.color == "#ff9100" && kotlin.math.abs(it.width - 4.1489f) < 0.01f }
+        val routeLines = canvas.drawnLines.filter { it.color == "#007AFF" && kotlin.math.abs(it.width - 4.1489f) < 0.01f }
         assertTrue(routeLines.isNotEmpty())
         
         val middlePtProjX = routeLines[0].points[1].first
@@ -1181,5 +1181,40 @@ class HudRendererTest {
         )
         assertEquals(1.5f, config.mapMarkerSizeScale, "mapMarkerSizeScale config property should be set correctly")
         assertEquals(1.2f, config.mapTextSizeScale, "mapTextSizeScale config property should be set correctly")
+    }
+
+    @Test
+    fun testMiniMap_HighestElevationRestriction() {
+        val config = HudConfig(
+            valSize = 59.27f,
+            tightness = 1f, spacing = 20f,
+            xOffset = 40f, yOffset = 100f, graphH = 60f, graphW = 300f,
+            language = "ja",
+            mapRangeMode = "highest_elevation"
+        )
+        val renderer = HudRenderer(config)
+        
+        val p1 = FitParser.TelemetryPoint(
+            timestamp = 1000.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 50.0, grade = 2.0,
+            distance = 1000.0, elapsedSeconds = 10, lat = 35.0, lon = 135.0
+        )
+        val p2 = FitParser.TelemetryPoint(
+            timestamp = 1005.0, speed = 11.0, power = 105.0, cadence = 81.0, heartRate = 121.0, elevation = 100.0, grade = 2.1,
+            distance = 1750.0, elapsedSeconds = 15, lat = 35.01, lon = 135.0
+        )
+        val p3 = FitParser.TelemetryPoint(
+            timestamp = 1010.0, speed = 12.0, power = 110.0, cadence = 82.0, heartRate = 122.0, elevation = 30.0, grade = 2.2,
+            distance = 2500.0, elapsedSeconds = 20, lat = 35.02, lon = 135.0
+        )
+        val allPoints = listOf(p1, p2, p3)
+        
+        val canvas = TestHudCanvas()
+        renderer.renderFrame(canvas, p3, allPoints, emptyList(), emptyList(), 100.0f, isValid = true)
+        
+        val routeLines = canvas.drawnLines.filter { it.color == "#007AFF" }
+        assertTrue(routeLines.isNotEmpty())
+        
+        val totalDrawnPointsCount = routeLines.flatMap { it.points }.distinct().size
+        assertTrue(totalDrawnPointsCount <= 2, "Drawn route points count should be at most 2, excluding p3 (got $totalDrawnPointsCount)")
     }
 }
