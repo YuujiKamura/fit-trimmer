@@ -96,8 +96,6 @@ fun FitTrimmerMainContent(
     var cDriveTotalSpaceGB by viewModel::cDriveTotalSpaceGB
     var requiredSpaceGB by viewModel::requiredSpaceGB
     var hasEnoughSpace by viewModel::hasEnoughSpace
-    var hasEnoughSpaceForSample by viewModel::hasEnoughSpaceForSample
-    var isSampleEncoding by viewModel::isSampleEncoding
     var appTempSpaceGB by viewModel::appTempSpaceGB
     var isDetectingRoads by remember { mutableStateOf(false) }
     var roadDetectionStatus by remember { mutableStateOf("") }
@@ -685,18 +683,6 @@ fun FitTrimmerMainContent(
         val gibBytes = 1024.0 * 1024.0 * 1024.0
         return (sizeBytes * safetyMultiplier) / gibBytes + bufferGiB
     }
-    val sampleRequiredSpaceGB = remember(videoPath, videoLengthMs, trimStartSeconds, trimEndSeconds) {
-        val f = File(videoPath)
-        if (f.exists() && videoLengthMs > 0) {
-            val totalLengthSec = videoLengthMs / 1000.0
-            val trimEnd = if (trimEndSeconds <= 0.0 || trimEndSeconds > totalLengthSec) totalLengthSec else trimEndSeconds
-            val trimDuration = (trimEnd - trimStartSeconds).coerceAtLeast(0.0)
-            val ratio = minOf(1.0, trimDuration / totalLengthSec)
-            estimateRequiredSpaceGiB((f.length() * ratio).toLong())
-        } else {
-            2.0
-        }
-    }
     LaunchedEffect(videoPath, videoLengthMs, trimStartSeconds, trimEndSeconds, viewModel.splitPoints, viewModel.encodingSegmentStart, viewModel.encodingSegmentEnd) {
         if (videoPath.isNotEmpty()) {
             val f = File(videoPath)
@@ -726,7 +712,7 @@ fun FitTrimmerMainContent(
             requiredSpaceGB = 2.0
         }
     }
-    LaunchedEffect(requiredSpaceGB, sampleRequiredSpaceGB, isEncoding, isSampleEncoding, videoPath) {
+    LaunchedEffect(requiredSpaceGB, isEncoding, videoPath) {
         launch(Dispatchers.IO) {
             while (true) {
                 try {
@@ -770,13 +756,9 @@ fun FitTrimmerMainContent(
                     appTempSpaceGB = totalBytes / (1024.0 * 1024.0 * 1024.0)
                     // The temp files are already stored in temp_work and thus already consuming C: drive space.
                     // The remaining required space is (total estimated required space) - (already written temp space).
-                    // We only subtract appTempSpaceGB for the currently active encoding mode to prevent underestimating the non-active mode.
-                    val remainingNative = if (isEncoding && !isSampleEncoding) maxOf(2.0, requiredSpaceGB - appTempSpaceGB) else requiredSpaceGB
-                    val remainingSample = if (isEncoding && isSampleEncoding) maxOf(2.0, sampleRequiredSpaceGB - appTempSpaceGB) else sampleRequiredSpaceGB
+                    val remainingNative = if (isEncoding) maxOf(2.0, requiredSpaceGB - appTempSpaceGB) else requiredSpaceGB
                     hasEnoughSpace = cDriveFreeSpaceGB >= remainingNative
-                    hasEnoughSpaceForSample = cDriveFreeSpaceGB >= remainingSample
-                    val currentHasEnough = if (isSampleEncoding) hasEnoughSpaceForSample else hasEnoughSpace
-                    if (isEncoding && !currentHasEnough) {
+                    if (isEncoding && !hasEnoughSpace) {
                         isCanceled = true
                         statusText = "CANCELED (Not enough space on C: drive!)"
                     }
@@ -1070,7 +1052,6 @@ fun FitTrimmerMainContent(
                                                 timeOffsetMillis = viewModel.timeOffsetState.millis.toLong(),
                                                 ranges = ranges,
                                                 destFiles = destFiles,
-                                                isSample = false,
                                                 shouldResume = false,
                                                 moveOutputToSource = moveOutputToSource,
                                                 plateTelemetryPoints = viewModel.trimmedTelemetryPoints,
@@ -1373,117 +1354,6 @@ fun FitTrimmerMainContent(
                             Unit
                         }
                     }
-                    val onSampleEncodeClick = remember(settings, fitPath, videoPath, videoStartUtc, adjustedStartUtc, isVideoInFitRange, outputDir, moveOutputToSource, showLivePreview, autoDetectRoadCaptionsOnEncode, telemetryPoints, videoLengthMs, timeOffsetState.millis, trimStartSeconds, trimEndSeconds) {
-                        {
-                            val targetVideoPath = videoPath
-                            var proceed = true
-                            if (!isVideoInFitRange && !args.contains("--auto-sample")) {
-                                val result = javax.swing.JOptionPane.showConfirmDialog(
-                                    null,
-                                    "警告: 動画の記録範囲がFITデータの範囲内に収まっていません。\nエンコードを続行しますか？\n(Warning: The video timeline is not within the FIT activity range. Proceed with encoding?)",
-                                    "確認 (Confirmation)",
-                                    javax.swing.JOptionPane.YES_NO_OPTION,
-                                    javax.swing.JOptionPane.WARNING_MESSAGE
-                                )
-                                if (result != javax.swing.JOptionPane.YES_OPTION) {
-                                    proceed = false
-                                }
-                            }
-                            if (proceed) {
-                                scope.launch {
-                                    encodingPreviewImage = null
-                                    isSampleEncoding = true
-                                    isEncoding = true
-                                    isCanceled = false
-                                    var lastProgressTime = 0L
-                                    var lastPreviewTime = 0L
-                                    try {
-                                        val encodeSettings = prepareSettingsForEncode(settings)
-                                        val endSec = if (trimEndSeconds <= 0.0) videoLengthMs / 1000.0 else trimEndSeconds
-                                        val samplePlan = buildEncodePlan(
-                                            settings = encodeSettings,
-                                            videoPath = targetVideoPath,
-                                            outputDir = outputDir,
-                                            moveOutputToSource = moveOutputToSource,
-                                            ranges = listOf(Pair(trimStartSeconds, endSec)),
-                                            isSample = true
-                                        )
-                                        val destFile = samplePlan.segments.first().finalOutputFile
-                                        val resultMsg = HudEncodePipeline.execute(
-                                            s = encodeSettings,
-                                            fitPath = fitPath,
-                                            videoPath = targetVideoPath,
-                                            outputDir = outputDir,
-                                            videoStartUtc = adjustedStartUtc,
-                                            sourceVideoStartUtc = videoStartUtc,
-                                            timeOffsetMillis = viewModel.timeOffsetState.millis.toLong(),
-                                            ranges = listOf(Pair(trimStartSeconds, endSec)),
-                                            destFiles = listOf(destFile),
-                                            isSample = true,
-                                            shouldResume = false,
-                                            moveOutputToSource = moveOutputToSource,
-                                            plateTelemetryPoints = viewModel.trimmedTelemetryPoints,
-                                            onProgress = { prog, status ->
-                                                val now = System.currentTimeMillis()
-                                                if (prog >= 1.0f || now - lastProgressTime >= 100) {
-                                                    lastProgressTime = now
-                                                    progress = prog
-                                                    statusText = status
-                                                }
-                                            },
-                                            onFrame = { bufferedImg ->
-                                                val now = System.currentTimeMillis()
-                                                if (now - lastPreviewTime >= 33) {
-                                                    lastPreviewTime = now
-                                                    val bitmap = bufferedImg.toComposeImageBitmap()
-                                                    javax.swing.SwingUtilities.invokeLater {
-                                                        encodingPreviewImage = bitmap
-                                                    }
-                                                }
-                                            },
-                                            cancelSupplier = { isCanceled },
-                                            showLivePreviewSupplier = { viewModel.showLivePreview },
-                                            onSegmentStart = { pStart, pEnd ->
-                                                viewModel.encodingSegmentStart = pStart
-                                                viewModel.encodingSegmentEnd = pEnd
-                                            }
-                                        )
-                                        statusText = resultMsg
-                                        if (!isCanceled) {
-                                            if (args.contains("--auto-sample")) {
-                                                println("TEST_NOTIFICATION_SUCCESS: Sample Encoding Finished Successfully!")
-                                            } else {
-                                                showSystemNotification(
-                                                    "HUD エンコーダー",
-                                                    "Sample Encoding Finished Successfully!"
-                                                )
-                                            }
-                                        }
-                                    } catch (e: Exception) {
-                                        statusText = "❌ Error: ${e.message ?: "Unknown error"}"
-                                        if (args.contains("--auto-sample")) {
-                                            println("TEST_NOTIFICATION_ERROR: Sample Encoding Failed: ${e.message}")
-                                        } else {
-                                            showSystemNotification(
-                                                "HUD エンコーダー - Error",
-                                                "Sample Encoding Failed: ${e.message}"
-                                            )
-                                        }
-                                    } finally {
-                                        isEncoding = false
-                                        isSampleEncoding = false
-                                        viewModel.encodingSegmentStart = null
-                                        viewModel.encodingSegmentEnd = null
-                                        if (args.contains("--auto-sample")) {
-                                            println("🏁 Auto-sample test finished. Exiting application...")
-                                            onCloseRequest()
-                                        }
-                                    }
-                                }
-                            }
-                            Unit
-                        }
-                    }
                         // 3つのタブに対応する ScrollState を決定
                         val currentScrollState = when (selectedTab) {
                             0 -> scrollStateTab0
@@ -1548,7 +1418,24 @@ fun FitTrimmerMainContent(
                                                 // Wait for UI to render
                                                 kotlinx.coroutines.delay(1000)
                                                 println("🚀 Auto-sample test triggered")
-                                                onSampleEncodeClick()
+                                                viewModel.addToBatchQueue()
+                                                scope.launch(Dispatchers.Main) {
+                                                    try {
+                                                        viewModel.prepareBatchQueueForStart()
+                                                        runBatchJobs(
+                                                            viewModel = viewModel,
+                                                            outputDir = outputDir,
+                                                            moveOutputToSource = moveOutputToSource,
+                                                            onProgressUpdate = {}
+                                                        )
+                                                        println("TEST_NOTIFICATION_SUCCESS: Encoding Finished Successfully!")
+                                                    } catch (e: Exception) {
+                                                        println("TEST_NOTIFICATION_ERROR: Encoding Failed: ${e.message}")
+                                                    } finally {
+                                                        println("🏁 Auto-sample test finished. Exiting application...")
+                                                        onCloseRequest()
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -3949,7 +3836,6 @@ fun FitTrimmerMainContent(
                                 videoPath = videoPath,
                                 partIndex = if (totalParts > 1) 0 else -1,
                                 numParts = totalParts,
-                                isSample = isSampleEncoding
                             ).replace("_part1_", "_part*_")
                             val output = File(outputDir, outputFileName).absolutePath
                             val destInfo = if (moveOutputToSource) {
@@ -3968,7 +3854,7 @@ fun FitTrimmerMainContent(
                             ) {
                                 Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                     Text(
-                                        text = if (isSampleEncoding) "SAMPLE ENCODING STATUS" else "HUD ENCODING STATUS",
+                                        text = "HUD ENCODING STATUS",
                                         color = Color(0xFF007AFF),
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 9.sp,

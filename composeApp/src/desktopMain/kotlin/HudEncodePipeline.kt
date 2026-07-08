@@ -93,8 +93,6 @@ object HudEncodePipeline {
         timeOffsetMillis: Long = 0L,
         ranges: List<Pair<Double, Double>>,
         destFiles: List<File>,
-        isSample: Boolean = false,
-        sampleMaxDurationSeconds: Int = Int.MAX_VALUE,
         shouldResume: Boolean = false,
         moveOutputToSource: Boolean = false,
         plateTelemetryPoints: List<FitParser.TelemetryPoint> = emptyList(),
@@ -139,8 +137,7 @@ object HudEncodePipeline {
                 videoPath = videoPath,
                 outputDir = outputDir,
                 moveOutputToSource = moveOutputToSource,
-                ranges = ranges,
-                isSample = isSample
+                ranges = ranges
             )
 
             val totalDuration = encodePlan.totalDurationSeconds
@@ -168,9 +165,8 @@ object HudEncodePipeline {
                 val outputFileName = buildEncodeOutputFileName(
                     settings = s,
                     videoPath = videoPath,
-                    partIndex = if (isSample) -1 else idx,
-                    numParts = encodePlan.segments.size,
-                    isSample = isSample
+                    partIndex = idx,
+                    numParts = encodePlan.segments.size
                 )
                 val partOutPath = File(outputDir, outputFileName).absolutePath
 
@@ -202,7 +198,7 @@ object HudEncodePipeline {
                 )
 
                 encoder.encode(fitPath, videoPath, partOutPath, videoStartUtc,
-                    maxDurationSeconds = if (isSample) sampleMaxDurationSeconds.coerceAtLeast(1) else -1,
+                    maxDurationSeconds = -1,
                     trimStartSeconds = pStart,
                     trimEndSeconds = pEnd,
                     shouldResume = shouldResume,

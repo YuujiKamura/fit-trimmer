@@ -123,8 +123,16 @@ fun BatchQueueDialog(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
+                                    val parsedTop = parseBatchStatusText(viewModel.batchStatusText)
+                                    val simplifiedTopText = if (parsedTop.isParsed) {
+                                        val jobPrefix = viewModel.batchStatusText.substringBefore("]", "") + "]"
+                                        val action = parsedTop.actionText?.substringBefore(":") ?: "HUDエンコード"
+                                        "$jobPrefix $action 中"
+                                    } else {
+                                        viewModel.batchStatusText
+                                    }
                                     Text(
-                                        text = viewModel.batchStatusText,
+                                        text = simplifiedTopText,
                                         fontSize = 14.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = Color(0xFF007AFF),
@@ -519,12 +527,13 @@ fun BatchQueueDialog(
                                             animationSpec = spring(stiffness = Spring.StiffnessMedium)
                                         )
                                         Column(
-                                            modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
-                                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                                            verticalArrangement = Arrangement.spacedBy(6.dp)
                                         ) {
                                             Row(
                                                 modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.SpaceBetween
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
                                             ) {
                                                 Text("ジョブ処理状況", fontSize = 11.sp, color = Color(0xFF007AFF), fontWeight = FontWeight.Bold)
                                                 Text("${(job.progress * 100).toInt()}%", fontSize = 11.sp, color = Color(0xFF007AFF), fontWeight = FontWeight.Bold)
@@ -535,6 +544,67 @@ fun BatchQueueDialog(
                                                 color = Color(0xFF007AFF),
                                                 backgroundColor = Color(0xFFE5E5EA)
                                             )
+                                            val parsedDetails = parseBatchStatusText(viewModel.batchStatusText)
+                                            if (parsedDetails.isParsed) {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    parsedDetails.partInfo?.let { part ->
+                                                        Surface(
+                                                            color = Color(0xFFE8F2FF),
+                                                            shape = RoundedCornerShape(4.dp)
+                                                        ) {
+                                                            Text(
+                                                                text = part,
+                                                                fontSize = 10.sp,
+                                                                fontWeight = FontWeight.Bold,
+                                                                color = Color(0xFF007AFF),
+                                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                            )
+                                                        }
+                                                    }
+                                                    parsedDetails.actionText?.let { action ->
+                                                        Text(
+                                                            text = action,
+                                                            fontSize = 11.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = Color(0xFF1C1C1E)
+                                                        )
+                                                    }
+                                                    parsedDetails.timeInfo?.let { time ->
+                                                        Text(
+                                                            text = "⏱ $time",
+                                                            fontSize = 11.sp,
+                                                            color = Color(0xFF636366)
+                                                        )
+                                                    }
+                                                    parsedDetails.speedInfo?.let { speed ->
+                                                        Text(
+                                                            text = "⚡ $speed",
+                                                            fontSize = 11.sp,
+                                                            color = Color(0xFF34C759),
+                                                            fontWeight = FontWeight.Bold
+                                                        )
+                                                    }
+                                                    parsedDetails.etaInfo?.let { eta ->
+                                                        Text(
+                                                            text = "⏳ $eta",
+                                                            fontSize = 11.sp,
+                                                            color = Color(0xFFFF9500),
+                                                            fontWeight = FontWeight.Bold
+                                                        )
+                                                    }
+                                                }
+                                            } else if (viewModel.batchStatusText.isNotEmpty()) {
+                                                Text(
+                                                    text = viewModel.batchStatusText,
+                                                    fontSize = 11.sp,
+                                                    color = Color(0xFF636366),
+                                                    modifier = Modifier.padding(vertical = 2.dp)
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -632,4 +702,51 @@ fun DialogBadge(text: String, backgroundColor: Color, textColor: Color) {
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
         )
     }
+}
+
+
+data class EncodingProgressDetails(
+    val partInfo: String?,
+    val actionText: String?,
+    val timeInfo: String?,
+    val speedInfo: String?,
+    val etaInfo: String?,
+    val isParsed: Boolean
+)
+
+fun parseBatchStatusText(statusText: String): EncodingProgressDetails {
+    if (!statusText.contains("|")) {
+        return EncodingProgressDetails(null, null, null, null, null, false)
+    }
+    try {
+        val parts = statusText.split("|").map { it.trim() }
+        if (parts.size >= 4) {
+            val firstPart = parts[0]
+            var partInfo: String? = null
+            val partRegex = Regex("""\[Part\s+\d+/\d+\]""")
+            val partMatch = partRegex.find(firstPart)
+            if (partMatch != null) {
+                partInfo = partMatch.value
+            }
+            var actionText = firstPart
+            val prefixRegex = Regex("""^\[\d+/\d+\]\s*""")
+            actionText = prefixRegex.replace(actionText, "")
+            if (partInfo != null) {
+                actionText = actionText.replace(partInfo, "").trim()
+            }
+            val timeInfo = parts[1]
+            val speedInfo = parts[2]
+            val etaInfo = parts[3]
+            return EncodingProgressDetails(
+                partInfo = partInfo?.replace("[", "")?.replace("]", ""),
+                actionText = actionText,
+                timeInfo = timeInfo,
+                speedInfo = speedInfo.replace("Speed: ", ""),
+                etaInfo = etaInfo,
+                isParsed = true
+            )
+        }
+    } catch (e: Exception) {
+    }
+    return EncodingProgressDetails(null, null, null, null, null, false)
 }

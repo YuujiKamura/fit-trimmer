@@ -333,7 +333,6 @@ class CacheRegistryTest {
         val outputName = HudFileNameFormatter.buildEncodeOutputFileName(
             settings = settings,
             videoPath = videoPath,
-            isSample = false
         )
         assertTrue(outputName.contains("test_video"))
         assertTrue(outputName.contains("_1080p"))

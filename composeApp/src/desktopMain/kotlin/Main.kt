@@ -333,20 +333,18 @@ fun buildEncodeOutputFileName(
     videoPath: String,
     partIndex: Int = -1,
     numParts: Int = 1,
-    isSample: Boolean = false,
     trimStartSeconds: Double? = null,
     trimEndSeconds: Double? = null,
     dateTag: String? = null
 ): String {
     return fit.HudFileNameFormatter.buildEncodeOutputFileName(
-        settings,
-        videoPath,
-        partIndex,
-        numParts,
-        isSample,
-        trimStartSeconds,
-        trimEndSeconds,
-        dateTag
+        settings = settings,
+        videoPath = videoPath,
+        partIndex = partIndex,
+        numParts = numParts,
+        trimStartSeconds = trimStartSeconds,
+        trimEndSeconds = trimEndSeconds,
+        dateTag = dateTag
     )
 }
 
@@ -363,7 +361,6 @@ fun buildEncodePlan(
     outputDir: String,
     moveOutputToSource: Boolean,
     ranges: List<Pair<Double, Double>>,
-    isSample: Boolean = false,
     includeTrimRangeInFileName: Boolean = false,
     dateTag: String? = null,
     outputFileNames: List<String>? = null
@@ -375,7 +372,6 @@ fun buildEncodePlan(
             videoPath = videoPath,
             partIndex = idx,
             numParts = ranges.size,
-            isSample = isSample,
             trimStartSeconds = if (includeTrimRangeInFileName) start else null,
             trimEndSeconds = if (includeTrimRangeInFileName) end else null,
             dateTag = if (includeTrimRangeInFileName) dateTag else null
@@ -737,7 +733,6 @@ object BatchJobRunner {
             timeOffsetMillis = job.timeOffsetMillis,
             ranges = ranges,
             destFiles = destFiles,
-            isSample = false,
             shouldResume = phase.progress > 0f,
             moveOutputToSource = moveOutputToSource,
             onProgress = { prog, status ->

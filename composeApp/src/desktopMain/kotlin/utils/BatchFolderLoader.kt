@@ -79,7 +79,6 @@ object BatchFolderLoader {
                 videoPath = videoAbs,
                 partIndex = -1,
                 numParts = 1,
-                isSample = false,
                 trimStartSeconds = null,
                 trimEndSeconds = null,
                 dateTag = null
