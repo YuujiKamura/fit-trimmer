@@ -1097,4 +1097,13 @@ class HudRendererTest {
         assertEquals(-2, config.mapZoomOffset, "mapZoomOffset config property should be set correctly")
         assertEquals("auto", config.mapType, "mapType config property should be set to auto")
     }
+
+    @Test
+    fun testMiniMap_FixMapNorthUp() {
+        val config = HudConfig(
+            valSize = 50f, tightness = 0f, spacing = 10f, xOffset = 0f, yOffset = 0f, graphH = 100f, graphW = 200f,
+            fixMapNorthUp = true
+        )
+        assertTrue(config.fixMapNorthUp, "fixMapNorthUp config property should be set to true")
+    }
 }

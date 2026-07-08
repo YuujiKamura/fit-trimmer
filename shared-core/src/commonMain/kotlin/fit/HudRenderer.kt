@@ -38,7 +38,8 @@ data class HudConfig(
     val mapPosition: String = "top_right",
     val hudBgAlpha: Float = 0.0f,
     val mapZoomScale: Float = 0.55f,
-    val mapZoomOffset: Int = 0
+    val mapZoomOffset: Int = 0,
+    val fixMapNorthUp: Boolean = false
 )
 
 
@@ -950,12 +951,14 @@ class HudRenderer(val config: HudConfig) {
         val dx = (endPt.lon - startPt.lon) * cosLat
         val dy = endPt.lat - startPt.lat
         val L = kotlin.math.sqrt(dx * dx + dy * dy)
+        val L_proj = if (config.fixMapNorthUp) 0.0 else L
         
         // Target path length on the map is 2 * padR to leave padding inside circle
         val padR = R * config.mapZoomScale
 
         // Heading angle (Start to End) in degrees for compass rotation
         val pathBearing = calculateBearing(startPt, endPt) ?: 0.0
+        val effectiveBearing = if (config.fixMapNorthUp) 0.0 else pathBearing
 
         // 1. Project all points onto local heading-up plane and calculate bounding box
         // lx: Rightward component (orthogonal to heading)
@@ -968,8 +971,8 @@ class HudRenderer(val config: HudConfig) {
             val px = (pt.lon - startPt.lon) * cosLat
             val py = pt.lat - startPt.lat
             
-            val lx = if (L > 1e-7) (px * dy - py * dx) / L else px
-            val ly = if (L > 1e-7) -(px * dx + py * dy) / L else -py
+            val lx = if (L_proj > 1e-7) (px * dy - py * dx) / L_proj else px
+            val ly = if (L_proj > 1e-7) -(px * dx + py * dy) / L_proj else -py
             
             if (lx < minX) minX = lx
             if (lx > maxX) maxX = lx
@@ -998,7 +1001,7 @@ class HudRenderer(val config: HudConfig) {
                 R = R,
                 padR = padR,
                 sf = sf,
-                pathBearing = pathBearing,
+                pathBearing = effectiveBearing,
                 cosLat = cosLat,
                 dx = dx,
                 dy = dy,
@@ -1015,8 +1018,8 @@ class HudRenderer(val config: HudConfig) {
             val px = (pt.lon - startPt.lon) * cosLat
             val py = pt.lat - startPt.lat
             
-            val lx = if (L > 1e-7) (px * dy - py * dx) / L else px
-            val ly = if (L > 1e-7) -(px * dx + py * dy) / L else -py
+            val lx = if (L_proj > 1e-7) (px * dy - py * dx) / L_proj else px
+            val ly = if (L_proj > 1e-7) -(px * dx + py * dy) / L_proj else -py
             
             val lxScaled = ((lx - cxL) * dynamicScale).toFloat()
             val lyScaled = ((ly - cyL) * dynamicScale).toFloat()
@@ -1105,8 +1108,8 @@ class HudRenderer(val config: HudConfig) {
         if (isValid && telemetry.lat != 0.0 && telemetry.lon != 0.0) {
             val currentMapPt = projectPoint(telemetry)
             
-            val currentBearing = bearingAtDistance(validRoutePoints, telemetry.distance, pathBearing)
-            val phi = (currentBearing - pathBearing) * kotlin.math.PI / 180.0
+            val currentBearing = bearingAtDistance(validRoutePoints, telemetry.distance, effectiveBearing)
+            val phi = (currentBearing - effectiveBearing) * kotlin.math.PI / 180.0
 
             val sinPhi = kotlin.math.sin(phi).toFloat()
             val cosPhi = kotlin.math.cos(phi).toFloat()
@@ -1144,7 +1147,7 @@ class HudRenderer(val config: HudConfig) {
         }
 
         // 7. Draw 4 Directions (N, E, S, W) along the inner circle margin (Scaled & centered alignment)
-        val angleN = -90.0 - pathBearing
+        val angleN = -90.0 - effectiveBearing
         val compassPoints = mapOf(
             "N" to angleN,
             "E" to (angleN + 90.0),
