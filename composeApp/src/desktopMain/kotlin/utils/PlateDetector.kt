@@ -14,6 +14,9 @@ class PlateDetector private constructor() : AutoCloseable {
     private val env: OrtEnvironment = OrtEnvironment.getEnvironment()
     private val session: OrtSession
 
+    // Thread-local buffer reuse to eliminate garbage collection pressure on large scans
+    private val threadLocalInputData = ThreadLocal.withInitial { FloatArray(1 * 3 * 640 * 640) }
+
     // TDD Verification Flags
     var lastResizeBypassed = false
     var lastGetRgbBypassed = false
@@ -60,10 +63,12 @@ class PlateDetector private constructor() : AutoCloseable {
         val modelBytes = modelStream.use { it.readBytes() }
         
         val opts = OrtSession.SessionOptions()
+        // Single model inference achieves best CPU latency and lowest context switching overhead
+        // when using 1 inter-op thread and a small number of intra-op threads.
         val cores = Runtime.getRuntime().availableProcessors().coerceAtLeast(1)
-        val threads = (cores / 2).coerceIn(2, 4) // Target 2 to 4 threads for optimal hardware throughput
-        opts.setIntraOpNumThreads(threads)
-        opts.setInterOpNumThreads(threads)
+        val intraThreads = (cores / 2).coerceIn(1, 2)
+        opts.setIntraOpNumThreads(intraThreads)
+        opts.setInterOpNumThreads(1)
         
         session = env.createSession(modelBytes, opts)
     }
@@ -96,7 +101,7 @@ class PlateDetector private constructor() : AutoCloseable {
         }
         val tResize = System.nanoTime()
 
-        val inputData = FloatArray(1 * 3 * 640 * 640)
+        val inputData = threadLocalInputData.get()
         val rOffset = 0
         val gOffset = 640 * 640
         val bOffset = 2 * 640 * 640
@@ -143,18 +148,20 @@ class PlateDetector private constructor() : AutoCloseable {
                 val tInference = System.nanoTime()
                 
                 // YOLOv8 output is [1, 5, 8400]
-                // Access direct FloatBuffer to prevent allocating 8400 FloatArray objects per frame,
-                // which causes severe GC pressure and stalls on long video scans.
+                // Bulk copy the output data into a JVM heap array in a single operation
+                // to eliminate DirectBuffer.get(index) JNI boundary checking overhead inside the loop.
                 val buffer = outputTensor.floatBuffer
+                val outputData = FloatArray(5 * 8400)
+                buffer.get(outputData)
                 
                 val boxes = mutableListOf<DetectedBox>()
                 for (i in 0 until 8400) {
-                    val score = buffer.get(4 * 8400 + i)
+                    val score = outputData[4 * 8400 + i]
                     if (score >= confThreshold) {
-                        val cx = buffer.get(0 * 8400 + i)
-                        val cy = buffer.get(1 * 8400 + i)
-                        val w = buffer.get(2 * 8400 + i)
-                        val h = buffer.get(3 * 8400 + i)
+                        val cx = outputData[0 * 8400 + i]
+                        val cy = outputData[1 * 8400 + i]
+                        val w = outputData[2 * 8400 + i]
+                        val h = outputData[3 * 8400 + i]
                         
                         val x1 = cx - w / 2f
                         val y1 = cy - h / 2f
@@ -233,14 +240,27 @@ class PlateDetector private constructor() : AutoCloseable {
         return resultingImage
     }
 
-    private fun nms(boxes: List<DetectedBox>, iouThreshold: Float): List<DetectedBox> {
-        val sortedBoxes = boxes.sortedByDescending { it.score }.toMutableList()
+    internal fun nms(boxes: List<DetectedBox>, iouThreshold: Float): List<DetectedBox> {
+        val numBoxes = boxes.size
+        if (numBoxes == 0) return emptyList()
+        
+        // Sort boxes directly to avoid index boxing and lookup cache misses
+        val sorted = boxes.sortedByDescending { it.score }
+        
+        val suppressed = BooleanArray(numBoxes)
         val selectedBoxes = mutableListOf<DetectedBox>()
         
-        while (sortedBoxes.isNotEmpty()) {
-            val best = sortedBoxes.removeAt(0)
+        for (i in 0 until numBoxes) {
+            if (suppressed[i]) continue
+            val best = sorted[i]
             selectedBoxes.add(best)
-            sortedBoxes.removeAll { iou(best, it) >= iouThreshold }
+            
+            for (j in i + 1 until numBoxes) {
+                if (suppressed[j]) continue
+                if (iou(best, sorted[j]) >= iouThreshold) {
+                    suppressed[j] = true
+                }
+            }
         }
         return selectedBoxes
     }
