@@ -214,6 +214,66 @@ class HudEncodePipelineTest {
         }
     }
 
+    @Test
+    fun testPlateMaskingRealDatasetTenSeconds() = runBlocking {
+        val videoPath = "F:\\Insta360\\20260708\\VID_20260708_184458_001.mp4"
+        val fitPath = "F:\\Insta360\\20260708\\Evening_Ride.fit"
+        val videoStartUtc = "2026-07-08T09:44:58Z"
+
+        val video = java.io.File(videoPath)
+        val fitFile = java.io.File(fitPath)
+        if (!video.exists() || !fitFile.exists()) {
+            println("Skipping test: Real dataset files not found locally.")
+            return@runBlocking
+        }
+
+        val tempDir = java.io.File(System.getProperty("java.io.tmpdir"))
+        val outFileName = "test_masking_real_dataset_${System.nanoTime()}"
+        val destFile = java.io.File(tempDir, "$outFileName.mp4")
+
+        // Clean cache before running to ensure fresh detection
+        fit.PlateCacheManager.deleteCache(videoPath)
+
+        try {
+            val settings = HudSettings(
+                blurLicensePlates = true,
+                plateMaxSpeedKmh = 100.0,
+                plateDetectionFps = 1.0,
+                platePaddingSeconds = 1.0,
+                plateMergeGapSeconds = 2.0
+            )
+
+            val result = HudEncodePipeline.execute(
+                s = settings,
+                fitPath = fitPath,
+                videoPath = videoPath,
+                outputDir = tempDir.absolutePath,
+                videoStartUtc = videoStartUtc,
+                ranges = listOf(180.0 to 190.0),
+                destFiles = listOf(destFile),
+                shouldResume = false,
+                onProgress = { percent, status ->
+                    println("TEST_PROGRESS: ${percent}% - $status")
+                },
+                onFrame = {},
+                cancelSupplier = { false },
+                showLivePreviewSupplier = { false }
+            )
+
+            assertTrue(result.contains("Finished Successfully") || result.contains("Copied to Cloud"), "Encode should complete successfully")
+            assertTrue(destFile.exists(), "Output file must be created")
+            assertTrue(destFile.length() > 0, "Output file must not be empty")
+
+            // Verify that the plate cache was created and populated
+            val cache = fit.PlateCacheManager.loadCache(videoPath)
+            assertNotNull(cache, "Plate cache must be created after detection")
+            println("TEST_RESULT: Scan complete. Total plate records found: ${cache.records.size}")
+        } finally {
+            if (destFile.exists()) destFile.delete()
+            fit.PlateCacheManager.deleteCache(videoPath)
+        }
+    }
+
     private fun uniqueVideoPath(label: String): String {
         return java.io.File(
             System.getProperty("java.io.tmpdir"),
