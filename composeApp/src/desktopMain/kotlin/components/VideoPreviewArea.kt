@@ -105,15 +105,26 @@ class ComposeHudCanvas(
         drawScope.drawText(layout, topLeft = Offset(drawX, drawY))
     }
 
-    override fun drawRect(x: Float, y: Float, w: Float, h: Float, color: String, alpha: Float, outline: Boolean) {
+    override fun drawRect(x: Float, y: Float, w: Float, h: Float, color: String, alpha: Float, outline: Boolean, rx: Float, ry: Float) {
         val c = parseColor(color)
-        drawScope.drawRect(
-            color = c,
-            topLeft = Offset(x * scale, y * scale),
-            size = Size(w * scale, h * scale),
-            alpha = alpha,
-            style = if (outline) Stroke(width = 1f * scale) else androidx.compose.ui.graphics.drawscope.Fill
-        )
+        if (rx > 0f && ry > 0f) {
+            drawScope.drawRoundRect(
+                color = c,
+                topLeft = Offset(x * scale, y * scale),
+                size = Size(w * scale, h * scale),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(rx * scale, ry * scale),
+                alpha = alpha,
+                style = if (outline) Stroke(width = 1f * scale) else androidx.compose.ui.graphics.drawscope.Fill
+            )
+        } else {
+            drawScope.drawRect(
+                color = c,
+                topLeft = Offset(x * scale, y * scale),
+                size = Size(w * scale, h * scale),
+                alpha = alpha,
+                style = if (outline) Stroke(width = 1f * scale) else androidx.compose.ui.graphics.drawscope.Fill
+            )
+        }
     }
 
     override fun drawLine(points: List<Pair<Float, Float>>, color: String, width: Float, alpha: Float) {

@@ -44,7 +44,7 @@ interface HudCanvas {
     val width: Float
     val height: Float
     fun drawText(text: String, x: Float, y: Float, size: Float, color: String, bold: Boolean = false, anchor: String = "top-left")
-    fun drawRect(x: Float, y: Float, w: Float, h: Float, color: String, alpha: Float = 1.0f, outline: Boolean = false)
+    fun drawRect(x: Float, y: Float, w: Float, h: Float, color: String, alpha: Float = 1.0f, outline: Boolean = false, rx: Float = 0f, ry: Float = 0f)
     fun drawLine(points: List<Pair<Float, Float>>, color: String, width: Float, alpha: Float = 1.0f)
     fun drawPolygon(points: List<Pair<Float, Float>>, color: String, alpha: Float = 1.0f)
     fun getTextWidth(text: String, size: Float, bold: Boolean): Float
@@ -116,7 +116,9 @@ class HudRenderer(val config: HudConfig) {
         val dtBoxW = dtTextWidth + dtPadX * 2f
         val dtBoxH = dtTextHeight + dtPadY * 2f
         
-        canvas.drawRect(timeX, timeY, dtBoxW, dtBoxH, "#000000", alpha = 0.5f)
+        if (config.hudBgAlpha > 0f) {
+            canvas.drawRect(timeX, timeY, dtBoxW, dtBoxH, "#000000", alpha = config.hudBgAlpha, rx = 8f * sf, ry = 8f * sf)
+        }
         drawShadowedText(canvas, dtText, timeX + dtPadX, timeY + dtPadY, dtTextSize, "#ffffff", bold = true, sf = sf)
 
         val allPoints = if (originalPoints.isEmpty()) listOf(telemetry) else originalPoints
@@ -154,15 +156,13 @@ class HudRenderer(val config: HudConfig) {
 
 
         fun drawCell(label: String, value: String, unit: String, color: String) {
-            val labelW = canvas.getTextWidth(label, labelSize, true)
             val valW = canvas.getTextWidth(value, valSize, true)
-            val unitW = canvas.getTextWidth(unit, unitSize, true)
-            val contentW = maxOf(labelW, valW + 8f + unitW)
+            val cellW = 160f
             if (config.hudBgAlpha > 0f) {
                 val padX = 20f * sf
                 val padY = 8f * sf
                 val cellH = labelSize + tightness + valSize
-                canvas.drawRect(cx - padX, cy - padY, contentW + padX * 2f, cellH + padY * 2f, "#000000", alpha = config.hudBgAlpha)
+                canvas.drawRect(cx - padX, cy - padY, cellW + padX * 2f, cellH + padY * 2f, "#000000", alpha = config.hudBgAlpha, rx = 8f * sf, ry = 8f * sf)
             }
             // 1. Label (Light grey #e5e7eb)
             drawShadowedText(canvas, label, cx, cy, labelSize, "#e5e7eb", bold = true, sf = sf)
@@ -197,16 +197,13 @@ class HudRenderer(val config: HudConfig) {
         // 3. HEART RATE
         if (config.showHeartRate) {
             val hrStr = if (isValid) telemetry.heartRate.roundToInt().toString() else "-"
-            val labelW = canvas.getTextWidth(getLabel("HEART RATE"), labelSize, true)
             val valW = canvas.getTextWidth(hrStr, valSize, true)
-            val unitW = canvas.getTextWidth("bpm", unitSize, true)
-            val zoneTextDummyW = canvas.getTextWidth("ZONE 180-189: 00:00", 12f, true)
-            val contentW = maxOf(labelW, valW + 8f + unitW, zoneTextDummyW).coerceAtLeast(130f)
+            val cellW = 160f
             if (config.hudBgAlpha > 0f) {
                 val padX = 20f * sf
                 val padY = 8f * sf
                 val cellH = labelSize + tightness + valSize + 39f
-                canvas.drawRect(cx - padX, cy - padY, contentW + padX * 2f, cellH + padY * 2f, "#000000", alpha = config.hudBgAlpha)
+                canvas.drawRect(cx - padX, cy - padY, cellW + padX * 2f, cellH + padY * 2f, "#000000", alpha = config.hudBgAlpha, rx = 8f * sf, ry = 8f * sf)
             }
             
             // 3.1. Draw standard HEART RATE label and value
@@ -292,7 +289,7 @@ class HudRenderer(val config: HudConfig) {
                 val padX = 20f * sf
                 val padY = 8f * sf
                 val cellH = labelSize + 4f + graphH + ((labelSize * 0.8f) + 4f)
-                canvas.drawRect(cx - padX, cy - padY, graphW + padX * 2f, cellH + padY * 2f, "#000000", alpha = config.hudBgAlpha)
+                canvas.drawRect(cx - padX, cy - padY, graphW + padX * 2f, cellH + padY * 2f, "#000000", alpha = config.hudBgAlpha, rx = 8f * sf, ry = 8f * sf)
             }
             val spanText = if (config.powerTrendSpanSeconds >= 60) {
                 val min = config.powerTrendSpanSeconds / 60
@@ -374,7 +371,7 @@ class HudRenderer(val config: HudConfig) {
                 } else {
                     labelSize + 20f + graphH
                 }
-                canvas.drawRect(cx - padX, cy - padY, graphW + padX * 2f, cellH + padY * 2f, "#000000", alpha = config.hudBgAlpha)
+                canvas.drawRect(cx - padX, cy - padY, graphW + padX * 2f, cellH + padY * 2f, "#000000", alpha = config.hudBgAlpha, rx = 8f * sf, ry = 8f * sf)
             }
             // 8.5. Real-time Distance & Elapsed Time ABOVE Elevation Graph
             if (config.showDistanceTime && isValid && allPoints.isNotEmpty()) {

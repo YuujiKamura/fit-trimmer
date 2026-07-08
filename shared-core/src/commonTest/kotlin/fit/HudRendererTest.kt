@@ -15,7 +15,7 @@ class HudRendererTest {
         var drawTextCalled = false
         var lastDrawnText = ""
         
-        data class RectInfo(val x: Float, val y: Float, val w: Float, val h: Float, val color: String, val alpha: Float = 1.0f)
+        data class RectInfo(val x: Float, val y: Float, val w: Float, val h: Float, val color: String, val alpha: Float = 1.0f, val rx: Float = 0f, val ry: Float = 0f)
         data class LineInfo(val points: List<Pair<Float, Float>>, val color: String, val width: Float)
         data class PolygonInfo(val points: List<Pair<Float, Float>>, val color: String)
         data class TextInfo(val text: String, val x: Float, val y: Float, val size: Float, val color: String, val bold: Boolean, val anchor: String)
@@ -39,8 +39,8 @@ class HudRendererTest {
             }
         }
         
-        override fun drawRect(x: Float, y: Float, w: Float, h: Float, color: String, alpha: Float, outline: Boolean) {
-            drawnRects.add(RectInfo(x, y, w, h, color, alpha))
+        override fun drawRect(x: Float, y: Float, w: Float, h: Float, color: String, alpha: Float, outline: Boolean, rx: Float, ry: Float) {
+            drawnRects.add(RectInfo(x, y, w, h, color, alpha, rx, ry))
         }
         
         override fun drawLine(points: List<Pair<Float, Float>>, color: String, width: Float, alpha: Float) {
@@ -732,7 +732,7 @@ class HudRendererTest {
             textCalls.add(TextCall(text, x, y, size, color, anchor))
         }
         
-        override fun drawRect(x: Float, y: Float, w: Float, h: Float, color: String, alpha: Float, outline: Boolean) {
+        override fun drawRect(x: Float, y: Float, w: Float, h: Float, color: String, alpha: Float, outline: Boolean, rx: Float, ry: Float) {
             rectCalls.add(RectCall(x, y, w, h, color, alpha))
         }
         
@@ -1034,8 +1034,15 @@ class HudRendererTest {
             it.color == "#000000" && it.alpha == 0.5f && it.y >= 80f
         }
         assertEquals(3, bgShadowCalls.size, "Should have exactly three background shadow rects for speed, cadence, and elevation with alpha 0.5f")
-        assertTrue(bgShadowCalls[0].w < 200f, "Speed cell shadow width (${bgShadowCalls[0].w}) should be tightly sized, not excessive")
-        assertTrue(bgShadowCalls[1].w < 200f, "Cadence cell shadow width (${bgShadowCalls[1].w}) should be tightly sized, not excessive")
+        assertEquals(200f, bgShadowCalls[0].w, "Speed cell shadow width should be unified to 200f")
+        assertEquals(200f, bgShadowCalls[1].w, "Cadence cell shadow width should be unified to 200f")
+        assertEquals(8f, bgShadowCalls[0].rx, "Speed cell shadow should have rounded corners rx = 8f")
+        assertEquals(8f, bgShadowCalls[1].rx, "Cadence cell shadow should have rounded corners rx = 8f")
+
+        val dateTimeShadow = canvas.drawnRects.find { it.y == 40f }
+        assertTrue(dateTimeShadow != null, "DateTime shadow should be drawn")
+        assertEquals(0.5f, dateTimeShadow.alpha, "DateTime shadow alpha should match hudBgAlpha (0.5f)")
+        assertEquals(8f, dateTimeShadow.rx, "DateTime shadow should have rounded corners rx = 8f")
     }
 
     @Test
