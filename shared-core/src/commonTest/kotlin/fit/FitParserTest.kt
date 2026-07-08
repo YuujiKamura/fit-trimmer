@@ -720,18 +720,20 @@ class FitParserTest {
         
         parser.records.addAll(listOf(
             createMockRecord(1000.0, null),
+            createMockRecord(1000.5, 127.0),
             createMockRecord(1001.0, 24.0),
-            createMockRecord(1002.0, null),
+            createMockRecord(1002.0, 255.0),
             createMockRecord(1003.0, 25.0),
             createMockRecord(1004.0, null)
         ))
         
         val telemetry = parser.getTelemetry()
-        assertEquals(5, telemetry.size)
+        assertEquals(6, telemetry.size)
         
         assertEquals(24.0, telemetry[0].temperature, "Record 1 should be backfilled with 24.0")
-        assertEquals(24.0, telemetry[2].temperature, "Record 3 should be forward filled with 24.0")
-        assertEquals(25.0, telemetry[4].temperature, "Record 5 should be forward filled with 25.0")
+        assertEquals(24.0, telemetry[1].temperature, "Record 2 (127.0) should be backfilled with 24.0")
+        assertEquals(24.0, telemetry[3].temperature, "Record 4 (255.0) should be forward filled with 24.0")
+        assertEquals(25.0, telemetry[5].temperature, "Record 6 (null) should be forward filled with 25.0")
     }
 }
 

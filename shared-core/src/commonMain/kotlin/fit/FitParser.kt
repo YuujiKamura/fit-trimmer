@@ -232,7 +232,7 @@ class FitParser(private val bytes: ByteArray) {
                 val elevVal = if (rawElev != null) (rawElev.toDouble() / 5.0) - 500.0 else 0.0
                 val gradeVal = 0.0 // Field 9 is temperature, not grade. We will calculate grade dynamically below.
                 val tempRaw = fields[13]?.value?.toDouble()
-                if (tempRaw != null) {
+                if (tempRaw != null && tempRaw != 127.0 && tempRaw != 255.0) {
                     lastTemp = tempRaw
                 }
                 val tempVal = lastTemp ?: 0.0
@@ -250,10 +250,11 @@ class FitParser(private val bytes: ByteArray) {
 
         // Backfill temperature if the first few points had 0.0 before any valid temp was encountered
         if (list.isNotEmpty()) {
-            val firstValidTemp = list.firstOrNull { it.temperature != 0.0 }?.temperature
+            val firstValidTemp = list.firstOrNull { it.temperature != 0.0 && it.temperature != 127.0 && it.temperature != 255.0 }?.temperature
             if (firstValidTemp != null) {
                 for (i in list.indices) {
-                    if (list[i].temperature == 0.0) {
+                    val t = list[i].temperature
+                    if (t == 0.0 || t == 127.0 || t == 255.0) {
                         list[i] = list[i].copy(temperature = firstValidTemp)
                     } else {
                         break
