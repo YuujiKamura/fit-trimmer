@@ -322,12 +322,9 @@ class AppViewModel(
             try {
 
                 val cache = utils.PlateDetectionManager.runDetection(
-
                     videoPath = path,
-
                     telemetryPoints = telemetryPoints,
-
-                    adjustedStartUtc = videoStartUtc,
+                    adjustedStartUtc = adjustedStartUtc,
 
                     onProgress = { progress ->
 

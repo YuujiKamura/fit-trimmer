@@ -2962,10 +2962,10 @@ fun FitTrimmerMainContent(
                                              value = settings.plateMaskTimeBufferMs.toFloat() / 1000f,
                                              onValueChange = { newValue ->
                                                  val roundedMs = (kotlin.math.round(newValue * 10f) / 10f * 1000f).toLong()
-                                                 settings = settings.copy(plateMaskTimeBufferMs = roundedMs.coerceIn(0L, 2000L))
+                                                 settings = settings.copy(plateMaskTimeBufferMs = roundedMs.coerceIn(0L, 5000L))
                                              },
-                                             valueRange = 0.0f..2.0f,
-                                             steps = 20,
+                                             valueRange = 0.0f..5.0f,
+                                             steps = 50,
                                              enabled = !isEncoding,
                                              modifier = Modifier.width(180.dp),
                                              colors = androidx.compose.material.SliderDefaults.colors(
