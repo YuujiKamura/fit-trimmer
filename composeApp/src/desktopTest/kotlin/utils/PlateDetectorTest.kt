@@ -551,7 +551,7 @@ class PlateDetectorTest {
             val w = random.nextFloat() * 100f + 10f
             val h = random.nextFloat() * 50f + 5f
             val score = random.nextFloat() * 0.5f + 0.05f // Scores between 0.05 and 0.55
-            PlateDetector.DetectedBox(cx - w/2, cy - h/2, cx + w/2, cy + h/2, score)
+            PlateDetector.DetectedBox(cx - w/2, cy - h/2, cx + w/2, cy + h/2, score, classId = 2)
         }
         
         // Native naive NMS (equivalent to original implementation)
