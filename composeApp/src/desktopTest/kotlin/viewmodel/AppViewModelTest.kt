@@ -1158,6 +1158,7 @@ class AppViewModelTest {
 
     @Test
     fun testBatchRestoreDialogScenarios() {
+        kotlinx.coroutines.runBlocking {
         val dummyJobs = listOf(
             utils.SerializedBatchJob(
                 id = "job-1",
@@ -1202,8 +1203,20 @@ class AppViewModelTest {
         assertEquals("job-2", viewModel.pendingRestorableJobs[0].id)
         assertTrue(viewModel.batchQueue.isEmpty(), "Batch queue must remain empty until explicitly restored")
 
-        // 1. Confirm restore
-        viewModel.restorePendingBatchJobs()
+        // 1. Confirm restore (no cache scenario)
+        viewModel.restorePendingBatchJobs(this)
+
+        // Wait for asynchronous queue restoration
+        var restored = false
+        for (i in 1..50) {
+            if (viewModel.batchQueue.isNotEmpty()) {
+                restored = true
+                break
+            }
+            kotlinx.coroutines.delay(50)
+        }
+
+        assertTrue(restored, "Job should be restored to queue asynchronously")
         assertFalse(viewModel.showBatchRestoreDialog)
         assertEquals(1, viewModel.batchQueue.size)
         assertEquals("job-2", viewModel.batchQueue[0].id)
@@ -1220,7 +1233,91 @@ class AppViewModelTest {
         assertTrue(viewModel2.batchQueue.isEmpty())
         assertTrue(viewModel2.pendingRestorableJobs.isEmpty())
         assertTrue(utils.BatchQueueCache.load().isEmpty(), "Disk cache must be cleared on discard")
+
+        // 3. Test restore with available cache (auto-salvage scenario)
+        viewModel.clearBatchQueue()
+
+        val tempDir = kotlin.io.path.createTempDirectory("fittrimmer-test-salvage-").toFile()
+        val mockVideoFile = File(tempDir, "video_mock.mp4")
+        mockVideoFile.createNewFile()
+
+        val dummyJobsWithCache = listOf(
+            utils.SerializedBatchJob(
+                id = "job-3",
+                videoPath = mockVideoFile.absolutePath,
+                fitPath = "fit1.fit",
+                videoStartUtc = "2026-07-02T10:00:00Z",
+                timeOffsetMillis = 0L,
+                trimStartSeconds = 30.0,
+                trimEndSeconds = 50.0,
+                splitPoints = emptyList(),
+                settings = HudSettings(),
+                autoDetectRoadCaptionsOnEncode = false,
+                outputFileNames = listOf("video_mock_salvaged.mp4"),
+                status = "WAITING",
+                progress = 0f,
+                errorMessage = null
+            )
+        )
+        utils.BatchQueueCache.save(dummyJobsWithCache)
+
+        val viewModel3 = AppViewModel(null)
+        viewModel3.outputDir = tempDir.absolutePath
+        assertTrue(viewModel3.showBatchRestoreDialog)
+        assertEquals(1, viewModel3.pendingRestorableJobs.size)
+
+        // Create cache job structures
+        val workDir = fit.PathResolver.getTempWorkDir(mockVideoFile.absolutePath)
+        val jobDir = File(workDir, "job_77777")
+        jobDir.mkdirs()
+        val part1 = File(jobDir, "part_0000.ts")
+        createMockTsFile(part1)
+        File(jobDir, ".video_source").writeText(mockVideoFile.absolutePath)
+
+        // Restore -> Should trigger auto-salvage
+        viewModel3.restorePendingBatchJobs(this)
+
+        val expectedOutputFile = fit.CacheJobManager.getInstance().getSalvageOutputPath(
+            videoPath = mockVideoFile.absolutePath,
+            outputDir = tempDir.absolutePath,
+            settings = viewModel3.settings
+        )
+
+        // Poll for completion (as salvage is asynchronous)
+        var completed = false
+        for (i in 1..100) {
+            if (!viewModel3.isSalvaging && expectedOutputFile.exists()) {
+                completed = true
+                break
+            }
+            kotlinx.coroutines.delay(100)
+        }
+
+        assertTrue(completed, "Auto-salvage should complete and produce salvaged video file")
+        assertTrue(viewModel3.batchQueue.isEmpty(), "Job should be completed and NOT added to batch queue")
+        assertFalse(jobDir.exists(), "Job directory should be cleaned up after successful salvage")
+
+        // Cleanup
+        tempDir.deleteRecursively()
+        workDir.deleteRecursively()
+        }
     }
+
+    private fun createMockTsFile(dest: File) {
+        val ffmpegPath = try { fit.findFfmpegPath() } catch (e: Exception) { "ffmpeg" }
+        val pb = ProcessBuilder(
+            ffmpegPath, "-y",
+            "-nostdin",
+            "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=10:duration=0.2",
+            "-c:v", "libopenh264",
+            "-f", "mpegts",
+            dest.absolutePath
+        )
+        pb.redirectErrorStream(true)
+        val p = pb.start()
+        p.waitFor()
+    }
+
 
     @Test
     fun testWindowsVideoPlayerStateDisposeDoesNotDeadlock() {

@@ -930,40 +930,40 @@ fun FitTrimmerMainContent(
         }
     }
 
-    val availableCacheJobs = viewModel.availableCacheJobs
-    LaunchedEffect(availableCacheJobs, isEncoding) {
-        if (availableCacheJobs.isNotEmpty() && !viewModel.isSalvaging && !isEncoding) {
-            val job = availableCacheJobs.first()
-            if (viewModel.lastPromptedJobHash != job.jobHash) {
-                viewModel.lastPromptedJobHash = job.jobHash
-                val salvageOutFile = fit.CacheJobManager.getInstance().getSalvageOutputPath(videoPath, outputDir, settings)
-                val uniqueFileName = salvageOutFile.name
-                val salvageOutPath = salvageOutFile.absolutePath
 
-                scope.launch(Dispatchers.Main) {
-                    val confirm = javax.swing.JOptionPane.showConfirmDialog(
-                        composeWindow ?: viewModel.composeWindow,
-                        "未完了のエンコードキャッシュ（パーツ数: ${job.partsCount} 個）が検出されました。\n" +
-                        "レンダリングをスキップし、既存のキャッシュを無劣化・高速結合して\n" +
-                        "「$uniqueFileName」を今すぐ復元しますか？",
-                        "未完了キャッシュの復元",
-                        javax.swing.JOptionPane.YES_NO_OPTION,
-                        javax.swing.JOptionPane.QUESTION_MESSAGE
-                    )
-                    if (confirm == javax.swing.JOptionPane.YES_OPTION) {
-                        viewModel.runSalvage(
-                            jobInfo = job,
-                            outputPath = salvageOutPath,
-                            coroutineScope = scope,
-                            onComplete = { successMsg ->
-                                javax.swing.JOptionPane.showMessageDialog(null, successMsg, "サルベージ成功", javax.swing.JOptionPane.INFORMATION_MESSAGE)
-                            }
-                        )
-                    }
-                }
-            }
-        }
-    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     LaunchedEffect(playerState) {
         val winPlayer = playerState as? io.github.kdroidfilter.composemediaplayer.windows.WindowsVideoPlayerState
@@ -4309,7 +4309,7 @@ fun FitTrimmerMainContent(
                                     }
                                     Button(
                                         onClick = {
-                                            viewModel.restorePendingBatchJobs()
+                                            viewModel.restorePendingBatchJobs(scope)
                                         },
                                         modifier = Modifier.weight(1.5f).height(38.dp),
                                         colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF007AFF), contentColor = Color.White)
