@@ -470,6 +470,10 @@ fun VideoPreviewArea(
         }
     }
 
+    val wState = playerState as? io.github.kdroidfilter.composemediaplayer.windows.WindowsVideoPlayerState
+    val videoW = wState?.videoWidth
+    val videoH = wState?.videoHeight
+
 
 
     val togglePlayButton = {
@@ -964,6 +968,20 @@ fun VideoPreviewArea(
                     ) {
                         Text(label, fontSize = 9.sp, maxLines = 1)
                     }
+                }
+
+                val resolutionText = if (videoW != null && videoH != null && videoW > 0 && videoH > 0) {
+                    "${videoW}x${videoH}"
+                } else ""
+                if (resolutionText.isNotEmpty()) {
+                    Text(
+                        text = resolutionText,
+                        color = mutedForeground,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        modifier = Modifier.padding(horizontal = 4.dp)
+                    )
                 }
             }
         }
