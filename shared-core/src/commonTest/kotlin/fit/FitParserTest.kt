@@ -692,5 +692,46 @@ class FitParserTest {
             // Should not crash JVM
         }
     }
+
+    @Test
+    fun testTemperatureInterpolationAndBackfill() {
+        val headerBytes = ByteArray(14 + 2)
+        headerBytes[0] = 14.toByte()
+        headerBytes[1] = 32
+        ".FIT".encodeToByteArray().copyInto(headerBytes, 8)
+        val parser = FitParser(headerBytes)
+        
+        fun createMockRecord(timestamp: Double, temperature: Double?): FitParser.FitRecord.Data {
+            val parsedFields = mutableMapOf<Int, FitParser.ParsedField>()
+            parsedFields[253] = FitParser.ParsedField(0, 4, 0x86, timestamp.toLong())
+            if (temperature != null) {
+                parsedFields[13] = FitParser.ParsedField(0, 1, 0x01, temperature.toLong())
+            }
+            val dataRecord = FitParser.DataRecord(
+                localId = 0,
+                globalMessageNumber = 20,
+                offset = 0,
+                size = 10,
+                fields = parsedFields,
+                def = FitParser.DefinitionRecord(false, 20, emptyList(), emptyList(), 0, 10)
+            )
+            return FitParser.FitRecord.Data(0, 20, 0, 10, dataRecord)
+        }
+        
+        parser.records.addAll(listOf(
+            createMockRecord(1000.0, null),
+            createMockRecord(1001.0, 24.0),
+            createMockRecord(1002.0, null),
+            createMockRecord(1003.0, 25.0),
+            createMockRecord(1004.0, null)
+        ))
+        
+        val telemetry = parser.getTelemetry()
+        assertEquals(5, telemetry.size)
+        
+        assertEquals(24.0, telemetry[0].temperature, "Record 1 should be backfilled with 24.0")
+        assertEquals(24.0, telemetry[2].temperature, "Record 3 should be forward filled with 24.0")
+        assertEquals(25.0, telemetry[4].temperature, "Record 5 should be forward filled with 25.0")
+    }
 }
 
