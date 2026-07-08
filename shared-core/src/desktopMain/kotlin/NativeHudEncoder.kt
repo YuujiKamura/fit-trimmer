@@ -481,17 +481,27 @@ class NativeHudEncoder(
             g.drawString(text, drawX, sy)
         }
 
-        override fun drawRect(x: Float, y: Float, w: Float, h: Float, color: String, alpha: Float, outline: Boolean) {
+        override fun drawRect(x: Float, y: Float, w: Float, h: Float, color: String, alpha: Float, outline: Boolean, rx: Float, ry: Float) {
             val c = Color.decode(color)
             g.color = Color(c.red, c.green, c.blue, (alpha * 255).toInt())
             val sx = (x * scale).toInt()
             val sy = (y * scale).toInt()
             val sw = (w * scale).toInt()
             val sh = (h * scale).toInt()
-            if (outline) {
-                g.drawRect(sx, sy, sw, sh)
+            val srx = (rx * scale).toInt()
+            val sry = (ry * scale).toInt()
+            if (srx > 0 && sry > 0) {
+                if (outline) {
+                    g.drawRoundRect(sx, sy, sw, sh, srx, sry)
+                } else {
+                    g.fillRoundRect(sx, sy, sw, sh, srx, sry)
+                }
             } else {
-                g.fillRect(sx, sy, sw, sh)
+                if (outline) {
+                    g.drawRect(sx, sy, sw, sh)
+                } else {
+                    g.fillRect(sx, sy, sw, sh)
+                }
             }
         }
 

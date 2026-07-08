@@ -204,7 +204,7 @@ class NativeHudEncoderTest {
             override fun drawText(text: String, x: Float, y: Float, size: Float, color: String, bold: Boolean, anchor: String) {
                 textDrawn.add(text)
             }
-            override fun drawRect(x: Float, y: Float, w: Float, h: Float, color: String, alpha: Float, outline: Boolean) {}
+            override fun drawRect(x: Float, y: Float, w: Float, h: Float, color: String, alpha: Float, outline: Boolean, rx: Float, ry: Float) {}
             override fun drawLine(points: List<Pair<Float, Float>>, color: String, width: Float, alpha: Float) {}
             override fun drawPolygon(points: List<Pair<Float, Float>>, color: String, alpha: Float) {}
             override fun getTextWidth(text: String, size: Float, bold: Boolean) = text.length * 10f
@@ -254,7 +254,7 @@ class NativeHudEncoderTest {
             override fun drawText(text: String, x: Float, y: Float, size: Float, color: String, bold: Boolean, anchor: String) {
                 textDrawn.add(text)
             }
-            override fun drawRect(x: Float, y: Float, w: Float, h: Float, color: String, alpha: Float, outline: Boolean) {}
+            override fun drawRect(x: Float, y: Float, w: Float, h: Float, color: String, alpha: Float, outline: Boolean, rx: Float, ry: Float) {}
             override fun drawLine(points: List<Pair<Float, Float>>, color: String, width: Float, alpha: Float) {}
             override fun drawPolygon(points: List<Pair<Float, Float>>, color: String, alpha: Float) {}
             override fun getTextWidth(text: String, size: Float, bold: Boolean) = text.length * 10f
