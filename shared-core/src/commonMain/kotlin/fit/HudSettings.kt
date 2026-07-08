@@ -57,6 +57,7 @@ data class HudSettings(
     val mapZoomOffset: Int = 0,
     val fixMapNorthUp: Boolean = false,
     val mapMarkerSizeScale: Float = 1.0f,
-    val mapTextSizeScale: Float = 1.0f
+    val mapTextSizeScale: Float = 1.0f,
+    val mapRangeMode: String = "full"
 )
 

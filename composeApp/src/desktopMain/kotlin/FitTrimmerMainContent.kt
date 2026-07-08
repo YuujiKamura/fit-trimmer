@@ -149,7 +149,8 @@ fun FitTrimmerMainContent(
             mapZoomOffset = settings.mapZoomOffset,
             fixMapNorthUp = settings.fixMapNorthUp,
             mapMarkerSizeScale = settings.mapMarkerSizeScale,
-            mapTextSizeScale = settings.mapTextSizeScale
+            mapTextSizeScale = settings.mapTextSizeScale,
+            mapRangeMode = settings.mapRangeMode
         )
     }
     var reloadTrigger by remember { mutableStateOf(0) }
@@ -2491,6 +2492,41 @@ fun FitTrimmerMainContent(
                                     }
                                     DropdownMenuItem(onClick = { settings = settings.copy(mapPosition = "bottom_right"); mapPosDropdownExpanded = false }) {
                                         Text("Bottom Right (右下)", fontSize = 11.sp, color = Color(0xFF1C1C1E))
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.height(4.dp))
+                            Text(utils.Localizer.get("map_range_mode", settings.language).uppercase(), color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 0.5.sp)
+                            var mapRangeDropdownExpanded by remember { mutableStateOf(false) }
+                            Box(modifier = Modifier.fillMaxWidth()) {
+                                val currentRangeLabel = when (settings.mapRangeMode) {
+                                    "highest_elevation" -> utils.Localizer.get("map_range_highest", settings.language)
+                                    else -> utils.Localizer.get("map_range_full", settings.language)
+                                }
+                                OutlinedButton(
+                                    onClick = { if (!isEncoding) mapRangeDropdownExpanded = true },
+                                    modifier = Modifier.fillMaxWidth().height(36.dp),
+                                    border = BorderStroke(1.dp, Color(0xFFE5E5EA)),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF1C1C1E))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(currentRangeLabel, fontSize = 11.sp)
+                                        Text("▼", fontSize = 8.sp, color = Color.Gray)
+                                    }
+                                }
+                                DropdownMenu(
+                                    expanded = mapRangeDropdownExpanded,
+                                    onDismissRequest = { mapRangeDropdownExpanded = false }
+                                ) {
+                                    DropdownMenuItem(onClick = { settings = settings.copy(mapRangeMode = "full"); mapRangeDropdownExpanded = false }) {
+                                        Text(utils.Localizer.get("map_range_full", settings.language), fontSize = 11.sp, color = Color(0xFF1C1C1E))
+                                    }
+                                    DropdownMenuItem(onClick = { settings = settings.copy(mapRangeMode = "highest_elevation"); mapRangeDropdownExpanded = false }) {
+                                        Text(utils.Localizer.get("map_range_highest", settings.language), fontSize = 11.sp, color = Color(0xFF1C1C1E))
                                     }
                                 }
                             }
