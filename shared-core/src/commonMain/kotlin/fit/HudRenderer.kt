@@ -151,53 +151,15 @@ class HudRenderer(val config: HudConfig) {
         val graphW = config.graphW // 300f
         val graphH = config.graphH // 60f
 
-        // Calculate total HUD height for background shadow
-        var totalHudHeight = 0f
-        if (config.showSpeed) {
-            totalHudHeight += labelSize + tightness + valSize + itemSpacing
-        }
-        if (config.showCadence) {
-            totalHudHeight += labelSize + tightness + valSize + itemSpacing
-        }
-        if (config.showHeartRate) {
-            totalHudHeight += labelSize + tightness + valSize + 39f + itemSpacing
-        }
-        if (config.showPower) {
-            totalHudHeight += labelSize + tightness + valSize + itemSpacing
-        }
-        if (config.showWkg && config.bodyWeightKg > 0.0) {
-            totalHudHeight += labelSize + tightness + valSize + itemSpacing
-        }
-        if (config.showPowerTrend) {
-            val tickLabelSize = labelSize * 0.8f
-            totalHudHeight += labelSize + 4f + graphH + (tickLabelSize + 4f) + itemSpacing
-        }
-        if (config.showGrade) {
-            totalHudHeight += labelSize + tightness + valSize + itemSpacing
-        }
-        if (config.showElevation) {
-            if (config.showDistanceTime) {
-                totalHudHeight += labelSize + 52f + graphH + itemSpacing
-            } else {
-                totalHudHeight += labelSize + 20f + graphH + itemSpacing
-            }
-        } else {
-            if (config.showDistanceTime) {
-                totalHudHeight += 16f + itemSpacing
-            }
-        }
 
-        if (totalHudHeight > 0f && config.hudBgAlpha > 0f) {
-            val padX = 20f * sf
-            val padY = 20f * sf
-            val bgX = cx - padX
-            val bgY = cy - padY
-            val bgW = graphW + padX * 2f
-            val bgH = (totalHudHeight - itemSpacing).coerceAtLeast(0f) + padY * 2f
-            canvas.drawRect(bgX, bgY, bgW, bgH, "#000000", alpha = config.hudBgAlpha)
-        }
 
         fun drawCell(label: String, value: String, unit: String, color: String) {
+            if (config.hudBgAlpha > 0f) {
+                val padX = 20f * sf
+                val padY = 8f * sf
+                val cellH = labelSize + tightness + valSize
+                canvas.drawRect(cx - padX, cy - padY, graphW + padX * 2f, cellH + padY * 2f, "#000000", alpha = config.hudBgAlpha)
+            }
             // 1. Label (Light grey #e5e7eb)
             drawShadowedText(canvas, label, cx, cy, labelSize, "#e5e7eb", bold = true, sf = sf)
             
@@ -231,6 +193,12 @@ class HudRenderer(val config: HudConfig) {
 
         // 3. HEART RATE
         if (config.showHeartRate) {
+            if (config.hudBgAlpha > 0f) {
+                val padX = 20f * sf
+                val padY = 8f * sf
+                val cellH = labelSize + tightness + valSize + 39f
+                canvas.drawRect(cx - padX, cy - padY, graphW + padX * 2f, cellH + padY * 2f, "#000000", alpha = config.hudBgAlpha)
+            }
             val hrStr = if (isValid) telemetry.heartRate.roundToInt().toString() else "-"
             
             // 3.1. Draw standard HEART RATE label and value
@@ -313,6 +281,12 @@ class HudRenderer(val config: HudConfig) {
 
         // 6. POWER TREND (Bar graph)
         if (config.showPowerTrend) {
+            if (config.hudBgAlpha > 0f) {
+                val padX = 20f * sf
+                val padY = 8f * sf
+                val cellH = labelSize + 4f + graphH + ((labelSize * 0.8f) + 4f)
+                canvas.drawRect(cx - padX, cy - padY, graphW + padX * 2f, cellH + padY * 2f, "#000000", alpha = config.hudBgAlpha)
+            }
             val spanText = if (config.powerTrendSpanSeconds >= 60) {
                 val min = config.powerTrendSpanSeconds / 60
                 val sec = config.powerTrendSpanSeconds % 60
@@ -384,6 +358,17 @@ class HudRenderer(val config: HudConfig) {
 
         // 8. ELEVATION (Line graph with terrain and pin)
         if (config.showElevation) {
+            if (config.hudBgAlpha > 0f) {
+                val padX = 20f * sf
+                val padY = 8f * sf
+                val cellH = if (config.showDistanceTime) {
+                    val infoSize = 16f
+                    (infoSize + 16f) + labelSize + 20f + graphH
+                } else {
+                    labelSize + 20f + graphH
+                }
+                canvas.drawRect(cx - padX, cy - padY, graphW + padX * 2f, cellH + padY * 2f, "#000000", alpha = config.hudBgAlpha)
+            }
             // 8.5. Real-time Distance & Elapsed Time ABOVE Elevation Graph
             if (config.showDistanceTime && isValid && allPoints.isNotEmpty()) {
                 val startPoint = allPoints.first()
@@ -654,6 +639,12 @@ class HudRenderer(val config: HudConfig) {
         } else {
             // If elevation is hidden, we can still render Distance & Time info block
             if (config.showDistanceTime && isValid && allPoints.isNotEmpty()) {
+                if (config.hudBgAlpha > 0f) {
+                    val padX = 20f * sf
+                    val padY = 8f * sf
+                    val cellH = 16f
+                    canvas.drawRect(cx - padX, cy - padY, graphW + padX * 2f, cellH + padY * 2f, "#000000", alpha = config.hudBgAlpha)
+                }
                 val startPoint = allPoints.first()
                 val currentSeconds = currentRatio.toDouble()
                 
