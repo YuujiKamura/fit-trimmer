@@ -1205,6 +1205,10 @@ class NativeHudEncoder(
             showDistanceTime = settings.showDistanceTime,
             bodyWeightKg = settings.bodyWeightKg,
             customCaptions = settings.customCaptions,
+            mapSizeScale = settings.mapSizeScale,
+            mapType = settings.mapType,
+            mapPosition = settings.mapPosition,
+            hudBgAlpha = settings.hudBgAlpha,
             trimStartSeconds = actualTrimStart
         )
         println("DEBUG: NativeHudEncoder.encode config=$config, videoWidth=$videoWidth, videoHeight=$videoHeight")
@@ -2298,6 +2302,10 @@ class NativeHudEncoder(
                     showDistanceTime = settings.showDistanceTime,
                     bodyWeightKg = settings.bodyWeightKg,
                     customCaptions = settings.customCaptions,
+                    mapSizeScale = settings.mapSizeScale,
+                    mapType = settings.mapType,
+                    mapPosition = settings.mapPosition,
+                    hudBgAlpha = settings.hudBgAlpha,
                     trimStartSeconds = actualTrimStart
                 )
 

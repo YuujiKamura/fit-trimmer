@@ -1013,6 +1013,11 @@ class HudRendererTest {
             hudBgAlpha = 0.5f,
             showSpeed = true,
             showCadence = true,
+            showHeartRate = false,
+            showPower = false,
+            showWkg = false,
+            showPowerTrend = false,
+            showGrade = false,
             showElevation = true,
             showDistanceTime = true
         )
@@ -1028,7 +1033,7 @@ class HudRendererTest {
         val bgShadowCalls = canvas.drawnRects.filter { 
             it.color == "#000000" && it.alpha == 0.5f && it.y >= 80f
         }
-        assertEquals(1, bgShadowCalls.size, "Should have exactly one background shadow rect with alpha 0.5f")
+        assertEquals(3, bgShadowCalls.size, "Should have exactly three background shadow rects for speed, cadence, and elevation with alpha 0.5f")
     }
 
     @Test
