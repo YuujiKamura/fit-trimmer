@@ -133,7 +133,9 @@ object PlateDetectionManager {
             videoFps = fpsMatch.groupValues[1].toDouble()
         }
 
-        val effectiveDetectionFps = settings.plateDetectionFps.coerceIn(0.25, 4.0)
+        val baseDetectionFps = settings.plateDetectionFps.coerceIn(0.25, 4.0)
+        // Multiplier of 3x for active dynamic tracking, capped at 4.0fps to prevent extreme decoding overhead
+        val effectiveDetectionFps = (baseDetectionFps * 3.0).coerceAtMost(4.0)
         val effectiveMaxSpeedKmh = settings.plateMaxSpeedKmh.coerceAtLeast(0.0)
         val effectivePaddingSeconds = settings.platePaddingSeconds.coerceAtLeast(0.0)
         val effectiveMergeGapSeconds = settings.plateMergeGapSeconds.coerceAtLeast(0.0)
@@ -423,10 +425,8 @@ object PlateDetectionManager {
         var skippedSpeedTrimFrames = 0L
         var skippedTrackingFrames = 0L
         
-        // Skip subsequent frames for up to 1.0 second after a successful plate detection.
-        // During skip, we reuse the last detected bounding boxes, relying on expandRatio/padding
-        // to maintain continuous coverage.
-        val skipStepLimit = (1.0 * effectiveDetectionFps).toInt().coerceAtLeast(1)
+        var trackingActive = false
+        var consecutiveNoneFrames = 0
 
         try {
             for (frame in frameChannel) {
@@ -436,11 +436,21 @@ object PlateDetectionManager {
                 totalDecodeMs += frame.decodeMs
                 var inferencePerformed = false
                 val skipReason: String
+                
+                // If not tracking, scan only 1 out of 3 frames (base detection frequency).
+                // If tracking is active, scan every frame to ensure high-precision coordinate alignment.
+                val skipPeriodic = !trackingActive && (frame.frameIndex % 3 != 0L)
+
                 val boxes = if (frame.skipDetection) {
                     skippedFrames++
                     skippedSpeedTrimFrames++
                     skipReason = "Skip (Speed/Trim)"
                     emptyList()
+                } else if (skipPeriodic) {
+                    skippedFrames++
+                    skippedTrackingFrames++
+                    skipReason = "Skip (Periodic Idle)"
+                    cachedBoxes
                 } else if (skipInferenceFramesLeft > 0 && cachedBoxes.isNotEmpty()) {
                     skipInferenceFramesLeft--
                     skippedFrames++
@@ -450,18 +460,8 @@ object PlateDetectionManager {
                 } else {
                     inferencePerformed = true
                     skipReason = "Scan (ONNX)"
-                    // Populate reusable BufferedImage directly from frame buffer and detect
                     System.arraycopy(frame.buffer, 0, imgData, 0, frameBytes)
-                    if (frame.frameIndex < 5L || (frame.frameIndex in 48L..54L)) {
-                        try {
-                            val sd = File("scratch")
-                            if (!sd.exists()) sd.mkdirs()
-                            javax.imageio.ImageIO.write(img, "jpg", File(sd, "scan_frame_${frame.frameIndex}.jpg"))
-                            println("DEBUG: Wrote scratch/scan_frame_${frame.frameIndex}.jpg for visual audit.")
-                        } catch (e: Exception) { e.printStackTrace() }
-                    }
                     val rawBoxes = detector.detect(img, confThreshold = 0.08f)
-                    // Scale from 640x640 back to original video resolution
                     val scaledBoxes = rawBoxes.map { box ->
                         val scaleX = videoWidth.toFloat() / 640f
                         val scaleY = videoHeight.toFloat() / 640f
@@ -474,9 +474,18 @@ object PlateDetectionManager {
                     }
                     
                     if (scaledBoxes.isNotEmpty()) {
-                        skipInferenceFramesLeft = skipStepLimit
+                        trackingActive = true
+                        consecutiveNoneFrames = 0
+                        // Scan every single frame (0 skip) during active tracking to ensure seamless path follow
+                        skipInferenceFramesLeft = 0
                         cachedBoxes = scaledBoxes
                     } else {
+                        if (trackingActive) {
+                            consecutiveNoneFrames++
+                            if (consecutiveNoneFrames >= 6) { // No detection for 2.0 seconds (6 frames at 3fps) before dropping back to idle scan
+                                trackingActive = false
+                            }
+                        }
                         skipInferenceFramesLeft = 0
                         cachedBoxes = emptyList()
                     }
