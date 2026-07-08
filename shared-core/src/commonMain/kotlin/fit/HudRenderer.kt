@@ -34,10 +34,11 @@ data class HudConfig(
     val customCaptions: List<CustomCaptionSegment> = emptyList(),
     val trimStartSeconds: Double = 0.0,
     val mapSizeScale: Float = 1.0f,
-    val mapType: String = "openstreetmap",
+    val mapType: String = "auto",
     val mapPosition: String = "top_right",
     val hudBgAlpha: Float = 0.0f,
-    val mapZoomScale: Float = 0.55f
+    val mapZoomScale: Float = 0.55f,
+    val mapZoomOffset: Int = 0
 )
 
 
@@ -1046,7 +1047,7 @@ class HudRenderer(val config: HudConfig) {
 
         // Draw route line (with scaled line width and black outline shadow)
         val routeLinePoints = drawPoints.map { projectPoint(it) }
-        canvas.drawLine(routeLinePoints, "#000000", width = 4.2f * sf, alpha = 0.8f)
+        canvas.drawLine(routeLinePoints, "#555555", width = 4.2f * sf, alpha = 0.8f)
         canvas.drawLine(routeLinePoints, "#ff9100", width = 2.8f * sf, alpha = 0.9f)
 
         // 5. Draw Start/End Markers (Scaled with black outline shadow)
@@ -1057,10 +1058,10 @@ class HudRenderer(val config: HudConfig) {
         val outSize = mSize + 2f * sf
         val houtSize = outSize / 2f
         
-        canvas.drawRect(startMapPt.first - houtSize, startMapPt.second - houtSize, outSize, outSize, "#000000", alpha = 0.8f)
+        canvas.drawRect(startMapPt.first - houtSize, startMapPt.second - houtSize, outSize, outSize, "#555555", alpha = 0.8f)
         canvas.drawRect(startMapPt.first - hmSize, startMapPt.second - hmSize, mSize, mSize, "#00e676", alpha = 1.0f)
         
-        canvas.drawRect(endMapPt.first - houtSize, endMapPt.second - houtSize, outSize, outSize, "#000000", alpha = 0.8f)
+        canvas.drawRect(endMapPt.first - houtSize, endMapPt.second - houtSize, outSize, outSize, "#555555", alpha = 0.8f)
         canvas.drawRect(endMapPt.first - hmSize, endMapPt.second - hmSize, mSize, mSize, "#ef4444", alpha = 1.0f)
 
         // Draw distance labels near start/end & midpoint (Scaled font size & adjusted spacing, Metric is in meters 'm')
@@ -1136,7 +1137,7 @@ class HudRenderer(val config: HudConfig) {
             val p2_out = currentMapPt.first + L2_out * kotlin.math.sin(angleLeft).toFloat() to currentMapPt.second - L2_out * kotlin.math.cos(angleLeft).toFloat()
             val p3_out = currentMapPt.first - L3_out * sinPhi to currentMapPt.second + L3_out * cosPhi
             val p4_out = currentMapPt.first + L2_out * kotlin.math.sin(angleRight).toFloat() to currentMapPt.second - L2_out * kotlin.math.cos(angleRight).toFloat()
-            canvas.drawPolygon(listOf(p1_out, p2_out, p3_out, p4_out), "#000000", alpha = 0.8f)
+            canvas.drawPolygon(listOf(p1_out, p2_out, p3_out, p4_out), "#555555", alpha = 0.8f)
 
             val pinPoly = listOf(p1, p2, p3, p4)
             canvas.drawPolygon(pinPoly, "#ef4444", alpha = 1.0f)
@@ -1173,10 +1174,10 @@ class HudRenderer(val config: HudConfig) {
         sf: Float
     ) {
         val offset = 1.2f * sf
-        canvas.drawText(text, x - offset, y - offset, size, "#000000", bold = bold, anchor = anchor)
-        canvas.drawText(text, x + offset, y - offset, size, "#000000", bold = bold, anchor = anchor)
-        canvas.drawText(text, x - offset, y + offset, size, "#000000", bold = bold, anchor = anchor)
-        canvas.drawText(text, x + offset, y + offset, size, "#000000", bold = bold, anchor = anchor)
+        canvas.drawText(text, x - offset, y - offset, size, "#555555", bold = bold, anchor = anchor)
+        canvas.drawText(text, x + offset, y - offset, size, "#555555", bold = bold, anchor = anchor)
+        canvas.drawText(text, x - offset, y + offset, size, "#555555", bold = bold, anchor = anchor)
+        canvas.drawText(text, x + offset, y + offset, size, "#555555", bold = bold, anchor = anchor)
         canvas.drawText(text, x, y, size, color, bold = bold, anchor = anchor)
     }
 

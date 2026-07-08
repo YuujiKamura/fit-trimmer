@@ -782,7 +782,7 @@ class HudRendererTest {
             isValid = true
         )
         
-        val textCall = canvas1.textCalls.find { it.text == "Hello Custom Caption" && it.color != "#000000" }
+        val textCall = canvas1.textCalls.find { it.text == "Hello Custom Caption" && it.color != "#555555" }
         val rectCall = canvas1.rectCalls.find { it.color == "#00ff00" && it.alpha == 0.8f }
         
         assertTrue(textCall != null, "Custom caption should be drawn inside range")
@@ -851,8 +851,8 @@ class HudRendererTest {
             isValid = true
         )
         
-        val line1Call = canvas.textCalls.find { it.text == "Line1" && it.color != "#000000" }
-        val line2Call = canvas.textCalls.find { it.text == "Line2Text" && it.color != "#000000" }
+        val line1Call = canvas.textCalls.find { it.text == "Line1" && it.color != "#555555" }
+        val line2Call = canvas.textCalls.find { it.text == "Line2Text" && it.color != "#555555" }
         
         assertTrue(line1Call != null, "Line 1 should be drawn")
         assertTrue(line2Call != null, "Line 2 should be drawn")
@@ -1084,5 +1084,17 @@ class HudRendererTest {
         assertTrue(distanceIdx != -1, "Distance text should be rendered")
         assertTrue(elevationIdx != -1, "Elevation text should be rendered")
         assertTrue(distanceIdx < elevationIdx, "Distance text ($distanceIdx) must be drawn before Elevation text ($elevationIdx). All texts: $allTextList")
+    }
+
+    @Test
+    fun testMiniMap_ZoomOffsetAndAutoType() {
+        val config = HudConfig(
+            valSize = 50f, tightness = 0f, spacing = 10f, xOffset = 0f, yOffset = 0f, graphH = 100f, graphW = 200f,
+            mapZoomScale = 0.6f,
+            mapZoomOffset = -2,
+            mapType = "auto"
+        )
+        assertEquals(-2, config.mapZoomOffset, "mapZoomOffset config property should be set correctly")
+        assertEquals("auto", config.mapType, "mapType config property should be set to auto")
     }
 }

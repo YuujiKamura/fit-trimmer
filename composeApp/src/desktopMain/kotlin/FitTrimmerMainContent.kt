@@ -1,4 +1,5 @@
 import io.github.kdroidfilter.composemediaplayer.rememberVideoPlayerState
+import kotlin.math.roundToInt
 import io.github.kdroidfilter.composemediaplayer.VideoPlayerSurface
 import io.github.vinceglb.filekit.PlatformFile
 import androidx.compose.foundation.Canvas
@@ -144,7 +145,8 @@ fun FitTrimmerMainContent(
             mapType = settings.mapType,
             mapPosition = settings.mapPosition,
             hudBgAlpha = settings.hudBgAlpha,
-            mapZoomScale = settings.mapZoomScale
+            mapZoomScale = settings.mapZoomScale,
+            mapZoomOffset = settings.mapZoomOffset
         )
     }
     var reloadTrigger by remember { mutableStateOf(0) }
@@ -2405,10 +2407,12 @@ fun FitTrimmerMainContent(
                             ControlSlider("MAP SIZE", settings.mapSizeScale, 0.2f, 3.0f, enabled = !isEncoding) { settings = settings.copy(mapSizeScale = it) }
                             ControlSlider("HUD BG ALPHA", settings.hudBgAlpha, 0f, 1f, enabled = !isEncoding) { settings = settings.copy(hudBgAlpha = it) }
                             ControlSlider("MAP ZOOM", settings.mapZoomScale, 0.3f, 0.9f, enabled = !isEncoding) { settings = settings.copy(mapZoomScale = it) }
+                            ControlSlider("MAP LEVEL OFFSET", settings.mapZoomOffset.toFloat(), -3f, 3f, enabled = !isEncoding) { settings = settings.copy(mapZoomOffset = it.roundToInt()) }
                             Text("MAP TYPE", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 0.5.sp)
                             var mapTypeDropdownExpanded by remember { mutableStateOf(false) }
                             Box(modifier = Modifier.fillMaxWidth()) {
                                 val currentMapLabel = when (settings.mapType) {
+                                    "auto" -> "Auto (自動切り替え)"
                                     "carto_light" -> "Light (Carto)"
                                     "carto_dark" -> "Dark (Carto)"
                                     "carto_voyager" -> "Voyager (Carto)"
@@ -2433,6 +2437,9 @@ fun FitTrimmerMainContent(
                                     expanded = mapTypeDropdownExpanded,
                                     onDismissRequest = { mapTypeDropdownExpanded = false }
                                 ) {
+                                    DropdownMenuItem(onClick = { settings = settings.copy(mapType = "auto"); mapTypeDropdownExpanded = false }) {
+                                        Text("Auto (自動切り替え)", fontSize = 11.sp, color = Color(0xFF1C1C1E))
+                                    }
                                     DropdownMenuItem(onClick = { settings = settings.copy(mapType = "openstreetmap"); mapTypeDropdownExpanded = false }) {
                                         Text("Standard (OSM)", fontSize = 11.sp, color = Color(0xFF1C1C1E))
                                     }
