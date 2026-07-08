@@ -146,7 +146,8 @@ fun FitTrimmerMainContent(
             mapPosition = settings.mapPosition,
             hudBgAlpha = settings.hudBgAlpha,
             mapZoomScale = settings.mapZoomScale,
-            mapZoomOffset = settings.mapZoomOffset
+            mapZoomOffset = settings.mapZoomOffset,
+            fixMapNorthUp = settings.fixMapNorthUp
         )
     }
     var reloadTrigger by remember { mutableStateOf(0) }
@@ -2671,7 +2672,8 @@ fun FitTrimmerMainContent(
                                 Triple("show_power_trend", settings.showPowerTrend) { v: Boolean -> settings = settings.copy(showPowerTrend = v) },
                                 Triple("show_grade", settings.showGrade) { v: Boolean -> settings = settings.copy(showGrade = v) },
                                 Triple("show_elevation", settings.showElevation) { v: Boolean -> settings = settings.copy(showElevation = v) },
-                                Triple("show_distance_time", settings.showDistanceTime) { v: Boolean -> settings = settings.copy(showDistanceTime = v) }
+                                Triple("show_distance_time", settings.showDistanceTime) { v: Boolean -> settings = settings.copy(showDistanceTime = v) },
+                                Triple("fix_map_north_up", settings.fixMapNorthUp) { v: Boolean -> settings = settings.copy(fixMapNorthUp = v) }
                             )
                             
                             toggles.forEach { (labelKey, isChecked, onToggle) ->

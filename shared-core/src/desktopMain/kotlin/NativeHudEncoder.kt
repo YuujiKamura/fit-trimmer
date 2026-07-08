@@ -1230,6 +1230,8 @@ class NativeHudEncoder(
             mapPosition = settings.mapPosition,
             hudBgAlpha = settings.hudBgAlpha,
             mapZoomScale = settings.mapZoomScale,
+            mapZoomOffset = settings.mapZoomOffset,
+            fixMapNorthUp = settings.fixMapNorthUp,
             trimStartSeconds = actualTrimStart
         )
         println("DEBUG: NativeHudEncoder.encode config=$config, videoWidth=$videoWidth, videoHeight=$videoHeight")
@@ -2328,6 +2330,8 @@ class NativeHudEncoder(
                     mapPosition = settings.mapPosition,
                     hudBgAlpha = settings.hudBgAlpha,
                     mapZoomScale = settings.mapZoomScale,
+                    mapZoomOffset = settings.mapZoomOffset,
+                    fixMapNorthUp = settings.fixMapNorthUp,
                     trimStartSeconds = actualTrimStart
                 )
 

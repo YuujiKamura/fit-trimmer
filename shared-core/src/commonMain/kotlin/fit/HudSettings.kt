@@ -54,6 +54,7 @@ data class HudSettings(
     val mapPosition: String = "top_right",
     val hudBgAlpha: Float = 0.0f,
     val mapZoomScale: Float = 0.55f,
-    val mapZoomOffset: Int = 0
+    val mapZoomOffset: Int = 0,
+    val fixMapNorthUp: Boolean = false
 )
 
