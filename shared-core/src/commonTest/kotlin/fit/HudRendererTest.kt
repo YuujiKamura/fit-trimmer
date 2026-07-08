@@ -1106,4 +1106,15 @@ class HudRendererTest {
         )
         assertTrue(config.fixMapNorthUp, "fixMapNorthUp config property should be set to true")
     }
+
+    @Test
+    fun testMiniMap_MarkerAndTextSizeScale() {
+        val config = HudConfig(
+            valSize = 50f, tightness = 0f, spacing = 10f, xOffset = 0f, yOffset = 0f, graphH = 100f, graphW = 200f,
+            mapMarkerSizeScale = 1.5f,
+            mapTextSizeScale = 1.2f
+        )
+        assertEquals(1.5f, config.mapMarkerSizeScale, "mapMarkerSizeScale config property should be set correctly")
+        assertEquals(1.2f, config.mapTextSizeScale, "mapTextSizeScale config property should be set correctly")
+    }
 }
