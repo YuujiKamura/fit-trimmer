@@ -511,7 +511,8 @@ object PlateDetectionManager {
                 frameIndex++
                 
                 val tProgressStart = System.nanoTime()
-                val statusText = "Frame $frameIndex/$totalActiveFrames: $skipReason"
+                val providerName = detector.activeProviderName
+                val statusText = "Frame $frameIndex/$totalActiveFrames: $skipReason ($providerName)"
                 if (totalActiveFrames > 0L) {
                     val progress = (frameIndex.toFloat() / totalActiveFrames.toFloat()).coerceIn(0f, 1f)
                     val currentPercent = progress * 100f
