@@ -177,17 +177,45 @@ class HudRenderer(val config: HudConfig) {
             if (unit.isNotEmpty()) {
                 val unitX = cx + valW + 8f
                 val unitY = valY + (actualValSize - unitSize)
-                drawShadowedText(canvas, unit, unitX, unitY, unitSize, color, bold = true, sf = sf)
+                drawShadowedText(canvas, unit, unitX, unitY, unitSize, "#ffffff", bold = true, sf = sf)
             }
             
             // Increment cy for the next cell
             cy += cellH + itemSpacing
         }
 
-        // 0. DATE & TIME
+        // 0. DATE & TIME & TEMPERATURE
         if (isValid) {
             val dtText = formatDateTime(telemetry.timestamp)
-            drawCell("", dtText, "", "#ffffff")
+            val tempVal = telemetry.temperature
+            val hasTemp = tempVal != 0.0
+            
+            if (hasTemp) {
+                val isImperial = config.useImperialUnits
+                val tempStr = if (isImperial) {
+                    val f = (tempVal * 9.0 / 5.0) + 32.0
+                    "${f.roundToInt()}°F"
+                } else {
+                    "${tempVal.roundToInt()}°C"
+                }
+                
+                val savedCy = cy
+                drawCell("", dtText, "", "#ffffff")
+                
+                val dtValSize = if (dtText.length > 8) (valSize * 0.5f).coerceAtLeast(14f) else valSize
+                val dtW = canvas.getTextWidth(dtText, dtValSize, true)
+                val dtCellW = maxOf(160f, dtW)
+                
+                val originalCx = cx
+                cx = cx + dtCellW + 24f * sf
+                cy = savedCy
+                
+                drawCell("", tempStr, "", "#ef4444")
+                
+                cx = originalCx
+            } else {
+                drawCell("", dtText, "", "#ffffff")
+            }
         }
 
         // 1. SPEED
