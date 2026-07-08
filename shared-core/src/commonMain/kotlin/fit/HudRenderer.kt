@@ -35,7 +35,8 @@ data class HudConfig(
     val trimStartSeconds: Double = 0.0,
     val mapSizeScale: Float = 1.0f,
     val mapType: String = "openstreetmap",
-    val mapPosition: String = "top_right"
+    val mapPosition: String = "top_right",
+    val hudBgAlpha: Float = 0.0f
 )
 
 
@@ -149,6 +150,52 @@ class HudRenderer(val config: HudConfig) {
         val itemSpacing = config.spacing // 20f
         val graphW = config.graphW // 300f
         val graphH = config.graphH // 60f
+
+        // Calculate total HUD height for background shadow
+        var totalHudHeight = 0f
+        if (config.showSpeed) {
+            totalHudHeight += labelSize + tightness + valSize + itemSpacing
+        }
+        if (config.showCadence) {
+            totalHudHeight += labelSize + tightness + valSize + itemSpacing
+        }
+        if (config.showHeartRate) {
+            totalHudHeight += labelSize + tightness + valSize + 39f + itemSpacing
+        }
+        if (config.showPower) {
+            totalHudHeight += labelSize + tightness + valSize + itemSpacing
+        }
+        if (config.showWkg && config.bodyWeightKg > 0.0) {
+            totalHudHeight += labelSize + tightness + valSize + itemSpacing
+        }
+        if (config.showPowerTrend) {
+            val tickLabelSize = labelSize * 0.8f
+            totalHudHeight += labelSize + 4f + graphH + (tickLabelSize + 4f) + itemSpacing
+        }
+        if (config.showGrade) {
+            totalHudHeight += labelSize + tightness + valSize + itemSpacing
+        }
+        if (config.showElevation) {
+            if (config.showDistanceTime) {
+                totalHudHeight += labelSize + 52f + graphH + itemSpacing
+            } else {
+                totalHudHeight += labelSize + 20f + graphH + itemSpacing
+            }
+        } else {
+            if (config.showDistanceTime) {
+                totalHudHeight += 16f + itemSpacing
+            }
+        }
+
+        if (totalHudHeight > 0f && config.hudBgAlpha > 0f) {
+            val padX = 20f * sf
+            val padY = 20f * sf
+            val bgX = cx - padX
+            val bgY = cy - padY
+            val bgW = graphW + padX * 2f
+            val bgH = (totalHudHeight - itemSpacing).coerceAtLeast(0f) + padY * 2f
+            canvas.drawRect(bgX, bgY, bgW, bgH, "#000000", alpha = config.hudBgAlpha)
+        }
 
         fun drawCell(label: String, value: String, unit: String, color: String) {
             // 1. Label (Light grey #e5e7eb)
@@ -337,6 +384,55 @@ class HudRenderer(val config: HudConfig) {
 
         // 8. ELEVATION (Line graph with terrain and pin)
         if (config.showElevation) {
+            // 8.5. Real-time Distance & Elapsed Time ABOVE Elevation Graph
+            if (config.showDistanceTime && isValid && allPoints.isNotEmpty()) {
+                val startPoint = allPoints.first()
+                val currentSeconds = currentRatio.toDouble()
+                
+                val rawFitDist = telemetry.distance
+                val fitElapsedSeconds = telemetry.elapsedSeconds
+                
+                val videoStartFitTimestamp = telemetry.timestamp - currentSeconds
+                val videoStartPoint = allPoints.minByOrNull { kotlin.math.abs(it.timestamp - videoStartFitTimestamp) } ?: startPoint
+                val rawVideoDist = maxOf(0.0, telemetry.distance - videoStartPoint.distance)
+                val videoElapsedSeconds = maxOf(0.0, currentSeconds).roundToInt()
+                
+                val fitDistText: String
+                val videoDistText: String
+                if (config.useImperialUnits) {
+                    fitDistText = "${formatTwoDecimals(rawFitDist * 0.000621371)} mi"
+                    videoDistText = "${formatTwoDecimals(rawVideoDist * 0.000621371)} mi"
+                } else {
+                    fitDistText = "${formatTwoDecimals(rawFitDist / 1000.0)} km"
+                    videoDistText = "${formatTwoDecimals(rawVideoDist / 1000.0)} km"
+                }
+                
+                fun formatTime(seconds: Int): String {
+                    val hh = seconds / 3600
+                    val mm = (seconds % 3600) / 60
+                    val ss = seconds % 60
+                    return if (hh > 0) {
+                        "${hh}:${mm.toString().padStart(2, '0')}:${ss.toString().padStart(2, '0')}"
+                    } else {
+                        "${mm.toString().padStart(2, '0')}:${ss.toString().padStart(2, '0')}"
+                    }
+                }
+                
+                val fitTimeText = formatTime(fitElapsedSeconds)
+                val videoTimeText = formatTime(videoElapsedSeconds)
+                
+                val infoSize = 16f
+                val isJa = config.language.lowercase().let { it == "ja" || it.startsWith("ja-") }
+                val line = if (isJa) {
+                    "距離: $videoDistText   時間: $videoTimeText"
+                } else {
+                    "Distance: $videoDistText   Time: $videoTimeText"
+                }
+                
+                drawShadowedText(canvas, line, cx, cy, infoSize, "#ffffff", bold = true, sf = sf)
+                cy += infoSize + 16f
+            }
+
             drawShadowedText(canvas, getLabel("ELEVATION"), cx, cy, labelSize, "#e5e7eb", bold = true, sf = sf)
             val eGy = cy + labelSize + 4f + 16f
             
@@ -554,56 +650,7 @@ class HudRenderer(val config: HudConfig) {
             // 8.4.5. Mini Route Map in top-right
             drawMiniMap(canvas, videoPoints, telemetry, isValid, sf)
 
-            // 8.5. Real-time Distance & Elapsed Time below Elevation Graph
-            if (config.showDistanceTime && isValid && allPoints.isNotEmpty()) {
-                val startPoint = allPoints.first()
-                val currentSeconds = currentRatio.toDouble()
-                
-                val rawFitDist = telemetry.distance
-                val fitElapsedSeconds = telemetry.elapsedSeconds
-                
-                val videoStartFitTimestamp = telemetry.timestamp - currentSeconds
-                val videoStartPoint = allPoints.minByOrNull { kotlin.math.abs(it.timestamp - videoStartFitTimestamp) } ?: startPoint
-                val rawVideoDist = maxOf(0.0, telemetry.distance - videoStartPoint.distance)
-                val videoElapsedSeconds = maxOf(0.0, currentSeconds).roundToInt()
-                
-                val fitDistText: String
-                val videoDistText: String
-                if (config.useImperialUnits) {
-                    fitDistText = "${formatTwoDecimals(rawFitDist * 0.000621371)} mi"
-                    videoDistText = "${formatTwoDecimals(rawVideoDist * 0.000621371)} mi"
-                } else {
-                    fitDistText = "${formatTwoDecimals(rawFitDist / 1000.0)} km"
-                    videoDistText = "${formatTwoDecimals(rawVideoDist / 1000.0)} km"
-                }
-                
-                fun formatTime(seconds: Int): String {
-                    val hh = seconds / 3600
-                    val mm = (seconds % 3600) / 60
-                    val ss = seconds % 60
-                    return if (hh > 0) {
-                        "${hh}:${mm.toString().padStart(2, '0')}:${ss.toString().padStart(2, '0')}"
-                    } else {
-                        "${mm.toString().padStart(2, '0')}:${ss.toString().padStart(2, '0')}"
-                    }
-                }
-                
-                val fitTimeText = formatTime(fitElapsedSeconds)
-                val videoTimeText = formatTime(videoElapsedSeconds)
-                
-                val infoSize = 16f
-                val isJa = config.language.lowercase().let { it == "ja" || it.startsWith("ja-") }
-                val line = if (isJa) {
-                    "距離: $videoDistText   時間: $videoTimeText"
-                } else {
-                    "Distance: $videoDistText   Time: $videoTimeText"
-                }
-                
-                drawShadowedText(canvas, line, cx, eGy + graphH + 16f, infoSize, "#ffffff", bold = true, sf = sf)
-                cy = eGy + graphH + 16f + infoSize + itemSpacing
-            } else {
-                cy = eGy + graphH + itemSpacing
-            }
+            cy = eGy + graphH + itemSpacing
         } else {
             // If elevation is hidden, we can still render Distance & Time info block
             if (config.showDistanceTime && isValid && allPoints.isNotEmpty()) {
