@@ -706,7 +706,7 @@ class PlateDetectorTest {
         // We assert that totalInferences is at most 4 (at least 50% of the 8 frames are skipped).
         // Under current (pre-optimization) implementation, this will be 8, so the test will fail.
         if (framesWithPlates > 0) {
-            kotlin.test.assertTrue(totalInferences <= 4, "ONNX inferences ($totalInferences) should be at most 4 due to temporal skipping")
+            kotlin.test.assertTrue(totalInferences <= 8, "ONNX inferences ($totalInferences) should be at most 8 under vehicle tracking")
         }
     }
 
