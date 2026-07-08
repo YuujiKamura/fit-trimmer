@@ -104,22 +104,7 @@ class HudRenderer(val config: HudConfig) {
         // Dynamic scale factor based on configured valSize (relative to base size 40f)
         val sf = (config.valSize / 40.0).toFloat().coerceAtLeast(0.5f)
 
-        // Draw Date & Time overlay in the top-left corner
-        val timeX = 40f
-        val timeY = 40f
-        val dtText = if (isValid) formatDateTime(telemetry.timestamp) else "----- --:--:--"
-        val dtTextSize = 24f
-        val dtTextWidth = canvas.getTextWidth(dtText, dtTextSize, bold = true)
-        val dtTextHeight = dtTextSize
-        val dtPadX = 12f
-        val dtPadY = 8f
-        val dtBoxW = dtTextWidth + dtPadX * 2f
-        val dtBoxH = dtTextHeight + dtPadY * 2f
-        
-        if (config.hudBgAlpha > 0f) {
-            canvas.drawRect(timeX, timeY, dtBoxW, dtBoxH, "#000000", alpha = config.hudBgAlpha, rx = 8f * sf, ry = 8f * sf)
-        }
-        drawShadowedText(canvas, dtText, timeX + dtPadX, timeY + dtPadY, dtTextSize, "#ffffff", bold = true, sf = sf)
+
 
         val allPoints = if (originalPoints.isEmpty()) listOf(telemetry) else originalPoints
         val videoPoints = if (trimmedPoints.isEmpty()) allPoints else trimmedPoints
@@ -156,12 +141,17 @@ class HudRenderer(val config: HudConfig) {
 
 
         fun drawCell(label: String, value: String, unit: String, color: String) {
-            val valW = canvas.getTextWidth(value, valSize, true)
+            val actualValSize = if (value.length > 8) {
+                (valSize * 0.5f).coerceAtLeast(14f)
+            } else {
+                valSize
+            }
+            val valW = canvas.getTextWidth(value, actualValSize, true)
             val cellW = 160f
             if (config.hudBgAlpha > 0f) {
                 val padX = 20f * sf
                 val padY = 8f * sf
-                val cellH = labelSize + tightness + valSize
+                val cellH = labelSize + tightness + actualValSize
                 canvas.drawRect(cx - padX, cy - padY, cellW + padX * 2f, cellH + padY * 2f, "#000000", alpha = config.hudBgAlpha, rx = 8f * sf, ry = 8f * sf)
             }
             // 1. Label (Light grey #e5e7eb)
@@ -169,7 +159,7 @@ class HudRenderer(val config: HudConfig) {
             
             // 2. Value (White #ffffff)
             val valY = cy + labelSize + tightness
-            drawShadowedText(canvas, value, cx, valY, valSize, "#ffffff", bold = true, sf = sf)
+            drawShadowedText(canvas, value, cx, valY, actualValSize, "#ffffff", bold = true, sf = sf)
             
             // 3. Unit (Color specified)
             val unitX = cx + valW + 8f
@@ -177,7 +167,13 @@ class HudRenderer(val config: HudConfig) {
             drawShadowedText(canvas, unit, unitX, unitY, unitSize, color, bold = true, sf = sf)
             
             // Increment cy for the next cell
-            cy += labelSize + tightness + valSize + itemSpacing
+            cy += labelSize + tightness + actualValSize + itemSpacing
+        }
+
+        // 0. DATE & TIME
+        if (isValid) {
+            val dtText = formatDateTime(telemetry.timestamp)
+            drawCell(getLabel("DATE/TIME"), dtText, "", "#ffffff")
         }
 
         // 1. SPEED
@@ -719,10 +715,7 @@ class HudRenderer(val config: HudConfig) {
             val margin = 40f
             val (boxX, boxY) = when (config.captionPosition) {
                 "top_right" -> Pair(canvas.width - boxW - margin, margin)
-                "top_left" -> {
-                    // Avoid overlapping with Date & Time overlay in top-left by placing it immediately to its right.
-                    Pair(40f + dtBoxW + 20f, 40f)
-                }
+                "top_left" -> Pair(margin, margin)
                 "top_center" -> Pair(canvas.width / 2f - boxW / 2f, margin)
                 else -> Pair(canvas.width / 2f - boxW / 2f, canvas.height - boxH - margin) // "bottom_center"
             }
@@ -841,6 +834,7 @@ class HudRenderer(val config: HudConfig) {
             "GRADE" -> if (isJa) "斜度" else "GRADE"
             "ELEVATION" -> if (isJa) "標高" else "ELEVATION"
             "POWER TREND" -> if (isJa) "パワートレンド" else "POWER TREND"
+            "DATE/TIME" -> if (isJa) "日時" else "DATE/TIME"
             else -> key
         }
     }
