@@ -22,6 +22,7 @@ class PlateDetector private constructor() : AutoCloseable {
     var lastGetRgbBypassed = false
 
     // Performance tracking statistics
+    internal val activeProviderName: String
     internal var totalFramesProcessed = 0L
     private var totalResizeMs = 0.0
     private var totalPreprocessMs = 0.0
@@ -62,6 +63,9 @@ class PlateDetector private constructor() : AutoCloseable {
             ?: throw IllegalStateException("Model yolov8n_plate.onnx not found in resources")
         val modelBytes = modelStream.use { it.readBytes() }
         
+        val availableProviders = OrtEnvironment.getAvailableProviders()
+        println("DEBUG: ONNX Runtime available execution providers: $availableProviders")
+
         val opts = OrtSession.SessionOptions()
         // Single model inference achieves best CPU latency and lowest context switching overhead
         // when using 1 inter-op thread and a small number of intra-op threads.
@@ -70,7 +74,26 @@ class PlateDetector private constructor() : AutoCloseable {
         opts.setIntraOpNumThreads(intraThreads)
         opts.setInterOpNumThreads(1)
         
+        var selectedProvider = "CPU"
+        try {
+            val hasCuda = availableProviders.any { it.toString().equals("CUDA", ignoreCase = true) }
+            val hasDml = availableProviders.any { it.toString().equals("DIRECTML", ignoreCase = true) }
+            
+            if (hasCuda) {
+                opts.addCUDA(0)
+                selectedProvider = "GPU (CUDA)"
+            } else if (hasDml) {
+                opts.addDirectML(0)
+                selectedProvider = "GPU (DirectML)"
+            }
+        } catch (e: Exception) {
+            println("WARNING: Failed to initialize GPU execution provider: ${e.message}. Falling back to CPU.")
+            selectedProvider = "CPU (Fallback)"
+        }
+
         session = env.createSession(modelBytes, opts)
+        activeProviderName = selectedProvider
+        println("DEBUG: ONNX session initialized successfully with provider: $activeProviderName")
     }
 
     companion object {
