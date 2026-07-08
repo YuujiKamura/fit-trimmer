@@ -153,7 +153,7 @@ class HudRendererTest {
             isValid = true
         )
 
-        assertTrue(canvasCelsius.drawnTexts.contains("25°C"), "Should render 25°C in Metric mode (got ${canvasCelsius.drawnTexts})")
+        assertTrue(canvasCelsius.drawnTexts.any { it.contains("25°C") }, "Should render 25°C in Metric mode (got ${canvasCelsius.drawnTexts})")
 
         // 2. With temperature data (Imperial Fahrenheit)
         val configImperial = config.copy(useImperialUnits = true)
@@ -168,7 +168,7 @@ class HudRendererTest {
             0.0f,
             isValid = true
         )
-        assertTrue(canvasFahrenheit.drawnTexts.contains("78°F"), "Should render 78°F in Imperial mode (got ${canvasFahrenheit.drawnTexts})")
+        assertTrue(canvasFahrenheit.drawnTexts.any { it.contains("78°F") }, "Should render 78°F in Imperial mode (got ${canvasFahrenheit.drawnTexts})")
 
         // 3. Without temperature data (temperature = 0.0) -> Should not draw temp
         val telemetryNoTemp = telemetryWithTemp.copy(temperature = 0.0)

@@ -349,15 +349,54 @@ fun TelemetryTimelineGraph(
                         letterSpacing = 0.5.sp
                     )
                     val toggleLabel = if (isFolded) "▼ ${utils.Localizer.get("expand_timeline", language)}" else "▲ ${utils.Localizer.get("fold_timeline", language)}"
-                    Text(
-                        text = toggleLabel,
-                        color = Color(0xFF007AFF),
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 10.sp,
-                        modifier = Modifier
-                            .clickable { onFoldToggle(!isFolded) }
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        if (onConfirmTelemetry != null && !isTelemetryCut && telemetryPoints.isNotEmpty()) {
+                            Button(
+                                onClick = onConfirmTelemetry,
+                                colors = ButtonDefaults.buttonColors(
+                                    backgroundColor = Color(0xFF34C759),
+                                    contentColor = Color.White
+                                ),
+                                modifier = Modifier.height(24.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                            ) {
+                                Text(
+                                    text = if (language == "ja") "確定 (Cut)" else "Cut",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                        if (onResetTelemetry != null && isTelemetryCut && telemetryPoints.isNotEmpty()) {
+                            Button(
+                                onClick = onResetTelemetry,
+                                colors = ButtonDefaults.buttonColors(
+                                    backgroundColor = Color(0xFFFF9500),
+                                    contentColor = Color.White
+                                ),
+                                modifier = Modifier.height(24.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                            ) {
+                                Text(
+                                    text = if (language == "ja") "解除 (Reset)" else "Reset",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                        Text(
+                            text = toggleLabel,
+                            color = Color(0xFF007AFF),
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 10.sp,
+                            modifier = Modifier
+                                .clickable { onFoldToggle(!isFolded) }
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
                 }
                 
                 if (!isFolded) {
@@ -1066,110 +1105,7 @@ fun TelemetryTimelineGraph(
                 Spacer(Modifier.height(4.dp))
             }
 
-            // Quick Info row
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Text(
-                        text = "Trim Range: ${formatTime((trimStartSeconds * 1000).toLong())} ~ ${formatTime((trimEndSeconds * 1000).toLong())}",
-                        color = Color(0xFF1C1C1E),
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    
-                    val currentLength = trimEndSeconds - trimStartSeconds
-                    val maxLimit = videoLengthMs / 1000.0
-                    
-                    // Button to slide trim range backward (1s)
-                    IconButton(
-                        onClick = {
-                            val newStart = (trimStartSeconds - 1.0).coerceAtLeast(0.0)
-                            onTrimStartChange(newStart)
-                            onTrimEndChange(newStart + currentLength)
-                        },
-                        modifier = Modifier.size(20.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.KeyboardArrowLeft,
-                            contentDescription = "Slide Backward",
-                            tint = Color(0xFF8E8E93)
-                        )
-                    }
-                    
-                    // Button to slide trim range forward (1s)
-                    IconButton(
-                        onClick = {
-                            val newEnd = (trimEndSeconds + 1.0).coerceAtMost(maxLimit)
-                            onTrimEndChange(newEnd)
-                            onTrimStartChange((newEnd - currentLength).coerceAtLeast(0.0))
-                        },
-                        modifier = Modifier.size(20.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.KeyboardArrowRight,
-                            contentDescription = "Slide Forward",
-                            tint = Color(0xFF8E8E93)
-                        )
-                    }
-                }
-                Text(
-                    text = "Tip: Drag the Green (Start) & Red (End) handles on the graph to trim.",
-                    color = Color(0xFF8E8E93),
-                    fontSize = 9.sp
-                )
-                if (onConfirmTelemetry != null && !isTelemetryCut && telemetryPoints.isNotEmpty()) {
-                    Spacer(Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Button(
-                            onClick = onConfirmTelemetry,
-                            colors = ButtonDefaults.buttonColors(
-                                backgroundColor = Color(0xFF34C759),
-                                contentColor = Color.White
-                            ),
-                            modifier = Modifier.height(36.dp)
-                        ) {
-                            Text(
-                                text = if (language == "ja") "テレメトリ確定 (Cut)" else "Confirm & Cut Telemetry",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                }
-                if (onResetTelemetry != null && isTelemetryCut && telemetryPoints.isNotEmpty()) {
-                    Spacer(Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Button(
-                            onClick = onResetTelemetry,
-                            colors = ButtonDefaults.buttonColors(
-                                backgroundColor = Color(0xFFFF9500),
-                                contentColor = Color.White
-                            ),
-                            modifier = Modifier.height(36.dp)
-                        ) {
-                            Text(
-                                text = if (language == "ja") "FIT切り出し解除 (Reset)" else "Reset FIT Cut",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                }
-            }
+
         }
     }
 
