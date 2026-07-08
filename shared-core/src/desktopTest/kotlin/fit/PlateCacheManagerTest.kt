@@ -215,4 +215,70 @@ class PlateCacheManagerTest {
         assertEquals(160f, first.x)
         assertEquals(176f, first.y)
     }
+
+    @Test
+    fun testInterpolationResolutionBasedDistance() {
+        // sourceWidth is 2704 (2.7K). The box moves by 600px, which exceeds the old 400px limit,
+        // but is well within the new dynamic 50% limit (1352px).
+        val cache = VideoPlatesCache(
+            videoPath = "test.mp4",
+            records = listOf(
+                PlateRecord(0, listOf(PlateBox(100, 100, 200, 140))),
+                PlateRecord(200, listOf(PlateBox(700, 100, 800, 140))) // moves from x=100 to x=700 (deltaX = 600px)
+            ),
+            sourceWidth = 2704,
+            sourceHeight = 1520
+        )
+
+        val frames = cache.buildMappedMaskFrames(
+            totalFrames = 3,
+            fps = 10.0,
+            isBlurEnabled = true,
+            expandRatio = 0.2,
+            fallbackSourceWidth = 2704,
+            fallbackSourceHeight = 1520,
+            targetWidth = 2704f,
+            targetHeight = 1520f
+        )
+
+        // Interpolation should succeed, frame 1 (100ms) should have 1 interpolated box
+        assertEquals(3, frames.size)
+        assertEquals(1, frames[1].size) // 100ms should be interpolated
+    }
+
+    @Test
+    fun testInterpolationAreaRatioMismatchGhostPrevention() {
+        // The box moves slightly (deltaX = 50px), but the area changes by 4x (100x100 -> 200x200),
+        // which represents different vehicles (e.g. far vehicle vs close vehicle).
+        // Interpolation should be blocked.
+        val cache = VideoPlatesCache(
+            videoPath = "test.mp4",
+            records = listOf(
+                PlateRecord(0, listOf(PlateBox(100, 100, 200, 200))),       // Area = 10_000
+                PlateRecord(200, listOf(PlateBox(150, 100, 350, 300)))       // Area = 40_000 (ratio = 4.0 >= 3.0)
+            ),
+            sourceWidth = 2704,
+            sourceHeight = 1520
+        )
+
+        val frames = cache.buildMappedMaskFrames(
+            totalFrames = 3,
+            fps = 10.0,
+            isBlurEnabled = true,
+            expandRatio = 0.2,
+            fallbackSourceWidth = 2704,
+            fallbackSourceHeight = 1520,
+            targetWidth = 2704f,
+            targetHeight = 1520f
+        )
+
+        // Interpolation (Lerp) should be blocked due to area mismatch.
+        // Instead, fallback single-sided next-frame block should be outputted as-is (alpha >= 0.5 fallback).
+        assertEquals(3, frames.size)
+        assertEquals(1, frames[1].size) 
+        
+        val box = frames[1].first()
+        // If Lerp was active, x would be 95f. Since Lerp is blocked, x must be 110f (exact next box expanded).
+        assertEquals(110f, box.x)
+    }
 }
