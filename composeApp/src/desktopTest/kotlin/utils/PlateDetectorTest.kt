@@ -624,6 +624,46 @@ class PlateDetectorTest {
         assertTrue(optDurationMs < naiveDurationMs, "Optimized NMS ($optDurationMs ms) is not faster than Naive NMS ($naiveDurationMs ms)")
     }
 
+    @Test
+    fun testViewModelPassesScanRangesToDetection() {
+        val cropTestMp4 = File("C:\\Users\\yuuji\\fit-trimmer\\composeApp\\scratch\\crop_test.mp4")
+        if (!cropTestMp4.exists()) {
+            println("Skipping test: crop_test.mp4 not found")
+            return
+        }
+
+        // Clear existing cache file
+        val cacheFile = fit.PlateCacheManager.getPlatesFile(cropTestMp4.absolutePath)
+        if (cacheFile != null && cacheFile.exists()) {
+            cacheFile.delete()
+        }
+
+        val viewModel = viewmodel.AppViewModel(initialCache = null)
+        viewModel.videoPath = cropTestMp4.absolutePath
+        
+        // Set specific trim range (0.5s to 1.5s)
+        viewModel.trimStartSeconds = 0.5
+        viewModel.trimEndSeconds = 1.5
+
+        runBlocking {
+            viewModel.runPlateDetection(this)
+            
+            // Wait for background detection to complete
+            while (viewModel.isDetectingPlates) {
+                kotlinx.coroutines.delay(50)
+            }
+        }
+
+        val cache = viewModel.plateCache
+        kotlin.test.assertNotNull(cache, "plateCache must be assigned after detection completes")
+        
+        // The scanRanges in the generated cache should match our trim range [500ms..1500ms]
+        kotlin.test.assertEquals(1, cache.scanRanges.size, "Should have exactly one scan range")
+        val range = cache.scanRanges[0]
+        kotlin.test.assertEquals(500L, range.startMs, "Scan range startMs must match trim start")
+        kotlin.test.assertEquals(1500L, range.endMs, "Scan range endMs must match trim end")
+    }
+
     private class SGObserver : java.awt.image.ImageObserver {
         override fun imageUpdate(img: java.awt.Image?, infoflags: Int, x: Int, y: Int, width: Int, height: Int): Boolean {
             return false
