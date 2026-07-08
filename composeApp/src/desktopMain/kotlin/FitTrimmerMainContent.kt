@@ -3905,7 +3905,7 @@ fun FitTrimmerMainContent(
                                 onSeekEnd = { if (!isEncoding) onSeekEnd(it) },
                                 plateCache = viewModel.plateCache,
                                 blurLicensePlates = settings.blurLicensePlates,
-                                modifier = Modifier.fillMaxWidth().requiredHeight(if (isTimelineFolded) 50.dp else 240.dp),
+                                modifier = Modifier.fillMaxWidth().requiredHeight(if (isTimelineFolded) 50.dp else 300.dp),
                                 isEncoding = isEncoding,
                                 isDetectingPlates = viewModel.isDetectingPlates,
                                 language = settings.language,
@@ -3933,14 +3933,7 @@ fun FitTrimmerMainContent(
                                 })
 
 
-                            val previewLabel = when (settings.exportResolution) {
-                                "360p" -> "360p (640x360) Overlay Preview"
-                                "720p" -> "720p (1280x720) Overlay Preview"
-                                "1080p" -> "1080p (1920x1080) Overlay Preview"
-                                "2.7k" -> "2.7k (2704x1520) Overlay Preview"
-                                else -> "${settings.exportResolution} Overlay Preview"
-                            }
-                            Text(previewLabel, color = Color(0xFF1C1C1E), fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
+
                         }
                     }
                 }
