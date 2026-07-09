@@ -7,12 +7,66 @@ import java.io.File
 import java.awt.image.BufferedImage
 import javax.imageio.ImageIO
 import fit.FitParser
+import fit.VideoPlatesCache
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.Ignore
 import kotlin.test.assertTrue
 
 class PlateDetectorTest {
+
+    @Test
+    fun testPlateDetectionManagerIsPlateDetector() {
+        val detector: fit.PlateDetector = PlateDetectionManager
+        assertTrue(detector is fit.PlateDetector)
+    }
+
+    @Test
+    fun testFakePlateDetectorExecutionAndCancellation() = runBlocking {
+        var progressCalled = 0
+        var cancelled = false
+        val fakeResult = VideoPlatesCache(
+            videoPath = "dummy.mp4",
+            records = emptyList()
+        )
+        
+        val fakeDetector = FakePlateDetector(
+            dummyResult = fakeResult,
+            delayMillis = 100L
+        )
+        
+        val result = fakeDetector.detect(
+            videoPath = "dummy.mp4",
+            telemetryPoints = emptyList(),
+            adjustedStartUtc = "2026-06-14T08:02:06Z",
+            onProgress = { _, _ -> progressCalled++ },
+            onCancel = { cancelled },
+            onPartialResult = {},
+            maxRecords = null,
+            saveCache = true,
+            settings = fit.HudSettings(),
+            scanRanges = null
+        )
+        
+        kotlin.test.assertEquals(fakeResult, result)
+        kotlin.test.assertTrue(progressCalled >= 3, "Progress should be called at least 3 times")
+        
+        // Test Cancellation
+        cancelled = true
+        val resultCancel = fakeDetector.detect(
+            videoPath = "dummy.mp4",
+            telemetryPoints = emptyList(),
+            adjustedStartUtc = "2026-06-14T08:02:06Z",
+            onProgress = { _, _ -> },
+            onCancel = { cancelled },
+            onPartialResult = {},
+            maxRecords = null,
+            saveCache = true,
+            settings = fit.HudSettings(),
+            scanRanges = null
+        )
+        kotlin.test.assertNull(resultCancel, "Cancelled scan should return null")
+    }
 
     @Test
     fun testDetectLicensePlateFromScreenshot() {
@@ -198,7 +252,7 @@ class PlateDetectorTest {
         val tStart = System.currentTimeMillis()
         var totalFramesScanned = 0
         
-        val result = PlateDetectionManager.runDetection(
+        val result = PlateDetectionManager.detect(
             videoPath = videoPath,
             telemetryPoints = telemetryPoints,
             adjustedStartUtc = cache.videoStartUtc,
@@ -344,7 +398,7 @@ class PlateDetectorTest {
         val telemetryPoints = parser.getTelemetry()
 
         val cache = runBlocking {
-            PlateDetectionManager.runDetection(
+            PlateDetectionManager.detect(
                 videoPath = cropTestMp4.absolutePath,
                 telemetryPoints = telemetryPoints,
                 adjustedStartUtc = "2026-06-14T08:02:06Z", // Matches video metadata start
@@ -477,7 +531,7 @@ class PlateDetectorTest {
 
         // Run detection with speed filter active
         val cache = runBlocking {
-            PlateDetectionManager.runDetection(
+            PlateDetectionManager.detect(
                 videoPath = cropTestMp4.absolutePath,
                 telemetryPoints = telemetry,
                 adjustedStartUtc = "2026-06-14T08:02:06Z",
@@ -686,7 +740,7 @@ class PlateDetectorTest {
         )
 
         val cache = runBlocking {
-            PlateDetectionManager.runDetection(
+            PlateDetectionManager.detect(
                 videoPath = cropTestMp4.absolutePath,
                 telemetryPoints = emptyList(),
                 adjustedStartUtc = "2026-06-14T08:02:06Z",
