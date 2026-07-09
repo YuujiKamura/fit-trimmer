@@ -54,7 +54,9 @@ class OsmTrafficSignalDetector(
         telemetryPoints: List<FitParser.TelemetryPoint>,
         minDistanceMeters: Double = 1000.0,
         videoPath: String? = null,
-        autoPauseGapSeconds: Double = 3.0
+        autoPauseGapSeconds: Double = 3.0,
+        minSearchGrade: Double = 0.0,
+        maxSearchGrade: Double = 15.0
     ): List<AutoDetectedSegment> {
         if (telemetryPoints.size < 2) return emptyList()
 
@@ -116,6 +118,7 @@ class OsmTrafficSignalDetector(
         var consecutiveStopCount = 0
         var stopStartIdx = -1
         var prevPt: FitParser.TelemetryPoint? = null
+        var outOfGradeCount = 0
 
         for (i in telemetryPoints.indices) {
             val pt = telemetryPoints[i]
@@ -130,6 +133,51 @@ class OsmTrafficSignalDetector(
                 }
             }
             prevPt = pt
+
+            // Check grade bounds (>= 5 consecutive seconds out of bounds triggers split)
+            val isOutOfGrade = pt.grade < minSearchGrade || pt.grade > maxSearchGrade
+            if (isOutOfGrade) {
+                outOfGradeCount++
+            } else {
+                if (outOfGradeCount >= 5) {
+                    val splitIdx = maxOf(0, i - outOfGradeCount)
+                    if (!splitIndices.contains(splitIdx)) {
+                        splitIndices.add(splitIdx)
+                    }
+                }
+                outOfGradeCount = 0
+            }
+
+            // Check U-Turn (reverse direction on flat terrain, avoiding hairpins)
+            if (i >= 10 && i < telemetryPoints.size - 10) {
+                val ptPrev = telemetryPoints[i - 10]
+                val ptNext = telemetryPoints[i + 10]
+                
+                val latMid = pt.lat
+                val cosLat = kotlin.math.cos(latMid * kotlin.math.PI / 180.0)
+                
+                val dLat1 = pt.lat - ptPrev.lat
+                val dLon1 = (pt.lon - ptPrev.lon) * cosLat
+                val dLat2 = ptNext.lat - pt.lat
+                val dLon2 = (ptNext.lon - pt.lon) * cosLat
+                
+                val len1 = kotlin.math.sqrt(dLat1 * dLat1 + dLon1 * dLon1)
+                val len2 = kotlin.math.sqrt(dLat2 * dLat2 + dLon2 * dLon2)
+                
+                if (len1 > 0.00001 && len2 > 0.00001) {
+                    val dot = dLat1 * dLat2 + dLon1 * dLon2
+                    val cosTheta = dot / (len1 * len2)
+                    
+                    if (cosTheta <= -0.76) { // ~140 degrees reverse
+                        val altDiff = kotlin.math.abs(ptNext.elevation - ptPrev.elevation)
+                        if (altDiff < 1.5) { // Flat turnaround (not climbing hairpin)
+                            if (!splitIndices.contains(i)) {
+                                splitIndices.add(i)
+                            }
+                        }
+                    }
+                }
+            }
 
             // Check OSM nodes
             var nearSignal = false
@@ -171,10 +219,16 @@ class OsmTrafficSignalDetector(
             }
         }
 
-        // Handle case where log ends with a stop
+        // Handle case where log ends with a stop or out-of-grade
         if (consecutiveStopCount >= 2 && stopStartIdx != -1) {
             if (!splitIndices.contains(stopStartIdx)) {
                 splitIndices.add(stopStartIdx)
+            }
+        }
+        if (outOfGradeCount >= 5) {
+            val splitIdx = maxOf(0, telemetryPoints.size - outOfGradeCount)
+            if (!splitIndices.contains(splitIdx)) {
+                splitIndices.add(splitIdx)
             }
         }
 
