@@ -80,7 +80,7 @@ class HudOverlayLayoutEngineTest {
         // Verify W/kg (4.0 W/kg)
         assertNotNull(layout.wkg)
         assertEquals("4.0", layout.wkg.valueText)
-        assertEquals(763.8f, layout.finalCy)
+        assertEquals(752.8f, layout.finalCy)
     }
 
     @Test

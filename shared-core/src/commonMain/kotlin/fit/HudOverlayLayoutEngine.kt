@@ -175,7 +175,7 @@ class HudOverlayLayoutEngine {
             val hrStr = if (isValid) point.heartRate.toInt().toString() else "-"
             val valW = getTextWidth(hrStr, valSize, true)
             val cellW = 160f
-            val cellH = labelSize + tightness + valSize + 39f // サブバーの高さを含む
+            val cellH = labelSize + tightness + valSize + 28f * sf // ゾーンテキストの高さを含む
             
             val valY = cy + labelSize + tightness
             
