@@ -3986,7 +3986,10 @@ fun FitTrimmerMainContent(
                                                 } else {
                                                     Column(
                                                         verticalArrangement = Arrangement.spacedBy(6.dp),
-                                                        modifier = Modifier.fillMaxWidth()
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .heightIn(max = 280.dp)
+                                                            .verticalScroll(rememberScrollState())
                                                     ) {
                                                         viewModel.detectedSegments.forEach { seg ->
                                                             Card(
