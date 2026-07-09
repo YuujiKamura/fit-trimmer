@@ -594,7 +594,15 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
             try {
                 val ptrRef = PointerByReference()
                 val sizeRef = IntByReference()
-                frameLock.lock()
+                val acquired = try {
+                    frameLock.tryLock(100, java.util.concurrent.TimeUnit.MILLISECONDS)
+                } catch (e: InterruptedException) {
+                    false
+                }
+                if (!acquired) {
+                    yield()
+                    continue
+                }
                 var needsUnlock = false
                 try {
                     val readResult = player.ReadVideoFrame(instance, ptrRef, sizeRef)
@@ -857,61 +865,77 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
         seekJob?.cancel()
         seekJob = scope.launch {
             suppressResizeFor(250)
-            mediaOperationMutex.withLock {
-                val instance = videoPlayerInstance ?: return@withLock
-                if (!_hasMedia) return@withLock
-                try {
-                    isLoading = true
-                    
-                    if (videoJob?.isActive == true) {
-                        videoJob?.cancelAndJoin()
-                        clearFrameChannel()
-                    }
-                    
-                    sharedFrameBuffer = ByteArray(frameBufferSize)
+            val locked = kotlinx.coroutines.withTimeoutOrNull(1000) {
+                mediaOperationMutex.withLock {
+                    val instance = videoPlayerInstance ?: return@withLock
+                    if (!_hasMedia) return@withLock
+                    try {
+                        isLoading = true
+                        
+                        if (videoJob?.isActive == true) {
+                            videoJob?.cancel()
+                            kotlinx.coroutines.withTimeoutOrNull(300) {
+                                videoJob?.join()
+                            }
+                            clearFrameChannel()
+                        }
+                        
+                        sharedFrameBuffer = ByteArray(frameBufferSize)
 
-                    val targetPos = (_duration * (value / 1000f) * 10000000).toLong()
-                    var hr = player.SeekMedia(instance, targetPos)
-                    if (hr < 0) {
-                        delay(30)
-                        hr = player.SeekMedia(instance, targetPos)
+                        val targetPos = (_duration * (value / 1000f) * 10000000).toLong()
+                        var hr = player.SeekMedia(instance, targetPos)
                         if (hr < 0) {
-                            setError("Seek failed (hr=0x${hr.toString(16)})")
-                            return@withLock
+                            delay(30)
+                            hr = player.SeekMedia(instance, targetPos)
+                            if (hr < 0) {
+                                setError("Seek failed (hr=0x${hr.toString(16)})")
+                                return@withLock
+                            }
                         }
-                    }
 
-                    val posRef = LongByReference()
-                    if (player.GetMediaPosition(instance, posRef) >= 0) {
-                        _currentTime = posRef.value / 10000000.0
-                        _progress = (_currentTime / _duration).toFloat().coerceIn(0f, 1f)
-                    }
-
-                    delay(20)
-                    renderCurrentFrame(instance, "seek")
-
-                    if (!userDragging) {
-                        videoJob = scope.launch {
-                            launch { produceFrames() }
-                            launch { consumeFrames() }
+                        val posRef = LongByReference()
+                        if (player.GetMediaPosition(instance, posRef) >= 0) {
+                            _currentTime = posRef.value / 10000000.0
+                            _progress = (_currentTime / _duration).toFloat().coerceIn(0f, 1f)
                         }
-                    }
 
-                    delay(8)
-                } catch (e: Exception) {
-                    if (e !is kotlinx.coroutines.CancellationException) {
-                        DesktopLog.exception("Error during seek", e)
-                        setError("Error during seek: ${e.message}")
+                        delay(20)
+                        renderCurrentFrame(instance, "seek")
+
+                        if (!userDragging) {
+                            videoJob = scope.launch {
+                                launch { produceFrames() }
+                                launch { consumeFrames() }
+                            }
+                        }
+
+                        delay(8)
+                    } catch (e: Exception) {
+                        if (e !is kotlinx.coroutines.CancellationException) {
+                            DesktopLog.exception("Error during seek", e)
+                            setError("Error during seek: ${e.message}")
+                        }
+                    } finally {
+                        isLoading = false
                     }
-                } finally {
-                    isLoading = false
                 }
+            }
+            if (locked == null) {
+                windowsLogger.w { "seekTo timed out waiting for mediaOperationMutex" }
             }
         }
     }
 
     private fun renderCurrentFrame(instance: Pointer, context: String): Boolean {
-        frameLock.lock()
+        val acquired = try {
+            frameLock.tryLock(200, java.util.concurrent.TimeUnit.MILLISECONDS)
+        } catch (e: InterruptedException) {
+            false
+        }
+        if (!acquired) {
+            windowsLogger.w { "Failed to acquire frameLock for renderCurrentFrame ($context)" }
+            return false
+        }
         try {
             val ptrRef = PointerByReference()
             val sizeRef = IntByReference()

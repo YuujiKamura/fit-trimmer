@@ -42,7 +42,8 @@ data class HudConfig(
     val fixMapNorthUp: Boolean = false,
     val mapMarkerSizeScale: Float = 1.0f,
     val mapTextSizeScale: Float = 1.0f,
-    val mapRangeMode: String = "full"
+    val mapRangeMode: String = "full",
+    val textShadowAlpha: Float = 0.8f
 )
 
 
@@ -1097,6 +1098,17 @@ class HudRenderer(val config: HudConfig) {
         anchor: String = "left-center",
         sf: Float
     ) {
+        val shadowAlpha = config.textShadowAlpha
+        if (shadowAlpha > 0f) {
+            val alphaInt = (shadowAlpha * 255f).toInt().coerceIn(0, 255)
+            val hexAlpha = alphaInt.toString(16).padStart(2, '0')
+            val shadowColor = "#${hexAlpha}555555"
+            val offset = 1.2f * sf
+            canvas.drawText(text, x - offset, y - offset, size, shadowColor, bold = bold, anchor = anchor)
+            canvas.drawText(text, x + offset, y - offset, size, shadowColor, bold = bold, anchor = anchor)
+            canvas.drawText(text, x - offset, y + offset, size, shadowColor, bold = bold, anchor = anchor)
+            canvas.drawText(text, x + offset, y + offset, size, shadowColor, bold = bold, anchor = anchor)
+        }
         canvas.drawText(text, x, y, size, color, bold = bold, anchor = anchor)
     }
 
