@@ -59,7 +59,7 @@ class OsmTrafficSignalDetectorTest {
             val progress = i / 40.0
             points.add(
                 FitParser.TelemetryPoint(
-                    timestamp = 1782000000.0 + i * 10,
+                    timestamp = 1782000000.0 + i,
                     speed = 10.0,
                     power = 200.0,
                     cadence = 90.0,
@@ -69,7 +69,7 @@ class OsmTrafficSignalDetectorTest {
                     lat = 32.800 + progress * 0.005, // 32.800 to 32.805
                     lon = 130.800 + progress * 0.005, // 130.800 to 130.805
                     distance = i * 100.0, // 0m to 4000m
-                    elapsedSeconds = i * 10
+                    elapsedSeconds = i
                 )
             )
         }
@@ -125,7 +125,7 @@ class OsmTrafficSignalDetectorTest {
             
             points.add(
                 FitParser.TelemetryPoint(
-                    1782000000.0 + i * 10,
+                    1782000000.0 + i,
                     speed,
                     if (speed == 0.0) 0.0 else 200.0,
                     cadence,
@@ -135,7 +135,7 @@ class OsmTrafficSignalDetectorTest {
                     32.800 + progress * 0.005,
                     130.800 + progress * 0.005,
                     i * 100.0,
-                    i * 10,
+                    i,
                     0.0
                 )
             )
@@ -205,8 +205,8 @@ class OsmTrafficSignalDetectorTest {
 
         val points = listOf(
             FitParser.TelemetryPoint(1782000000.0, 10.0, 200.0, 90.0, 140.0, 100.0, 5.0, 32.800, 130.800, 0.0, 0, 0.0),
-            FitParser.TelemetryPoint(1782000010.0, 10.0, 200.0, 90.0, 140.0, 100.0, 5.0, 32.801, 130.801, 100.0, 10, 0.0),
-            FitParser.TelemetryPoint(1782000020.0, 10.0, 200.0, 90.0, 140.0, 100.0, 5.0, 32.802, 130.802, 200.0, 20, 0.0)
+            FitParser.TelemetryPoint(1782000001.0, 10.0, 200.0, 90.0, 140.0, 100.0, 5.0, 32.801, 130.801, 100.0, 1, 0.0),
+            FitParser.TelemetryPoint(1782000002.0, 10.0, 200.0, 90.0, 140.0, 100.0, 5.0, 32.802, 130.802, 200.0, 2, 0.0)
         )
 
         val bbox = BBox(32.79, 130.79, 32.83, 130.83)
@@ -281,5 +281,105 @@ class OsmTrafficSignalDetectorTest {
         println("DEBUG TEST: segmentsNoSplit size = ${segmentsNoSplit.size}")
         segmentsNoSplit.forEach { println("  Seg: ${it.id} start=${it.startIndex} end=${it.endIndex} dist=${it.distanceMeters}") }
         assertEquals(1, segmentsNoSplit.size, "Should not split because the gap is smaller than threshold")
+    }
+
+    @Test
+    fun testDetectSegmentsWithGradeFilter() = runTest {
+        val mockJson = """{ "elements": [] }"""
+        val mockHttp = MockHttpRequester(mockJson)
+        val detector = OsmTrafficSignalDetector(mockHttp)
+
+        val points = mutableListOf<FitParser.TelemetryPoint>()
+        for (i in 0..40) {
+            val progress = i / 40.0
+            // Grade goes to -1.0% (out of bounds [2.0%, 15.0%]) between index 18 and 23 (6 points)
+            val grade = if (i in 18..23) -1.0 else 5.0
+            
+            points.add(
+                FitParser.TelemetryPoint(
+                    timestamp = 1782000000.0 + i,
+                    speed = 15.0,
+                    power = 200.0,
+                    cadence = 90.0,
+                    heartRate = 140.0,
+                    elevation = 100.0 + i * 2, // Ascending overall
+                    grade = grade,
+                    lat = 32.800 + progress * 0.005,
+                    lon = 130.800 + progress * 0.005,
+                    distance = i * 10.0,
+                    elapsedSeconds = i,
+                    temperature = 20.0
+                )
+            )
+        }
+
+        val bbox = BBox(32.79, 130.79, 32.81, 130.81)
+
+        // With grade filter [2.0%, 15.0%], should split because grade is -1.0% for 6 consecutive points (>= 5)
+        val resultSplit = detector.detectSegments(
+            bbox = bbox,
+            telemetryPoints = points,
+            minDistanceMeters = 30.0,
+            minSearchGrade = 2.0,
+            maxSearchGrade = 15.0
+        )
+        // Expected segments: 0..18 (dist=180m), 23..40 (dist=170m). Both >= 30m. Total 2.
+        assertEquals(2, resultSplit.size, "Should split due to consecutive out-of-bounds grade")
+
+        // Without grade filter (using default [0.0%, 15.0%], or matching the -1.0% grade), should NOT split
+        val resultNoSplit = detector.detectSegments(
+            bbox = bbox,
+            telemetryPoints = points,
+            minDistanceMeters = 30.0,
+            minSearchGrade = -2.0,
+            maxSearchGrade = 15.0
+        )
+        assertEquals(1, resultNoSplit.size, "Should not split as grade remains within bounds")
+    }
+
+    @Test
+    fun testDetectSegmentsWithUTurn() = runTest {
+        val mockJson = """{ "elements": [] }"""
+        val mockHttp = MockHttpRequester(mockJson)
+        val detector = OsmTrafficSignalDetector(mockHttp)
+
+        val points = mutableListOf<FitParser.TelemetryPoint>()
+        // Simulate straight line forward, then a U-turn at i=20, then straight line backward
+        // Lat increases for i in 0..20, then decreases for i in 21..40. Lon remains constant.
+        for (i in 0..40) {
+            val lat = if (i <= 20) {
+                32.800 + i * 0.0001
+            } else {
+                32.800 + (40 - i) * 0.0001
+            }
+            
+            points.add(
+                FitParser.TelemetryPoint(
+                    timestamp = 1782000000.0 + i,
+                    speed = 15.0,
+                    power = 200.0,
+                    cadence = 90.0,
+                    heartRate = 140.0,
+                    elevation = 100.0, // Constant elevation (flat U-turn)
+                    grade = 3.0,
+                    lat = lat,
+                    lon = 130.800,
+                    distance = i * 10.0,
+                    elapsedSeconds = i,
+                    temperature = 20.0
+                )
+            )
+        }
+
+        val bbox = BBox(32.79, 130.79, 32.81, 130.81)
+
+        val result = detector.detectSegments(
+            bbox = bbox,
+            telemetryPoints = points,
+            minDistanceMeters = 30.0
+        )
+        // Should split at index 20 (U-turn point) because heading vector reverses from North to South, and elevation is flat.
+        // Expected segments: 0..20, 20..40. Total 2.
+        assertEquals(2, result.size, "Should split at the U-turn point")
     }
 }

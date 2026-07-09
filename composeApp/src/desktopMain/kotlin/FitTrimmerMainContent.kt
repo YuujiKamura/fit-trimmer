@@ -3888,6 +3888,66 @@ fun FitTrimmerMainContent(
 
                                                 Spacer(modifier = Modifier.height(4.dp))
 
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Text("検索対象 最小勾配", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                                                    Text("${String.format(java.util.Locale.US, "%.1f", viewModel.minSearchGrade)} %", color = Color(0xFF007AFF), fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                                                }
+                                                Spacer(modifier = Modifier.height(2.dp))
+                                                Slider(
+                                                    value = viewModel.minSearchGrade.toFloat(),
+                                                    onValueChange = { 
+                                                        val newVal = it.toDouble()
+                                                        viewModel.minSearchGrade = newVal
+                                                        if (viewModel.maxSearchGrade < newVal) {
+                                                            viewModel.maxSearchGrade = newVal
+                                                        }
+                                                    },
+                                                    valueRange = -5.0f..10.0f,
+                                                    steps = 30,
+                                                    modifier = Modifier.fillMaxWidth().height(24.dp),
+                                                    colors = SliderDefaults.colors(
+                                                        thumbColor = Color(0xFF007AFF),
+                                                        activeTrackColor = Color(0xFF007AFF),
+                                                        inactiveTrackColor = Color(0xFFE5E5EA)
+                                                    )
+                                                )
+
+                                                Spacer(modifier = Modifier.height(4.dp))
+
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Text("検索対象 最大勾配", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                                                    Text("${String.format(java.util.Locale.US, "%.1f", viewModel.maxSearchGrade)} %", color = Color(0xFF007AFF), fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                                                }
+                                                Spacer(modifier = Modifier.height(2.dp))
+                                                Slider(
+                                                    value = viewModel.maxSearchGrade.toFloat(),
+                                                    onValueChange = { 
+                                                        val newVal = it.toDouble()
+                                                        viewModel.maxSearchGrade = newVal
+                                                        if (viewModel.minSearchGrade > newVal) {
+                                                            viewModel.minSearchGrade = newVal
+                                                        }
+                                                    },
+                                                    valueRange = 0.0f..20.0f,
+                                                    steps = 40,
+                                                    modifier = Modifier.fillMaxWidth().height(24.dp),
+                                                    colors = SliderDefaults.colors(
+                                                        thumbColor = Color(0xFF007AFF),
+                                                        activeTrackColor = Color(0xFF007AFF),
+                                                        inactiveTrackColor = Color(0xFFE5E5EA)
+                                                    )
+                                                )
+
+                                                Spacer(modifier = Modifier.height(4.dp))
+
                                                 val hasTelemetry = telemetryPoints.isNotEmpty()
                                                 Button(
                                                     onClick = { viewModel.startSegmentDetection(scope) },
