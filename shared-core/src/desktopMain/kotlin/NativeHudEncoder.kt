@@ -2146,7 +2146,7 @@ class NativeHudEncoder(
         override fun create(
             settings: HudSettings,
             onProgress: (Float, String) -> Unit,
-            onFrameRendered: (java.awt.image.BufferedImage) -> Unit,
+            onFrameRendered: (Any) -> Unit,
             pauseSupplier: () -> Boolean,
             cancelSupplier: () -> Boolean,
             customRenderer: ((HudCanvas, TelemetryPoint, List<TelemetryPoint>, List<TelemetryPoint>, List<Double>, Float) -> Unit)?,
@@ -2156,7 +2156,7 @@ class NativeHudEncoder(
             return NativeHudEncoder(
                 settings = settings,
                 onProgress = onProgress,
-                onFrameRendered = onFrameRendered,
+                onFrameRendered = { img -> if (img is java.awt.image.BufferedImage) onFrameRendered(img) },
                 pauseSupplier = pauseSupplier,
                 cancelSupplier = cancelSupplier,
                 customRenderer = customRenderer,
