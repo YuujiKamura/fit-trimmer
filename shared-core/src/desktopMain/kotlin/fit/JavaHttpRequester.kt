@@ -28,7 +28,7 @@ class JavaHttpRequester : HttpRequester {
         val request = builder.build()
         val future = client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
 
-        return future.await()
+        return future.await().body()
     }
 }
 

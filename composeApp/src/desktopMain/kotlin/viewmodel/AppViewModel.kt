@@ -867,6 +867,60 @@ class AppViewModel(
         isTelemetryCut = false
     }
 
+    // Auto Segment Detection States
+    val detectedSegments = mutableStateListOf<fit.AutoDetectedSegment>()
+    var isDetectingSegments by mutableStateOf(false)
+    var segmentDetectionProgressText by mutableStateOf("")
+
+    fun startSegmentDetection(coroutineScope: kotlinx.coroutines.CoroutineScope) {
+        if (telemetryPoints.isEmpty()) {
+            segmentDetectionProgressText = "No telemetry loaded."
+            return
+        }
+
+        isDetectingSegments = true
+        segmentDetectionProgressText = "Calculating bounding box..."
+        detectedSegments.clear()
+
+        coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                // Calculate BBox from telemetry points
+                val lats = telemetryPoints.map { it.lat }
+                val lons = telemetryPoints.map { it.lon }
+                val south = lats.minOrNull() ?: 0.0
+                val west = lons.minOrNull() ?: 0.0
+                val north = lats.maxOrNull() ?: 0.0
+                val east = lons.maxOrNull() ?: 0.0
+
+                val bbox = fit.BBox(south = south, west = west, north = north, east = east)
+
+                withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    segmentDetectionProgressText = "Fetching signals from OpenStreetMap..."
+                }
+
+                val requester = fit.JavaHttpRequester()
+                val detector = fit.OsmTrafficSignalDetector(requester)
+
+                val result = detector.detectSegments(bbox, telemetryPoints)
+
+                withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    detectedSegments.addAll(result)
+                    isDetectingSegments = false
+                    segmentDetectionProgressText = if (result.isEmpty()) {
+                        "No climb segments found (no continuous 1km+ climbs without traffic signals)."
+                    } else {
+                        "Successfully detected ${result.size} climb segment(s)."
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    isDetectingSegments = false
+                    segmentDetectionProgressText = "Error: ${e.message}"
+                }
+            }
+        }
+    }
+
     fun cutTelemetry(trimStartSec: Double, trimEndSec: Double, videoStartUtcStr: String) {
         if (originalTelemetryPoints.isEmpty()) return
         try {
