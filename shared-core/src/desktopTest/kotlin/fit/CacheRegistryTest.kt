@@ -53,6 +53,13 @@ class CacheRegistryTest {
 
     @Test
     fun testCleanStaleCache() {
+        class MockClock(var time: Long) : Clock {
+            override fun currentTimeMillis(): Long = time
+        }
+
+        val mockClock = MockClock(1000L)
+        CacheRegistry.clock = mockClock
+
         val groupKey = "stale_job"
         val tempFile = CacheRegistry.createTempFile(
             groupKey = groupKey,
@@ -62,10 +69,12 @@ class CacheRegistryTest {
         tempFile.writeText("stale")
         assertTrue(tempFile.exists())
 
-        Thread.sleep(50)
+        mockClock.time = 1001L
 
         CacheRegistry.cleanStaleCache(cutoffMs = 0L)
         assertFalse(tempFile.exists())
+
+        CacheRegistry.clock = Clock.Default
     }
 
     @Test
