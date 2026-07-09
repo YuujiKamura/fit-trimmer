@@ -161,4 +161,69 @@ class OsmTrafficSignalDetectorTest {
         assertEquals(40, seg2.endIndex)
         assertEquals(2200.0, seg2.distanceMeters)
     }
+
+    private class MockSignalCache : SignalCache {
+        val storage = mutableMapOf<String, List<TrafficSignalNode>>()
+        var loadCount = 0
+        var saveCount = 0
+        
+        override fun load(videoPath: String): List<TrafficSignalNode>? {
+            loadCount++
+            return storage[videoPath]
+        }
+
+        override fun save(videoPath: String, nodes: List<TrafficSignalNode>) {
+            saveCount++
+            storage[videoPath] = nodes
+        }
+    }
+
+    @Test
+    fun testDetectSegmentsWithCache() = runTest {
+        val mockJson = """{
+            "elements": [
+                {
+                    "type": "node",
+                    "id": 1001,
+                    "lat": 32.801000,
+                    "lon": 130.801000,
+                    "tags": { "highway": "traffic_signals" }
+                }
+            ]
+        }""".trimIndent()
+
+        var getCallCount = 0
+        val countingHttp = object : HttpRequester {
+            override suspend fun get(url: String, headers: Map<String, String>): String {
+                getCallCount++
+                return mockJson
+            }
+        }
+
+        val cache = MockSignalCache()
+        val detector = OsmTrafficSignalDetector(countingHttp, cache)
+
+        val points = listOf(
+            FitParser.TelemetryPoint(1782000000.0, 10.0, 200.0, 90.0, 140.0, 100.0, 5.0, 32.800, 130.800, 0.0, 0, 0.0),
+            FitParser.TelemetryPoint(1782000010.0, 10.0, 200.0, 90.0, 140.0, 100.0, 5.0, 32.801, 130.801, 100.0, 10, 0.0),
+            FitParser.TelemetryPoint(1782000020.0, 10.0, 200.0, 90.0, 140.0, 100.0, 5.0, 32.802, 130.802, 200.0, 20, 0.0)
+        )
+
+        val bbox = BBox(32.79, 130.79, 32.83, 130.83)
+        val videoPath = "my_ride_video.mp4"
+
+        // First run (Cache Miss)
+        val result1 = detector.detectSegments(bbox, points, minDistanceMeters = 50.0, videoPath = videoPath)
+        assertEquals(1, getCallCount, "HTTP Requester should be called once on cache miss")
+        assertEquals(1, cache.loadCount, "Cache load should be called")
+        assertEquals(1, cache.saveCount, "Cache save should be called")
+        
+        // Second run (Cache Hit)
+        val result2 = detector.detectSegments(bbox, points, minDistanceMeters = 50.0, videoPath = videoPath)
+        assertEquals(1, getCallCount, "HTTP Requester should NOT be called again on cache hit")
+        assertEquals(2, cache.loadCount, "Cache load should be called again")
+        assertEquals(1, cache.saveCount, "Cache save should NOT be called again")
+        
+        assertEquals(result1.size, result2.size)
+    }
 }
