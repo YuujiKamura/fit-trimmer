@@ -146,168 +146,96 @@ class HudRenderer(val config: HudConfig) {
 
 
 
-        fun drawCell(label: String, value: String, unit: String, color: String) {
-            val actualValSize = if (value.length > 8) {
-                (valSize * 0.5f).coerceAtLeast(14f)
-            } else {
-                valSize
-            }
-            val valW = canvas.getTextWidth(value, actualValSize, true)
-            val unitW = if (unit.isNotEmpty()) canvas.getTextWidth(unit, unitSize, true) else 0f
-            val contentW = valW + (if (unit.isNotEmpty()) 8f + unitW else 0f)
-            val cellW = maxOf(160f, contentW)
-            val hasLabel = label.isNotEmpty()
-            val cellH = if (hasLabel) labelSize + tightness + actualValSize else actualValSize
+        val layoutEngine = HudOverlayLayoutEngine()
+        val layout = layoutEngine.calculateLayout(
+            config = config,
+            point = telemetry,
+            isValid = isValid,
+            sf = sf,
+            zonesCurrent = zonesCurrent,
+            cachedZonesTotal = cachedZonesTotal,
+            getTextWidth = { text, size, bold -> canvas.getTextWidth(text, size, bold) },
+            formatDateTime = { formatDateTime(it) },
+            formatOneDecimal = { formatOneDecimal(it) },
+            formatGrade = { formatGrade(it) },
+            getLabel = { getLabel(it) }
+        )
+
+        fun drawMetric(m: MetricLayout?) {
+            if (m == null || !m.isVisible) return
             
             if (config.hudBgAlpha > 0f) {
                 val padX = 20f * sf
                 val padY = 8f * sf
-                canvas.drawRect(cx - padX, cy - padY, cellW + padX * 2f, cellH + padY * 2f, "#000000", alpha = config.hudBgAlpha, rx = 8f * sf, ry = 8f * sf)
+                canvas.drawRect(m.x - padX, m.y - padY, m.cellWidth + padX * 2f, m.cellHeight + padY * 2f, "#000000", alpha = config.hudBgAlpha, rx = 8f * sf, ry = 8f * sf)
             }
             
-            // 1. Label (Light grey #e5e7eb) - only drawn if label is not empty
-            if (hasLabel) {
-                drawShadowedText(canvas, label, cx, cy, labelSize, "#e5e7eb", bold = true, sf = sf)
+            if (m.labelText.isNotEmpty()) {
+                drawShadowedText(canvas, m.labelText, m.x, m.y, labelSize, "#e5e7eb", bold = true, sf = sf)
             }
             
-            // 2. Value (White #ffffff)
-            val valY = if (hasLabel) cy + labelSize + tightness else cy
-            drawShadowedText(canvas, value, cx, valY, actualValSize, "#ffffff", bold = true, sf = sf)
+            val valY = if (m.labelText.isNotEmpty()) m.y + labelSize + tightness else m.y
+            drawShadowedText(canvas, m.valueText, m.x, valY, m.actualValSize, "#ffffff", bold = true, sf = sf)
             
-            // 3. Unit (Color specified)
-            if (unit.isNotEmpty()) {
-                val unitX = cx + valW + 8f
-                val unitY = valY + (actualValSize - unitSize)
-                drawShadowedText(canvas, unit, unitX, unitY, unitSize, "#ffffff", bold = true, sf = sf)
+            if (m.unitText.isNotEmpty()) {
+                val unitX = m.x + m.valWidth + 8f
+                val unitY = valY + (m.actualValSize - unitSize)
+                drawShadowedText(canvas, m.unitText, unitX, unitY, unitSize, "#ffffff", bold = true, sf = sf)
             }
-            
-            // Increment cy for the next cell
-            cy += cellH + itemSpacing
         }
 
         // 0. DATE & TIME & TEMPERATURE
-        if (isValid) {
-            val dtText = formatDateTime(telemetry.timestamp)
-            val tempVal = telemetry.temperature
-            val hasTemp = tempVal != 0.0
-            
-            if (hasTemp) {
-                val isImperial = config.useImperialUnits
-                val tempStr = if (isImperial) {
-                    val f = (tempVal * 9.0 / 5.0) + 32.0
-                    "${f.roundToInt()}°F"
-                } else {
-                    "${tempVal.roundToInt()}°C"
-                }
-                val combinedText = "$dtText  $tempStr"
-                drawCell("", combinedText, "", "#ffffff")
-            } else {
-                drawCell("", dtText, "", "#ffffff")
-            }
-        }
+        drawMetric(layout.dateDisplay)
 
         // 1. SPEED
-        if (config.showSpeed) {
-            val speedVal = if (config.useImperialUnits) telemetry.speed * 0.621371 else telemetry.speed
-            val speedUnit = if (config.useImperialUnits) "mph" else "km/h"
-            val spdStr = if (isValid) formatOneDecimal(speedVal) else "-"
-            drawCell(getLabel("SPEED"), spdStr, speedUnit, "#3b82f6")
-        }
+        drawMetric(layout.speed)
 
         // 2. CADENCE
-        if (config.showCadence) {
-            val cadStr = if (isValid) telemetry.cadence.roundToInt().toString() else "-"
-            drawCell(getLabel("CADENCE"), cadStr, "rpm", "#a78bfa")
-        }
+        drawMetric(layout.cadence)
 
         // 3. HEART RATE
-        if (config.showHeartRate) {
-            val hrStr = if (isValid) telemetry.heartRate.roundToInt().toString() else "-"
-            val valW = canvas.getTextWidth(hrStr, valSize, true)
-            val cellW = 160f
+        val hr = layout.heartRate
+        if (hr != null && hr.metric.isVisible) {
+            val m = hr.metric
             if (config.hudBgAlpha > 0f) {
                 val padX = 20f * sf
                 val padY = 8f * sf
-                val cellH = labelSize + tightness + valSize + 39f
-                canvas.drawRect(cx - padX, cy - padY, cellW + padX * 2f, cellH + padY * 2f, "#000000", alpha = config.hudBgAlpha, rx = 8f * sf, ry = 8f * sf)
+                canvas.drawRect(m.x - padX, m.y - padY, m.cellWidth + padX * 2f, m.cellHeight + padY * 2f, "#000000", alpha = config.hudBgAlpha, rx = 8f * sf, ry = 8f * sf)
             }
             
-            // 3.1. Draw standard HEART RATE label and value
-            drawShadowedText(canvas, getLabel("HEART RATE"), cx, cy, labelSize, "#e5e7eb", bold = true, sf = sf)
-            val valY = cy + labelSize + tightness
-            drawShadowedText(canvas, hrStr, cx, valY, valSize, "#ffffff", bold = true, sf = sf)
-            val unitX = cx + valW + 8f
-            val unitY = valY + (valSize - unitSize)
-            drawShadowedText(canvas, "bpm", unitX, unitY, unitSize, "#ffffff", bold = true, sf = sf)
+            drawShadowedText(canvas, m.labelText, m.x, m.y, labelSize, "#e5e7eb", bold = true, sf = sf)
+            val valY = m.y + labelSize + tightness
+            drawShadowedText(canvas, m.valueText, m.x, valY, m.actualValSize, "#ffffff", bold = true, sf = sf)
             
-            // 3.2. Draw Zone accumulation bar and text immediately below the value
-            val subCy = valY + valSize + 6f
-            if (isValid) {
-                val currentHr = telemetry.heartRate
-                val zIdx = getHrZoneIndex(currentHr)
-                if (zIdx in 0..6) {
-                    val currentSec = zonesCurrent[zIdx]
-                    val totalSec = cachedZonesTotal?.get(zIdx) ?: 1
-                    val zoneLabel = when (zIdx) {
-                        6 -> "190+"
-                        5 -> "180-189"
-                        4 -> "170-179"
-                        3 -> "160-169"
-                        2 -> "150-159"
-                        1 -> "140-149"
-                        0 -> "130-139"
-                        else -> ""
-                    }
-                    val minSecText = formatMinSec(currentSec)
-                    
-                    // Draw text: e.g. "ZONE 170-179: 12:34"
-                    val zoneText = "ZONE $zoneLabel: $minSecText"
-                    drawShadowedText(canvas, zoneText, cx, subCy, 12f, "#ffffff", bold = true, sf = sf)
-                    
-                    // Draw 1 single bar representing current zone accumulation progress relative to total zone time
-                    val barY = subCy + 15f
-                    val maxBarW = 120f
-                    val barH = 6f
-                    // Background bar (thin/transparent) representing total time
-                    canvas.drawRect(cx, barY, maxBarW, barH, "#f87171", alpha = 0.25f)
-                    // Foreground bar (solid red) representing current accumulation
-                    val progressW = if (totalSec > 0) {
-                        val ratio = currentSec.toFloat() / totalSec.toFloat()
-                        ratio.coerceIn(0f, 1.0f) * maxBarW
-                    } else {
-                        0f
-                    }
-                    if (progressW > 0f) {
-                        canvas.drawRect(cx, barY, progressW, barH, "#ef4444", alpha = 1.0f)
-                    }
-                } else {
-                    drawShadowedText(canvas, "ZONE -: --:--", cx, subCy, 12f, "#9ca3af", bold = true, sf = sf)
-                    val barY = subCy + 15f
-                    canvas.drawRect(cx, barY, 120f, 6f, "#e5e7eb", alpha = 0.15f)
+            val unitX = m.x + m.valWidth + 8f
+            val unitY = valY + (m.actualValSize - unitSize)
+            drawShadowedText(canvas, m.unitText, unitX, unitY, unitSize, "#ffffff", bold = true, sf = sf)
+            
+            val subCy = valY + m.actualValSize + 6f
+            if (hr.showZoneBar) {
+                val zoneText = "ZONE ${hr.zoneLabel}: ${formatMinSec(hr.currentSec)}"
+                drawShadowedText(canvas, zoneText, m.x, subCy, 12f, "#ffffff", bold = true, sf = sf)
+                
+                // Background bar representing total time
+                canvas.drawRect(hr.barX, hr.barY, 120f * sf, 6f * sf, "#f87171", alpha = 0.25f)
+                // Foreground bar representing current accumulation
+                if (hr.barW > 0f) {
+                    canvas.drawRect(hr.barX, hr.barY, hr.barW, hr.barH, hr.zoneColor, alpha = 1.0f)
                 }
             } else {
-                drawShadowedText(canvas, "ZONE -: --:--", cx, subCy, 12f, "#9ca3af", bold = true, sf = sf)
-                val barY = subCy + 15f
-                canvas.drawRect(cx, barY, 120f, 6f, "#e5e7eb", alpha = 0.15f)
+                drawShadowedText(canvas, "ZONE -: --:--", m.x, subCy, 12f, "#9ca3af", bold = true, sf = sf)
+                canvas.drawRect(hr.barX, hr.barY, 120f * sf, 6f * sf, "#e5e7eb", alpha = 0.15f)
             }
-            
-            // Move cy down to cover this custom sub-section and preserve layout tightness
-            cy = valY + valSize + 6f + 12f + 15f + 6f + itemSpacing
         }
 
         // 4. POWER
-        if (config.showPower) {
-            val pwrStr = if (isValid) telemetry.power.roundToInt().toString() else "-"
-            drawCell(getLabel("POWER"), pwrStr, "W", "#10b981")
-        }
+        drawMetric(layout.power)
 
         // 5. W/KG
-        if (config.showWkg && config.bodyWeightKg > 0.0) {
-            val weight = config.bodyWeightKg
-            val wkgVal = telemetry.power / weight
-            val wkgStr = if (isValid) formatOneDecimal(wkgVal) else "-"
-            drawCell("W/KG", wkgStr, "w/kg", "#2dd4bf")
-        }
+        drawMetric(layout.wkg)
+
+        // Sync cy to layout engine final output coordinate
+        cy = layout.finalCy
 
         // 6. POWER TREND (Bar graph)
         if (config.showPowerTrend) {
@@ -381,10 +309,8 @@ class HudRenderer(val config: HudConfig) {
         }
 
         // 7. GRADE
-        if (config.showGrade) {
-            val grdStr = if (isValid) formatGrade(telemetry.grade) else "-"
-            drawCell(getLabel("GRADE"), grdStr, "%", "#fbbf24")
-        }
+        drawMetric(layout.grade)
+        cy = layout.finalCy
 
         // 8. ELEVATION (Line graph with terrain and pin)
         if (config.showElevation) {
