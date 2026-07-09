@@ -199,21 +199,6 @@ class FitParser(private val bytes: ByteArray) {
         }
     }
 
-    data class TelemetryPoint(
-        val timestamp: Double,
-        val speed: Double,
-        val power: Double,
-        val cadence: Double,
-        val heartRate: Double,
-        val elevation: Double,
-        var grade: Double,
-        val lat: Double = 0.0,
-        val lon: Double = 0.0,
-        val distance: Double = 0.0,
-        val elapsedSeconds: Int = 0,
-        val temperature: Double = 0.0
-    )
-
     fun getTelemetry(cancelCheck: (() -> Boolean)? = null): List<TelemetryPoint> {
         val list = mutableListOf<TelemetryPoint>()
         var lastTemp: Double? = null
@@ -389,7 +374,12 @@ class FitParser(private val bytes: ByteArray) {
         return newFitBytes
     }
 
-    companion object {
+    companion object : TelemetryParser {
+        override fun parse(bytes: ByteArray): List<TelemetryPoint> {
+            val parser = FitParser(bytes)
+            parser.parse()
+            return parser.getTelemetry()
+        }
         fun getShort(b: ByteArray, o: Int, littleEndian: Boolean) = getUShort(b, o, littleEndian).toShort()
         fun getUShort(b: ByteArray, o: Int, littleEndian: Boolean) = if (littleEndian) (b[o+1].toInt() and 0xFF shl 8) or (b[o].toInt() and 0xFF) else (b[o].toInt() and 0xFF shl 8) or (b[o+1].toInt() and 0xFF)
         fun getUInt(b: ByteArray, o: Int, littleEndian: Boolean) = if (littleEndian) (b[o+3].toLong() and 0xFF shl 24) or (b[o+2].toLong() and 0xFF shl 16) or (b[o+1].toLong() and 0xFF shl 8) or (b[o].toLong() and 0xFF) else (b[o].toLong() and 0xFF shl 24) or (b[o+1].toLong() and 0xFF shl 16) or (b[o+2].toLong() and 0xFF shl 8) or (b[o+3].toLong() and 0xFF)

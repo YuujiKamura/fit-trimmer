@@ -30,7 +30,7 @@ class HudOverlayLayoutEngineTest {
             useImperialUnits = false
         )
 
-        val point = FitParser.TelemetryPoint(
+        val point = TelemetryPoint(
             timestamp = 1782278400.0,
             speed = 10.0, // 10 m/s = 36.0 km/h
             power = 280.0, // 280W / 70kg = 4.0 W/kg
@@ -98,7 +98,7 @@ class HudOverlayLayoutEngineTest {
             useImperialUnits = true // Imperial
         )
 
-        val point = FitParser.TelemetryPoint(
+        val point = TelemetryPoint(
             timestamp = 1782278400.0,
             speed = 10.0, // 10 m/s * 2.23694 = 22.3694 mph
             power = 0.0,

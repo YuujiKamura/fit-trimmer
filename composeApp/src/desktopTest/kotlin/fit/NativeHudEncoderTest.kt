@@ -1,5 +1,7 @@
 package fit
 
+import fit.TelemetryPoint
+
 import org.junit.Test
 import kotlin.test.*
 import java.io.File
@@ -189,9 +191,9 @@ class NativeHudEncoderTest {
     @Test
     fun testHudRendererScopeConfigRules() {
         // Create dummy telemetry points for testing scope behavior
-        val ptStart = FitParser.TelemetryPoint(timestamp = 100.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 10.0, grade = 0.0)
-        val ptMid = FitParser.TelemetryPoint(timestamp = 200.0, speed = 15.0, power = 150.0, cadence = 85.0, heartRate = 160.0, elevation = 50.0, grade = 2.0)
-        val ptEnd = FitParser.TelemetryPoint(timestamp = 300.0, speed = 12.0, power = 120.0, cadence = 82.0, heartRate = 140.0, elevation = 20.0, grade = -1.0)
+        val ptStart = TelemetryPoint(timestamp = 100.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 10.0, grade = 0.0)
+        val ptMid = TelemetryPoint(timestamp = 200.0, speed = 15.0, power = 150.0, cadence = 85.0, heartRate = 160.0, elevation = 50.0, grade = 2.0)
+        val ptEnd = TelemetryPoint(timestamp = 300.0, speed = 12.0, power = 120.0, cadence = 82.0, heartRate = 140.0, elevation = 20.0, grade = -1.0)
         
         val fullList = listOf(ptStart, ptMid, ptEnd)
         val trimmedList = listOf(ptMid, ptEnd) // Simulation of trimmed video scope
@@ -243,7 +245,7 @@ class NativeHudEncoderTest {
 
     @Test
     fun testHudRendererComponentVisibilityAndWeightConfigRules() {
-        val pt = FitParser.TelemetryPoint(
+        val pt = TelemetryPoint(
             timestamp = 100.0, speed = 10.0, power = 180.0, cadence = 80.0, heartRate = 120.0, elevation = 10.0, grade = 0.0
         )
         val list = listOf(pt)

@@ -54,11 +54,11 @@ class OsmTrafficSignalDetectorTest {
 
         // Generate mock telemetry points (a route from lat=32.800, lon=130.800 to lat=32.805, lon=130.805)
         // distance increases by 100m per point, elevation goes up
-        val points = mutableListOf<FitParser.TelemetryPoint>()
+        val points = mutableListOf<TelemetryPoint>()
         for (i in 0..40) {
             val progress = i / 40.0
             points.add(
-                FitParser.TelemetryPoint(
+                TelemetryPoint(
                     timestamp = 1782000000.0 + i,
                     speed = 10.0,
                     power = 200.0,
@@ -117,14 +117,14 @@ class OsmTrafficSignalDetectorTest {
         val detector = OsmTrafficSignalDetector(mockHttp)
 
         // Generate mock telemetry points with a stop in the middle (points 18, 19, 20)
-        val points = mutableListOf<FitParser.TelemetryPoint>()
+        val points = mutableListOf<TelemetryPoint>()
         for (i in 0..40) {
             val progress = i / 40.0
             val speed = if (i in 18..20) 0.0 else 10.0
             val cadence = 90.0
             
             points.add(
-                FitParser.TelemetryPoint(
+                TelemetryPoint(
                     1782000000.0 + i,
                     speed,
                     if (speed == 0.0) 0.0 else 200.0,
@@ -204,9 +204,9 @@ class OsmTrafficSignalDetectorTest {
         val detector = OsmTrafficSignalDetector(countingHttp, cache)
 
         val points = listOf(
-            FitParser.TelemetryPoint(1782000000.0, 10.0, 200.0, 90.0, 140.0, 100.0, 5.0, 32.800, 130.800, 0.0, 0, 0.0),
-            FitParser.TelemetryPoint(1782000001.0, 10.0, 200.0, 90.0, 140.0, 100.0, 5.0, 32.801, 130.801, 100.0, 1, 0.0),
-            FitParser.TelemetryPoint(1782000002.0, 10.0, 200.0, 90.0, 140.0, 100.0, 5.0, 32.802, 130.802, 200.0, 2, 0.0)
+            TelemetryPoint(1782000000.0, 10.0, 200.0, 90.0, 140.0, 100.0, 5.0, 32.800, 130.800, 0.0, 0, 0.0),
+            TelemetryPoint(1782000001.0, 10.0, 200.0, 90.0, 140.0, 100.0, 5.0, 32.801, 130.801, 100.0, 1, 0.0),
+            TelemetryPoint(1782000002.0, 10.0, 200.0, 90.0, 140.0, 100.0, 5.0, 32.802, 130.802, 200.0, 2, 0.0)
         )
 
         val bbox = BBox(32.79, 130.79, 32.83, 130.83)
@@ -233,7 +233,7 @@ class OsmTrafficSignalDetectorTest {
         val mockHttp = MockHttpRequester(mockJson)
         val detector = OsmTrafficSignalDetector(mockHttp)
 
-        val points = mutableListOf<FitParser.TelemetryPoint>()
+        val points = mutableListOf<TelemetryPoint>()
         for (i in 0..40) {
             val progress = i / 40.0
             // Timestamp jumps by 10 seconds between 18 and 19
@@ -241,7 +241,7 @@ class OsmTrafficSignalDetectorTest {
             val speed = 10.0 // Constant speed (no speed drops)
             
             points.add(
-                FitParser.TelemetryPoint(
+                TelemetryPoint(
                     1782000000.0 + i + tsOffset,
                     speed,
                     200.0,
@@ -289,14 +289,14 @@ class OsmTrafficSignalDetectorTest {
         val mockHttp = MockHttpRequester(mockJson)
         val detector = OsmTrafficSignalDetector(mockHttp)
 
-        val points = mutableListOf<FitParser.TelemetryPoint>()
+        val points = mutableListOf<TelemetryPoint>()
         for (i in 0..40) {
             val progress = i / 40.0
             // Grade goes to -1.0% (out of bounds [2.0%, 15.0%]) between index 18 and 23 (6 points)
             val grade = if (i in 18..23) -1.0 else 5.0
             
             points.add(
-                FitParser.TelemetryPoint(
+                TelemetryPoint(
                     timestamp = 1782000000.0 + i,
                     speed = 15.0,
                     power = 200.0,
@@ -354,7 +354,7 @@ class OsmTrafficSignalDetectorTest {
         val mockHttp = MockHttpRequester(mockJson)
         val detector = OsmTrafficSignalDetector(mockHttp)
 
-        val points = mutableListOf<FitParser.TelemetryPoint>()
+        val points = mutableListOf<TelemetryPoint>()
         // Simulate straight line forward, then a U-turn at i=20, then straight line backward
         // Lat increases for i in 0..20, then decreases for i in 21..40. Lon remains constant.
         for (i in 0..40) {
@@ -365,7 +365,7 @@ class OsmTrafficSignalDetectorTest {
             }
             
             points.add(
-                FitParser.TelemetryPoint(
+                TelemetryPoint(
                     timestamp = 1782000000.0 + i,
                     speed = 15.0,
                     power = 200.0,
@@ -400,13 +400,13 @@ class OsmTrafficSignalDetectorTest {
         val mockHttp = MockHttpRequester(mockJson)
         val detector = OsmTrafficSignalDetector(mockHttp)
 
-        val points = mutableListOf<FitParser.TelemetryPoint>()
+        val points = mutableListOf<TelemetryPoint>()
         // 0..30 seconds: 5% grade (valid)
         // 31..40 seconds: -5% grade (invalid, trailing)
         for (i in 0..40) {
             val grade = if (i <= 30) 5.0 else -5.0
             points.add(
-                FitParser.TelemetryPoint(
+                TelemetryPoint(
                     timestamp = 1782000000.0 + i,
                     speed = 10.0,
                     power = 200.0,

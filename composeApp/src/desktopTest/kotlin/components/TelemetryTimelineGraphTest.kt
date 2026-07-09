@@ -1,5 +1,7 @@
 package components
 
+import fit.TelemetryPoint
+
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -23,7 +25,7 @@ class TelemetryTimelineGraphTest {
     @Test
     fun testFormatAbsoluteTime() {
         val mockPoints = listOf(
-            fit.FitParser.TelemetryPoint(
+            fit.TelemetryPoint(
                 timestamp = 0.0,
                 speed = 0.0,
                 power = 0.0,

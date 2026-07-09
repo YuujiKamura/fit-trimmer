@@ -1,5 +1,7 @@
 package components
 
+import fit.TelemetryPoint
+
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -165,7 +167,7 @@ class ComposeHudCanvas(
     }
 
     override fun drawMapBackground(
-        videoPoints: List<FitParser.TelemetryPoint>,
+        videoPoints: List<TelemetryPoint>,
         mcx: Float,
         mcy: Float,
         R: Float,
@@ -416,8 +418,8 @@ fun VideoPreviewArea(
     videoPath: String,
     videoLengthMs: Long,
     adjustedStartUtc: String,
-    telemetryPoints: List<FitParser.TelemetryPoint>,
-    trimmedTelemetryPoints: List<FitParser.TelemetryPoint>,
+    telemetryPoints: List<TelemetryPoint>,
+    trimmedTelemetryPoints: List<TelemetryPoint>,
     settings: HudSettings,
     rendererProxy: fit.DynamicRendererProxy,
     textMeasurer: TextMeasurer,
@@ -740,7 +742,7 @@ fun VideoPreviewArea(
                         val alpha = if (t1 - t0 > 0) (currentFitTs - t0) / (t1 - t0) else 0.0
                         val lerp = { a: Double, b: Double -> a + (b - a) * alpha }
 
-                        val p = fit.FitParser.TelemetryPoint(
+                        val p = fit.TelemetryPoint(
                             timestamp = currentFitTs,
                             speed = lerp(p0.speed, p1.speed),
                             power = lerp(p0.power, p1.power),
@@ -1089,7 +1091,7 @@ fun VideoPreviewArea(
                             }
                         }
 
-                        val telemetryPoint = currentPoint ?: fit.FitParser.TelemetryPoint(
+                        val telemetryPoint = currentPoint ?: fit.TelemetryPoint(
                             timestamp = 0.0, speed = 26.2, power = 175.0, cadence = 79.0, heartRate = 148.0, elevation = 63.2, grade = 4.0
                         )
                         val pBuf = currentTrendPoints.map { it }

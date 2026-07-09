@@ -1,5 +1,7 @@
 package utils
 
+import fit.TelemetryPoint
+
 import fit.findFfmpegPath
 import fit.VideoPlatesCache
 import fit.PlateRecord
@@ -26,7 +28,7 @@ object PlateDetectionManager {
 
     suspend fun runDetection(
         videoPath: String,
-        telemetryPoints: List<fit.FitParser.TelemetryPoint> = emptyList(),
+        telemetryPoints: List<fit.TelemetryPoint> = emptyList(),
         adjustedStartUtc: String = "",
         onProgress: (Float, String) -> Unit,
         onCancel: () -> Boolean,
@@ -633,9 +635,9 @@ object PlateDetectionManager {
     }
 
     private fun findClosestTelemetryPoint(
-        telemetry: List<fit.FitParser.TelemetryPoint>,
+        telemetry: List<fit.TelemetryPoint>,
         targetFitTs: Double
-    ): fit.FitParser.TelemetryPoint? {
+    ): fit.TelemetryPoint? {
         if (telemetry.isEmpty()) return null
         var low = 0
         var high = telemetry.size - 1

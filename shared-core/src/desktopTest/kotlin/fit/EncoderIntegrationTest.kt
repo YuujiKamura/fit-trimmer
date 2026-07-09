@@ -661,7 +661,7 @@ class EncoderIntegrationTest {
 
     @Test
     fun testFindTelemetryLerpInterpolation() {
-        val p0 = fit.FitParser.TelemetryPoint(
+        val p0 = fit.TelemetryPoint(
             timestamp = 100.0,
             speed = 10.0,
             power = 100.0,
@@ -674,7 +674,7 @@ class EncoderIntegrationTest {
             distance = 100.0,
             elapsedSeconds = 10
         )
-        val p1 = fit.FitParser.TelemetryPoint(
+        val p1 = fit.TelemetryPoint(
             timestamp = 200.0,
             speed = 20.0,
             power = 200.0,
@@ -705,7 +705,7 @@ class EncoderIntegrationTest {
 
     @Test
     fun testFindTelemetryLerpOutOfBoundsZero() {
-        val p0 = fit.FitParser.TelemetryPoint(
+        val p0 = fit.TelemetryPoint(
             timestamp = 100.0,
             speed = 10.0,
             power = 100.0,
@@ -718,7 +718,7 @@ class EncoderIntegrationTest {
             distance = 100.0,
             elapsedSeconds = 10
         )
-        val p1 = fit.FitParser.TelemetryPoint(
+        val p1 = fit.TelemetryPoint(
             timestamp = 200.0,
             speed = 20.0,
             power = 200.0,

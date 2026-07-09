@@ -355,8 +355,8 @@ private fun getSegmentDuration(ffmpegPath: String, file: File): Double {
     return 60.0
 }
 
-fun findTelemetryLerp(telemetry: List<fit.FitParser.TelemetryPoint>, targetFitTs: Double): fit.FitParser.TelemetryPoint {
-    if (telemetry.isEmpty()) return fit.FitParser.TelemetryPoint(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+fun findTelemetryLerp(telemetry: List<fit.TelemetryPoint>, targetFitTs: Double): fit.TelemetryPoint {
+    if (telemetry.isEmpty()) return fit.TelemetryPoint(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
     if (targetFitTs <= telemetry.first().timestamp) return telemetry.first().copy(timestamp = targetFitTs, speed = 0.0, power = 0.0, cadence = 0.0)
     if (targetFitTs >= telemetry.last().timestamp) return telemetry.last().copy(timestamp = targetFitTs, speed = 0.0, power = 0.0, cadence = 0.0)
 
@@ -381,7 +381,7 @@ fun findTelemetryLerp(telemetry: List<fit.FitParser.TelemetryPoint>, targetFitTs
 
     val lerp = { a: Double, b: Double -> a + (b - a) * alpha }
 
-    return fit.FitParser.TelemetryPoint(
+    return fit.TelemetryPoint(
         timestamp = targetFitTs,
         speed = lerp(p0.speed, p1.speed),
         power = lerp(p0.power, p1.power),
@@ -402,7 +402,7 @@ class NativeHudEncoder(
     val onFrameRendered: (BufferedImage) -> Unit = {},
     val pauseSupplier: () -> Boolean = { false },
     val cancelSupplier: () -> Boolean = { false },
-    val customRenderer: ((HudCanvas, fit.FitParser.TelemetryPoint, List<fit.FitParser.TelemetryPoint>, List<fit.FitParser.TelemetryPoint>, List<Double>, Float) -> Unit)? = null,
+    val customRenderer: ((HudCanvas, fit.TelemetryPoint, List<fit.TelemetryPoint>, List<fit.TelemetryPoint>, List<Double>, Float) -> Unit)? = null,
     val showLivePreviewSupplier: () -> Boolean = { true },
     val profileSink: ((EncodeProfileReport) -> Unit)? = null
 ) {
@@ -536,7 +536,7 @@ class NativeHudEncoder(
         }
 
         override fun drawMapBackground(
-            videoPoints: List<FitParser.TelemetryPoint>,
+            videoPoints: List<TelemetryPoint>,
             mcx: Float,
             mcy: Float,
             R: Float,

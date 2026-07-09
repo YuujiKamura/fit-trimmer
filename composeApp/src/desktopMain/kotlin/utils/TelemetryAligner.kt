@@ -1,5 +1,7 @@
 package utils
 
+import fit.TelemetryPoint
+
 import fit.FitParser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -267,7 +269,7 @@ object TelemetryAligner {
      */
     suspend fun alignVideoWithTelemetry(
         videoPath: String,
-        telemetryPoints: List<FitParser.TelemetryPoint>,
+        telemetryPoints: List<TelemetryPoint>,
         approxStartUtc: String = "",
         method: String = "binary",
         windowSeconds: Double = 90.0
@@ -285,7 +287,7 @@ object TelemetryAligner {
 
     suspend fun alignVideoWithTelemetryCandidates(
         videoPath: String,
-        telemetryPoints: List<FitParser.TelemetryPoint>,
+        telemetryPoints: List<TelemetryPoint>,
         approxStartUtc: String = "",
         method: String = "binary",
         windowSeconds: Double = 90.0,
@@ -350,7 +352,7 @@ object TelemetryAligner {
      */
     fun alignVibWithTelemetryCore(
         vVib: DoubleArray,
-        telemetryPoints: List<FitParser.TelemetryPoint>,
+        telemetryPoints: List<TelemetryPoint>,
         approxStartUtc: String,
         method: String,
         windowSeconds: Double,
@@ -369,7 +371,7 @@ object TelemetryAligner {
 
     fun alignVibWithTelemetryCandidatesCore(
         vVib: DoubleArray,
-        telemetryPoints: List<FitParser.TelemetryPoint>,
+        telemetryPoints: List<TelemetryPoint>,
         approxStartUtc: String,
         method: String,
         windowSeconds: Double,
