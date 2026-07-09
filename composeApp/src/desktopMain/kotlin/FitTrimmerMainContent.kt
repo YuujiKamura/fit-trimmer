@@ -150,7 +150,8 @@ fun FitTrimmerMainContent(
             fixMapNorthUp = settings.fixMapNorthUp,
             mapMarkerSizeScale = settings.mapMarkerSizeScale,
             mapTextSizeScale = settings.mapTextSizeScale,
-            mapRangeMode = settings.mapRangeMode
+            mapRangeMode = settings.mapRangeMode,
+            textShadowAlpha = settings.textShadowAlpha
         )
     }
     var reloadTrigger by remember { mutableStateOf(0) }
@@ -2444,6 +2445,7 @@ fun FitTrimmerMainContent(
                             ControlSlider("MAP LEVEL OFFSET", settings.mapZoomOffset.toFloat(), -3f, 3f, enabled = !isEncoding) { settings = settings.copy(mapZoomOffset = it.roundToInt()) }
                             ControlSlider("MAP MARKER SIZE", settings.mapMarkerSizeScale, 0.5f, 2.5f, enabled = !isEncoding) { settings = settings.copy(mapMarkerSizeScale = it) }
                             ControlSlider("MAP TEXT SIZE", settings.mapTextSizeScale, 0.5f, 2.5f, enabled = !isEncoding) { settings = settings.copy(mapTextSizeScale = it) }
+                            ControlSlider("TEXT SHADOW", settings.textShadowAlpha, 0f, 1f, enabled = !isEncoding) { settings = settings.copy(textShadowAlpha = it) }
                             Text("MAP TYPE", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 0.5.sp)
                             var mapTypeDropdownExpanded by remember { mutableStateOf(false) }
                             Box(modifier = Modifier.fillMaxWidth()) {

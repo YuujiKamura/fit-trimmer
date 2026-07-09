@@ -1166,7 +1166,8 @@ class NativeHudEncoder(
             mapMarkerSizeScale = settings.mapMarkerSizeScale,
             mapTextSizeScale = settings.mapTextSizeScale,
             trimStartSeconds = actualTrimStart,
-        mapRangeMode = settings.mapRangeMode
+            mapRangeMode = settings.mapRangeMode,
+            textShadowAlpha = settings.textShadowAlpha
         )
         println("DEBUG: NativeHudEncoder.encode config=$config, videoWidth=$videoWidth, videoHeight=$videoHeight")
         val renderer = HudRenderer(config)
@@ -2301,7 +2302,8 @@ class NativeHudEncoder(
                     mapMarkerSizeScale = settings.mapMarkerSizeScale,
                     mapTextSizeScale = settings.mapTextSizeScale,
                     trimStartSeconds = actualTrimStart,
-                mapRangeMode = settings.mapRangeMode
+                    mapRangeMode = settings.mapRangeMode,
+                    textShadowAlpha = settings.textShadowAlpha
                 )
 
                 val (exportWidth, exportHeight) = when (settings.exportResolution) {

@@ -844,7 +844,7 @@ class HudRendererTest {
             isValid = true
         )
         
-        val textCall = canvas1.textCalls.find { it.text == "Hello Custom Caption" && it.color != "#555555" }
+        val textCall = canvas1.textCalls.find { it.text == "Hello Custom Caption" && !it.color.contains("555555") }
         val rectCall = canvas1.rectCalls.find { it.color == "#00ff00" && it.alpha == 0.8f }
         
         assertTrue(textCall != null, "Custom caption should be drawn inside range")
@@ -913,8 +913,8 @@ class HudRendererTest {
             isValid = true
         )
         
-        val line1Call = canvas.textCalls.find { it.text == "Line1" && it.color != "#555555" }
-        val line2Call = canvas.textCalls.find { it.text == "Line2Text" && it.color != "#555555" }
+        val line1Call = canvas.textCalls.find { it.text == "Line1" && !it.color.contains("555555") }
+        val line2Call = canvas.textCalls.find { it.text == "Line2Text" && !it.color.contains("555555") }
         
         assertTrue(line1Call != null, "Line 1 should be drawn")
         assertTrue(line2Call != null, "Line 2 should be drawn")
