@@ -1,5 +1,7 @@
 package components
 
+import fit.TelemetryPoint
+
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -45,7 +47,7 @@ import utils.formatTime
 fun TelemetryTimelineGraph(
     videoLengthMs: Long,
     adjustedStartUtc: String,
-    telemetryPoints: List<FitParser.TelemetryPoint>,
+    telemetryPoints: List<TelemetryPoint>,
     trimStartSeconds: Double,
     trimEndSeconds: Double,
     splitPoints: List<Double>,
@@ -1127,7 +1129,7 @@ fun calculateTickSeconds(ratio: Float, timelineDurationSec: Double, startDiffSec
     return (ratio.toDouble() * timelineDurationSec)
 }
 
-fun formatAbsoluteTime(tickSec: Double, fitStartUtc: String, telemetryPoints: List<fit.FitParser.TelemetryPoint>): String {
+fun formatAbsoluteTime(tickSec: Double, fitStartUtc: String, telemetryPoints: List<fit.TelemetryPoint>): String {
     if (fitStartUtc.isEmpty()) return ""
     return try {
         val fitEpoch = java.time.Instant.parse("1989-12-31T00:00:00Z").epochSecond

@@ -1,3 +1,4 @@
+import fit.TelemetryPoint
 import java.io.File
 import java.awt.image.BufferedImage
 import kotlinx.coroutines.withContext
@@ -16,7 +17,7 @@ import utils.PlateDetectionManager
 
 typealias PlatePreScanner = suspend (
     videoPath: String,
-    telemetryPoints: List<FitParser.TelemetryPoint>,
+    telemetryPoints: List<TelemetryPoint>,
     adjustedStartUtc: String,
     onProgress: (Float, String) -> Unit,
     onCancel: () -> Boolean,
@@ -42,7 +43,7 @@ object HudEncodePipeline {
     suspend fun ensurePlateCacheForEncode(
         settings: HudSettings,
         videoPath: String,
-        telemetryPoints: List<FitParser.TelemetryPoint> = emptyList(),
+        telemetryPoints: List<TelemetryPoint> = emptyList(),
         adjustedStartUtc: String = "",
         ranges: List<Pair<Double, Double>> = emptyList(),
         onProgress: (progress: Float, statusText: String) -> Unit = { _, _ -> },
@@ -95,7 +96,7 @@ object HudEncodePipeline {
         destFiles: List<File>,
         shouldResume: Boolean = false,
         moveOutputToSource: Boolean = false,
-        plateTelemetryPoints: List<FitParser.TelemetryPoint> = emptyList(),
+        plateTelemetryPoints: List<TelemetryPoint> = emptyList(),
         platePreScanner: PlatePreScanner = defaultPlatePreScanner,
         onProgress: (progress: Float, statusText: String) -> Unit,
         onFrame: (BufferedImage) -> Unit,

@@ -55,7 +55,7 @@ interface HudCanvas {
     fun drawPolygon(points: List<Pair<Float, Float>>, color: String, alpha: Float = 1.0f)
     fun getTextWidth(text: String, size: Float, bold: Boolean): Float
     fun drawMapBackground(
-        videoPoints: List<FitParser.TelemetryPoint>,
+        videoPoints: List<TelemetryPoint>,
         mcx: Float,
         mcy: Float,
         R: Float,
@@ -85,14 +85,14 @@ class HudRenderer(val config: HudConfig) {
 
 
     // Cache fields for elevation points to avoid recalculation/reallocation every frame
-    private var cachedOriginalPoints: List<FitParser.TelemetryPoint>? = null
-    private var cachedHrAccumPoints: List<FitParser.TelemetryPoint>? = null
+    private var cachedOriginalPoints: List<TelemetryPoint>? = null
+    private var cachedHrAccumPoints: List<TelemetryPoint>? = null
     private var cachedCx: Float = 0f
     private var cachedEGy: Float = 0f
     private var cachedGraphW: Float = 0f
     private var cachedGraphH: Float = 0f
     private var cachedPts: List<Pair<Float, Float>> = emptyList()
-    private var cachedDrawPoints: List<FitParser.TelemetryPoint> = emptyList()
+    private var cachedDrawPoints: List<TelemetryPoint> = emptyList()
     private var cachedMinAlt: Double = 0.0
     private var cachedMaxAlt: Double = 100.0
     private var cachedAltDiff: Double = 10.0
@@ -100,9 +100,9 @@ class HudRenderer(val config: HudConfig) {
     @kotlin.jvm.JvmOverloads
     fun renderFrame(
         canvas: HudCanvas, 
-        telemetry: FitParser.TelemetryPoint, 
-        originalPoints: List<FitParser.TelemetryPoint>, 
-        trimmedPoints: List<FitParser.TelemetryPoint>, 
+        telemetry: TelemetryPoint, 
+        originalPoints: List<TelemetryPoint>, 
+        trimmedPoints: List<TelemetryPoint>, 
         pBuf: List<Double>, 
         currentRatio: Float,
         isValid: Boolean = true
@@ -379,7 +379,7 @@ class HudRenderer(val config: HudConfig) {
             
             if (elevGraphPoints.size > 1) {
                 val pts: List<Pair<Float, Float>>
-                val drawPoints: List<FitParser.TelemetryPoint>
+                val drawPoints: List<TelemetryPoint>
                 var minAlt = 0.0
                 var maxAlt = 100.0
                 var altDiff = 10.0
@@ -808,7 +808,7 @@ class HudRenderer(val config: HudConfig) {
         return (bpm - 130) / 10
     }
 
-    private fun calculateBearing(p1: FitParser.TelemetryPoint, p2: FitParser.TelemetryPoint): Double? {
+    private fun calculateBearing(p1: TelemetryPoint, p2: TelemetryPoint): Double? {
         if (p1.lat == 0.0 && p1.lon == 0.0) return null
         if (p2.lat == 0.0 && p2.lon == 0.0) return null
         val lat1 = p1.lat
@@ -827,7 +827,7 @@ class HudRenderer(val config: HudConfig) {
         return (bearingRad * 180.0 / kotlin.math.PI + 360.0) % 360.0
     }
 
-    private fun bearingAtDistance(points: List<FitParser.TelemetryPoint>, distance: Double, fallback: Double): Double {
+    private fun bearingAtDistance(points: List<TelemetryPoint>, distance: Double, fallback: Double): Double {
         if (points.size < 2) return fallback
         // Binary search for the segment that brackets the current distance
         var lo = 0
@@ -853,8 +853,8 @@ class HudRenderer(val config: HudConfig) {
 
     private fun drawMiniMap(
         canvas: HudCanvas,
-        videoPoints: List<FitParser.TelemetryPoint>,
-        telemetry: FitParser.TelemetryPoint,
+        videoPoints: List<TelemetryPoint>,
+        telemetry: TelemetryPoint,
         isValid: Boolean,
         sf: Float
     ) {
@@ -972,7 +972,7 @@ class HudRenderer(val config: HudConfig) {
         canvas.drawLine(circlePoints, "#ffffff", width = 1.8f * sf, alpha = 0.7f)
 
         // 5. Helper to project TelemetryPoint onto the screen canvas (applying dot-product projection)
-        fun projectPoint(pt: FitParser.TelemetryPoint): Pair<Float, Float> {
+        fun projectPoint(pt: TelemetryPoint): Pair<Float, Float> {
             val px = (pt.lon - startPt.lon) * cosLat
             val py = pt.lat - startPt.lat
             

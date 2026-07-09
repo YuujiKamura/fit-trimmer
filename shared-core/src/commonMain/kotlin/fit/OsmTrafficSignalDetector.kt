@@ -61,7 +61,7 @@ class OsmTrafficSignalDetector(
 
     suspend fun detectSegments(
         bbox: BBox,
-        telemetryPoints: List<FitParser.TelemetryPoint>,
+        telemetryPoints: List<TelemetryPoint>,
         minDistanceMeters: Double = 1000.0,
         videoPath: String? = null,
         autoPauseGapSeconds: Double = 3.0,
@@ -127,7 +127,7 @@ class OsmTrafficSignalDetector(
         var inSignalZone = false
         var consecutiveStopCount = 0
         var stopStartIdx = -1
-        var prevPt: FitParser.TelemetryPoint? = null
+        var prevPt: TelemetryPoint? = null
         var outOfGradeCount = 0
 
         for (i in telemetryPoints.indices) {

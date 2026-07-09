@@ -56,7 +56,7 @@ class HudOverlayLayoutEngine {
 
     fun calculateLayout(
         config: HudConfig,
-        point: FitParser.TelemetryPoint?,
+        point: TelemetryPoint?,
         isValid: Boolean,
         sf: Float,
         // 心拍ゾーンの統計情報

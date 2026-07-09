@@ -1,5 +1,7 @@
 package utils
 
+import fit.TelemetryPoint
+
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.double
 import kotlinx.serialization.json.jsonArray
@@ -407,7 +409,7 @@ class TelemetryAlignerTest {
         val telemetryArray = Json.parseToJsonElement(telemetryJsonText).jsonArray
         val telemetryPoints = List(telemetryArray.size) { i ->
             val obj = telemetryArray[i].jsonObject
-            fit.FitParser.TelemetryPoint(
+            fit.TelemetryPoint(
                 timestamp = obj["ts"]!!.jsonPrimitive.double,
                 speed = obj["speedKmh"]!!.jsonPrimitive.double,
                 power = 0.0, cadence = 0.0, heartRate = 0.0, elevation = 0.0, grade = 0.0
@@ -464,7 +466,7 @@ class TelemetryAlignerTest {
         val telemetryArray = kotlinx.serialization.json.Json.parseToJsonElement(telemetryJsonText).jsonArray
         val telemetryPoints = List(telemetryArray.size) { i ->
             val obj = telemetryArray[i].jsonObject
-            fit.FitParser.TelemetryPoint(
+            fit.TelemetryPoint(
                 timestamp = obj["ts"]!!.jsonPrimitive.double,
                 speed = obj["speedKmh"]!!.jsonPrimitive.double,
                 power = 0.0, cadence = 0.0, heartRate = 0.0, elevation = 0.0, grade = 0.0

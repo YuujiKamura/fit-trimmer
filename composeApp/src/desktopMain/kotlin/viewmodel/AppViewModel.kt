@@ -1,5 +1,7 @@
 package viewmodel
 
+import fit.TelemetryPoint
+
 
 
 import androidx.compose.runtime.*
@@ -267,7 +269,7 @@ class AppViewModel(
 
     suspend fun executePlateScanCore(
         videoPath: String,
-        telemetryPoints: List<fit.FitParser.TelemetryPoint>,
+        telemetryPoints: List<fit.TelemetryPoint>,
         adjustedStartUtc: String,
         trimStart: Double,
         trimEnd: Double,
@@ -859,12 +861,12 @@ class AppViewModel(
 
     // Telemetry and video metadata
 
-    var telemetryPoints by mutableStateOf<List<FitParser.TelemetryPoint>>(emptyList())
+    var telemetryPoints by mutableStateOf<List<TelemetryPoint>>(emptyList())
 
     var isTelemetryCut by mutableStateOf(false)
-    var originalTelemetryPoints by mutableStateOf<List<FitParser.TelemetryPoint>>(emptyList())
+    var originalTelemetryPoints by mutableStateOf<List<TelemetryPoint>>(emptyList())
 
-    fun updateTelemetry(points: List<FitParser.TelemetryPoint>) {
+    fun updateTelemetry(points: List<TelemetryPoint>) {
         originalTelemetryPoints = points
         telemetryPoints = points
         isTelemetryCut = false

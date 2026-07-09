@@ -1,5 +1,7 @@
 package utils
 
+import fit.TelemetryPoint
+
 import fit.PlateBox
 import java.io.File
 import java.awt.image.BufferedImage
@@ -462,7 +464,7 @@ class PlateDetectorTest {
 
         // Create dummy high-speed telemetry (all points at 25.0 km/h)
         val telemetry = List(21) { idx ->
-            fit.FitParser.TelemetryPoint(
+            fit.TelemetryPoint(
                 timestamp = 1150358526.0 + idx, // Aligned with "2026-06-14T08:02:06Z"
                 speed = 25.0, // 25.0 km/h >= 10.0 km/h
                 power = 200.0,

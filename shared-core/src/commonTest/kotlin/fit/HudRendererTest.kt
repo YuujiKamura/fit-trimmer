@@ -57,7 +57,7 @@ class HudRendererTest {
         var lastMcx: Float = 0f
         var lastMcy: Float = 0f
         override fun drawMapBackground(
-            videoPoints: List<FitParser.TelemetryPoint>,
+            videoPoints: List<TelemetryPoint>,
             mcx: Float, mcy: Float, R: Float, padR: Float, sf: Float,
             pathBearing: Double, cosLat: Double, dx: Double, dy: Double, L: Double,
             cxL: Double, cyL: Double, dynamicScale: Double
@@ -86,10 +86,10 @@ class HudRendererTest {
         )
         val renderer = HudRenderer(config)
         
-        val startPoint = FitParser.TelemetryPoint(
+        val startPoint = TelemetryPoint(
             timestamp = 0.0, speed = 0.0, power = 0.0, cadence = 0.0, heartRate = 0.0, elevation = 0.0, grade = 0.0
         )
-        val endPoint = FitParser.TelemetryPoint(
+        val endPoint = TelemetryPoint(
             timestamp = 3600.0, speed = 0.0, power = 0.0, cadence = 0.0, heartRate = 0.0, elevation = 0.0, grade = 0.0
         )
         val originalPoints = listOf(startPoint, endPoint)
@@ -131,7 +131,7 @@ class HudRendererTest {
         val renderer = HudRenderer(config)
 
         // 1. With temperature data (Metric Celsius)
-        val telemetryWithTemp = FitParser.TelemetryPoint(
+        val telemetryWithTemp = TelemetryPoint(
             timestamp = 1151028589.0,
             speed = 30.0,
             power = 150.0,
@@ -196,7 +196,7 @@ class HudRendererTest {
         val renderer = HudRenderer(config)
 
         // エッジケースのテストデータ (スピード異常値, 斜度の境界値)
-        val telemetry = FitParser.TelemetryPoint(
+        val telemetry = TelemetryPoint(
             timestamp = 1151028589.0, // FIT timestamp
             speed = 8.356,             // 8.356 m/s -> km/h は約 30.08 km/h.丸めチェック
             power = 150.4,
@@ -227,7 +227,7 @@ class HudRendererTest {
         assertTrue(canvas.drawnTexts.contains("-5.7"), "Negative grade should be formatted to: -5.7 (got ${canvas.drawnTexts})")
 
         // 正の斜度のテスト
-        val telemetryPositiveGrade = FitParser.TelemetryPoint(
+        val telemetryPositiveGrade = TelemetryPoint(
             timestamp = 1151028589.0,
             speed = 10.0,
             power = 150.0,
@@ -272,7 +272,7 @@ class HudRendererTest {
             xOffset = 40f, yOffset = 100f, graphH = 60f, graphW = 300f
         )
         val renderer = HudRenderer(config)
-        val emptyPoint = FitParser.TelemetryPoint(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        val emptyPoint = TelemetryPoint(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
 
         val canvas = TestHudCanvas()
         renderer.renderFrame(
@@ -298,11 +298,11 @@ class HudRendererTest {
         )
         val renderer = HudRenderer(config)
         
-        val startPoint = FitParser.TelemetryPoint(
+        val startPoint = TelemetryPoint(
             timestamp = 1000.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 50.0, grade = 2.0,
             distance = 1000.0, elapsedSeconds = 10
         )
-        val currentPoint = FitParser.TelemetryPoint(
+        val currentPoint = TelemetryPoint(
             timestamp = 1100.0, speed = 12.0, power = 110.0, cadence = 82.0, heartRate = 122.0, elevation = 52.0, grade = 2.2,
             distance = 2500.5, elapsedSeconds = 110
         )
@@ -343,22 +343,22 @@ class HudRendererTest {
         
         // Setup 4 telemetry points with distinct lat/lon to compute bearings
         // P1: Start (50m) -> Moving North-East to P2
-        val p1 = FitParser.TelemetryPoint(
+        val p1 = TelemetryPoint(
             timestamp = 1000.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 50.0, grade = 2.0,
             distance = 1000.0, elapsedSeconds = 10, lat = 35.0, lon = 135.0
         )
         // P2: Peak (max 120m) -> Moving South to P3
-        val p2 = FitParser.TelemetryPoint(
+        val p2 = TelemetryPoint(
             timestamp = 1010.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 120.0, grade = 2.0,
             distance = 1100.0, elapsedSeconds = 20, lat = 35.01, lon = 135.01
         )
         // P3: Valley (min 30m) -> Moving North to P4
-        val p3 = FitParser.TelemetryPoint(
+        val p3 = TelemetryPoint(
             timestamp = 1020.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 30.0, grade = 2.0,
             distance = 1200.0, elapsedSeconds = 30, lat = 34.99, lon = 135.01
         )
         // P4: End (60m)
-        val p4 = FitParser.TelemetryPoint(
+        val p4 = TelemetryPoint(
             timestamp = 1030.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 60.0, grade = 2.0,
             distance = 1300.0, elapsedSeconds = 40, lat = 35.0, lon = 135.01
         )
@@ -412,11 +412,11 @@ class HudRendererTest {
         
         // Setup 4 telemetry points with distinct lat/lon to build a path direction
         // P1: Start (lat=35.0, lon=135.0) -> P2: lat=35.01, lon=135.01
-        val p1 = FitParser.TelemetryPoint(
+        val p1 = TelemetryPoint(
             timestamp = 1000.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 50.0, grade = 2.0,
             distance = 1000.0, elapsedSeconds = 10, lat = 35.0, lon = 135.0
         )
-        val p2 = FitParser.TelemetryPoint(
+        val p2 = TelemetryPoint(
             timestamp = 1010.0, speed = 12.0, power = 110.0, cadence = 82.0, heartRate = 122.0, elevation = 52.0, grade = 2.2,
             distance = 2500.0, elapsedSeconds = 20, lat = 35.01, lon = 135.01
         )
@@ -453,11 +453,11 @@ class HudRendererTest {
         )
         val renderer = HudRenderer(config)
         
-        val p1 = FitParser.TelemetryPoint(
+        val p1 = TelemetryPoint(
             timestamp = 1000.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 50.0, grade = 2.0,
             distance = 1000.0, elapsedSeconds = 10, lat = 35.0, lon = 135.0
         )
-        val p2 = FitParser.TelemetryPoint(
+        val p2 = TelemetryPoint(
             timestamp = 1010.0, speed = 12.0, power = 110.0, cadence = 82.0, heartRate = 122.0, elevation = 52.0, grade = 2.2,
             distance = 2500.0, elapsedSeconds = 20, lat = 35.01, lon = 135.01
         )
@@ -490,11 +490,11 @@ class HudRendererTest {
         val renderer = HudRenderer(config)
         
         // P1: Start (35.0, 135.0) -> P2: End (35.01, 135.01)
-        val p1 = FitParser.TelemetryPoint(
+        val p1 = TelemetryPoint(
             timestamp = 1000.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 50.0, grade = 2.0,
             distance = 1000.0, elapsedSeconds = 10, lat = 35.0, lon = 135.0
         )
-        val p2 = FitParser.TelemetryPoint(
+        val p2 = TelemetryPoint(
             timestamp = 1010.0, speed = 12.0, power = 110.0, cadence = 82.0, heartRate = 122.0, elevation = 52.0, grade = 2.2,
             distance = 2500.0, elapsedSeconds = 20, lat = 35.01, lon = 135.01
         )
@@ -536,15 +536,15 @@ class HudRendererTest {
         val renderer = HudRenderer(config)
         
         // Loop route: Start (35.0, 135.0) -> Middle (35.01, 135.0) -> End (35.0, 135.0)
-        val p1 = FitParser.TelemetryPoint(
+        val p1 = TelemetryPoint(
             timestamp = 1000.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 50.0, grade = 2.0,
             distance = 1000.0, elapsedSeconds = 10, lat = 35.0, lon = 135.0
         )
-        val p2 = FitParser.TelemetryPoint(
+        val p2 = TelemetryPoint(
             timestamp = 1005.0, speed = 11.0, power = 105.0, cadence = 81.0, heartRate = 121.0, elevation = 51.0, grade = 2.1,
             distance = 1750.0, elapsedSeconds = 15, lat = 35.01, lon = 135.0
         )
-        val p3 = FitParser.TelemetryPoint(
+        val p3 = TelemetryPoint(
             timestamp = 1010.0, speed = 12.0, power = 110.0, cadence = 82.0, heartRate = 122.0, elevation = 52.0, grade = 2.2,
             distance = 2500.0, elapsedSeconds = 20, lat = 35.0, lon = 135.0
         )
@@ -597,15 +597,15 @@ class HudRendererTest {
         )
         val renderer = HudRenderer(config)
         
-        val p1 = FitParser.TelemetryPoint(
+        val p1 = TelemetryPoint(
             timestamp = 1000.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 50.0, grade = 2.0,
             distance = 1000.0, elapsedSeconds = 10, lat = 35.0, lon = 135.0
         )
-        val p2 = FitParser.TelemetryPoint(
+        val p2 = TelemetryPoint(
             timestamp = 1005.0, speed = 11.0, power = 105.0, cadence = 81.0, heartRate = 121.0, elevation = 51.0, grade = 2.1,
             distance = 1750.0, elapsedSeconds = 15, lat = 35.01, lon = 135.0
         )
-        val p3 = FitParser.TelemetryPoint(
+        val p3 = TelemetryPoint(
             timestamp = 1010.0, speed = 12.0, power = 110.0, cadence = 82.0, heartRate = 122.0, elevation = 52.0, grade = 2.2,
             distance = 2500.0, elapsedSeconds = 20, lat = 35.0, lon = 135.0
         )
@@ -664,15 +664,15 @@ class HudRendererTest {
         )
         val renderer = HudRenderer(config)
         
-        val p1 = FitParser.TelemetryPoint(
+        val p1 = TelemetryPoint(
             timestamp = 1000.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 50.0, grade = 2.0,
             distance = 1000.0, elapsedSeconds = 10, lat = 35.0, lon = 135.0
         )
-        val p2 = FitParser.TelemetryPoint(
+        val p2 = TelemetryPoint(
             timestamp = 1005.0, speed = 11.0, power = 105.0, cadence = 81.0, heartRate = 121.0, elevation = 51.0, grade = 2.1,
             distance = 1750.0, elapsedSeconds = 15, lat = 35.005, lon = 135.01
         )
-        val p3 = FitParser.TelemetryPoint(
+        val p3 = TelemetryPoint(
             timestamp = 1010.0, speed = 12.0, power = 110.0, cadence = 82.0, heartRate = 122.0, elevation = 52.0, grade = 2.2,
             distance = 2500.0, elapsedSeconds = 20, lat = 35.01, lon = 135.0
         )
@@ -702,11 +702,11 @@ class HudRendererTest {
         )
         val renderer = HudRenderer(config)
         
-        val startPoint = FitParser.TelemetryPoint(
+        val startPoint = TelemetryPoint(
             timestamp = 1000.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 50.0, grade = 2.0,
             distance = 1000.0, elapsedSeconds = 10
         )
-        val currentPoint = FitParser.TelemetryPoint(
+        val currentPoint = TelemetryPoint(
             timestamp = 1100.0, speed = 12.0, power = 110.0, cadence = 82.0, heartRate = 122.0, elevation = 52.0, grade = 2.2,
             distance = 2500.5, elapsedSeconds = 110
         )
@@ -745,13 +745,13 @@ class HudRendererTest {
         )
         val renderer = HudRenderer(config)
 
-        val p1 = FitParser.TelemetryPoint(
+        val p1 = TelemetryPoint(
             timestamp = 1000.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 135.0, elevation = 50.0, grade = 2.0
         )
-        val p2 = FitParser.TelemetryPoint(
+        val p2 = TelemetryPoint(
             timestamp = 1001.0, speed = 12.0, power = 110.0, cadence = 82.0, heartRate = 145.0, elevation = 52.0, grade = 2.2
         )
-        val p3 = FitParser.TelemetryPoint(
+        val p3 = TelemetryPoint(
             timestamp = 1002.0, speed = 11.0, power = 120.0, cadence = 81.0, heartRate = 175.0, elevation = 51.0, grade = 2.1
         )
         val allPoints = listOf(p1, p2, p3)
@@ -827,7 +827,7 @@ class HudRendererTest {
         )
         
         val renderer = HudRenderer(config)
-        val startPoint = FitParser.TelemetryPoint(
+        val startPoint = TelemetryPoint(
             timestamp = 0.0, speed = 0.0, power = 0.0, cadence = 0.0, heartRate = 0.0, elevation = 0.0, grade = 0.0
         )
         val originalPoints = listOf(startPoint)
@@ -897,7 +897,7 @@ class HudRendererTest {
         )
         
         val renderer = HudRenderer(config)
-        val startPoint = FitParser.TelemetryPoint(
+        val startPoint = TelemetryPoint(
             timestamp = 0.0, speed = 0.0, power = 0.0, cadence = 0.0, heartRate = 0.0, elevation = 0.0, grade = 0.0
         )
         val originalPoints = listOf(startPoint)
@@ -938,11 +938,11 @@ class HudRendererTest {
         )
         val renderer = HudRenderer(config)
         
-        val p1 = FitParser.TelemetryPoint(
+        val p1 = TelemetryPoint(
             timestamp = 1000.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 50.0, grade = 2.0,
             distance = 1000.0, elapsedSeconds = 10, lat = 35.0, lon = 135.0
         )
-        val p2 = FitParser.TelemetryPoint(
+        val p2 = TelemetryPoint(
             timestamp = 1010.0, speed = 12.0, power = 110.0, cadence = 82.0, heartRate = 122.0, elevation = 52.0, grade = 2.2,
             distance = 2500.0, elapsedSeconds = 20, lat = 35.01, lon = 135.01
         )
@@ -971,15 +971,15 @@ class HudRendererTest {
         val renderer = HudRenderer(config)
 
         // Route: Start -> North 100m -> Turn East 100m -> End
-        val p1 = FitParser.TelemetryPoint(
+        val p1 = TelemetryPoint(
             timestamp = 1000.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 50.0, grade = 0.0,
             distance = 0.0, elapsedSeconds = 0, lat = 35.0, lon = 135.0
         )
-        val p2 = FitParser.TelemetryPoint(
+        val p2 = TelemetryPoint(
             timestamp = 1010.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 50.0, grade = 0.0,
             distance = 100.0, elapsedSeconds = 10, lat = 35.001, lon = 135.0
         )
-        val p3 = FitParser.TelemetryPoint(
+        val p3 = TelemetryPoint(
             timestamp = 1020.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 50.0, grade = 0.0,
             distance = 200.0, elapsedSeconds = 20, lat = 35.001, lon = 135.001
         )
@@ -987,7 +987,7 @@ class HudRendererTest {
 
         // Render with telemetry at distance=150m (midpoint of East segment, between p2 and p3)
         // This telemetry has an interpolated timestamp that does NOT match any point exactly
-        val telemetry = FitParser.TelemetryPoint(
+        val telemetry = TelemetryPoint(
             timestamp = 1015.5, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 50.0, grade = 0.0,
             distance = 150.0, elapsedSeconds = 15, lat = 35.001, lon = 135.0005
         )
@@ -1020,25 +1020,25 @@ class HudRendererTest {
         )
 
         // Route with a cluster of identical-coordinate points in the middle
-        val p1 = FitParser.TelemetryPoint(
+        val p1 = TelemetryPoint(
             timestamp = 1000.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 50.0, grade = 0.0,
             distance = 0.0, elapsedSeconds = 0, lat = 35.0, lon = 135.0
         )
-        val p2 = FitParser.TelemetryPoint(
+        val p2 = TelemetryPoint(
             timestamp = 1010.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 50.0, grade = 0.0,
             distance = 100.0, elapsedSeconds = 10, lat = 35.001, lon = 135.0
         )
         // Stopped: same coords, same distance
-        val p3 = FitParser.TelemetryPoint(
+        val p3 = TelemetryPoint(
             timestamp = 1011.0, speed = 0.0, power = 0.0, cadence = 0.0, heartRate = 120.0, elevation = 50.0, grade = 0.0,
             distance = 100.0, elapsedSeconds = 11, lat = 35.001, lon = 135.0
         )
-        val p4 = FitParser.TelemetryPoint(
+        val p4 = TelemetryPoint(
             timestamp = 1012.0, speed = 0.0, power = 0.0, cadence = 0.0, heartRate = 120.0, elevation = 50.0, grade = 0.0,
             distance = 100.0, elapsedSeconds = 12, lat = 35.001, lon = 135.0
         )
         // Resume East
-        val p5 = FitParser.TelemetryPoint(
+        val p5 = TelemetryPoint(
             timestamp = 1020.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 50.0, grade = 0.0,
             distance = 200.0, elapsedSeconds = 20, lat = 35.001, lon = 135.001
         )
@@ -1086,7 +1086,7 @@ class HudRendererTest {
         val renderer = HudRenderer(config)
         val canvas = TestHudCanvas()
         
-        val telemetry = FitParser.TelemetryPoint(
+        val telemetry = TelemetryPoint(
             timestamp = 1000.0, speed = 10.0, cadence = 90.0, heartRate = 150.0, power = 200.0, elevation = 100.0, distance = 5000.0, elapsedSeconds = 600, grade = 2.0, lat = 35.0, lon = 135.0
         )
 
@@ -1131,7 +1131,7 @@ class HudRendererTest {
         val renderer = HudRenderer(config)
         val canvas = TestHudCanvas()
         
-        val telemetry = FitParser.TelemetryPoint(
+        val telemetry = TelemetryPoint(
             timestamp = 1000.0, speed = 10.0, cadence = 90.0, heartRate = 150.0, power = 200.0, elevation = 100.0, distance = 5000.0, elapsedSeconds = 600, grade = 2.0, lat = 0.0, lon = 0.0
         )
 
@@ -1191,15 +1191,15 @@ class HudRendererTest {
         )
         val renderer = HudRenderer(config)
         
-        val p1 = FitParser.TelemetryPoint(
+        val p1 = TelemetryPoint(
             timestamp = 1000.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 50.0, grade = 2.0,
             distance = 1000.0, elapsedSeconds = 10, lat = 35.0, lon = 135.0
         )
-        val p2 = FitParser.TelemetryPoint(
+        val p2 = TelemetryPoint(
             timestamp = 1005.0, speed = 11.0, power = 105.0, cadence = 81.0, heartRate = 121.0, elevation = 100.0, grade = 2.1,
             distance = 1750.0, elapsedSeconds = 15, lat = 35.01, lon = 135.0
         )
-        val p3 = FitParser.TelemetryPoint(
+        val p3 = TelemetryPoint(
             timestamp = 1010.0, speed = 12.0, power = 110.0, cadence = 82.0, heartRate = 122.0, elevation = 30.0, grade = 2.2,
             distance = 2500.0, elapsedSeconds = 20, lat = 35.02, lon = 135.0
         )
@@ -1227,15 +1227,15 @@ class HudRendererTest {
         )
         val renderer = HudRenderer(config)
         
-        val p1 = FitParser.TelemetryPoint(
+        val p1 = TelemetryPoint(
             timestamp = 1000.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 50.0, grade = 2.0,
             distance = 1000.0, elapsedSeconds = 10, lat = 35.0, lon = 135.0
         )
-        val p2 = FitParser.TelemetryPoint(
+        val p2 = TelemetryPoint(
             timestamp = 1005.0, speed = 11.0, power = 105.0, cadence = 81.0, heartRate = 121.0, elevation = 100.0, grade = 2.1,
             distance = 1750.0, elapsedSeconds = 15, lat = 35.01, lon = 135.0
         )
-        val p3 = FitParser.TelemetryPoint(
+        val p3 = TelemetryPoint(
             timestamp = 1010.0, speed = 12.0, power = 110.0, cadence = 82.0, heartRate = 122.0, elevation = 30.0, grade = 2.2,
             distance = 2500.0, elapsedSeconds = 20, lat = 35.02, lon = 135.0
         )

@@ -1,5 +1,7 @@
 package viewmodel
 
+import fit.TelemetryPoint
+
 import fit.HudSettings
 import fit.FitParser
 import fit.PlateBox
@@ -49,7 +51,7 @@ class AppViewModelTest {
         viewModel.videoStartUtc = "1989-12-31T00:00:05Z"
         
         val dummyPoints = List(30) { i ->
-            FitParser.TelemetryPoint(
+            TelemetryPoint(
                 timestamp = i.toDouble(),
                 speed = 25.0,
                 cadence = 90.0,
@@ -86,7 +88,7 @@ class AppViewModelTest {
     fun testConfirmTelemetryRangeUsesAlignedVideoRangeAndPreservesOffset() {
         val viewModel = AppViewModel(null)
         val dummyPoints = List(30) { i ->
-            FitParser.TelemetryPoint(
+            TelemetryPoint(
                 timestamp = i.toDouble(),
                 speed = 25.0,
                 cadence = 90.0,
@@ -126,7 +128,7 @@ class AppViewModelTest {
         viewModel.videoPath = "video1.mp4"
         
         val dummyPoints = List(10) { i ->
-            FitParser.TelemetryPoint(
+            TelemetryPoint(
                 timestamp = i.toDouble(),
                 speed = 20.0, cadence = 80.0, heartRate = 120.0, power = 150.0,
                 elevation = 50.0, distance = i * 5.0, grade = 0.0
@@ -389,8 +391,8 @@ class AppViewModelTest {
         
         // Setup raw telemetry points (FIT epoch offset is 631065600L)
         // FIT timestamps: 1151310000 -> Instant: 1151310000 + 631065600 = 1782375600 (2026-06-21T08:20:00Z)
-        val p1 = FitParser.TelemetryPoint(1151310000.0, 20.0, 150.0, 90.0, 140.0, 50.0, 0.0, 32.0, 130.0)
-        val p2 = FitParser.TelemetryPoint(1151313600.0, 25.0, 200.0, 95.0, 150.0, 60.0, 0.0, 32.1, 130.1) // +1 hour
+        val p1 = TelemetryPoint(1151310000.0, 20.0, 150.0, 90.0, 140.0, 50.0, 0.0, 32.0, 130.0)
+        val p2 = TelemetryPoint(1151313600.0, 25.0, 200.0, 95.0, 150.0, 60.0, 0.0, 32.1, 130.1) // +1 hour
         viewModel.telemetryPoints = listOf(p1, p2)
         androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
 
@@ -485,10 +487,10 @@ class AppViewModelTest {
         val fitEpoch = java.time.Instant.parse("1989-12-31T00:00:00Z").epochSecond
         val baseFitTime = (videoStart.epochSecond - fitEpoch).toDouble()
         
-        val p1 = FitParser.TelemetryPoint(baseFitTime, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0) // 0s
-        val p2 = FitParser.TelemetryPoint(baseFitTime + 5.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0) // 5s
-        val p3 = FitParser.TelemetryPoint(baseFitTime + 10.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0) // 10s
-        val p4 = FitParser.TelemetryPoint(baseFitTime + 15.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0) // 15s
+        val p1 = TelemetryPoint(baseFitTime, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0) // 0s
+        val p2 = TelemetryPoint(baseFitTime + 5.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0) // 5s
+        val p3 = TelemetryPoint(baseFitTime + 10.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0) // 10s
+        val p4 = TelemetryPoint(baseFitTime + 15.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0) // 15s
 
         viewModel.telemetryPoints = listOf(p1, p2, p3, p4)
         
