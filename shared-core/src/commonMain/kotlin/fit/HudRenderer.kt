@@ -1097,11 +1097,6 @@ class HudRenderer(val config: HudConfig) {
         anchor: String = "left-center",
         sf: Float
     ) {
-        val offset = 1.2f * sf
-        canvas.drawText(text, x - offset, y - offset, size, "#555555", bold = bold, anchor = anchor)
-        canvas.drawText(text, x + offset, y - offset, size, "#555555", bold = bold, anchor = anchor)
-        canvas.drawText(text, x - offset, y + offset, size, "#555555", bold = bold, anchor = anchor)
-        canvas.drawText(text, x + offset, y + offset, size, "#555555", bold = bold, anchor = anchor)
         canvas.drawText(text, x, y, size, color, bold = bold, anchor = anchor)
     }
 
