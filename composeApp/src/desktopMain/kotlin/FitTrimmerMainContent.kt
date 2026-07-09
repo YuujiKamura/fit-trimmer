@@ -327,6 +327,10 @@ fun FitTrimmerMainContent(
             autoRow.add(runAutoButton)
             autoRow.add(autoStatusLabel)
             controlPanel.add(autoRow)
+            val basisLabel = javax.swing.JLabel("  💡 GPSと同期されたサイコン(FIT)の時刻は正確ですが、カメラの内部時計は通常ズレが生じるため時間補正が必要です。")
+            basisLabel.foreground = java.awt.Color.DARK_GRAY
+            controlPanel.add(basisLabel)
+            controlPanel.add(javax.swing.Box.createVerticalStrut(2))
             val guideLabel = javax.swing.JLabel("  ⚠️ IMU自動同期はセンサー状態により数秒〜十数秒程度のズレが生じる場合があります。必ずプレビュー再生やスライダーを用いて手動でズレを確認・微調整した上でエンコードしてください。")
             guideLabel.foreground = java.awt.Color.RED
             controlPanel.add(guideLabel)
