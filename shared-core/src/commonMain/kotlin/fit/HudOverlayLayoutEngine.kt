@@ -266,7 +266,7 @@ class HudOverlayLayoutEngine {
 
         // 6. Simulating POWER TREND space to advance cy correctly
         if (config.showPowerTrend) {
-            val tickLabelSize = 10f
+            val tickLabelSize = labelSize * 0.8f
             val graphH = config.graphH
             cy += labelSize + 4f + graphH + (tickLabelSize + 4f) + itemSpacing
         }
