@@ -1340,6 +1340,8 @@ fun FitTrimmerMainContent(
                 val scrollStateTab0 = rememberScrollState()
                 val scrollStateTab1 = rememberScrollState()
                 val scrollStateTab2 = rememberScrollState()
+                val scrollStateTab3 = rememberScrollState()
+                val scrollStateTab4 = rememberScrollState()
 
                 val sidebarWidth = if (showSidebar) 320.dp else 0.dp
                 Box(modifier = Modifier.width(sidebarWidth).fillMaxHeight()) {
@@ -1362,11 +1364,13 @@ fun FitTrimmerMainContent(
                             Unit
                         }
                     }
-                        // 3つのタブに対応する ScrollState を決定
+                        // 5つのタブに対応する ScrollState を決定
                         val currentScrollState = when (selectedTab) {
                             0 -> scrollStateTab0
                             1 -> scrollStateTab1
-                            else -> scrollStateTab2
+                            2 -> scrollStateTab2
+                            3 -> scrollStateTab3
+                            else -> scrollStateTab4
                         }
 
                         // タブ選択 UI
@@ -1405,6 +1409,11 @@ fun FitTrimmerMainContent(
                                 selected = selectedTab == 3,
                                 onClick = { selectedTab = 3 },
                                 text = { Text("テロップ", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                            )
+                            Tab(
+                                selected = selectedTab == 4,
+                                onClick = { selectedTab = 4 },
+                                text = { Text("セグメント", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
                             )
                         }
 
@@ -3807,6 +3816,90 @@ fun FitTrimmerMainContent(
                                                             border = BorderStroke(1.dp, Color(0xFFEF4444))
                                                         ) {
                                                             Text("キャンセル", color = Color(0xFFEF4444), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    if (selectedTab == 4) {
+                                        Card(
+                                            backgroundColor = Color.White,
+                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                                            border = BorderStroke(1.dp, Color(0xFFE5E5EA)),
+                                            elevation = 1.dp,
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.padding(12.dp),
+                                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                Text("セグメント自動検出", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 0.5.sp)
+                                                Text("GPSルート上の踏切や信号機を避け、ノンストップで走れる登り坂（1km以上）を自動で抽出します。", color = Color(0xFF636366), fontSize = 10.sp, lineHeight = 13.sp)
+
+                                                Spacer(modifier = Modifier.height(4.dp))
+
+                                                val hasTelemetry = telemetryPoints.isNotEmpty()
+                                                Button(
+                                                    onClick = { viewModel.startSegmentDetection(scope) },
+                                                    enabled = hasTelemetry && !viewModel.isDetectingSegments,
+                                                    modifier = Modifier.fillMaxWidth().height(36.dp),
+                                                    colors = ButtonDefaults.buttonColors(
+                                                        backgroundColor = Color(0xFF007AFF),
+                                                        contentColor = Color.White,
+                                                        disabledBackgroundColor = Color(0xFFE5E5EA)
+                                                    ),
+                                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
+                                                ) {
+                                                    if (viewModel.isDetectingSegments) {
+                                                        Text("検出中...", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                    } else {
+                                                        Text("登り区間を自動スキャン", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                    }
+                                                }
+
+                                                if (viewModel.segmentDetectionProgressText.isNotEmpty()) {
+                                                    Text(
+                                                        text = viewModel.segmentDetectionProgressText,
+                                                        color = if (viewModel.segmentDetectionProgressText.startsWith("Error")) Color(0xFFFF3B30) else Color(0xFF636366),
+                                                        fontSize = 9.sp,
+                                                        lineHeight = 12.sp,
+                                                        modifier = Modifier.padding(vertical = 2.dp)
+                                                    )
+                                                }
+
+                                                Spacer(modifier = Modifier.height(4.dp))
+
+                                                Text("検出されたセグメント (${viewModel.detectedSegments.size}件)", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 11.sp)
+
+                                                if (viewModel.detectedSegments.isEmpty()) {
+                                                    Text("検出された区間はありません。ログをロードした後にスキャンを実行してください。", color = Color.Gray, fontSize = 10.sp)
+                                                } else {
+                                                    Column(
+                                                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                                                        modifier = Modifier.fillMaxWidth()
+                                                    ) {
+                                                        viewModel.detectedSegments.forEach { seg ->
+                                                            Card(
+                                                                backgroundColor = Color(0xFFF2F2F7),
+                                                                shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp),
+                                                                modifier = Modifier.fillMaxWidth()
+                                                            ) {
+                                                                Column(modifier = Modifier.padding(8.dp)) {
+                                                                    Text(seg.name, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color(0xFF1C1C1E))
+                                                                    Row(
+                                                                        modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
+                                                                        horizontalArrangement = Arrangement.SpaceBetween
+                                                                    ) {
+                                                                        Text("距離: ${String.format("%.2f", seg.distanceMeters / 1000.0)}km", fontSize = 9.sp, color = Color(0xFF8E8E93))
+                                                                        Text("平均勾配: ${String.format("%.1f", seg.averageGrade)}%", fontSize = 9.sp, color = Color(0xFF8E8E93))
+                                                                        val min = (seg.durationSeconds / 60).toInt()
+                                                                        val sec = (seg.durationSeconds % 60).toInt()
+                                                                        Text("タイム: ${min}分${sec}秒", fontSize = 9.sp, color = Color(0xFF8E8E93))
+                                                                    }
+                                                                }
+                                                            }
                                                         }
                                                     }
                                                 }
