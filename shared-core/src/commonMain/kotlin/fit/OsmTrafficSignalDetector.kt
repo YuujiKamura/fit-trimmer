@@ -127,8 +127,8 @@ class OsmTrafficSignalDetector(
                 }
             }
 
-            // Check physical stop (speed <= 1.0 m/s)
-            val isPhysicallyStopped = pt.speed <= 1.0
+            // Check physical stop (speed <= 0.1 m/s)
+            val isPhysicallyStopped = pt.speed <= 0.1
 
             if (isPhysicallyStopped) {
                 if (consecutiveStopCount == 0) {
