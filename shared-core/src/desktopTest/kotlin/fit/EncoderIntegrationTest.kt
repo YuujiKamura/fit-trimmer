@@ -11,6 +11,14 @@ import crc.Crc16
 class EncoderIntegrationTest {
 
     @Test
+    fun testNativeHudEncoderIsHudEncoder() {
+        val factory: HudEncoderFactory = NativeHudEncoder.Companion
+        val settings = HudSettings()
+        val encoder: HudEncoder = factory.create(settings)
+        assertTrue(encoder is HudEncoder)
+    }
+
+    @Test
     fun testHasResumeCacheMatchesEncodeHash() {
         val tempDir = File(System.getProperty("java.io.tmpdir"), "fit-trimmer-hash-test-${System.currentTimeMillis()}")
         tempDir.mkdirs()

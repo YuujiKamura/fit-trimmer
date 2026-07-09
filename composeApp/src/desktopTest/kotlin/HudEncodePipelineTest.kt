@@ -13,6 +13,38 @@ import kotlin.test.assertTrue
 
 class HudEncodePipelineTest {
     @Test
+    fun testHudEncodePipelineWithFakeHudEncoder() = runBlocking {
+        val originalFactory = HudEncodePipeline.hudEncoderFactory
+        var encodeCalled = false
+        
+        val fakeEncoder = utils.FakeHudEncoder(
+            onEncodeCalled = { encodeCalled = true }
+        )
+        
+        val fakeFactory = utils.FakeHudEncoderFactory(fakeEncoder)
+        HudEncodePipeline.hudEncoderFactory = fakeFactory
+        
+        try {
+            val encoder = HudEncodePipeline.hudEncoderFactory.create(
+                settings = fit.HudSettings(),
+                onProgress = { _, _ -> },
+                profileSink = {}
+            )
+            
+            encoder.encode(
+                fitPath = "",
+                videoPath = "",
+                output = "",
+                startUtc = "2026-06-30T08:44:58Z"
+            )
+            
+            assertTrue(encodeCalled, "FakeHudEncoder.encode should have been called via factory")
+        } finally {
+            HudEncodePipeline.hudEncoderFactory = originalFactory
+        }
+    }
+
+    @Test
     fun ensurePlateCacheForEncodeDoesNothingWhenBlurIsDisabled() = runBlocking {
         val videoPath = uniqueVideoPath("no-blur")
         var scannerCalled = false
