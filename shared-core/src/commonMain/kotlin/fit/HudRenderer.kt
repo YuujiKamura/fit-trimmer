@@ -215,17 +215,9 @@ class HudRenderer(val config: HudConfig) {
             val subCy = valY + m.actualValSize + 6f
             if (hr.showZoneBar) {
                 val zoneText = "ZONE ${hr.zoneLabel}: ${formatMinSec(hr.currentSec)}"
-                drawShadowedText(canvas, zoneText, m.x, subCy, 12f, "#ffffff", bold = true, sf = sf)
-                
-                // Background bar representing total time
-                canvas.drawRect(hr.barX, hr.barY, 120f * sf, 6f * sf, "#f87171", alpha = 0.25f)
-                // Foreground bar representing current accumulation
-                if (hr.barW > 0f) {
-                    canvas.drawRect(hr.barX, hr.barY, hr.barW, hr.barH, hr.zoneColor, alpha = 1.0f)
-                }
+                drawShadowedText(canvas, zoneText, m.x, subCy, labelSize, "#ffffff", bold = true, sf = sf)
             } else {
-                drawShadowedText(canvas, "ZONE -: --:--", m.x, subCy, 12f, "#9ca3af", bold = true, sf = sf)
-                canvas.drawRect(hr.barX, hr.barY, 120f * sf, 6f * sf, "#e5e7eb", alpha = 0.15f)
+                drawShadowedText(canvas, "ZONE -: --:--", m.x, subCy, labelSize, "#9ca3af", bold = true, sf = sf)
             }
         }
 
