@@ -27,6 +27,8 @@ typealias PlatePreScanner = suspend (
 
 object HudEncodePipeline {
 
+    var hudEncoderFactory: fit.HudEncoderFactory = fit.NativeHudEncoder.Companion
+
     private val defaultPlatePreScanner: PlatePreScanner = { videoPath, telemetryPoints, adjustedStartUtc, onProgress, onCancel, settings, scanRanges ->
         PlateDetectionManager.detect(
             videoPath = videoPath,
@@ -189,7 +191,7 @@ object HudEncodePipeline {
 
                 onSegmentStart(pStart, pEnd)
 
-                val encoder = NativeHudEncoder(s,
+                val encoder = hudEncoderFactory.create(s,
                     onProgress = { prog, status ->
                         val segmentProgress = prog.toDouble()
                         val overallProg = if (totalDuration > 0.0) {
