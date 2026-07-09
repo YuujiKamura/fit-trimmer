@@ -24,24 +24,38 @@ data class EncodeProfileReport(
 
     fun toMetricLine(): String =
         "ENCODE_PROFILE: " +
-            "total_ms=${"%.2f".format(totalElapsedMs)} " +
-            "mask_plan_ms=${"%.2f".format(maskPlanMs)} " +
-            "mask_video_ms=${"%.2f".format(maskVideoMs)} " +
-            "ffmpeg_active_ms=${"%.2f".format(ffmpegActiveMs)} " +
+            "total_ms=${totalElapsedMs.formatDecimals(2)} " +
+            "mask_plan_ms=${maskPlanMs.formatDecimals(2)} " +
+            "mask_video_ms=${maskVideoMs.formatDecimals(2)} " +
+            "ffmpeg_active_ms=${ffmpegActiveMs.formatDecimals(2)} " +
             "frames=$frameCount " +
-            "telemetry_ms=${"%.2f".format(telemetryMs)} " +
-            "hud_render_ms=${"%.2f".format(hudRenderMs)} " +
-            "raw_copy_ms=${"%.2f".format(rawCopyMs)} " +
-            "buffer_wait_ms=${"%.2f".format(bufferWaitMs)} " +
-            "queue_put_ms=${"%.2f".format(queuePutMs)} " +
-            "live_preview_ms=${"%.2f".format(livePreviewMs)} " +
-            "progress_ms=${"%.2f".format(progressMs)} " +
-            "pipe_write_ms=${"%.2f".format(pipeWriteMs)} " +
-            "pipe_mib=${"%.2f".format(pipeMiB)} " +
-            "avg_hud_ms=${"%.3f".format(avgHudRenderMs)} " +
-            "avg_copy_ms=${"%.3f".format(avgRawCopyMs)} " +
-            "avg_wait_ms=${"%.3f".format(avgBufferWaitMs)} " +
-            "avg_pipe_ms=${"%.3f".format(avgPipeWriteMs)}"
+            "telemetry_ms=${telemetryMs.formatDecimals(2)} " +
+            "hud_render_ms=${hudRenderMs.formatDecimals(2)} " +
+            "raw_copy_ms=${rawCopyMs.formatDecimals(2)} " +
+            "buffer_wait_ms=${bufferWaitMs.formatDecimals(2)} " +
+            "queue_put_ms=${queuePutMs.formatDecimals(2)} " +
+            "live_preview_ms=${livePreviewMs.formatDecimals(2)} " +
+            "progress_ms=${progressMs.formatDecimals(2)} " +
+            "pipe_write_ms=${pipeWriteMs.formatDecimals(2)} " +
+            "pipe_mib=${pipeMiB.formatDecimals(2)} " +
+            "avg_hud_ms=${avgHudRenderMs.formatDecimals(3)} " +
+            "avg_copy_ms=${avgRawCopyMs.formatDecimals(3)} " +
+            "avg_wait_ms=${avgBufferWaitMs.formatDecimals(3)} " +
+            "avg_pipe_ms=${avgPipeWriteMs.formatDecimals(3)}"
+}
+
+private fun Double.formatDecimals(digits: Int): String {
+    if (this.isNaN() || this.isInfinite()) return this.toString()
+    var factor = 1.0
+    repeat(digits) { factor *= 10.0 }
+    val rounded = kotlin.math.round(this * factor).toLong()
+    val isNegative = rounded < 0
+    val absRounded = kotlin.math.abs(rounded)
+    val intPart = absRounded / factor.toLong()
+    val fracPart = absRounded % factor.toLong()
+    val fracStr = fracPart.toString().padStart(digits, '0')
+    val sign = if (isNegative) "-" else ""
+    return "$sign$intPart.$fracStr"
 }
 
 data class EncodeGroundTruthMetadata(
@@ -95,7 +109,7 @@ interface HudEncoderFactory {
     fun create(
         settings: HudSettings,
         onProgress: (Float, String) -> Unit = { _, _ -> },
-        onFrameRendered: (java.awt.image.BufferedImage) -> Unit = {},
+        onFrameRendered: (Any) -> Unit = {},
         pauseSupplier: () -> Boolean = { false },
         cancelSupplier: () -> Boolean = { false },
         customRenderer: ((HudCanvas, TelemetryPoint, List<TelemetryPoint>, List<TelemetryPoint>, List<Double>, Float) -> Unit)? = null,
