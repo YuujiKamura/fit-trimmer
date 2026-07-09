@@ -3884,7 +3884,26 @@ fun FitTrimmerMainContent(
                                                             Card(
                                                                 backgroundColor = Color(0xFFF2F2F7),
                                                                 shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp),
-                                                                modifier = Modifier.fillMaxWidth()
+                                                                modifier = Modifier
+                                                                    .fillMaxWidth()
+                                                                    .clickable {
+                                                                        val startPt = telemetryPoints.getOrNull(seg.startIndex)
+                                                                        val endPt = telemetryPoints.getOrNull(seg.endIndex)
+                                                                        val videoStart = viewModel.videoStartInstant
+                                                                        if (startPt != null && endPt != null && videoStart != null) {
+                                                                            val fitEpoch = java.time.Instant.parse("1989-12-31T00:00:00Z").epochSecond
+                                                                            val videoStartFit = videoStart.epochSecond - fitEpoch
+                                                                            val startSec = startPt.timestamp - videoStartFit
+                                                                            val endSec = endPt.timestamp - videoStartFit
+                                                                            
+                                                                            // Set trim range
+                                                                            viewModel.trimStartSeconds = startSec.coerceAtLeast(0.0)
+                                                                            viewModel.trimEndSeconds = endSec.coerceAtLeast(0.0)
+                                                                            
+                                                                            // Seek player to start of segment
+                                                                            videoCurrentTimeMs = (startSec * 1000).toLong()
+                                                                        }
+                                                                    }
                                                             ) {
                                                                 Column(modifier = Modifier.padding(8.dp)) {
                                                                     Text(seg.name, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color(0xFF1C1C1E))
