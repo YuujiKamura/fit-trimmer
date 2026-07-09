@@ -1,0 +1,14 @@
+{
+  "speed_threshold": 2.0,
+  "vib_threshold_factor": 1.5,
+  "min_vib_threshold": 20.0,
+  "power_min_threshold": 30.0,
+  "power_max_threshold": 120.0,
+  "power_threshold_ratio": 0.15,
+  "power_active_weight": 0.35,
+  "power_edge_weight": 0.65,
+  "gaussian_sigma_speed": 3.0,
+  "gaussian_sigma_power": 1.0,
+  "gaussian_sigma_vib": 2.0,
+  "window_seconds": 60.0
+}

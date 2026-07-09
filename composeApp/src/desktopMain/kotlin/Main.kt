@@ -135,6 +135,7 @@ const val MAX_ROAD_SNAP_DISTANCE_METERS = 15.0
 @OptIn(ExperimentalTextApi::class)
 
 fun main(args: Array<String>) {
+    utils.TelemetryAligner.loadConfig(File("imu_align_config.json"))
 
     // Eagerly load and initialize DesktopLog on application startup to prevent class loader issues on native/AWT threads
 
@@ -397,6 +398,22 @@ private fun runImuGtVerification(baseDirStr: String) {
     var successCount = 0
     var failCount = 0
     var skipCount = 0
+
+    utils.TelemetryAligner.loadConfig(File("imu_align_config.json"))
+    val activeConfig = utils.TelemetryAligner.config
+    println("🔍 Active Alignment Configuration:")
+    println("  - speed_threshold: ${activeConfig.speed_threshold}")
+    println("  - vib_threshold_factor: ${activeConfig.vib_threshold_factor}")
+    println("  - min_vib_threshold: ${activeConfig.min_vib_threshold}")
+    println("  - power_min_threshold: ${activeConfig.power_min_threshold}")
+    println("  - power_max_threshold: ${activeConfig.power_max_threshold}")
+    println("  - power_threshold_ratio: ${activeConfig.power_threshold_ratio}")
+    println("  - power_active_weight: ${activeConfig.power_active_weight}")
+    println("  - power_edge_weight: ${activeConfig.power_edge_weight}")
+    println("  - gaussian_sigma_speed: ${activeConfig.gaussian_sigma_speed}")
+    println("  - gaussian_sigma_power: ${activeConfig.gaussian_sigma_power}")
+    println("  - gaussian_sigma_vib: ${activeConfig.gaussian_sigma_vib}")
+    println("  - window_seconds: ${activeConfig.window_seconds}")
 
     kotlinx.coroutines.runBlocking {
         for (record in records) {
