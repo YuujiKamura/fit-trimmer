@@ -224,11 +224,12 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
     private var audioLevelsJob: Job? = null
 
     // Memory optimization for frame processing
-    private val frameQueueSize = 1
+    private val frameQueueSize = 8
     private val frameChannel = Channel<FrameData>(
         capacity = frameQueueSize,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
+    private var pendingFrame: FrameData? = null
 
     // Data structure for a frame
     private data class FrameData(
@@ -345,9 +346,18 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
     }
 
     private fun clearFrameChannel() {
-        // Drain the frame channel to ensure all items are removed
-        while (frameChannel.tryReceive().isSuccess) {
-            // Intentionally empty - just draining the channel
+        pendingFrame?.let {
+            it.bitmap.close()
+            pendingFrame = null
+        }
+        // Drain the frame channel to ensure all items are removed without native memory leaks
+        while (true) {
+            val result = frameChannel.tryReceive()
+            if (result.isSuccess) {
+                result.getOrNull()?.bitmap?.close()
+            } else {
+                break
+            }
         }
     }
 
@@ -705,7 +715,8 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
             }
 
             try {
-                val frameData = frameChannel.tryReceive().getOrNull() ?: run {
+                val frameData = pendingFrame ?: frameChannel.tryReceive().getOrNull()
+                if (frameData == null) {
                     // If we're still loading and haven't received a frame yet, increment timeout counter
                     if (isLoading && !frameReceived) {
                         loadingTimeout++
@@ -716,13 +727,45 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
                             loadingTimeout = 0
                         }
                     }
-                    delay(16)
-                    return@run null
-                } ?: continue
+                    delay(10)
+                    continue
+                }
 
                 // Reset timeout counter and mark that we've received a frame
                 loadingTimeout = 0
                 frameReceived = true
+
+                // Master clock synchronization via Media Foundation playback time
+                val instance = videoPlayerInstance
+                val masterTimeSec = if (instance != null) {
+                    val posRef = LongByReference()
+                    if (player.GetMediaPosition(instance, posRef) >= 0) {
+                        posRef.value / 10000000.0
+                    } else {
+                        _currentTime
+                    }
+                } else {
+                    _currentTime
+                }
+
+                // Synchronization rules (only apply when actively playing)
+                if (_isPlaying) {
+                    // 1. Frame is too old (Drop)
+                    if (frameData.timestamp < masterTimeSec - 0.080) {
+                        frameData.bitmap.close()
+                        pendingFrame = null
+                        continue
+                    }
+                    // 2. Frame is too new (Wait/Delay)
+                    if (frameData.timestamp > masterTimeSec + 0.030) {
+                        pendingFrame = frameData
+                        delay(8)
+                        continue
+                    }
+                }
+
+                // Valid frame to render, clear pending state
+                pendingFrame = null
 
                 bitmapLock.write {
                     _currentFrame?.let { oldBitmap ->
