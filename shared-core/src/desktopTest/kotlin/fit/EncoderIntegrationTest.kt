@@ -704,6 +704,55 @@ class EncoderIntegrationTest {
     }
 
     @Test
+    fun testFindTelemetryLerpOutOfBoundsZero() {
+        val p0 = fit.FitParser.TelemetryPoint(
+            timestamp = 100.0,
+            speed = 10.0,
+            power = 100.0,
+            cadence = 80.0,
+            heartRate = 120.0,
+            elevation = 50.0,
+            grade = 2.0,
+            lat = 35.0,
+            lon = 135.0,
+            distance = 100.0,
+            elapsedSeconds = 10
+        )
+        val p1 = fit.FitParser.TelemetryPoint(
+            timestamp = 200.0,
+            speed = 20.0,
+            power = 200.0,
+            cadence = 90.0,
+            heartRate = 140.0,
+            elevation = 60.0,
+            grade = 4.0,
+            lat = 36.0,
+            lon = 136.0,
+            distance = 300.0,
+            elapsedSeconds = 30
+        )
+        val telemetry = listOf(p0, p1)
+
+        val lerpedUnder = findTelemetryLerp(telemetry, 50.0)
+        assertEquals(50.0, lerpedUnder.timestamp, 0.001)
+        assertEquals(0.0, lerpedUnder.speed, 0.001, "Speed should be 0.0 when OOB")
+        assertEquals(0.0, lerpedUnder.power, 0.001, "Power should be 0.0 when OOB")
+        assertEquals(0.0, lerpedUnder.cadence, 0.001, "Cadence should be 0.0 when OOB")
+        assertEquals(120.0, lerpedUnder.heartRate, 0.001, "Heart rate should be first point when OOB")
+        assertEquals(50.0, lerpedUnder.elevation, 0.001)
+        assertEquals(100.0, lerpedUnder.distance, 0.001)
+
+        val lerpedOver = findTelemetryLerp(telemetry, 250.0)
+        assertEquals(250.0, lerpedOver.timestamp, 0.001)
+        assertEquals(0.0, lerpedOver.speed, 0.001, "Speed should be 0.0 when OOB")
+        assertEquals(0.0, lerpedOver.power, 0.001, "Power should be 0.0 when OOB")
+        assertEquals(0.0, lerpedOver.cadence, 0.001, "Cadence should be 0.0 when OOB")
+        assertEquals(140.0, lerpedOver.heartRate, 0.001, "Heart rate should be last point when OOB")
+        assertEquals(60.0, lerpedOver.elevation, 0.001)
+        assertEquals(300.0, lerpedOver.distance, 0.001)
+    }
+
+    @Test
     fun testLivePreviewTogglingDuringEncode() {
         System.setProperty("FIT_TRIMMER_FORCE_CPU", "true")
         val tempDir = File(System.getProperty("java.io.tmpdir"), "fit-trimmer-test-toggle-preview-${System.currentTimeMillis()}")
