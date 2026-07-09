@@ -28,7 +28,7 @@ typealias PlatePreScanner = suspend (
 object HudEncodePipeline {
 
     private val defaultPlatePreScanner: PlatePreScanner = { videoPath, telemetryPoints, adjustedStartUtc, onProgress, onCancel, settings, scanRanges ->
-        PlateDetectionManager.runDetection(
+        PlateDetectionManager.detect(
             videoPath = videoPath,
             telemetryPoints = telemetryPoints,
             adjustedStartUtc = adjustedStartUtc,

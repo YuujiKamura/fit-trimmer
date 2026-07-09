@@ -282,7 +282,7 @@ class AppViewModel(
             listOf(trimStart to trimEnd)
         } else null
 
-        return utils.PlateDetectionManager.runDetection(
+        return plateDetector.detect(
             videoPath = videoPath,
             telemetryPoints = telemetryPoints,
             adjustedStartUtc = adjustedStartUtc,
@@ -742,6 +742,8 @@ class AppViewModel(
         videoStartEpochSecProvider = { videoStartInstant?.epochSecond },
         offsetMillisProvider = { timeOffsetState.millis.toLong() }
     )
+
+    var plateDetector: fit.PlateDetector = utils.PlateDetectionManager
 
     // Derived States
 
