@@ -736,7 +736,10 @@ class AppViewModel(
 
     )
 
-
+    val timeSynchronizer: fit.TimeSynchronizer = fit.TimeSynchronizerImpl(
+        videoStartEpochSecProvider = { videoStartInstant?.epochSecond },
+        offsetMillisProvider = { timeOffsetState.millis.toLong() }
+    )
 
     // Derived States
 
