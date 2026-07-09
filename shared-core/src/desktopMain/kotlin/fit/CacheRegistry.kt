@@ -12,7 +12,7 @@ interface CacheableResource {
 data class GenericCacheResource(
     override val file: File,
     override val groupKey: String,
-    override val lastAccessed: Long = System.currentTimeMillis()
+    override val lastAccessed: Long = CacheRegistry.clock.currentTimeMillis()
 ) : CacheableResource {
     override fun invalidate() {
         try {
@@ -30,6 +30,7 @@ data class GenericCacheResource(
 }
 
 object CacheRegistry {
+    var clock: Clock = Clock.Default
     private val resources = mutableListOf<CacheableResource>()
 
     fun register(resource: CacheableResource) {
@@ -56,7 +57,7 @@ object CacheRegistry {
     }
 
     fun cleanStaleCache(cutoffMs: Long = 24 * 60 * 60 * 1000L) {
-        val cutoff = System.currentTimeMillis() - cutoffMs
+        val cutoff = clock.currentTimeMillis() - cutoffMs
         synchronized(resources) {
             val stale = resources.filter { it.lastAccessed < cutoff }
             stale.forEach { it.invalidate() }
