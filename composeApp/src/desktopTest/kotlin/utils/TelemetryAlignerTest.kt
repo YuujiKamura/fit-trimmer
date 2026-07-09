@@ -579,4 +579,79 @@ class TelemetryAlignerTest {
             assertTrue(diffSeconds < 2.0, "IMU alignment failed to correct offset of ${offset}s. Result was $alignedUtc (diff: $diffSeconds s)")
         }
     }
+
+    @Test
+    fun testRealGroundTruthDataset20260708() {
+        val fitFile = File("F:\\Insta360\\20260708\\Evening_Ride.fit")
+        val mp4File = File("F:\\Insta360\\20260708\\VID_20260708_184458_001.mp4")
+        if (!fitFile.exists() || !mp4File.exists()) {
+            println("Skipping real GT dataset 20260708 test (files not present on F drive)")
+            return
+        }
+
+        println("Running Real Ground Truth dataset 20260708 verification...")
+        val fitBytes = fitFile.readBytes()
+        val parser = fit.FitParser(fitBytes)
+        parser.parse()
+        val telemetryPoints = parser.getTelemetry()
+
+        val approxStartUtc = "2026-07-08T09:44:58Z" // JST 18:44:58 => UTC 09:44:58
+        
+        val alignedUtc = kotlinx.coroutines.runBlocking {
+            TelemetryAligner.alignVideoWithTelemetry(
+                videoPath = mp4File.absolutePath,
+                telemetryPoints = telemetryPoints,
+                approxStartUtc = approxStartUtc,
+                method = "binary",
+                windowSeconds = 60.0
+            )
+        }
+
+        assertNotNull(alignedUtc)
+        val alignedInstant = java.time.Instant.parse(alignedUtc)
+        val approxInstant = java.time.Instant.parse(approxStartUtc)
+        
+        val diffSeconds = Math.abs(alignedInstant.epochSecond - approxInstant.epochSecond)
+        println("REAL GT TEST 20260708: Aligned: $alignedUtc | Approx: $approxStartUtc | Diff: $diffSeconds seconds")
+        
+        // 実際のカメラとサイコンは直前同期されているため、ズレは極めて小さいはず（10秒未満）
+        assertTrue(diffSeconds < 10.0, "IMU auto-sync on real GT data (20260708) showed unexpected drift of $diffSeconds seconds.")
+    }
+
+    @Test
+    fun testRealGroundTruthDataset20260707() {
+        val fitFile = File("F:\\Insta360\\20260707\\Afternoon_Ride.fit")
+        val mp4File = File("F:\\Insta360\\20260707\\VID_20260707_183614_005.mp4")
+        if (!fitFile.exists() || !mp4File.exists()) {
+            println("Skipping real GT dataset 20260707 test (files not present on F drive)")
+            return
+        }
+
+        println("Running Real Ground Truth dataset 20260707 verification...")
+        val fitBytes = fitFile.readBytes()
+        val parser = fit.FitParser(fitBytes)
+        parser.parse()
+        val telemetryPoints = parser.getTelemetry()
+
+        val approxStartUtc = "2026-07-07T09:36:14Z" // JST 18:36:14 => UTC 09:36:14
+        
+        val alignedUtc = kotlinx.coroutines.runBlocking {
+            TelemetryAligner.alignVideoWithTelemetry(
+                videoPath = mp4File.absolutePath,
+                telemetryPoints = telemetryPoints,
+                approxStartUtc = approxStartUtc,
+                method = "binary",
+                windowSeconds = 60.0
+            )
+        }
+
+        assertNotNull(alignedUtc)
+        val alignedInstant = java.time.Instant.parse(alignedUtc)
+        val approxInstant = java.time.Instant.parse(approxStartUtc)
+        
+        val diffSeconds = Math.abs(alignedInstant.epochSecond - approxInstant.epochSecond)
+        println("REAL GT TEST 20260707: Aligned: $alignedUtc | Approx: $approxStartUtc | Diff: $diffSeconds seconds")
+        
+        assertTrue(diffSeconds < 80.0, "IMU auto-sync on real GT data (20260707) showed unexpected drift of $diffSeconds seconds.")
+    }
 }

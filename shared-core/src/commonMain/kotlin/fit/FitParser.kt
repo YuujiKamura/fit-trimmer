@@ -33,6 +33,7 @@ class FitParser(private val bytes: ByteArray) {
 
     val definitions = mutableMapOf<Int, DefinitionRecord>()
     val records = mutableListOf<FitRecord>()
+    var embeddedVideoName: String? = null
     private var lastTimestamp: Long = 0L
 
     private fun checkCanceled(cancelCheck: (() -> Boolean)?) {
@@ -45,6 +46,7 @@ class FitParser(private val bytes: ByteArray) {
         var offset = headerSize
         val endOffset = headerSize + recordsSize.toInt()
         lastTimestamp = 0L
+        embeddedVideoName = null
         records.clear()
         definitions.clear()
 
@@ -90,7 +92,7 @@ class FitParser(private val bytes: ByteArray) {
                     if (f.fieldNum == 253) {
                         valObj = getUInt(bytes, fieldStart, !def.isBigEndian)
                         lastTimestamp = valObj
-                    } else if (f.size == 4 && (f.baseType == 0x86 || f.baseType == 0x8C || f.baseType == 0x0C)) {
+                    } else if (f.size == 4 && (f.baseType == 0x86 || f.baseType == 0x8C || f.baseType == 0x0C || f.baseType == 0x88)) {
                         valObj = getUInt(bytes, fieldStart, !def.isBigEndian)
                     } else if (f.size == 4 && f.baseType == 0x85) {
                         valObj = getInt(bytes, fieldStart, !def.isBigEndian).toLong()
@@ -176,7 +178,7 @@ class FitParser(private val bytes: ByteArray) {
                         if (f.fieldNum == 253) {
                             valObj = getUInt(bytes, fieldStart, !def.isBigEndian)
                             lastTimestamp = valObj
-                        } else if (f.size == 4 && (f.baseType == 0x86 || f.baseType == 0x8C || f.baseType == 0x0C)) {
+                        } else if (f.size == 4 && (f.baseType == 0x86 || f.baseType == 0x8C || f.baseType == 0x0C || f.baseType == 0x88)) {
                             valObj = getUInt(bytes, fieldStart, !def.isBigEndian)
                         } else if (f.size == 4 && f.baseType == 0x85) {
                             valObj = getInt(bytes, fieldStart, !def.isBigEndian).toLong()
@@ -192,6 +194,15 @@ class FitParser(private val bytes: ByteArray) {
                         parsedFields[f.fieldNum] = ParsedField(fieldStart - recordStart, f.size, f.baseType, valObj)
                     }
                     val dataRecord = DataRecord(localId, def.globalMessageNumber, recordStart, recordEnd - recordStart, parsedFields, def)
+                    if (def.globalMessageNumber == 65280) {
+                        val field3Offset = recordStart + 1 + 4 + 4
+                        if (field3Offset + 64 <= bytes.size) {
+                            val stringBytes = bytes.sliceArray(field3Offset until (field3Offset + 64))
+                            val nullIndex = stringBytes.indexOf(0x00)
+                            val actualStringBytes = if (nullIndex >= 0) stringBytes.copyOfRange(0, nullIndex) else stringBytes
+                            embeddedVideoName = actualStringBytes.decodeToString()
+                        }
+                    }
                     records.add(FitRecord.Data(localId, def.globalMessageNumber, recordStart, recordEnd - recordStart, dataRecord))
                     offset = recordEnd
                 }
@@ -307,9 +318,28 @@ class FitParser(private val bytes: ByteArray) {
         return list
     }
 
+    data class ClockCorrection(val userOffset: Float, val imuOffset: Float, val videoName: String? = null)
+
+    fun getClockCorrection(): ClockCorrection? {
+        for (r in records) {
+            if (r is FitRecord.Data && r.globalMessageNumber == 65280) {
+                val fields = r.data.fields
+                val uBits = fields[1]?.value ?: continue
+                val iBits = fields[2]?.value ?: continue
+                val userOffset = Float.fromBits(uBits.toInt())
+                val imuOffset = Float.fromBits(iBits.toInt())
+                return ClockCorrection(userOffset, imuOffset, embeddedVideoName)
+            }
+        }
+        return null
+    }
+
     fun trim(
         videoStartUtcSeconds: Long,
         videoEndUtcSeconds: Long,
+        userOffset: Float? = null,
+        imuOffset: Float? = null,
+        videoName: String? = null,
         cancelCheck: (() -> Boolean)? = null
     ): ByteArray {
         val fitEpochSec = 631065600L
@@ -345,9 +375,13 @@ class FitParser(private val bytes: ByteArray) {
 
         var bodySize = 0
         for (r in filteredRecords) bodySize += r.size
-        val newFitBytes = ByteArray(headerSize + bodySize + 2)
+
+        val extraBytesSize = if (userOffset != null && imuOffset != null) {
+            if (videoName != null) 15 + 73 else 21
+        } else 0
+        val newFitBytes = ByteArray(headerSize + bodySize + extraBytesSize + 2)
         bytes.copyInto(newFitBytes, 0, 0, headerSize)
-        setUInt(newFitBytes, 4, bodySize.toLong(), true)
+        setUInt(newFitBytes, 4, (bodySize + extraBytesSize).toLong(), true)
 
         var cur = headerSize
         for (r in filteredRecords) {
@@ -369,8 +403,59 @@ class FitParser(private val bytes: ByteArray) {
                 }
             }
         }
+
+        if (userOffset != null && imuOffset != null) {
+            val hasVideo = videoName != null
+            // 1. Definition Message
+            newFitBytes[cur++] = 0x4F.toByte() // Header: Definition + Local ID 15
+            newFitBytes[cur++] = 0x00.toByte() // Reserved
+            newFitBytes[cur++] = 0x00.toByte() // Architecture (Little Endian)
+            newFitBytes[cur++] = 0x00.toByte() // Global Message Number (65280 -> 0xFF00)
+            newFitBytes[cur++] = 0xFF.toByte()
+            newFitBytes[cur++] = (if (hasVideo) 3 else 2).toByte() // Number of Fields
+
+            // Field 1: user_offset (Float32, size 4, base type 0x88)
+            newFitBytes[cur++] = 0x01.toByte()
+            newFitBytes[cur++] = 0x04.toByte()
+            newFitBytes[cur++] = 0x88.toByte()
+
+            // Field 2: imu_offset (Float32, size 4, base type 0x88)
+            newFitBytes[cur++] = 0x02.toByte()
+            newFitBytes[cur++] = 0x04.toByte()
+            newFitBytes[cur++] = 0x88.toByte()
+
+            if (hasVideo) {
+                // Field 3: video_name (String, size 64, base type 0x07)
+                newFitBytes[cur++] = 0x03.toByte()
+                newFitBytes[cur++] = 0x40.toByte() // 64 bytes
+                newFitBytes[cur++] = 0x07.toByte() // String type
+            }
+
+            // 2. Data Message
+            newFitBytes[cur++] = 0x0F.toByte() // Header: Data + Local ID 15
+
+            val uBits = userOffset.toBits()
+            newFitBytes[cur++] = (uBits and 0xFF).toByte()
+            newFitBytes[cur++] = (uBits ushr 8 and 0xFF).toByte()
+            newFitBytes[cur++] = (uBits ushr 16 and 0xFF).toByte()
+            newFitBytes[cur++] = (uBits ushr 24 and 0xFF).toByte()
+
+            val iBits = imuOffset.toBits()
+            newFitBytes[cur++] = (iBits and 0xFF).toByte()
+            newFitBytes[cur++] = (iBits ushr 8 and 0xFF).toByte()
+            newFitBytes[cur++] = (iBits ushr 16 and 0xFF).toByte()
+            newFitBytes[cur++] = (iBits ushr 24 and 0xFF).toByte()
+
+            if (videoName != null) {
+                val strBytes = videoName.encodeToByteArray()
+                for (i in 0 until 64) {
+                    newFitBytes[cur++] = if (i < strBytes.size) strBytes[i] else 0x00.toByte()
+                }
+            }
+        }
+
         if (headerSize == 14) setUShort(newFitBytes, 12, Crc16.calculate(newFitBytes, offset = 0, length = 12), true)
-        setUShort(newFitBytes, headerSize + bodySize, Crc16.calculate(newFitBytes, offset = 0, length = headerSize + bodySize), true)
+        setUShort(newFitBytes, headerSize + bodySize + extraBytesSize, Crc16.calculate(newFitBytes, offset = 0, length = headerSize + bodySize + extraBytesSize), true)
         return newFitBytes
     }
 

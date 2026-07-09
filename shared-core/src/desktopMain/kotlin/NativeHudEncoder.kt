@@ -1882,7 +1882,17 @@ class NativeHudEncoder(
                 try {
                     val fitStartUtcSeconds = (startTime.toEpochMilli() / 1000.0 + actualTrimStart).toLong()
                     val fitEndUtcSeconds = (startTime.toEpochMilli() / 1000.0 + actualTrimEnd).toLong()
-                    val trimmedFitBytes = parser.trim(fitStartUtcSeconds, fitEndUtcSeconds, cancelSupplier)
+                    val userOffsetSec = groundTruthMetadata?.timeOffsetMillis?.div(1000.0f)
+                    val imuOffsetSec = groundTruthMetadata?.imuTimeOffsetMillis?.div(1000.0f) ?: 0.0f
+                    val videoFileName = File(videoPath).name
+                    val trimmedFitBytes = parser.trim(
+                        videoStartUtcSeconds = fitStartUtcSeconds,
+                        videoEndUtcSeconds = fitEndUtcSeconds,
+                        userOffset = userOffsetSec,
+                        imuOffset = imuOffsetSec,
+                        videoName = videoFileName,
+                        cancelCheck = cancelSupplier
+                    )
                     val trimmedFitFile = File(output.replace(Regex("""\.(mp4|mov)$""", RegexOption.IGNORE_CASE), ".fit"))
                     trimmedFitFile.writeBytes(trimmedFitBytes)
                     println("⚡ Trimmed FIT file exported to: ${trimmedFitFile.absolutePath}")

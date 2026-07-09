@@ -783,6 +783,8 @@ class AppViewModel(
 
     var syncCandidates by mutableStateOf<List<utils.TelemetryAligner.AlignmentCandidate>>(emptyList())
 
+    var imuTimeOffsetMs by mutableStateOf<Long?>(null)
+
     var encodePhase by mutableStateOf(EncodePhase.Idle)
 
     var isEncoding: Boolean
