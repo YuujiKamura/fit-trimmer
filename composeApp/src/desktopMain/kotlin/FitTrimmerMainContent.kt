@@ -327,6 +327,9 @@ fun FitTrimmerMainContent(
             autoRow.add(runAutoButton)
             autoRow.add(autoStatusLabel)
             controlPanel.add(autoRow)
+            val guideLabel = javax.swing.JLabel("  ⚠️ IMU自動同期はセンサー状態により数秒〜十数秒程度のズレが生じる場合があります。必ずプレビュー再生やスライダーを用いて手動でズレを確認・微調整した上でエンコードしてください。")
+            guideLabel.foreground = java.awt.Color.RED
+            controlPanel.add(guideLabel)
             controlPanel.add(javax.swing.Box.createVerticalStrut(10))
             
             // Manual offset input
