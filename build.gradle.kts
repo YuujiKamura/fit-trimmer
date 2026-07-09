@@ -30,6 +30,7 @@ val verifyNoStrayFileIO = tasks.register("verifyNoStrayFileIO") {
             "PathResolver.kt",
             "CacheRegistry.kt",
             "CacheJobManager.kt",
+            "FileSignalCache.kt",
             "HudFileNameFormatter.kt",
             "JobStateManager.kt",
             "PlateCacheManager.kt",

@@ -23,7 +23,8 @@ data class AutoDetectedSegment(
 )
 
 class OsmTrafficSignalDetector(
-    private val httpRequester: HttpRequester
+    private val httpRequester: HttpRequester,
+    private val signalCache: SignalCache? = null
 ) {
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -51,46 +52,60 @@ class OsmTrafficSignalDetector(
     suspend fun detectSegments(
         bbox: BBox,
         telemetryPoints: List<FitParser.TelemetryPoint>,
-        minDistanceMeters: Double = 1000.0
+        minDistanceMeters: Double = 1000.0,
+        videoPath: String? = null
     ): List<AutoDetectedSegment> {
         if (telemetryPoints.size < 2) return emptyList()
 
-        // 1. Build and send Overpass query
-        val query = """
-            [out:json][timeout:15];
-            (
-              node["highway"="traffic_signals"](${bbox.south},${bbox.west},${bbox.north},${bbox.east});
-              node["railway"="level_crossing"](${bbox.south},${bbox.west},${bbox.north},${bbox.east});
-              node["highway"="stop"](${bbox.south},${bbox.west},${bbox.north},${bbox.east});
-            );
-            out body;
-        """.trimIndent().replace("\n", "")
+        // 1. Try to load from cache
+        var signalNodes: List<TrafficSignalNode>? = null
+        if (videoPath != null && signalCache != null) {
+            signalNodes = signalCache.load(videoPath)
+        }
 
-        val url = "https://overpass-api.de/api/interpreter?data=${encodeUrlQuery(query)}"
-        val responseText = httpRequester.get(url, mapOf("User-Agent" to "FitTrimmer/1.0"))
+        // 2. Fetch from Overpass API if cache miss
+        if (signalNodes == null) {
+            val query = """
+                [out:json][timeout:15];
+                (
+                  node["highway"="traffic_signals"](${bbox.south},${bbox.west},${bbox.north},${bbox.east});
+                  node["railway"="level_crossing"](${bbox.south},${bbox.west},${bbox.north},${bbox.east});
+                  node["highway"="stop"](${bbox.south},${bbox.west},${bbox.north},${bbox.east});
+                );
+                out body;
+            """.trimIndent().replace("\n", "")
 
-        // 2. Parse elements
-        val signalNodes = mutableListOf<TrafficSignalNode>()
-        try {
-            val root = json.parseToJsonElement(responseText).jsonObject
-            val elements = root["elements"]?.jsonArray
-            if (elements != null) {
-                for (elem in elements) {
-                    val obj = elem.jsonObject
-                    val lat = obj["lat"]?.jsonPrimitive?.double ?: continue
-                    val lon = obj["lon"]?.jsonPrimitive?.double ?: continue
-                    val tags = obj["tags"]?.jsonObject
-                    val type = if (tags?.get("railway")?.jsonPrimitive?.content == "level_crossing") {
-                        "level_crossing"
-                    } else {
-                        "traffic_signals"
+            val url = "https://overpass-api.de/api/interpreter?data=${encodeUrlQuery(query)}"
+            val responseText = httpRequester.get(url, mapOf("User-Agent" to "FitTrimmer/1.0"))
+
+            val nodes = mutableListOf<TrafficSignalNode>()
+            try {
+                val root = json.parseToJsonElement(responseText).jsonObject
+                val elements = root["elements"]?.jsonArray
+                if (elements != null) {
+                    for (elem in elements) {
+                        val obj = elem.jsonObject
+                        val lat = obj["lat"]?.jsonPrimitive?.double ?: continue
+                        val lon = obj["lon"]?.jsonPrimitive?.double ?: continue
+                        val tags = obj["tags"]?.jsonObject
+                        val type = if (tags?.get("railway")?.jsonPrimitive?.content == "level_crossing") {
+                            "level_crossing"
+                        } else {
+                            "traffic_signals"
+                        }
+                        nodes.add(TrafficSignalNode(lat, lon, type))
                     }
-                    signalNodes.add(TrafficSignalNode(lat, lon, type))
                 }
+            } catch (e: Exception) {
+                // Return empty if parsing fails
+                return emptyList()
             }
-        } catch (e: Exception) {
-            // Return empty if parsing fails
-            return emptyList()
+            signalNodes = nodes
+
+            // Save to cache
+            if (videoPath != null && signalCache != null) {
+                signalCache.save(videoPath, nodes)
+            }
         }
 
         // 3. Find indices close to any traffic signal (within 10 meters)

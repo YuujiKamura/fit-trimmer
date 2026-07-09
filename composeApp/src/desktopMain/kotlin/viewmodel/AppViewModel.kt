@@ -899,9 +899,10 @@ class AppViewModel(
                 }
 
                 val requester = fit.JavaHttpRequester()
-                val detector = fit.OsmTrafficSignalDetector(requester)
+                val cache = fit.FileSignalCache()
+                val detector = fit.OsmTrafficSignalDetector(requester, cache)
 
-                val result = detector.detectSegments(bbox, telemetryPoints)
+                val result = detector.detectSegments(bbox, telemetryPoints, videoPath = videoPath)
 
                 withContext(kotlinx.coroutines.Dispatchers.Main) {
                     detectedSegments.addAll(result)
