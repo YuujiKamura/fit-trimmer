@@ -12,50 +12,7 @@ import java.io.FileOutputStream
 
 var globalActiveJobDir: java.io.File? = null
 
-data class EncodeProfileReport(
-    val totalElapsedMs: Double,
-    val maskPlanMs: Double,
-    val maskVideoMs: Double,
-    val ffmpegActiveMs: Double,
-    val frameCount: Long,
-    val telemetryMs: Double,
-    val hudRenderMs: Double,
-    val rawCopyMs: Double,
-    val bufferWaitMs: Double,
-    val queuePutMs: Double,
-    val livePreviewMs: Double,
-    val progressMs: Double,
-    val pipeWriteMs: Double,
-    val pipeBytes: Long
-) {
-    val pipeMiB: Double get() = pipeBytes.toDouble() / (1024.0 * 1024.0)
-    val avgHudRenderMs: Double get() = if (frameCount > 0) hudRenderMs / frameCount else 0.0
-    val avgRawCopyMs: Double get() = if (frameCount > 0) rawCopyMs / frameCount else 0.0
-    val avgBufferWaitMs: Double get() = if (frameCount > 0) bufferWaitMs / frameCount else 0.0
-    val avgPipeWriteMs: Double get() = if (frameCount > 0) pipeWriteMs / frameCount else 0.0
-
-    fun toMetricLine(): String =
-        "ENCODE_PROFILE: " +
-            "total_ms=${"%.2f".format(totalElapsedMs)} " +
-            "mask_plan_ms=${"%.2f".format(maskPlanMs)} " +
-            "mask_video_ms=${"%.2f".format(maskVideoMs)} " +
-            "ffmpeg_active_ms=${"%.2f".format(ffmpegActiveMs)} " +
-            "frames=$frameCount " +
-            "telemetry_ms=${"%.2f".format(telemetryMs)} " +
-            "hud_render_ms=${"%.2f".format(hudRenderMs)} " +
-            "raw_copy_ms=${"%.2f".format(rawCopyMs)} " +
-            "buffer_wait_ms=${"%.2f".format(bufferWaitMs)} " +
-            "queue_put_ms=${"%.2f".format(queuePutMs)} " +
-            "live_preview_ms=${"%.2f".format(livePreviewMs)} " +
-            "progress_ms=${"%.2f".format(progressMs)} " +
-            "pipe_write_ms=${"%.2f".format(pipeWriteMs)} " +
-            "pipe_mib=${"%.2f".format(pipeMiB)} " +
-            "avg_hud_ms=${"%.3f".format(avgHudRenderMs)} " +
-            "avg_copy_ms=${"%.3f".format(avgRawCopyMs)} " +
-            "avg_wait_ms=${"%.3f".format(avgBufferWaitMs)} " +
-            "avg_pipe_ms=${"%.3f".format(avgPipeWriteMs)}"
-
-    fun appendToHistory(label: String) {
+fun EncodeProfileReport.appendToHistory(label: String) {
         try {
             val historyDir = java.io.File(System.getProperty("user.home"), ".fittrimmer_history")
             if (!historyDir.exists()) historyDir.mkdirs()
@@ -90,34 +47,7 @@ data class EncodeProfileReport(
             println("WARNING: Failed to write encode profile history: ${e.message}")
         }
     }
-}
 
-data class EncodeGroundTruthMetadata(
-    val sourceVideoPath: String,
-    val sourceVideoStartUtc: String,
-    val alignedVideoStartUtc: String,
-    val timeOffsetMillis: Long
-) {
-    fun toFfmpegMetadataArgs(): List<String> {
-        val args = mutableListOf(
-            "-movflags", "+use_metadata_tags",
-            "-metadata", "comment=fit-trimmer-hud-burned",
-            "-metadata", "fit_trimmer_ground_truth=manual_time_offset",
-            "-metadata", "fit_trimmer_source_video_path=$sourceVideoPath"
-        )
-        if (sourceVideoStartUtc.isNotEmpty()) {
-            args.add("-metadata")
-            args.add("fit_trimmer_source_video_start_utc=$sourceVideoStartUtc")
-        }
-        if (alignedVideoStartUtc.isNotEmpty()) {
-            args.add("-metadata")
-            args.add("fit_trimmer_aligned_video_start_utc=$alignedVideoStartUtc")
-        }
-        args.add("-metadata")
-        args.add("fit_trimmer_time_offset_ms=$timeOffsetMillis")
-        return args
-    }
-}
 
 private class EncodeProfiler {
     private val startNs = System.nanoTime()
@@ -405,7 +335,7 @@ class NativeHudEncoder(
     val customRenderer: ((HudCanvas, fit.TelemetryPoint, List<fit.TelemetryPoint>, List<fit.TelemetryPoint>, List<Double>, Float) -> Unit)? = null,
     val showLivePreviewSupplier: () -> Boolean = { true },
     val profileSink: ((EncodeProfileReport) -> Unit)? = null
-) {
+) : HudEncoder {
 
     private val fontCache = java.util.concurrent.ConcurrentHashMap<String, Font>()
     private val metricsCache = java.util.concurrent.ConcurrentHashMap<Font, FontMetrics>()
@@ -951,17 +881,17 @@ class NativeHudEncoder(
         }
     }
 
-    fun encode(
+    override fun encode(
         fitPath: String,
         videoPath: String,
         output: String,
         startUtc: String,
-        maxDurationSeconds: Int = -1,
-        trimStartSeconds: Double = 0.0,
-        trimEndSeconds: Double = -1.0,
-        shouldResume: Boolean = false,
-        skipConcat: Boolean = false,
-        groundTruthMetadata: EncodeGroundTruthMetadata? = null
+        maxDurationSeconds: Int,
+        trimStartSeconds: Double,
+        trimEndSeconds: Double,
+        shouldResume: Boolean,
+        skipConcat: Boolean,
+        groundTruthMetadata: EncodeGroundTruthMetadata?
     ) {
         val profiler = EncodeProfiler()
         try {
@@ -2202,7 +2132,28 @@ class NativeHudEncoder(
         return sb.toString()
     }
 
-    companion object {
+    companion object : HudEncoderFactory {
+        override fun create(
+            settings: HudSettings,
+            onProgress: (Float, String) -> Unit,
+            onFrameRendered: (java.awt.image.BufferedImage) -> Unit,
+            pauseSupplier: () -> Boolean,
+            cancelSupplier: () -> Boolean,
+            customRenderer: ((HudCanvas, TelemetryPoint, List<TelemetryPoint>, List<TelemetryPoint>, List<Double>, Float) -> Unit)?,
+            showLivePreviewSupplier: () -> Boolean,
+            profileSink: ((EncodeProfileReport) -> Unit)?
+        ): HudEncoder {
+            return NativeHudEncoder(
+                settings = settings,
+                onProgress = onProgress,
+                onFrameRendered = onFrameRendered,
+                pauseSupplier = pauseSupplier,
+                cancelSupplier = cancelSupplier,
+                customRenderer = customRenderer,
+                showLivePreviewSupplier = showLivePreviewSupplier,
+                profileSink = profileSink
+            )
+        }
         fun calculateJobHash(
             fitPath: String,
             videoPath: String,
