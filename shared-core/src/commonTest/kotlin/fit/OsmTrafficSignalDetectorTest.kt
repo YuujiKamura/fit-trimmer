@@ -393,4 +393,51 @@ class OsmTrafficSignalDetectorTest {
         // Expected segments: 0..20, 20..40. Total 2.
         assertEquals(2, result.size, "Should split at the U-turn point")
     }
+
+    @Test
+    fun testDetectSegmentsWithTrailingOutOfGrade() = runTest {
+        val mockJson = """{ "elements": [] }"""
+        val mockHttp = MockHttpRequester(mockJson)
+        val detector = OsmTrafficSignalDetector(mockHttp)
+
+        val points = mutableListOf<FitParser.TelemetryPoint>()
+        // 0..30 seconds: 5% grade (valid)
+        // 31..40 seconds: -5% grade (invalid, trailing)
+        for (i in 0..40) {
+            val grade = if (i <= 30) 5.0 else -5.0
+            points.add(
+                FitParser.TelemetryPoint(
+                    timestamp = 1782000000.0 + i,
+                    speed = 10.0,
+                    power = 200.0,
+                    cadence = 90.0,
+                    heartRate = 140.0,
+                    elevation = i * 0.5,
+                    grade = grade,
+                    lat = 32.800 + i * 0.0001,
+                    lon = 130.800,
+                    distance = i * 10.0,
+                    elapsedSeconds = i,
+                    temperature = 20.0
+                )
+            )
+        }
+
+        val bbox = BBox(32.79, 130.79, 32.81, 130.81)
+        val result = detector.detectSegments(
+            bbox = bbox,
+            telemetryPoints = points,
+            minDistanceMeters = 100.0,
+            minSearchGrade = 1.0,
+            maxSearchGrade = 15.0
+        )
+
+        // The segment should end at index 30 due to trailing invalid grade.
+        // It should NOT include indices 31..40.
+        // Thus, if it splits or filters, the resulting segment must have endIndex <= 30.
+        assertTrue(result.isNotEmpty(), "Should find a climb segment")
+        result.forEach { seg ->
+            assertTrue(seg.endIndex <= 30, "Segment ${seg.id} should not include the trailing invalid grade area (endIndex: ${seg.endIndex})")
+        }
+    }
 }
