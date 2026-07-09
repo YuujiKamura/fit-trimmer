@@ -602,56 +602,71 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
             }
 
             try {
-                val ptrRef = PointerByReference()
-                val sizeRef = IntByReference()
-                val acquired = try {
-                    frameLock.tryLock(100, java.util.concurrent.TimeUnit.MILLISECONDS)
-                } catch (e: InterruptedException) {
-                    false
-                }
-                if (!acquired) {
-                    yield()
-                    continue
-                }
-                var needsUnlock = false
+                var skipLoop = false
+                var skipDelayMs = 0L
+                var readSuccess = false
+
                 try {
-                    val readResult = player.ReadVideoFrame(instance, ptrRef, sizeRef)
-
-                    if (readResult < 0) {
-                        windowsLogger.w { "ReadVideoFrame failed (hr=0x${readResult.toString(16)})" }
-                        yield()
-                        continue
+                    val ptrRef = PointerByReference()
+                    val sizeRef = IntByReference()
+                    val acquired = try {
+                        frameLock.tryLock(100, java.util.concurrent.TimeUnit.MILLISECONDS)
+                    } catch (e: InterruptedException) {
+                        false
                     }
-                    if (ptrRef.value == null || sizeRef.value <= 0) {
-                        yield()
-                        continue
-                    }
+                    if (!acquired) {
+                        skipLoop = true
+                    } else {
+                        var needsUnlock = false
+                        try {
+                            val readResult = player.ReadVideoFrame(instance, ptrRef, sizeRef)
 
-                    needsUnlock = true
+                            if (readResult < 0) {
+                                windowsLogger.w { "ReadVideoFrame failed (hr=0x${readResult.toString(16)})" }
+                                skipLoop = true
+                            } else if (ptrRef.value == null || sizeRef.value <= 0) {
+                                skipLoop = true
+                            } else {
+                                needsUnlock = true
 
-                    if (sharedFrameBuffer == null || sharedFrameBuffer!!.size < frameBufferSize) {
-                        sharedFrameBuffer = ByteArray(frameBufferSize)
-                    }
-                    val sharedBuffer = sharedFrameBuffer!!
+                                if (sharedFrameBuffer == null || sharedFrameBuffer!!.size < frameBufferSize) {
+                                    sharedFrameBuffer = ByteArray(frameBufferSize)
+                                }
+                                val sharedBuffer = sharedFrameBuffer!!
 
-                    val buffer = ptrRef.value.getByteBuffer(0, sizeRef.value.toLong())
-                    val copySize = min(sizeRef.value, frameBufferSize)
-                    if (buffer != null && copySize > 0) {
-                        buffer.get(sharedBuffer, 0, copySize)
-                    }
-                } catch (e: Exception) {
-                    if (e is CancellationException) throw e
-                    setError("Error copying frame data: ${e.message}")
-                    delay(100)
-                    continue
-                } finally {
-                    try {
-                        if (needsUnlock) {
-                            player.UnlockVideoFrame(instance)
+                                val buffer = ptrRef.value.getByteBuffer(0, sizeRef.value.toLong())
+                                val copySize = min(sizeRef.value, frameBufferSize)
+                                if (buffer != null && copySize > 0) {
+                                    buffer.get(sharedBuffer, 0, copySize)
+                                }
+                                readSuccess = true
+                            }
+                        } catch (e: Exception) {
+                            if (e is CancellationException) throw e
+                            setError("Error copying frame data: ${e.message}")
+                            skipLoop = true
+                            skipDelayMs = 100L
+                        } finally {
+                            try {
+                                if (needsUnlock) {
+                                    player.UnlockVideoFrame(instance)
+                                }
+                            } finally {
+                                frameLock.unlock()
+                            }
                         }
-                    } finally {
-                        frameLock.unlock()
                     }
+                } catch (e: CancellationException) {
+                    throw e
+                }
+
+                if (skipLoop) {
+                    if (skipDelayMs > 0) {
+                        delay(skipDelayMs)
+                    } else {
+                        yield()
+                    }
+                    continue
                 }
 
                 var bitmap = frameBitmapRecycler
