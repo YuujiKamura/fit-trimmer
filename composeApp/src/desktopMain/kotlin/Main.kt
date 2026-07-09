@@ -309,6 +309,18 @@ fun main(args: Array<String>) {
 
 
 
+    if (args.contains("--verify-imu-gt")) {
+        val idx = args.indexOf("--verify-imu-gt")
+        val baseDirStr = if (idx != -1 && idx + 1 < args.size) args[idx + 1] else null
+        if (baseDirStr == null) {
+            println("ERROR: Missing base directory path for --verify-imu-gt")
+            System.exit(1)
+            return
+        }
+        runImuGtVerification(baseDirStr)
+        return
+    }
+
     if (args.contains("--test-e2e")) {
 
         runE2ETest(args)
@@ -347,6 +359,244 @@ fun main(args: Array<String>) {
 
     startGui(emptyArray())
 
+}
+
+@Serializable
+private data class GtDatasetRecord(
+    val fit_relative_path: String,
+    val video_relative_path: String,
+    val trimmed_fit_relative_path: String? = null,
+    val approx_start_utc: String,
+    val expected_offset_seconds: Double? = null,
+    val description: String = "",
+    val tolerance_seconds: Double = 3.0,
+    val window_seconds: Double = 60.0
+)
+
+private fun runImuGtVerification(baseDirStr: String) {
+    println("=== STARTING IMU GROUND TRUTH VERIFICATION ===")
+    println("Base Directory: $baseDirStr")
+
+    val stream = AppViewModel::class.java.getResourceAsStream("/imu_gt_dataset.json")
+    if (stream == null) {
+        println("ERROR: imu_gt_dataset.json not found in resources.")
+        System.exit(1)
+        return
+    }
+
+    val jsonText = stream.bufferedReader().use { it.readText() }
+    val records = try {
+        Json.decodeFromString<List<GtDatasetRecord>>(jsonText)
+    } catch (e: Exception) {
+        println("ERROR: Failed to parse imu_gt_dataset.json: ${e.message}")
+        System.exit(1)
+        return
+    }
+
+    val baseDir = File(baseDirStr)
+    var successCount = 0
+    var failCount = 0
+    var skipCount = 0
+
+    kotlinx.coroutines.runBlocking {
+        for (record in records) {
+            val fitFile = File(baseDir, record.fit_relative_path)
+            val videoFile = File(baseDir, record.video_relative_path)
+
+            println("\n--------------------------------------------------")
+            println("Case: ${record.description}")
+            println("FIT:   ${fitFile.absolutePath}")
+            println("VIDEO: ${videoFile.absolutePath}")
+
+            if (!fitFile.exists() || !videoFile.exists()) {
+                println("⚠️ SKIP: Source files not found on storage. Skipped.")
+                skipCount++
+                continue
+            }
+
+            try {
+                // Determine Ground Truth Offset
+                var expectedOffsetSec = record.expected_offset_seconds
+                if (expectedOffsetSec == null) {
+                    val trimmedFitFile = if (record.trimmed_fit_relative_path != null) {
+                        File(baseDir, record.trimmed_fit_relative_path)
+                    } else {
+                        val baseName = videoFile.name.replace(Regex("""\.(mp4|mov)$""", RegexOption.IGNORE_CASE), "")
+                        val candidates = listOf(
+                            File(videoFile.parentFile, "${baseName}_KMP_HUD_2.7k.fit"),
+                            File(videoFile.parentFile, "${baseName}_KMP_HUD_orig.fit"),
+                            File(videoFile.parentFile, "${baseName}_KMP_HUD_1080p.fit"),
+                            File(System.getProperty("java.io.tmpdir"), "${baseName}_KMP_HUD_2.7k.fit"),
+                            File(System.getProperty("java.io.tmpdir"), "${baseName}_KMP_HUD_orig.fit"),
+                            File(System.getProperty("java.io.tmpdir"), "${baseName}_KMP_HUD_1080p.fit")
+                        )
+                        candidates.firstOrNull { it.exists() }
+                    }
+
+                    if (trimmedFitFile == null || !trimmedFitFile.exists()) {
+                        println("❌ FAIL: expected_offset_seconds is null, and no trimmed FIT file found to reverse-engineer.")
+                        failCount++
+                        continue
+                    }
+
+                    println("Reverse-engineering expected offset from trimmed FIT: ${trimmedFitFile.absolutePath}")
+
+                    var creationTimeSec: Long? = null
+                    val mp4Parser = mp4.Mp4Parser()
+                    val scanSize = minOf(videoFile.length(), 100L * 1024 * 1024).toInt()
+                    val headBytes = videoFile.inputStream().use { it.readNBytes(scanSize) }
+                    val meta = mp4Parser.parse(headBytes)
+                    if (meta != null) {
+                        creationTimeSec = meta.creationTimeSeconds - 2082844800L
+                    } else {
+                        try {
+                            val ffprobePath = try { fit.findFfprobePath() } catch (e: Exception) { "ffprobe" }
+                            val pb = ProcessBuilder(
+                                ffprobePath, "-v", "error",
+                                "-select_streams", "v:0",
+                                "-show_entries", "format_tags=creation_time",
+                                "-of", "default=noprint_wrappers=1:nokey=1",
+                                videoFile.absolutePath
+                            )
+                            val p = pb.start()
+                            val output = p.inputStream.bufferedReader().readText().trim()
+                            p.waitFor()
+                            if (output.isNotEmpty()) {
+                                var normalizedOutput = output.replace(" ", "T")
+                                if (!normalizedOutput.endsWith("Z") && !normalizedOutput.contains("+")) {
+                                    normalizedOutput += "Z"
+                                }
+                                val instant = java.time.Instant.parse(normalizedOutput)
+                                creationTimeSec = instant.epochSecond
+                                println("  [ffprobe creation_time fallback]: $normalizedOutput ($creationTimeSec)")
+                            }
+                        } catch (e: Exception) {
+                            println("  ⚠️ ffprobe fallback failed: ${e.message}")
+                        }
+                    }
+
+                    if (creationTimeSec == null) {
+                        println("❌ FAIL: Failed to parse video metadata for creation time.")
+                        failCount++
+                        continue
+                    }
+
+                    val trimmedBytes = trimmedFitFile.readBytes()
+                    val trimmedParser = fit.FitParser(trimmedBytes)
+                    trimmedParser.parse()
+                    val embeddedCorrection = trimmedParser.getClockCorrection()
+
+                    if (embeddedCorrection != null) {
+                        val videoSuffix = if (embeddedCorrection.videoName != null) " (video: ${embeddedCorrection.videoName})" else ""
+                        println("  [Embedded Ground Truth detected in FIT]: userOffset=${embeddedCorrection.userOffset}s, imuOffset=${embeddedCorrection.imuOffset}s$videoSuffix")
+                        expectedOffsetSec = embeddedCorrection.userOffset.toDouble()
+                    } else {
+                        val trimmedFirstTs = getTrimmedFitFirstTs(trimmedFitFile)
+                        if (trimmedFirstTs == null) {
+                            println("❌ FAIL: Failed to read first record timestamp from trimmed FIT.")
+                            failCount++
+                            continue
+                        }
+
+                        val origFirstTs = getTrimmedFitFirstTs(fitFile)
+                        if (origFirstTs != null && trimmedFirstTs <= origFirstTs) {
+                            println("❌ FAIL: Trimmed FIT starts at the very beginning of the original FIT (clipped). Cannot reverse-engineer clock offset safely. Please specify expected_offset_seconds in JSON.")
+                            failCount++
+                            continue
+                        }
+
+                        val trimStartSec = maxOf(parseTrimStartSeconds(trimmedFitFile.name), parseTrimStartSeconds(videoFile.name))
+                        val reverseEngineeredOffset = trimmedFirstTs.toDouble() - creationTimeSec.toDouble() - trimStartSec
+                        println("  Calculated Ground Truth offset: ${reverseEngineeredOffset}s (creationTime=$creationTimeSec, trimmedFirstTs=$trimmedFirstTs, trimStartSeconds=$trimStartSec)")
+                        expectedOffsetSec = reverseEngineeredOffset
+                    }
+                }
+
+                val fitBytes = fitFile.readBytes()
+                val parser = fit.FitParser(fitBytes)
+                parser.parse()
+                val telemetryPoints = parser.getTelemetry()
+
+                println("Running auto alignment (binary method, window = ${record.window_seconds}s)...")
+                val alignedUtc = TelemetryAligner.alignVideoWithTelemetry(
+                    videoPath = videoFile.absolutePath,
+                    telemetryPoints = telemetryPoints,
+                    approxStartUtc = record.approx_start_utc,
+                    method = "binary",
+                    windowSeconds = record.window_seconds
+                )
+
+                if (alignedUtc == null) {
+                    println("❌ FAIL: Auto alignment returned null.")
+                    failCount++
+                    continue
+                }
+
+                val alignedInstant = java.time.Instant.parse(alignedUtc)
+                val approxInstant = java.time.Instant.parse(record.approx_start_utc)
+
+                val detectedOffsetSec = (alignedInstant.toEpochMilli() - approxInstant.toEpochMilli()) / 1000.0
+                val diffSec = Math.abs(detectedOffsetSec - expectedOffsetSec)
+
+                println("Expected Offset: ${expectedOffsetSec}s")
+                println("Detected Offset: ${detectedOffsetSec}s (Aligned: $alignedUtc)")
+                val diffSecStr = String.format(java.util.Locale.US, "%.3f", diffSec)
+                println("Absolute Diff:   ${diffSecStr}s (Tolerance: ${record.tolerance_seconds}s)")
+
+                if (diffSec <= record.tolerance_seconds) {
+                    println("✅ PASS: Synced clock offset matches Ground Truth within tolerance.")
+                    successCount++
+                } else {
+                    println("❌ FAIL: Clock offset drift (${diffSec}s) exceeded tolerance.")
+                    failCount++
+                }
+            } catch (e: Exception) {
+                println("❌ FAIL: Exception occurred: ${e.message}")
+                e.printStackTrace()
+                failCount++
+            }
+        }
+    }
+
+    println("\n==================================================")
+    println("Verification Summary:")
+    println("  PASSED:  $successCount")
+    println("  FAILED:  $failCount")
+    println("  SKIPPED: $skipCount")
+    println("==================================================")
+
+    if (failCount > 0) {
+        System.exit(1)
+    } else {
+        System.exit(0)
+    }
+}
+
+private fun getTrimmedFitFirstTs(trimmedFitFile: File): Long? {
+    if (!trimmedFitFile.exists()) return null
+    val fitBytes = trimmedFitFile.readBytes()
+    val parser = fit.FitParser(fitBytes)
+    parser.parse()
+    for (r in parser.records) {
+        if (r is fit.FitParser.FitRecord.Data && r.globalMessageNumber == 20) {
+            val ts = r.data.fields[253]?.value
+            if (ts != null) {
+                return ts.toLong() + 631065600L
+            }
+        }
+    }
+    return null
+}
+
+private fun parseTrimStartSeconds(fileName: String): Double {
+    val regex = Regex("""_(\d+)m(\d+)s-""")
+    val match = regex.find(fileName)
+    if (match != null) {
+        val m = match.groupValues[1].toInt()
+        val s = match.groupValues[2].toInt()
+        return m * 60.0 + s.toDouble()
+    }
+    return 0.0
 }
 
 fun showSystemNotification(title: String, message: String) {

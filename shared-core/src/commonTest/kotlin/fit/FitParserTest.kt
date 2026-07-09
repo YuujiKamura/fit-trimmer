@@ -6,6 +6,7 @@ import kotlin.test.Ignore
 import kotlin.test.assertFailsWith
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.test.assertNotNull
 
 class FitParserTest {
 
@@ -147,6 +148,21 @@ class FitParserTest {
         val newFileCrc = Crc16.calculate(trimmedBytes, offset = 0, length = 44)
         val parsedNewFileCrc = FitParser.getUShort(trimmedBytes, 44, true)
         assertEquals(newFileCrc, parsedNewFileCrc)
+
+        // 6. Test clock correction metadata and video name embedding
+        val userOffset = -5.5f
+        val imuOffset = 10.2f
+        val videoName = "test_video.mp4"
+        val trimmedBytesWithMeta = parser.trim(1631065605L, 1631065625L, userOffset, imuOffset, videoName)
+
+        val metaParser = FitParser(trimmedBytesWithMeta)
+        metaParser.parse()
+
+        val correction = metaParser.getClockCorrection()
+        assertNotNull(correction)
+        assertEquals(userOffset, correction.userOffset)
+        assertEquals(imuOffset, correction.imuOffset)
+        assertEquals(videoName, correction.videoName)
     }
 
     @Test
