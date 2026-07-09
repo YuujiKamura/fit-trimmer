@@ -327,13 +327,23 @@ fun FitTrimmerMainContent(
             autoRow.add(runAutoButton)
             autoRow.add(autoStatusLabel)
             controlPanel.add(autoRow)
-            val basisLabel = javax.swing.JLabel("  💡 GPSと同期されたサイコン(FIT)の時刻は正確ですが、カメラの内部時計は通常ズレが生じるため時間補正が必要です。")
-            basisLabel.foreground = java.awt.Color.DARK_GRAY
-            controlPanel.add(basisLabel)
+            val basisLabel1 = javax.swing.JLabel("  [情報] GPS同期のサイコン(FIT)時刻は正確ですが、")
+            basisLabel1.foreground = java.awt.Color.DARK_GRAY
+            controlPanel.add(basisLabel1)
+            val basisLabel2 = javax.swing.JLabel("         カメラ内部時計はズレるため補正が必要です。")
+            basisLabel2.foreground = java.awt.Color.DARK_GRAY
+            controlPanel.add(basisLabel2)
             controlPanel.add(javax.swing.Box.createVerticalStrut(2))
-            val guideLabel = javax.swing.JLabel("  ⚠️ IMU自動同期はセンサー状態により数秒〜十数秒程度のズレが生じる場合があります。必ずプレビュー再生やスライダーを用いて手動でズレを確認・微調整した上でエンコードしてください。")
-            guideLabel.foreground = java.awt.Color.RED
-            controlPanel.add(guideLabel)
+
+            val guideLabel1 = javax.swing.JLabel("  [警告] IMU自動同期はセンサーのノイズ等により")
+            guideLabel1.foreground = java.awt.Color.RED
+            controlPanel.add(guideLabel1)
+            val guideLabel2 = javax.swing.JLabel("         数秒〜十数秒のズレが生じる場合があります。")
+            guideLabel2.foreground = java.awt.Color.RED
+            controlPanel.add(guideLabel2)
+            val guideLabel3 = javax.swing.JLabel("         必ず手動でプレビューを確認し微調整してください。")
+            guideLabel3.foreground = java.awt.Color.RED
+            controlPanel.add(guideLabel3)
             controlPanel.add(javax.swing.Box.createVerticalStrut(10))
             
             // Manual offset input

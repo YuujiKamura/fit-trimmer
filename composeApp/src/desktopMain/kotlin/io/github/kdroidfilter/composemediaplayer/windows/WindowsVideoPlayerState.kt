@@ -214,6 +214,7 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
 
     // Synchronization
     private val mediaOperationMutex = Mutex()
+    private val frameLock = java.util.concurrent.locks.ReentrantLock()
     private val isResizing = AtomicBoolean(false)
     private val suppressResizeUntilNanos = AtomicLong(0L)
     private var videoJob: Job? = null
@@ -593,25 +594,28 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
             try {
                 val ptrRef = PointerByReference()
                 val sizeRef = IntByReference()
-                val readResult = player.ReadVideoFrame(instance, ptrRef, sizeRef)
-
-                if (readResult < 0) {
-                    windowsLogger.w { "ReadVideoFrame failed (hr=0x${readResult.toString(16)})" }
-                    yield()
-                    continue
-                }
-                if (ptrRef.value == null || sizeRef.value <= 0) {
-                    yield()
-                    continue
-                }
-
-                if (sharedFrameBuffer == null || sharedFrameBuffer!!.size < frameBufferSize) {
-                    sharedFrameBuffer = ByteArray(frameBufferSize)
-                }
-                val sharedBuffer = sharedFrameBuffer!!
-
-                var needsUnlock = true
+                frameLock.lock()
+                var needsUnlock = false
                 try {
+                    val readResult = player.ReadVideoFrame(instance, ptrRef, sizeRef)
+
+                    if (readResult < 0) {
+                        windowsLogger.w { "ReadVideoFrame failed (hr=0x${readResult.toString(16)})" }
+                        yield()
+                        continue
+                    }
+                    if (ptrRef.value == null || sizeRef.value <= 0) {
+                        yield()
+                        continue
+                    }
+
+                    needsUnlock = true
+
+                    if (sharedFrameBuffer == null || sharedFrameBuffer!!.size < frameBufferSize) {
+                        sharedFrameBuffer = ByteArray(frameBufferSize)
+                    }
+                    val sharedBuffer = sharedFrameBuffer!!
+
                     val buffer = ptrRef.value.getByteBuffer(0, sizeRef.value.toLong())
                     val copySize = min(sizeRef.value, frameBufferSize)
                     if (buffer != null && copySize > 0) {
@@ -623,8 +627,12 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
                     delay(100)
                     continue
                 } finally {
-                    if (needsUnlock) {
-                        player.UnlockVideoFrame(instance)
+                    try {
+                        if (needsUnlock) {
+                            player.UnlockVideoFrame(instance)
+                        }
+                    } finally {
+                        frameLock.unlock()
                     }
                 }
 
@@ -639,7 +647,7 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
                 try {
                     bitmap.installPixels(
                         createVideoImageInfo(),
-                        sharedBuffer,
+                        sharedFrameBuffer!!,
                         videoWidth * 4
                     )
                     val frameBitmap = bitmap
@@ -903,46 +911,51 @@ class WindowsVideoPlayerState : PlatformVideoPlayerState {
     }
 
     private fun renderCurrentFrame(instance: Pointer, context: String): Boolean {
-        val ptrRef = PointerByReference()
-        val sizeRef = IntByReference()
-        val readResult = player.ReadVideoFrame(instance, ptrRef, sizeRef)
-        var needsUnlock = false
-        return try {
-            if (readResult < 0 || ptrRef.value == null || sizeRef.value <= 0) {
-                windowsLogger.w { "ReadVideoFrame failed during $context (hr=0x${readResult.toString(16)})" }
-                false
-            } else {
-                needsUnlock = true
-                val sharedBuffer = sharedFrameBuffer ?: ByteArray(frameBufferSize).also { sharedFrameBuffer = it }
-                val buffer = ptrRef.value.getByteBuffer(0, sizeRef.value.toLong())
-                val copySize = min(sizeRef.value, frameBufferSize)
-                if (buffer != null && copySize > 0) {
-                    buffer.get(sharedBuffer, 0, copySize)
-                }
+        frameLock.lock()
+        try {
+            val ptrRef = PointerByReference()
+            val sizeRef = IntByReference()
+            val readResult = player.ReadVideoFrame(instance, ptrRef, sizeRef)
+            var needsUnlock = false
+            return try {
+                if (readResult < 0 || ptrRef.value == null || sizeRef.value <= 0) {
+                    windowsLogger.w { "ReadVideoFrame failed during $context (hr=0x${readResult.toString(16)})" }
+                    false
+                } else {
+                    needsUnlock = true
+                    val sharedBuffer = sharedFrameBuffer ?: ByteArray(frameBufferSize).also { sharedFrameBuffer = it }
+                    val buffer = ptrRef.value.getByteBuffer(0, sizeRef.value.toLong())
+                    val copySize = min(sizeRef.value, frameBufferSize)
+                    if (buffer != null && copySize > 0) {
+                        buffer.get(sharedBuffer, 0, copySize)
+                    }
 
-                val bitmap = Bitmap().apply {
-                    allocPixels(createVideoImageInfo())
+                    val bitmap = Bitmap().apply {
+                        allocPixels(createVideoImageInfo())
+                    }
+                    bitmap.installPixels(
+                        createVideoImageInfo(),
+                        sharedBuffer,
+                        videoWidth * 4
+                    )
+                    bitmapLock.write {
+                        _currentFrame?.let { old -> old.close() }
+                        _currentFrame = bitmap
+                        currentFrameState.value = bitmap.asComposeImageBitmap()
+                        frameTicks++
+                    }
+                    true
                 }
-                bitmap.installPixels(
-                    createVideoImageInfo(),
-                    sharedBuffer,
-                    videoWidth * 4
-                )
-                bitmapLock.write {
-                    _currentFrame?.let { old -> old.close() }
-                    _currentFrame = bitmap
-                    currentFrameState.value = bitmap.asComposeImageBitmap()
-                    frameTicks++
+            } catch (e: Exception) {
+                windowsLogger.e { "Failed to render frame during $context: ${e.message}" }
+                false
+            } finally {
+                if (needsUnlock) {
+                    player.UnlockVideoFrame(instance)
                 }
-                true
             }
-        } catch (e: Exception) {
-            windowsLogger.e { "Failed to render frame during $context: ${e.message}" }
-            false
         } finally {
-            if (needsUnlock) {
-                player.UnlockVideoFrame(instance)
-            }
+            frameLock.unlock()
         }
     }
 
