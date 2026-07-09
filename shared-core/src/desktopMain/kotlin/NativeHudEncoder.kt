@@ -357,8 +357,8 @@ private fun getSegmentDuration(ffmpegPath: String, file: File): Double {
 
 fun findTelemetryLerp(telemetry: List<fit.FitParser.TelemetryPoint>, targetFitTs: Double): fit.FitParser.TelemetryPoint {
     if (telemetry.isEmpty()) return fit.FitParser.TelemetryPoint(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
-    if (targetFitTs <= telemetry.first().timestamp) return telemetry.first()
-    if (targetFitTs >= telemetry.last().timestamp) return telemetry.last()
+    if (targetFitTs <= telemetry.first().timestamp) return telemetry.first().copy(timestamp = targetFitTs, speed = 0.0, power = 0.0, cadence = 0.0)
+    if (targetFitTs >= telemetry.last().timestamp) return telemetry.last().copy(timestamp = targetFitTs, speed = 0.0, power = 0.0, cadence = 0.0)
 
     var low = 0
     var high = telemetry.size - 1
