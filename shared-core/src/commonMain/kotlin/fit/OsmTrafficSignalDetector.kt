@@ -62,6 +62,7 @@ class OsmTrafficSignalDetector(
             (
               node["highway"="traffic_signals"](${bbox.south},${bbox.west},${bbox.north},${bbox.east});
               node["railway"="level_crossing"](${bbox.south},${bbox.west},${bbox.north},${bbox.east});
+              node["highway"="stop"](${bbox.south},${bbox.west},${bbox.north},${bbox.east});
             );
             out body;
         """.trimIndent().replace("\n", "")
