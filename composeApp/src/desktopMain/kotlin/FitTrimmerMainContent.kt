@@ -1057,7 +1057,8 @@ fun FitTrimmerMainContent(
                                                 outputDir = outputDir,
                                                 videoStartUtc = adjustedStartUtc,
                                                 sourceVideoStartUtc = videoStartUtc,
-                                                timeOffsetMillis = viewModel.timeOffsetState.millis.toLong(),
+                                                timeOffsetMillis = viewModel.timeOffsetState.millis.toLong(),
+                                                imuTimeOffsetMillis = viewModel.imuTimeOffsetMs,
                                                 ranges = ranges,
                                                 destFiles = destFiles,
                                                 shouldResume = false,
@@ -1176,7 +1177,8 @@ fun FitTrimmerMainContent(
                                                 if (originalInstant != null && alignedInstant != null) {
                                                     val diffMs = alignedInstant.toEpochMilli() - originalInstant.toEpochMilli()
                                                     val diffSec = diffMs / 1000.0
-                                                    statusText = "IMU Sync: Applied candidate #1 %.3f seconds (r=%.2f, %d candidates)".format(java.util.Locale.US, diffSec, candidate.correlation, candidates.size)
+                                                    viewModel.imuTimeOffsetMs = diffMs
+                                            statusText = "IMU Sync: Applied candidate #1 %.3f seconds (r=%.2f, %d candidates)".format(java.util.Locale.US, diffSec, candidate.correlation, candidates.size)
                                                     timeOffsetState.update(diffMs.toInt())
                                                     viewModel.syncAnchorSec = utils.TelemetryAligner.lastAnchorSec
                                                     viewModel.syncCorrelation = candidate.correlation
@@ -2236,6 +2238,7 @@ fun FitTrimmerMainContent(
                                 timeOffsetState.update(diffMs.toInt())
                                 viewModel.syncCorrelation = candidate.correlation
                                 viewModel.syncAnchorSec = utils.TelemetryAligner.lastAnchorSec
+                                viewModel.imuTimeOffsetMs = diffMs
                                 statusText = "IMU Sync: Applied candidate #${candidate.rank} %.3f seconds (r=%.2f)".format(java.util.Locale.US, diffMs / 1000.0, candidate.correlation)
                             }
                         },
@@ -2260,6 +2263,7 @@ fun FitTrimmerMainContent(
                                         if (originalInstant != null && alignedInstant != null) {
                                             val diffMs = alignedInstant.toEpochMilli() - originalInstant.toEpochMilli()
                                             val diffSec = diffMs / 1000.0
+                                            viewModel.imuTimeOffsetMs = diffMs
                                             statusText = "IMU Sync: Applied candidate #1 %.3f seconds (r=%.2f, %d candidates)".format(java.util.Locale.US, diffSec, candidate.correlation, candidates.size)
                                             timeOffsetState.update(diffMs.toInt())
                                             viewModel.syncAnchorSec = utils.TelemetryAligner.lastAnchorSec

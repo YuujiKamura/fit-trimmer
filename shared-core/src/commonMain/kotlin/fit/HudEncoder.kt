@@ -48,7 +48,8 @@ data class EncodeGroundTruthMetadata(
     val sourceVideoPath: String,
     val sourceVideoStartUtc: String,
     val alignedVideoStartUtc: String,
-    val timeOffsetMillis: Long
+    val timeOffsetMillis: Long,
+    val imuTimeOffsetMillis: Long? = null
 ) {
     fun toFfmpegMetadataArgs(): List<String> {
         val args = mutableListOf(
@@ -67,6 +68,10 @@ data class EncodeGroundTruthMetadata(
         }
         args.add("-metadata")
         args.add("fit_trimmer_time_offset_ms=$timeOffsetMillis")
+        if (imuTimeOffsetMillis != null) {
+            args.add("-metadata")
+            args.add("fit_trimmer_imu_offset_ms=$imuTimeOffsetMillis")
+        }
         return args
     }
 }
