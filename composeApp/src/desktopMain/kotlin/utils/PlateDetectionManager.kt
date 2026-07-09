@@ -24,19 +24,19 @@ private data class DecodedFrame(
     val decodeMs: Double
 )
 
-object PlateDetectionManager {
+object PlateDetectionManager : fit.PlateDetector {
 
-    suspend fun runDetection(
+    override suspend fun detect(
         videoPath: String,
-        telemetryPoints: List<fit.TelemetryPoint> = emptyList(),
-        adjustedStartUtc: String = "",
+        telemetryPoints: List<fit.TelemetryPoint>,
+        adjustedStartUtc: String,
         onProgress: (Float, String) -> Unit,
         onCancel: () -> Boolean,
-        onPartialResult: (VideoPlatesCache) -> Unit = {},
-        maxRecords: Int? = null,
-        saveCache: Boolean = true,
-        settings: fit.HudSettings = fit.HudSettings(),
-        scanRanges: List<Pair<Double, Double>>? = null
+        onPartialResult: (VideoPlatesCache) -> Unit,
+        maxRecords: Int?,
+        saveCache: Boolean,
+        settings: fit.HudSettings,
+        scanRanges: List<Pair<Double, Double>>?
     ): VideoPlatesCache? = withContext(Dispatchers.IO) {
         val ffmpegPath = findFfmpegPath()
         val videoFile = File(videoPath)
