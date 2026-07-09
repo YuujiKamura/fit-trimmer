@@ -22,8 +22,9 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
 
 import fit.PlateCacheManager
-
 import fit.VideoPlatesCache
+import utils.PlateDetectionManager
+import utils.BatchJobScheduler
 
 
 
@@ -72,10 +73,29 @@ class AppViewModel(
 
 
     // Batch Job Queue
-    val batchQueue = mutableStateListOf<BatchJob>()
+    val batchScheduler = BatchJobScheduler(
+        onSaveBatchQueue = { saveBatchQueue() },
+        onSaveCurrentHistory = { saveCurrentHistory() },
+        onCreateBatchJob = { video, fit, start, tStart, tEnd, splits, duration ->
+            createBatchJob(
+                jobVideoPath = video,
+                jobFitPath = fit,
+                jobVideoStartUtc = start,
+                jobTrimStartSeconds = tStart,
+                jobTrimEndSeconds = tEnd,
+                jobSplitPoints = splits,
+                jobDurationSeconds = duration
+            )
+        }
+    )
+    val batchQueue get() = batchScheduler.batchQueue
     var isBatchRunning by mutableStateOf(false)
-    var batchStatusText by mutableStateOf("")
-    var showBatchConfirmDialog by mutableStateOf(false)
+    var batchStatusText: String
+        get() = batchScheduler.batchStatusText
+        set(value) { batchScheduler.batchStatusText = value }
+    var showBatchConfirmDialog: Boolean
+        get() = batchScheduler.showBatchConfirmDialog
+        set(value) { batchScheduler.showBatchConfirmDialog = value }
 
     // Restorable pending jobs from crash/interruption
     val pendingRestorableJobs = mutableStateListOf<BatchJob>()
@@ -743,7 +763,7 @@ class AppViewModel(
         offsetMillisProvider = { timeOffsetState.millis.toLong() }
     )
 
-    var plateDetector: fit.PlateDetector = utils.PlateDetectionManager
+    var plateDetector: fit.PlateDetector = PlateDetectionManager
 
     // Derived States
 
@@ -1292,77 +1312,35 @@ class AppViewModel(
     }
 
     fun logBatchQueueSnapshot(context: String) {
-        logBatch("$context queueSize=${batchQueue.size}, runnable=${batchQueue.count { it.isRunnable }}")
-        batchQueue.forEachIndexed { index, job ->
-            logBatch(
-                "  [$index] id=${job.id.take(8)} status=${job.status} progress=${"%.3f".format(job.progress)} " +
-                    "entry='${job.entryName}' video='${File(job.videoPath).name}' trim=${job.trimStartSeconds}-${job.trimEndSeconds} " +
-                    "splits=${job.splitPoints.size} fit='${File(job.fitPath).name}'"
-            )
-        }
+        batchScheduler.logBatchQueueSnapshot(context)
     }
 
     fun requestBatchConfirmDialog(source: String): Boolean {
-        logBatchQueueSnapshot("confirm requested from $source")
-        if (batchQueue.none { it.isRunnable }) {
-            batchStatusText = "処理待ちのジョブがありません。"
-            showBatchConfirmDialog = false
-            logBatch("confirm suppressed: no waiting or failed jobs")
-            return false
-        }
-        showBatchConfirmDialog = true
-        logBatch("confirm dialog opened")
-        return true
+        return batchScheduler.requestBatchConfirmDialog(source)
     }
 
     fun dismissBatchConfirmDialog(source: String) {
-        showBatchConfirmDialog = false
-        if (!isBatchRunning) {
-            batchQueue.clear()
-            saveBatchQueue()
-            logBatch("confirm dialog dismissed from $source, queue cleared")
-        } else {
-            logBatch("confirm dialog dismissed from $source")
-        }
+        batchScheduler.dismissBatchConfirmDialog(source, isBatchRunning)
     }
 
     fun prepareBatchQueueForStart() {
-        batchQueue.forEach {
-            if (it.status == BatchJobStatus.FAILED || it.status == BatchJobStatus.COMPLETED) {
-                it.status = BatchJobStatus.WAITING
-                it.progress = 0f
-                it.errorMessage = null
-            }
-        }
-        saveCurrentHistory()
-        saveBatchQueue()
-        logBatchQueueSnapshot("starting confirmed batch")
+        batchScheduler.prepareBatchQueueForStart()
     }
 
-
-
     fun addToBatchQueue() {
-
         if (videoPath.isNotEmpty()) {
-            val job = createBatchJob(
-                jobVideoPath = videoPath,
-                jobFitPath = fitPath,
-                jobVideoStartUtc = videoStartUtc,
-                jobTrimStartSeconds = trimStartSeconds,
-                jobTrimEndSeconds = trimEndSeconds,
-                jobSplitPoints = splitPoints.toList(),
-                jobDurationSeconds = videoLengthMs.takeIf { it > 0L }?.toDouble()?.div(1000.0)
+            batchScheduler.addToQueue(
+                videoPath = videoPath,
+                fitPath = fitPath,
+                videoStartUtc = videoStartUtc,
+                trimStartSeconds = trimStartSeconds,
+                trimEndSeconds = trimEndSeconds,
+                splitPoints = splitPoints.toList(),
+                videoLengthMs = videoLengthMs
             )
-
-            batchQueue.add(job)
-            saveCurrentHistory()
-            saveBatchQueue()
-            logBatchQueueSnapshot("added job")
         } else {
             logBatch("add skipped: videoPath is empty")
-
         }
-
     }
 
     private fun createBatchJob(
@@ -1590,130 +1568,51 @@ class AppViewModel(
     }
 
     var batchFolderPath by mutableStateOf("F:\\Insta360\\20260702")
-    var batchFolderStatusText by mutableStateOf("")
-    var isBatchFolderLoading by mutableStateOf(false)
+    var batchFolderStatusText: String
+        get() = batchScheduler.batchFolderStatusText
+        set(value) { batchScheduler.batchFolderStatusText = value }
+    var isBatchFolderLoading: Boolean
+        get() = batchScheduler.isBatchFolderLoading
+        set(value) { batchScheduler.isBatchFolderLoading = value }
 
     fun loadBatchFolderAndConfirm(coroutineScope: kotlinx.coroutines.CoroutineScope) {
         if (isBatchFolderLoading) return
-        isBatchFolderLoading = true
-        batchFolderStatusText = "フォルダを読み込み中..."
-        coroutineScope.launch {
-            try {
-                val (jobs, status) = utils.BatchFolderLoader.loadJobs(
-                    folderPath = batchFolderPath,
-                    currentSettings = settings,
-                    autoDetectRoadCaptions = autoDetectRoadCaptionsOnEncode,
-                    timeOffsetMillis = timeOffsetState.millis.toLong(),
-                    existingVideoPaths = batchQueue.map { it.videoPath }
-                )
-                if (jobs.isNotEmpty()) {
-                    batchQueue.addAll(jobs)
-                    saveBatchQueue()
-                    requestBatchConfirmDialog("folder-loader")
-                }
-                batchFolderStatusText = status
-            } catch (e: Exception) {
-                batchFolderStatusText = "フォルダ読み込みに失敗しました: ${e.message ?: e::class.simpleName}"
-                logBatch("folder load failed: ${e.message}")
-            } finally {
-                isBatchFolderLoading = false
-            }
-        }
+        batchScheduler.batchFolderStatusText = "フォルダを読み込み中..."
+        batchScheduler.loadBatchFolder(
+            folderPath = batchFolderPath,
+            settings = settings,
+            autoDetectRoadCaptions = autoDetectRoadCaptionsOnEncode,
+            timeOffsetMillis = timeOffsetState.millis.toLong(),
+            coroutineScope = coroutineScope
+        )
     }
 
-
     fun setBatchJobRoadCaptionDetection(jobId: String, enabled: Boolean) {
-        val job = batchQueue.firstOrNull { it.id == jobId } ?: return
-        job.autoDetectRoadCaptionsOnEncode = enabled
-        saveBatchQueue()
-        logBatchQueueSnapshot("road caption toggle id=${jobId.take(8)} enabled=$enabled")
+        batchScheduler.setBatchJobRoadCaptionDetection(jobId, enabled)
     }
 
     fun setBatchJobPlateMasking(jobId: String, enabled: Boolean) {
-        val job = batchQueue.firstOrNull { it.id == jobId } ?: return
-        job.settings = job.settings.copy(blurLicensePlates = enabled)
-        saveBatchQueue()
-        logBatchQueueSnapshot("plate masking toggle id=${jobId.take(8)} enabled=$enabled")
+        batchScheduler.setBatchJobPlateMasking(jobId, enabled)
     }
 
-
-
     fun removeFromBatchQueue(jobId: String) {
-
-        logBatch("remove requested id=${jobId.take(8)}")
-        batchQueue.removeAll { it.id == jobId }
-        if (showBatchConfirmDialog && batchQueue.none { it.isRunnable }) {
-            showBatchConfirmDialog = false
-            logBatch("confirm dialog closed: no runnable jobs after remove")
-        }
-        logBatchQueueSnapshot("removed job")
-        saveBatchQueue()
+        batchScheduler.removeFromBatchQueue(jobId)
     }
 
     fun moveBatchJobUp(jobId: String) {
-        val index = batchQueue.indexOfFirst { it.id == jobId }
-        if (index <= 0) {
-            logBatch("move up skipped id=${jobId.take(8)} index=$index")
-            return
-        }
-        val job = batchQueue.removeAt(index)
-        batchQueue.add(index - 1, job)
-        saveBatchQueue()
-        logBatchQueueSnapshot("moved job up")
+        batchScheduler.moveBatchJobUp(jobId)
     }
 
     fun moveBatchJobDown(jobId: String) {
-        val index = batchQueue.indexOfFirst { it.id == jobId }
-        if (index < 0 || index >= batchQueue.lastIndex) {
-            logBatch("move down skipped id=${jobId.take(8)} index=$index")
-            return
-        }
-        val job = batchQueue.removeAt(index)
-        batchQueue.add(index + 1, job)
-        saveBatchQueue()
-        logBatchQueueSnapshot("moved job down")
+        batchScheduler.moveBatchJobDown(jobId)
     }
 
     fun renameBatchJobEntry(jobId: String, newEntryName: String) {
-        val job = batchQueue.firstOrNull { it.id == jobId } ?: run {
-            logBatch("rename skipped id=${jobId.take(8)}: not found")
-            return
-        }
-        val normalized = normalizeOutputFileName(newEntryName) ?: run {
-            logBatch("rename skipped id=${jobId.take(8)}: blank name")
-            return
-        }
-        val updated = job.outputFileNames.toMutableList()
-        if (updated.isEmpty()) {
-            updated.add(normalized)
-        } else {
-            updated[0] = normalized
-        }
-        job.outputFileNames = updated
-        saveBatchQueue()
-        logBatchQueueSnapshot("renamed job")
+        batchScheduler.renameBatchJobEntry(jobId, newEntryName)
     }
-
-    private fun normalizeOutputFileName(name: String): String? {
-        val trimmed = name.trim()
-        if (trimmed.isEmpty()) return null
-        return if (trimmed.endsWith(".mp4", ignoreCase = true) || trimmed.endsWith(".mov", ignoreCase = true)) {
-            trimmed
-        } else {
-            "$trimmed.mp4"
-        }
-    }
-
-
 
     fun clearBatchQueue() {
-
-        logBatchQueueSnapshot("clear requested")
-        batchQueue.clear()
-        showBatchConfirmDialog = false
-        saveBatchQueue()
-        logBatch("queue cleared")
-
+        batchScheduler.clearQueue()
     }
 
 
@@ -1724,112 +1623,5 @@ class AppViewModel(
 
 
 
-enum class BatchJobStatus {
-
-    WAITING,
-
-    RUNNING,
-
-    COMPLETED,
-
-    FAILED
-
-}
-
-
-
-
-
-enum class BatchJobPhaseType {
-    PLATE_SCAN,
-    ROAD_SCAN,
-    HUD_ENCODE,
-    CONCAT_MERGE,
-    FAST_TRIM
-}
-
-enum class BatchJobPhaseStatus {
-    WAITING,
-    RUNNING,
-    COMPLETED,
-    FAILED,
-    SKIPPED
-}
-
-class BatchJobPhase(
-    val type: BatchJobPhaseType,
-    initialEnabled: Boolean,
-    initialStatus: BatchJobPhaseStatus = BatchJobPhaseStatus.WAITING,
-    initialProgress: Float = 0f
-) {
-    var enabled by mutableStateOf(initialEnabled)
-    var status by mutableStateOf(initialStatus)
-    var progress by mutableStateOf(initialProgress)
-}
-
-
-
-data class BatchJob(
-
-    val id: String = java.util.UUID.randomUUID().toString(),
-
-    val videoPath: String,
-
-    val fitPath: String,
-
-    val videoStartUtc: String,
-
-    val timeOffsetMillis: Long,
-
-    val trimStartSeconds: Double,
-
-    val trimEndSeconds: Double,
-
-    val splitPoints: List<Double>,
-
-    private val initialSettings: HudSettings,
-
-    private val initialAutoDetectRoadCaptionsOnEncode: Boolean = false,
-
-    private val initialOutputFileNames: List<String> = listOf(File(videoPath).name),
-
-    private val initialStatus: BatchJobStatus = BatchJobStatus.WAITING,
-
-    private val initialProgress: Float = 0.0f,
-
-    private val initialErrorMessage: String? = null,
-
-    private val initialPhases: List<BatchJobPhase>? = null
-
-) {
-    var status by mutableStateOf(initialStatus)
-    var progress by mutableStateOf(initialProgress)
-    var errorMessage by mutableStateOf(initialErrorMessage)
-    var outputFileNames by mutableStateOf(initialOutputFileNames)
-    var settings by mutableStateOf(initialSettings)
-    var autoDetectRoadCaptionsOnEncode by mutableStateOf(initialAutoDetectRoadCaptionsOnEncode)
-    var phases by mutableStateOf<List<BatchJobPhase>>(initialPhases ?: emptyList())
-
-    val isRunnable: Boolean
-        get() = status == BatchJobStatus.WAITING || status == BatchJobStatus.FAILED
-
-    val entryName: String
-        get() = if (outputFileNames.size <= 1) {
-            outputFileNames.firstOrNull() ?: File(videoPath).name
-        } else {
-            "${outputFileNames.first()} (+${outputFileNames.size - 1})"
-        }
-
-    val adjustedStartUtc: String
-        get() = try {
-            if (videoStartUtc.isNotEmpty()) {
-                java.time.Instant.parse(videoStartUtc).plusMillis(timeOffsetMillis).toString()
-            } else {
-                ""
-            }
-        } catch (e: Exception) {
-            videoStartUtc
-        }
-}
 
 
