@@ -19,7 +19,17 @@ data class AutoDetectedSegment(
     val endIndex: Int,
     val distanceMeters: Double,
     val durationSeconds: Double,
-    val averageGrade: Double
+    val averageGrade: Double,
+    val startLat: Double = 0.0,
+    val startLon: Double = 0.0,
+    val endLat: Double = 0.0,
+    val endLon: Double = 0.0,
+    val startElev: Double = 0.0,
+    val endElev: Double = 0.0,
+    val minGrade: Double = 0.0,
+    val maxGrade: Double = 0.0,
+    val startFitTimestamp: Double = 0.0,
+    val endFitTimestamp: Double = 0.0
 )
 
 class OsmTrafficSignalDetector(
@@ -248,18 +258,89 @@ class OsmTrafficSignalDetector(
                 val averageGrade = if (distance > 0) (elevDiff / distance) * 100.0 else 0.0
                 
                 if (distance >= minDistanceMeters && averageGrade >= minSearchGrade && averageGrade <= maxSearchGrade) {
-                    val id = "seg_${startIdx}_${endIdx}"
-                    segments.add(
-                        AutoDetectedSegment(
-                            id = id,
-                            name = "Detected Climb (${(distance/1000.0).toString().substringBefore(".")}.${((distance%1000.0)/100.0).toInt()}km)",
-                            startIndex = startIdx,
-                            endIndex = endIdx,
-                            distanceMeters = distance,
-                            durationSeconds = duration.toDouble(),
-                            averageGrade = averageGrade
-                        )
-                    )
+                    var trimmedStart = startIdx
+                    while (trimmedStart <= endIdx && 
+                           (telemetryPoints[trimmedStart].grade < minSearchGrade || 
+                            telemetryPoints[trimmedStart].grade > maxSearchGrade)) {
+                        trimmedStart++
+                    }
+
+                    var trimmedEnd = endIdx
+                    while (trimmedEnd >= trimmedStart && 
+                           (telemetryPoints[trimmedEnd].grade < minSearchGrade || 
+                            telemetryPoints[trimmedEnd].grade > maxSearchGrade)) {
+                        trimmedEnd--
+                    }
+
+                    val totalPoints = trimmedEnd - trimmedStart + 1
+                    if (totalPoints >= 2) {
+                        val finalStartPt = telemetryPoints[trimmedStart]
+                        val finalEndPt = telemetryPoints[trimmedEnd]
+                        val finalDistance = finalEndPt.distance - finalStartPt.distance
+                        val finalDuration = finalEndPt.elapsedSeconds - finalStartPt.elapsedSeconds
+                        val finalElevDiff = finalEndPt.elevation - finalStartPt.elevation
+                        val finalAverageGrade = if (finalDistance > 0) (finalElevDiff / finalDistance) * 100.0 else 0.0
+
+                        if (finalDistance >= minDistanceMeters && 
+                            finalAverageGrade >= minSearchGrade && 
+                            finalAverageGrade <= maxSearchGrade) {
+
+                            var maxConsecutiveOutOfGrade = 0
+                            var currentConsecutiveOutOfGrade = 0
+                            var outOfGradePointsCount = 0
+
+                            for (k in trimmedStart..trimmedEnd) {
+                                val g = telemetryPoints[k].grade
+                                val isOutOfGrade = g < minSearchGrade || g > maxSearchGrade
+                                if (isOutOfGrade) {
+                                    outOfGradePointsCount++
+                                    currentConsecutiveOutOfGrade++
+                                    if (currentConsecutiveOutOfGrade > maxConsecutiveOutOfGrade) {
+                                        maxConsecutiveOutOfGrade = currentConsecutiveOutOfGrade
+                                    }
+                                } else {
+                                    currentConsecutiveOutOfGrade = 0
+                                }
+                            }
+
+                            val outOfGradeRatio = outOfGradePointsCount.toDouble() / totalPoints.toDouble()
+
+                            if (maxConsecutiveOutOfGrade < 5 && outOfGradeRatio < 0.20) {
+                                val id = "seg_${trimmedStart}_${trimmedEnd}"
+                                var minG = Double.MAX_VALUE
+                                var maxG = -Double.MAX_VALUE
+                                for (k in trimmedStart..trimmedEnd) {
+                                    val g = telemetryPoints[k].grade
+                                    if (g < minG) minG = g
+                                    if (g > maxG) maxG = g
+                                }
+                                if (minG == Double.MAX_VALUE) minG = 0.0
+                                if (maxG == -Double.MAX_VALUE) maxG = 0.0
+
+                                segments.add(
+                                    AutoDetectedSegment(
+                                        id = id,
+                                        name = "Detected Climb (${(finalDistance/1000.0).toString().substringBefore(".")}.${((finalDistance%1000.0)/100.0).toInt()}km)",
+                                        startIndex = trimmedStart,
+                                        endIndex = trimmedEnd,
+                                        distanceMeters = finalDistance,
+                                        durationSeconds = finalDuration.toDouble(),
+                                        averageGrade = finalAverageGrade,
+                                        startLat = finalStartPt.lat,
+                                        startLon = finalStartPt.lon,
+                                        endLat = finalEndPt.lat,
+                                        endLon = finalEndPt.lon,
+                                        startElev = finalStartPt.elevation,
+                                        endElev = finalEndPt.elevation,
+                                        minGrade = minG,
+                                        maxGrade = maxG,
+                                        startFitTimestamp = finalStartPt.timestamp,
+                                        endFitTimestamp = finalEndPt.timestamp
+                                    )
+                                )
+                            }
+                        }
+                    }
                 }
             }
             startIdx = endIdx

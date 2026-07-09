@@ -3720,210 +3720,299 @@ fun FitTrimmerMainContent(
                                     }
 
                                     if (selectedTab == 4) {
-                                        Card(
-                                            backgroundColor = Color.White,
-                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
-                                            border = BorderStroke(1.dp, Color(0xFFE5E5EA)),
-                                            elevation = 1.dp,
+                                        var isSegmentSettingsExpanded by remember { mutableStateOf(true) }
+
+                                        Column(
+                                            verticalArrangement = Arrangement.spacedBy(8.dp),
                                             modifier = Modifier.fillMaxWidth()
                                         ) {
-                                            Column(
-                                                modifier = Modifier.padding(12.dp),
-                                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                                            // 1. 設定用カード
+                                            Card(
+                                                backgroundColor = Color.White,
+                                                shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                                                border = BorderStroke(1.dp, Color(0xFFE5E5EA)),
+                                                elevation = 1.dp,
+                                                modifier = Modifier.fillMaxWidth()
                                             ) {
-                                                Text("セグメント自動検出", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 0.5.sp)
-                                                Text("GPSルート上の踏切や信号機を避け、ノンストップで走れる登り坂（1km以上）を自動で抽出します。", color = Color(0xFF636366), fontSize = 10.sp, lineHeight = 13.sp)
-
-                                                Spacer(modifier = Modifier.height(6.dp))
-
-                                                Row(
-                                                    modifier = Modifier.fillMaxWidth(),
-                                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                                    verticalAlignment = Alignment.CenterVertically
+                                                Column(
+                                                    modifier = Modifier.padding(12.dp),
+                                                    verticalArrangement = Arrangement.spacedBy(8.dp)
                                                 ) {
-                                                    Text("最小区間長しきい値", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp)
-                                                    Text("${viewModel.minSegmentDistanceMeters.toInt()} m", color = Color(0xFF007AFF), fontWeight = FontWeight.Bold, fontSize = 10.sp)
-                                                }
-                                                Spacer(modifier = Modifier.height(2.dp))
-                                                Slider(
-                                                    value = viewModel.minSegmentDistanceMeters.toFloat(),
-                                                    onValueChange = { viewModel.minSegmentDistanceMeters = it.toDouble() },
-                                                    valueRange = 100f..2000f,
-                                                    steps = 18,
-                                                    modifier = Modifier.fillMaxWidth().height(24.dp),
-                                                    colors = SliderDefaults.colors(
-                                                        thumbColor = Color(0xFF007AFF),
-                                                        activeTrackColor = Color(0xFF007AFF),
-                                                        inactiveTrackColor = Color(0xFFE5E5EA)
-                                                    )
-                                                )
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Text("セグメント自動検出設定", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 0.5.sp)
+                                                        Text(
+                                                            text = if (isSegmentSettingsExpanded) "▲ 設定を折りたたむ" else "▼ 設定を展開する",
+                                                            color = Color(0xFF007AFF),
+                                                            fontSize = 10.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            modifier = Modifier.clickable { isSegmentSettingsExpanded = !isSegmentSettingsExpanded }
+                                                        )
+                                                    }
 
-                                                Spacer(modifier = Modifier.height(4.dp))
+                                                    if (isSegmentSettingsExpanded) {
+                                                        Text("GPSルート上の踏切や信号機を避け、ノンストップで走れる登り坂（1km以上）を自動で抽出します。", color = Color(0xFF636366), fontSize = 10.sp, lineHeight = 13.sp)
 
-                                                Row(
-                                                    modifier = Modifier.fillMaxWidth(),
-                                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                                    verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    Text("停車（オートポーズ）検知しきい値", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp)
-                                                    Text("${String.format(java.util.Locale.US, "%.1f", viewModel.autoPauseGapSeconds)} 秒", color = Color(0xFF007AFF), fontWeight = FontWeight.Bold, fontSize = 10.sp)
-                                                }
-                                                Spacer(modifier = Modifier.height(2.dp))
-                                                Slider(
-                                                    value = viewModel.autoPauseGapSeconds.toFloat(),
-                                                    onValueChange = { viewModel.autoPauseGapSeconds = it.toDouble() },
-                                                    valueRange = 2.0f..15.0f,
-                                                    steps = 26,
-                                                    modifier = Modifier.fillMaxWidth().height(24.dp),
-                                                    colors = SliderDefaults.colors(
-                                                        thumbColor = Color(0xFF007AFF),
-                                                        activeTrackColor = Color(0xFF007AFF),
-                                                        inactiveTrackColor = Color(0xFFE5E5EA)
-                                                    )
-                                                )
+                                                        Spacer(modifier = Modifier.height(4.dp))
 
-                                                Spacer(modifier = Modifier.height(4.dp))
-
-                                                Row(
-                                                    modifier = Modifier.fillMaxWidth(),
-                                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                                    verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    Text("検索対象 最小勾配", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp)
-                                                    Text("${String.format(java.util.Locale.US, "%.1f", viewModel.minSearchGrade)} %", color = Color(0xFF007AFF), fontWeight = FontWeight.Bold, fontSize = 10.sp)
-                                                }
-                                                Spacer(modifier = Modifier.height(2.dp))
-                                                Slider(
-                                                    value = viewModel.minSearchGrade.toFloat(),
-                                                    onValueChange = { 
-                                                        val newVal = it.toDouble()
-                                                        viewModel.minSearchGrade = newVal
-                                                        if (viewModel.maxSearchGrade < newVal) {
-                                                            viewModel.maxSearchGrade = newVal
+                                                        Row(
+                                                            modifier = Modifier.fillMaxWidth(),
+                                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                                            verticalAlignment = Alignment.CenterVertically
+                                                        ) {
+                                                            Text("最小区間長しきい値", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                                                            Text("${viewModel.minSegmentDistanceMeters.toInt()} m", color = Color(0xFF007AFF), fontWeight = FontWeight.Bold, fontSize = 10.sp)
                                                         }
-                                                    },
-                                                    valueRange = -5.0f..10.0f,
-                                                    steps = 30,
-                                                    modifier = Modifier.fillMaxWidth().height(24.dp),
-                                                    colors = SliderDefaults.colors(
-                                                        thumbColor = Color(0xFF007AFF),
-                                                        activeTrackColor = Color(0xFF007AFF),
-                                                        inactiveTrackColor = Color(0xFFE5E5EA)
-                                                    )
-                                                )
+                                                        Spacer(modifier = Modifier.height(2.dp))
+                                                        Slider(
+                                                            value = viewModel.minSegmentDistanceMeters.toFloat(),
+                                                            onValueChange = { viewModel.minSegmentDistanceMeters = it.toDouble() },
+                                                            valueRange = 100f..2000f,
+                                                            steps = 18,
+                                                            modifier = Modifier.fillMaxWidth().height(24.dp),
+                                                            colors = SliderDefaults.colors(
+                                                                thumbColor = Color(0xFF007AFF),
+                                                                activeTrackColor = Color(0xFF007AFF),
+                                                                inactiveTrackColor = Color(0xFFE5E5EA)
+                                                            )
+                                                        )
 
-                                                Spacer(modifier = Modifier.height(4.dp))
+                                                        Spacer(modifier = Modifier.height(4.dp))
 
-                                                Row(
-                                                    modifier = Modifier.fillMaxWidth(),
-                                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                                    verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    Text("検索対象 最大勾配", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp)
-                                                    Text("${String.format(java.util.Locale.US, "%.1f", viewModel.maxSearchGrade)} %", color = Color(0xFF007AFF), fontWeight = FontWeight.Bold, fontSize = 10.sp)
-                                                }
-                                                Spacer(modifier = Modifier.height(2.dp))
-                                                Slider(
-                                                    value = viewModel.maxSearchGrade.toFloat(),
-                                                    onValueChange = { 
-                                                        val newVal = it.toDouble()
-                                                        viewModel.maxSearchGrade = newVal
-                                                        if (viewModel.minSearchGrade > newVal) {
-                                                            viewModel.minSearchGrade = newVal
+                                                        Row(
+                                                            modifier = Modifier.fillMaxWidth(),
+                                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                                            verticalAlignment = Alignment.CenterVertically
+                                                        ) {
+                                                            Text("停車（オートポーズ）検知しきい値", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                                                            Text("${String.format(java.util.Locale.US, "%.1f", viewModel.autoPauseGapSeconds)} 秒", color = Color(0xFF007AFF), fontWeight = FontWeight.Bold, fontSize = 10.sp)
                                                         }
-                                                    },
-                                                    valueRange = 0.0f..20.0f,
-                                                    steps = 40,
-                                                    modifier = Modifier.fillMaxWidth().height(24.dp),
-                                                    colors = SliderDefaults.colors(
-                                                        thumbColor = Color(0xFF007AFF),
-                                                        activeTrackColor = Color(0xFF007AFF),
-                                                        inactiveTrackColor = Color(0xFFE5E5EA)
-                                                    )
-                                                )
+                                                        Spacer(modifier = Modifier.height(2.dp))
+                                                        Slider(
+                                                            value = viewModel.autoPauseGapSeconds.toFloat(),
+                                                            onValueChange = { viewModel.autoPauseGapSeconds = it.toDouble() },
+                                                            valueRange = 2.0f..15.0f,
+                                                            steps = 26,
+                                                            modifier = Modifier.fillMaxWidth().height(24.dp),
+                                                            colors = SliderDefaults.colors(
+                                                                thumbColor = Color(0xFF007AFF),
+                                                                activeTrackColor = Color(0xFF007AFF),
+                                                                inactiveTrackColor = Color(0xFFE5E5EA)
+                                                            )
+                                                        )
 
-                                                Spacer(modifier = Modifier.height(4.dp))
+                                                        Spacer(modifier = Modifier.height(4.dp))
 
-                                                val hasTelemetry = telemetryPoints.isNotEmpty()
-                                                Button(
-                                                    onClick = { viewModel.startSegmentDetection(scope) },
-                                                    enabled = hasTelemetry && !viewModel.isDetectingSegments,
-                                                    modifier = Modifier.fillMaxWidth().height(36.dp),
-                                                    colors = ButtonDefaults.buttonColors(
-                                                        backgroundColor = Color(0xFF007AFF),
-                                                        contentColor = Color.White,
-                                                        disabledBackgroundColor = Color(0xFFE5E5EA)
-                                                    ),
-                                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
-                                                ) {
-                                                    if (viewModel.isDetectingSegments) {
-                                                        Text("検出中...", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                                    } else {
-                                                        Text("登り区間を自動スキャン", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                        Row(
+                                                            modifier = Modifier.fillMaxWidth(),
+                                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                                            verticalAlignment = Alignment.CenterVertically
+                                                        ) {
+                                                            Text("検索対象 最小勾配", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                                                            Text("${String.format(java.util.Locale.US, "%.1f", viewModel.minSearchGrade)} %", color = Color(0xFF007AFF), fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                                                        }
+                                                        Spacer(modifier = Modifier.height(2.dp))
+                                                        Slider(
+                                                            value = viewModel.minSearchGrade.toFloat(),
+                                                            onValueChange = { 
+                                                                val newVal = it.toDouble()
+                                                                viewModel.minSearchGrade = newVal
+                                                                if (viewModel.maxSearchGrade < newVal) {
+                                                                    viewModel.maxSearchGrade = newVal
+                                                                }
+                                                            },
+                                                            valueRange = -5.0f..10.0f,
+                                                            steps = 30,
+                                                            modifier = Modifier.fillMaxWidth().height(24.dp),
+                                                            colors = SliderDefaults.colors(
+                                                                thumbColor = Color(0xFF007AFF),
+                                                                activeTrackColor = Color(0xFF007AFF),
+                                                                inactiveTrackColor = Color(0xFFE5E5EA)
+                                                            )
+                                                        )
+
+                                                        Spacer(modifier = Modifier.height(4.dp))
+
+                                                        Row(
+                                                            modifier = Modifier.fillMaxWidth(),
+                                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                                            verticalAlignment = Alignment.CenterVertically
+                                                        ) {
+                                                            Text("検索対象 最大勾配", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                                                            Text("${String.format(java.util.Locale.US, "%.1f", viewModel.maxSearchGrade)} %", color = Color(0xFF007AFF), fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                                                        }
+                                                        Spacer(modifier = Modifier.height(2.dp))
+                                                        Slider(
+                                                            value = viewModel.maxSearchGrade.toFloat(),
+                                                            onValueChange = { 
+                                                                val newVal = it.toDouble()
+                                                                viewModel.maxSearchGrade = newVal
+                                                                if (viewModel.minSearchGrade > newVal) {
+                                                                    viewModel.minSearchGrade = newVal
+                                                                }
+                                                            },
+                                                            valueRange = 0.0f..20.0f,
+                                                            steps = 40,
+                                                            modifier = Modifier.fillMaxWidth().height(24.dp),
+                                                            colors = SliderDefaults.colors(
+                                                                thumbColor = Color(0xFF007AFF),
+                                                                activeTrackColor = Color(0xFF007AFF),
+                                                                inactiveTrackColor = Color(0xFFE5E5EA)
+                                                            )
+                                                        )
+
+                                                        Spacer(modifier = Modifier.height(4.dp))
+
+                                                        val hasTelemetry = telemetryPoints.isNotEmpty()
+                                                        Button(
+                                                            onClick = { viewModel.startSegmentDetection(scope) },
+                                                            enabled = hasTelemetry && !viewModel.isDetectingSegments,
+                                                            modifier = Modifier.fillMaxWidth().height(36.dp),
+                                                            colors = ButtonDefaults.buttonColors(
+                                                                backgroundColor = Color(0xFF007AFF),
+                                                                contentColor = Color.White,
+                                                                disabledBackgroundColor = Color(0xFFE5E5EA)
+                                                            ),
+                                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
+                                                        ) {
+                                                            if (viewModel.isDetectingSegments) {
+                                                                Text("検出中...", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                            } else {
+                                                                Text("登り区間を自動スキャン", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                            }
+                                                        }
+
+                                                        if (viewModel.segmentDetectionProgressText.isNotEmpty()) {
+                                                            Text(
+                                                                text = viewModel.segmentDetectionProgressText,
+                                                                color = if (viewModel.segmentDetectionProgressText.startsWith("Error")) Color(0xFFFF3B30) else Color(0xFF636366),
+                                                                fontSize = 9.sp,
+                                                                lineHeight = 12.sp,
+                                                                modifier = Modifier.padding(vertical = 2.dp)
+                                                            )
+                                                        }
                                                     }
                                                 }
+                                            }
 
-                                                if (viewModel.segmentDetectionProgressText.isNotEmpty()) {
-                                                    Text(
-                                                        text = viewModel.segmentDetectionProgressText,
-                                                        color = if (viewModel.segmentDetectionProgressText.startsWith("Error")) Color(0xFFFF3B30) else Color(0xFF636366),
-                                                        fontSize = 9.sp,
-                                                        lineHeight = 12.sp,
-                                                        modifier = Modifier.padding(vertical = 2.dp)
-                                                    )
-                                                }
+                                            // 2. 検出結果カード
+                                            Card(
+                                                backgroundColor = Color.White,
+                                                shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                                                border = BorderStroke(1.dp, Color(0xFFE5E5EA)),
+                                                elevation = 1.dp,
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Column(
+                                                    modifier = Modifier.padding(12.dp),
+                                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                                ) {
+                                                    Text("検出されたセグメント (${viewModel.detectedSegments.size}件)", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 11.sp)
 
-                                                Spacer(modifier = Modifier.height(4.dp))
-
-                                                Text("検出されたセグメント (${viewModel.detectedSegments.size}件)", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 11.sp)
-
-                                                if (viewModel.detectedSegments.isEmpty()) {
-                                                    Text("検出された区間はありません。ログをロードした後にスキャンを実行してください。", color = Color.Gray, fontSize = 10.sp)
-                                                } else {
-                                                    Column(
-                                                        verticalArrangement = Arrangement.spacedBy(6.dp),
-                                                        modifier = Modifier
-                                                            .fillMaxWidth()
-                                                            .heightIn(max = 280.dp)
-                                                            .verticalScroll(rememberScrollState())
-                                                    ) {
-                                                        viewModel.detectedSegments.forEach { seg ->
-                                                            Card(
-                                                                backgroundColor = Color(0xFFF2F2F7),
-                                                                shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp),
-                                                                modifier = Modifier
-                                                                    .fillMaxWidth()
-                                                                    .clickable {
-                                                                        val startPt = telemetryPoints.getOrNull(seg.startIndex)
-                                                                        val endPt = telemetryPoints.getOrNull(seg.endIndex)
-                                                                        val videoStart = viewModel.videoStartInstant
-                                                                        if (startPt != null && endPt != null && videoStart != null) {
-                                                                            val fitEpoch = java.time.Instant.parse("1989-12-31T00:00:00Z").epochSecond
-                                                                            val offsetSeconds = timeOffsetState.millis / 1000.0
-                                                                            val videoStartFit = videoStart.epochSecond - fitEpoch + offsetSeconds
-                                                                            val startSec = startPt.timestamp - videoStartFit
-                                                                            val endSec = endPt.timestamp - videoStartFit
-                                                                            
-                                                                            // Set trim range
-                                                                            viewModel.trimStartSeconds = startSec.coerceAtLeast(0.0)
-                                                                            viewModel.trimEndSeconds = endSec.coerceAtLeast(0.0)
-                                                                            
-                                                                            // Seek player to start of segment
-                                                                            videoCurrentTimeMs = (startSec * 1000).toLong()
+                                                    if (viewModel.detectedSegments.isEmpty()) {
+                                                        Text("検出された区間はありません。ログをロードした後にスキャンを実行してください。", color = Color.Gray, fontSize = 10.sp)
+                                                    } else {
+                                                        val listMaxHeight = if (isSegmentSettingsExpanded) 220.dp else 520.dp
+                                                        Column(
+                                                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                                                            modifier = Modifier
+                                                                .fillMaxWidth()
+                                                                .heightIn(max = listMaxHeight)
+                                                                .verticalScroll(rememberScrollState())
+                                                        ) {
+                                                            viewModel.detectedSegments.forEach { seg ->
+                                                                Card(
+                                                                    backgroundColor = Color(0xFFF2F2F7),
+                                                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp),
+                                                                    modifier = Modifier
+                                                                        .fillMaxWidth()
+                                                                        .clickable {
+                                                                            val startPt = telemetryPoints.getOrNull(seg.startIndex)
+                                                                            val endPt = telemetryPoints.getOrNull(seg.endIndex)
+                                                                            val videoStart = viewModel.videoStartInstant
+                                                                            if (startPt != null && endPt != null && videoStart != null) {
+                                                                                val fitEpoch = java.time.Instant.parse("1989-12-31T00:00:00Z").epochSecond
+                                                                                val offsetSeconds = timeOffsetState.millis / 1000.0
+                                                                                val videoStartFit = videoStart.epochSecond - fitEpoch + offsetSeconds
+                                                                                val startSec = startPt.timestamp - videoStartFit
+                                                                                val endSec = endPt.timestamp - videoStartFit
+                                                                                
+                                                                                viewModel.trimStartSeconds = startSec.coerceAtLeast(0.0)
+                                                                                viewModel.trimEndSeconds = endSec.coerceAtLeast(0.0)
+                                                                                videoCurrentTimeMs = (startSec * 1000).toLong()
+                                                                            }
                                                                         }
-                                                                    }
-                                                            ) {
-                                                                Column(modifier = Modifier.padding(8.dp)) {
-                                                                    Text(seg.name, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color(0xFF1C1C1E))
-                                                                    Row(
-                                                                        modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
-                                                                        horizontalArrangement = Arrangement.SpaceBetween
-                                                                    ) {
-                                                                        Text("距離: ${String.format("%.2f", seg.distanceMeters / 1000.0)}km", fontSize = 9.sp, color = Color(0xFF8E8E93))
-                                                                        Text("平均勾配: ${String.format("%.1f", seg.averageGrade)}%", fontSize = 9.sp, color = Color(0xFF8E8E93))
-                                                                        val min = (seg.durationSeconds / 60).toInt()
-                                                                        val sec = (seg.durationSeconds % 60).toInt()
-                                                                        Text("タイム: ${min}分${sec}秒", fontSize = 9.sp, color = Color(0xFF8E8E93))
+                                                                ) {
+                                                                    Column(modifier = Modifier.padding(8.dp)) {
+                                                                        Text(seg.name, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color(0xFF1C1C1E))
+                                                                        Row(
+                                                                            modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
+                                                                            horizontalArrangement = Arrangement.SpaceBetween
+                                                                        ) {
+                                                                            Text("距離: ${String.format("%.2f", seg.distanceMeters / 1000.0)}km", fontSize = 9.sp, color = Color(0xFF8E8E93))
+                                                                            Text("平均勾配: ${String.format("%.1f", seg.averageGrade)}%", fontSize = 9.sp, color = Color(0xFF8E8E93))
+                                                                            val min = (seg.durationSeconds / 60).toInt()
+                                                                            val sec = (seg.durationSeconds % 60).toInt()
+                                                                            Text("タイム: ${min}分${sec}秒", fontSize = 9.sp, color = Color(0xFF8E8E93))
+                                                                        }
+                                                                        
+                                                                        val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+                                                                        Row(
+                                                                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                                                                            horizontalArrangement = Arrangement.End
+                                                                        ) {
+                                                                            Text(
+                                                                                text = "📋 デバッグコピー",
+                                                                                fontSize = 8.sp,
+                                                                                fontWeight = FontWeight.Bold,
+                                                                                color = Color(0xFF007AFF),
+                                                                                modifier = Modifier
+                                                                                    .clickable {
+                                                                                        val fitEpoch = java.time.Instant.parse("1989-12-31T00:00:00Z").epochSecond
+                                                                                        val videoStart = viewModel.videoStartInstant
+                                                                                        val offsetSeconds = timeOffsetState.millis / 1000.0
+                                                                                        val videoStartFit = if (videoStart != null) videoStart.epochSecond - fitEpoch + offsetSeconds else 0.0
+                                                                                        
+                                                                                        val startSec = seg.startFitTimestamp - videoStartFit
+                                                                                        val endSec = seg.endFitTimestamp - videoStartFit
+                                                                                        
+                                                                                        val formatTime = { sec: Double ->
+                                                                                            val s = sec.coerceAtLeast(0.0)
+                                                                                            val m = (s / 60).toInt()
+                                                                                            val r = (s % 60).toInt()
+                                                                                            "%02d:%02d".format(java.util.Locale.US, m, r)
+                                                                                        }
+                                                                                        
+                                                                                        val debugText = """
+                                                                                            === FIT-Trimmer Segment Debug Information ===
+                                                                                            Segment ID: ${seg.id}
+                                                                                            Name: ${seg.name}
+                                                                                            ---------------------------------------------
+                                                                                            Distance: ${String.format(java.util.Locale.US, "%.1f", seg.distanceMeters)} m
+                                                                                            Duration: ${String.format(java.util.Locale.US, "%.1f", seg.durationSeconds)} s
+                                                                                            Average Grade: ${String.format(java.util.Locale.US, "%.2f", seg.averageGrade)} %
+                                                                                            Min Grade: ${String.format(java.util.Locale.US, "%.2f", seg.minGrade)} %
+                                                                                            Max Grade: ${String.format(java.util.Locale.US, "%.2f", seg.maxGrade)} %
+                                                                                            ---------------------------------------------
+                                                                                            FIT Start Time (EpochSec): ${seg.startFitTimestamp}
+                                                                                            FIT End Time (EpochSec): ${seg.endFitTimestamp}
+                                                                                            Video Rel Start: ${String.format(java.util.Locale.US, "%.1f", startSec)}s (${formatTime(startSec)})
+                                                                                            Video Rel End:   ${String.format(java.util.Locale.US, "%.1f", endSec)}s (${formatTime(endSec)})
+                                                                                            ---------------------------------------------
+                                                                                            Start Coordinates: lat=${String.format(java.util.Locale.US, "%.6f", seg.startLat)}, lon=${String.format(java.util.Locale.US, "%.6f", seg.startLon)}
+                                                                                            End Coordinates:   lat=${String.format(java.util.Locale.US, "%.6f", seg.endLat)}, lon=${String.format(java.util.Locale.US, "%.6f", seg.endLon)}
+                                                                                            Start Elevation:   ${String.format(java.util.Locale.US, "%.1f", seg.startElev)} m
+                                                                                            End Elevation:     ${String.format(java.util.Locale.US, "%.1f", seg.endElev)} m
+                                                                                            =============================================
+                                                                                        """.trimIndent()
+                                                                                        clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(debugText))
+                                                                                    }
+                                                                                    .padding(horizontal = 4.dp, vertical = 2.dp)
+                                                                            )
+                                                                        }
                                                                     }
                                                                 }
                                                             }
