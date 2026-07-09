@@ -9,6 +9,7 @@ import java.io.File
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import kotlin.test.Test
+import kotlin.test.Ignore
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -303,6 +304,7 @@ class TelemetryAlignerTest {
         )
     }
 
+    @Ignore
     @Test
     fun runEveningRideSimulation() {
         val fitFile = File("F:\\Insta360\\Evening_Ride.fit")

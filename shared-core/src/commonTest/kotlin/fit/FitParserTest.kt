@@ -2,6 +2,7 @@ package fit
 
 import crc.Crc16
 import kotlin.test.Test
+import kotlin.test.Ignore
 import kotlin.test.assertFailsWith
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -401,6 +402,7 @@ class FitParserTest {
         assertTrue(new120sSafeguard.size < old10sPolls, "New method should call API fewer times than old 10s polling")
     }
 
+    @Ignore
     @Test
     fun dumpRealTelemetryApiData() {
         var fitFile = java.io.File("Lunch_Ride.fit")
