@@ -43,6 +43,7 @@ data class HudOverlayLayout(
     val heartRate: HeartRateLayout?,
     val power: MetricLayout?,
     val wkg: MetricLayout?,
+    val powerTrendY: Float,
     val grade: MetricLayout?,
     val finalCy: Float,
     val isReady: Boolean
@@ -78,6 +79,7 @@ class HudOverlayLayoutEngine {
                 heartRate = null,
                 power = null,
                 wkg = null,
+                powerTrendY = config.yOffset,
                 grade = null,
                 finalCy = config.yOffset,
                 isReady = false
@@ -264,6 +266,8 @@ class HudOverlayLayoutEngine {
             layoutCell(getLabel("W/KG"), wkgStr, "W/kg", "#10b981", isVisible = true)
         } else null
 
+        val powerTrendY = cy
+
         // 6. Simulating POWER TREND space to advance cy correctly
         if (config.showPowerTrend) {
             val tickLabelSize = labelSize * 0.8f
@@ -284,6 +288,7 @@ class HudOverlayLayoutEngine {
             heartRate = heartRate,
             power = power,
             wkg = wkg,
+            powerTrendY = powerTrendY,
             grade = grade,
             finalCy = cy,
             isReady = true
