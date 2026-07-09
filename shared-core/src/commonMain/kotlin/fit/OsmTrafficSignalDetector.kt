@@ -1,0 +1,164 @@
+package fit
+
+import kotlinx.serialization.Serializable
+import kotlin.math.*
+import kotlinx.serialization.json.*
+
+@Serializable
+data class TrafficSignalNode(
+    val lat: Double,
+    val lon: Double,
+    val type: String
+)
+
+@Serializable
+data class AutoDetectedSegment(
+    val id: String,
+    val name: String,
+    val startIndex: Int,
+    val endIndex: Int,
+    val distanceMeters: Double,
+    val durationSeconds: Double,
+    val averageGrade: Double
+)
+
+class OsmTrafficSignalDetector(
+    private val httpRequester: HttpRequester
+) {
+    private val json = Json { ignoreUnknownKeys = true }
+
+    // Constants for distance calculation
+    private val PI = 3.141592653589793
+    private fun toRadians(deg: Double): Double = deg * PI / 180.0
+
+    private fun calculateDistanceMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+        val latMid = (lat1 + lat2) / 2.0
+        val dy = (lat1 - lat2) * 111320.0
+        val dx = (lon1 - lon2) * 111320.0 * cos(toRadians(latMid))
+        return sqrt(dx * dx + dy * dy)
+    }
+
+    private fun encodeUrlQuery(query: String): String {
+        return query.replace(" ", "%20")
+            .replace("\"", "%22")
+            .replace("[", "%5B")
+            .replace("]", "%5D")
+            .replace("(", "%28")
+            .replace(")", "%29")
+            .replace(";", "%3B")
+    }
+
+    // Queries OSM for traffic signals in the bbox and filters telemetry points to find non-stop segments
+    suspend fun detectSegments(
+        bbox: BBox,
+        telemetryPoints: List<FitParser.TelemetryPoint>,
+        minDistanceMeters: Double = 1000.0
+    ): List<AutoDetectedSegment> {
+        if (telemetryPoints.size < 2) return emptyList()
+
+        // 1. Build and send Overpass query
+        val query = """
+            [out:json][timeout:15];
+            (
+              node["highway"="traffic_signals"](${bbox.south},${bbox.west},${bbox.north},${bbox.east});
+              node["railway"="level_crossing"](${bbox.south},${bbox.west},${bbox.north},${bbox.east});
+            );
+            out body;
+        """.trimIndent().replace("\n", "")
+
+        val url = "https://overpass-api.de/api/interpreter?data=${encodeUrlQuery(query)}"
+        val responseText = httpRequester.get(url, mapOf("User-Agent" to "FitTrimmer/1.0"))
+
+        // 2. Parse elements
+        val signalNodes = mutableListOf<TrafficSignalNode>()
+        try {
+            val root = json.parseToJsonElement(responseText).jsonObject
+            val elements = root["elements"]?.jsonArray
+            if (elements != null) {
+                for (elem in elements) {
+                    val obj = elem.jsonObject
+                    val lat = obj["lat"]?.jsonPrimitive?.double ?: continue
+                    val lon = obj["lon"]?.jsonPrimitive?.double ?: continue
+                    val tags = obj["tags"]?.jsonObject
+                    val type = if (tags?.get("railway")?.jsonPrimitive?.content == "level_crossing") {
+                        "level_crossing"
+                    } else {
+                        "traffic_signals"
+                    }
+                    signalNodes.add(TrafficSignalNode(lat, lon, type))
+                }
+            }
+        } catch (e: Exception) {
+            // Return empty if parsing fails
+            return emptyList()
+        }
+
+        // 3. Find indices close to any traffic signal (within 10 meters)
+        // To avoid multiple splits at the same intersection, we group consecutive close points
+        val splitIndices = mutableListOf<Int>()
+        var inSignalZone = false
+        for (i in telemetryPoints.indices) {
+            val pt = telemetryPoints[i]
+            var nearSignal = false
+            for (node in signalNodes) {
+                if (calculateDistanceMeters(pt.lat, pt.lon, node.lat, node.lon) <= 10.0) {
+                    nearSignal = true
+                    break
+                }
+            }
+
+            if (nearSignal) {
+                if (!inSignalZone) {
+                    splitIndices.add(i)
+                    inSignalZone = true
+                }
+            } else {
+                inSignalZone = false
+            }
+        }
+
+        // 4. Split segments
+        val segments = mutableListOf<AutoDetectedSegment>()
+        var startIdx = 0
+        val boundaryIndices = splitIndices + listOf(telemetryPoints.lastIndex)
+
+        for (endIdx in boundaryIndices) {
+            if (endIdx > startIdx) {
+                val startPt = telemetryPoints[startIdx]
+                val endPt = telemetryPoints[endIdx]
+                val distance = endPt.distance - startPt.distance
+                val duration = endPt.elapsedSeconds - startPt.elapsedSeconds
+                
+                // Average grade check (we only want ascending segments, height difference >= 0)
+                val elevDiff = endPt.elevation - startPt.elevation
+                
+                if (distance >= minDistanceMeters && elevDiff >= 0.0) {
+                    val averageGrade = if (distance > 0) (elevDiff / distance) * 100.0 else 0.0
+                    val id = "seg_${startIdx}_${endIdx}"
+                    segments.add(
+                        AutoDetectedSegment(
+                            id = id,
+                            name = "Detected Climb (${(distance/1000.0).toString().substringBefore(".")}.${((distance%1000.0)/100.0).toInt()}km)",
+                            startIndex = startIdx,
+                            endIndex = endIdx,
+                            distanceMeters = distance,
+                            durationSeconds = duration.toDouble(),
+                            averageGrade = averageGrade
+                        )
+                    )
+                }
+            }
+            startIdx = endIdx
+        }
+
+        return segments
+    }
+}
+
+data class BBox(
+    val south: Double,
+    val west: Double,
+    val north: Double,
+    val east: Double
+)
+
