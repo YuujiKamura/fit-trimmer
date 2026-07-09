@@ -244,11 +244,10 @@ class OsmTrafficSignalDetector(
                 val distance = endPt.distance - startPt.distance
                 val duration = endPt.elapsedSeconds - startPt.elapsedSeconds
                 
-                // Average grade check (we only want ascending segments, height difference >= 0)
                 val elevDiff = endPt.elevation - startPt.elevation
+                val averageGrade = if (distance > 0) (elevDiff / distance) * 100.0 else 0.0
                 
-                if (distance >= minDistanceMeters && elevDiff >= 0.0) {
-                    val averageGrade = if (distance > 0) (elevDiff / distance) * 100.0 else 0.0
+                if (distance >= minDistanceMeters && averageGrade >= minSearchGrade && averageGrade <= maxSearchGrade) {
                     val id = "seg_${startIdx}_${endIdx}"
                     segments.add(
                         AutoDetectedSegment(
