@@ -1,5 +1,7 @@
 package fit
 
+import kotlin.math.roundToInt
+
 data class MetricLayout(
     val labelText: String,
     val valueText: String,
@@ -138,9 +140,9 @@ class HudOverlayLayoutEngine {
                 val combinedText = if (hasTemp) {
                     val tempStr = if (config.useImperialUnits) {
                         val f = (tempVal * 9.0 / 5.0) + 32.0
-                        "${f.toInt()}°F"
+                        "${f.roundToInt()}°F"
                     } else {
-                        "${tempVal.toInt()}°C"
+                        "${tempVal.roundToInt()}°C"
                     }
                     "$dtText  $tempStr"
                 } else {
