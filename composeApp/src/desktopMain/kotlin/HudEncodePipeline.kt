@@ -200,7 +200,7 @@ object HudEncodePipeline {
                         } else 0.0
                         onProgress(overallProg.toFloat(), "[Part ${idx + 1}/${ranges.size}] $status")
                     },
-                    onFrameRendered = onFrame,
+                    onFrameRendered = { img -> if (img is java.awt.image.BufferedImage) onFrame(img) },
                     cancelSupplier = cancelSupplier,
                     customRenderer = { canvas, point, allPoints, trimmedPoints, pBuf, progressRatio ->
                         proxy.renderFrame(canvas, point, allPoints, trimmedPoints, pBuf, progressRatio)
