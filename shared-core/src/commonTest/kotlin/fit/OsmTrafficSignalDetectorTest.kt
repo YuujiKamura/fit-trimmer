@@ -302,7 +302,7 @@ class OsmTrafficSignalDetectorTest {
                     power = 200.0,
                     cadence = 90.0,
                     heartRate = 140.0,
-                    elevation = 100.0 + i * 2, // Ascending overall
+                    elevation = 100.0 + i * 0.5, // Ascending overall (~5% grade)
                     grade = grade,
                     lat = 32.800 + progress * 0.005,
                     lon = 130.800 + progress * 0.005,
@@ -335,6 +335,17 @@ class OsmTrafficSignalDetectorTest {
             maxSearchGrade = 15.0
         )
         assertEquals(1, resultNoSplit.size, "Should not split as grade remains within bounds")
+
+        // Case 3: Filter average grade strictly (minSearchGrade = 10.0%, all points are 5.0% or -1.0% so average grade is < 10.0%)
+        // The resulting segments should be completely filtered out (0 segments), not just split but ignored.
+        val resultEmpty = detector.detectSegments(
+            bbox = bbox,
+            telemetryPoints = points,
+            minDistanceMeters = 30.0,
+            minSearchGrade = 10.0,
+            maxSearchGrade = 20.0
+        )
+        assertEquals(0, resultEmpty.size, "Should filter out segments whose average grade does not meet the minSearchGrade requirement")
     }
 
     @Test
