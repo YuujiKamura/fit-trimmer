@@ -1,0 +1,111 @@
+package fit
+
+import kotlinx.coroutines.test.runTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+
+class OsmTrafficSignalDetectorTest {
+
+    private class MockHttpRequester(val jsonResponse: String) : HttpRequester {
+        var lastUrl: String? = null
+        override suspend fun get(url: String, headers: Map<String, String>): String {
+            lastUrl = url
+            return jsonResponse
+        }
+    }
+
+    @Test
+    fun testDetectSegmentsSuccess() = runTest {
+        // Mock response containing 3 nodes (2 traffic signals, 1 level crossing)
+        // Signal A: Near point 10 (lat=32.801, lon=130.801) -> SHOULD trigger split
+        // Signal B: Far from route (lat=32.900, lon=130.900) -> SHOULD NOT trigger split
+        // Crossing C: Near point 30 (lat=32.803, lon=130.803) -> SHOULD trigger split
+        val mockJson = """
+            {
+                "elements": [
+                    {
+                        "type": "node",
+                        "id": 1001,
+                        "lat": 32.801005,
+                        "lon": 130.801005,
+                        "tags": { "highway": "traffic_signals" }
+                    },
+                    {
+                        "type": "node",
+                        "id": 1002,
+                        "lat": 32.900000,
+                        "lon": 130.900000,
+                        "tags": { "highway": "traffic_signals" }
+                    },
+                    {
+                        "type": "node",
+                        "id": 1003,
+                        "lat": 32.803005,
+                        "lon": 130.803005,
+                        "tags": { "railway": "level_crossing" }
+                    }
+                ]
+            }
+        """.trimIndent()
+
+        val mockHttp = MockHttpRequester(mockJson)
+        val detector = OsmTrafficSignalDetector(mockHttp)
+
+        // Generate mock telemetry points (a route from lat=32.800, lon=130.800 to lat=32.805, lon=130.805)
+        // distance increases by 100m per point, elevation goes up
+        val points = mutableListOf<FitParser.TelemetryPoint>()
+        for (i in 0..40) {
+            val progress = i / 40.0
+            points.add(
+                FitParser.TelemetryPoint(
+                    timestamp = 1782000000.0 + i * 10,
+                    speed = 10.0,
+                    power = 200.0,
+                    cadence = 90.0,
+                    heartRate = 140.0,
+                    elevation = 100.0 + i * 5, // ascending
+                    grade = 5.0,
+                    lat = 32.800 + progress * 0.005, // 32.800 to 32.805
+                    lon = 130.800 + progress * 0.005, // 130.800 to 130.805
+                    distance = i * 100.0, // 0m to 4000m
+                    elapsedSeconds = i * 10
+                )
+            )
+        }
+
+        // BBox: south=32.79, west=130.79, north=32.91, east=130.91
+        val bbox = BBox(32.79, 130.79, 32.91, 130.91)
+        val segments = detector.detectSegments(bbox, points)
+
+        // Verify URL contains expected parameters
+        assertTrue(mockHttp.lastUrl != null)
+        assertTrue(mockHttp.lastUrl!!.contains("32.79"))
+        assertTrue(mockHttp.lastUrl!!.contains("traffic_signals"))
+
+        // Expected splits:
+        // Point 10 (approx lat=32.80125, lon=130.80125) is close to Signal A (dist ~= 38m, wait, let's make it closer)
+        // Let's adjust point coords or signal coords so they are within 10m.
+        // Point 8: lat = 32.800 + 8/40*0.005 = 32.80100, lon = 130.800 + 8/40*0.005 = 130.80100 -> matches Signal A exactly!
+        // Point 24: lat = 32.800 + 24/40*0.005 = 32.80300, lon = 130.800 + 24/40*0.005 = 130.80300 -> matches Crossing C exactly!
+        
+        // Segments should be split at Point 8 and Point 24.
+        // Segments to check:
+        // Segment 1: index 0 to 8 (distance 800m) -> too short (if threshold is 1000m)
+        // Segment 2: index 8 to 24 (distance 1600m) -> matches! (over 1000m)
+        // Segment 3: index 24 to 40 (distance 1600m) -> matches! (over 1000m)
+
+        // (We will use 1000m as the minimum distance for the test segment threshold)
+        assertEquals(2, segments.size)
+        
+        val seg1 = segments[0]
+        assertEquals(8, seg1.startIndex)
+        assertEquals(24, seg1.endIndex)
+        assertEquals(1600.0, seg1.distanceMeters)
+
+        val seg2 = segments[1]
+        assertEquals(24, seg2.startIndex)
+        assertEquals(40, seg2.endIndex)
+        assertEquals(1600.0, seg2.distanceMeters)
+    }
+}
