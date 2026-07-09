@@ -525,4 +525,58 @@ class TelemetryAlignerTest {
 
         assertEquals(60000L, newOffsetMs)
     }
+
+    @Test
+    fun testIMUAlignmentUnderVariousOffsets() {
+        val telemetryStream = javaClass.getResourceAsStream("/fit_telemetry.json")
+        assertNotNull(telemetryStream)
+        val telemetryJsonText = telemetryStream.bufferedReader().use { it.readText() }
+        
+        val vibStream = javaClass.getResourceAsStream("/video_vibration_1hz.json")
+        assertNotNull(vibStream)
+        val vibJsonText = vibStream.bufferedReader().use { it.readText() }
+
+        val telemetryArray = Json.parseToJsonElement(telemetryJsonText).jsonArray
+        val telemetryPoints = List(telemetryArray.size) { i ->
+            val obj = telemetryArray[i].jsonObject
+            fit.TelemetryPoint(
+                timestamp = obj["ts"]!!.jsonPrimitive.double,
+                speed = obj["speedKmh"]!!.jsonPrimitive.double,
+                power = 0.0, cadence = 0.0, heartRate = 0.0, elevation = 0.0, grade = 0.0
+            )
+        }
+
+        val originalVib = Json.parseToJsonElement(vibJsonText).jsonArray.map { it.jsonPrimitive.double }.toDoubleArray()
+        
+        // 真の開始時刻 (Ground Truth)
+        val trueStartInstant = java.time.Instant.parse("2026-06-25T08:19:55.335Z")
+        val firstFileImuOffset = 2.664490
+
+        // さまざまな時間差（秒）を意図的に持たせて自動同期を試行する
+        val testOffsetsSeconds = listOf(-30.0, -10.0, -5.0, 0.0, 5.0, 10.0, 30.0)
+
+        for (offset in testOffsetsSeconds) {
+            // 意図的に時計をずらしたおおよその開始時刻 (approxStartUtc) を作成
+            val approxStartInstant = trueStartInstant.plusMillis((offset * 1000).toLong())
+            val approxStartUtc = approxStartInstant.toString()
+
+            val alignedUtc = TelemetryAligner.alignVibWithTelemetryCore(
+                vVib = originalVib,
+                telemetryPoints = telemetryPoints,
+                approxStartUtc = approxStartUtc,
+                method = "binary",
+                windowSeconds = 90.0, // 探索窓
+                firstFileImuOffset = firstFileImuOffset
+            )
+
+            assertNotNull(alignedUtc, "Alignment should succeed for offset: ${offset}s")
+            val alignedInstant = java.time.Instant.parse(alignedUtc)
+            
+            // 自動同期によって、ずらしたオフセットが補正され、真の開始時刻と一致することを確認する
+            val diffSeconds = Math.abs(alignedInstant.epochSecond - trueStartInstant.epochSecond)
+            println("DEBUG IMU TEST: Offset: ${offset}s | Aligned: $alignedUtc | True: $trueStartInstant | Diff: $diffSeconds s")
+            
+            assertTrue(diffSeconds < 2.0, "IMU alignment failed to correct offset of ${offset}s. Result was $alignedUtc (diff: $diffSeconds s)")
+        }
+    }
 }
