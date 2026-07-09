@@ -108,4 +108,57 @@ class OsmTrafficSignalDetectorTest {
         assertEquals(40, seg2.endIndex)
         assertEquals(1600.0, seg2.distanceMeters)
     }
+
+    @Test
+    fun testDetectSegmentsWithSpeedDrop() = runTest {
+        // Mock response with empty elements (no signals in OSM)
+        val mockJson = """{ "elements": [] }"""
+        val mockHttp = MockHttpRequester(mockJson)
+        val detector = OsmTrafficSignalDetector(mockHttp)
+
+        // Generate mock telemetry points with a stop in the middle (points 18, 19, 20)
+        val points = mutableListOf<FitParser.TelemetryPoint>()
+        for (i in 0..40) {
+            val progress = i / 40.0
+            val speed = if (i in 18..20) 0.0 else 10.0
+            val cadence = 90.0
+            
+            points.add(
+                FitParser.TelemetryPoint(
+                    1782000000.0 + i * 10,
+                    speed,
+                    if (speed == 0.0) 0.0 else 200.0,
+                    cadence,
+                    140.0,
+                    100.0 + i * 5,
+                    5.0,
+                    32.800 + progress * 0.005,
+                    130.800 + progress * 0.005,
+                    i * 100.0,
+                    i * 10,
+                    0.0
+                )
+            )
+        }
+
+        // BBox doesn't query any elements
+        val bbox = BBox(32.79, 130.79, 32.81, 130.81)
+        val segments = detector.detectSegments(bbox, points)
+
+        // Point 18 is where speed drops to 0.0.
+        // Segments:
+        // Segment 1: index 0 to 18 (distance 1800m) -> matches (> 1000m)
+        // Segment 2: index 18 to 40 (distance 2200m) -> matches (> 1000m)
+        assertEquals(2, segments.size)
+
+        val seg1 = segments[0]
+        assertEquals(0, seg1.startIndex)
+        assertEquals(18, seg1.endIndex)
+        assertEquals(1800.0, seg1.distanceMeters)
+
+        val seg2 = segments[1]
+        assertEquals(18, seg2.startIndex)
+        assertEquals(40, seg2.endIndex)
+        assertEquals(2200.0, seg2.distanceMeters)
+    }
 }

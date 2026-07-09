@@ -48,7 +48,6 @@ class OsmTrafficSignalDetector(
             .replace(";", "%3B")
     }
 
-    // Queries OSM for traffic signals in the bbox and filters telemetry points to find non-stop segments
     suspend fun detectSegments(
         bbox: BBox,
         telemetryPoints: List<FitParser.TelemetryPoint>,
@@ -98,8 +97,13 @@ class OsmTrafficSignalDetector(
         // To avoid multiple splits at the same intersection, we group consecutive close points
         val splitIndices = mutableListOf<Int>()
         var inSignalZone = false
+        var consecutiveStopCount = 0
+        var stopStartIdx = -1
+
         for (i in telemetryPoints.indices) {
             val pt = telemetryPoints[i]
+            
+            // Check OSM nodes
             var nearSignal = false
             for (node in signalNodes) {
                 if (calculateDistanceMeters(pt.lat, pt.lon, node.lat, node.lon) <= 10.0) {
@@ -108,13 +112,41 @@ class OsmTrafficSignalDetector(
                 }
             }
 
+            // Check physical stop (speed <= 1.0 m/s)
+            val isPhysicallyStopped = pt.speed <= 1.0
+
+            if (isPhysicallyStopped) {
+                if (consecutiveStopCount == 0) {
+                    stopStartIdx = i
+                }
+                consecutiveStopCount++
+            } else {
+                // If we stopped for at least 2 consecutive points (~2 seconds), mark the split
+                if (consecutiveStopCount >= 2) {
+                    if (!splitIndices.contains(stopStartIdx)) {
+                        splitIndices.add(stopStartIdx)
+                    }
+                }
+                consecutiveStopCount = 0
+                stopStartIdx = -1
+            }
+
             if (nearSignal) {
                 if (!inSignalZone) {
-                    splitIndices.add(i)
+                    if (!splitIndices.contains(i)) {
+                        splitIndices.add(i)
+                    }
                     inSignalZone = true
                 }
             } else {
                 inSignalZone = false
+            }
+        }
+
+        // Handle case where log ends with a stop
+        if (consecutiveStopCount >= 2 && stopStartIdx != -1) {
+            if (!splitIndices.contains(stopStartIdx)) {
+                splitIndices.add(stopStartIdx)
             }
         }
 
