@@ -53,7 +53,8 @@ class OsmTrafficSignalDetector(
         bbox: BBox,
         telemetryPoints: List<FitParser.TelemetryPoint>,
         minDistanceMeters: Double = 1000.0,
-        videoPath: String? = null
+        videoPath: String? = null,
+        autoPauseGapSeconds: Double = 3.0
     ): List<AutoDetectedSegment> {
         if (telemetryPoints.size < 2) return emptyList()
 
@@ -114,10 +115,22 @@ class OsmTrafficSignalDetector(
         var inSignalZone = false
         var consecutiveStopCount = 0
         var stopStartIdx = -1
+        var prevPt: FitParser.TelemetryPoint? = null
 
         for (i in telemetryPoints.indices) {
             val pt = telemetryPoints[i]
             
+            // Check time gap (auto-pause detection)
+            if (prevPt != null) {
+                val timeGap = pt.timestamp - prevPt.timestamp
+                if (timeGap >= autoPauseGapSeconds) {
+                    if (!splitIndices.contains(i)) {
+                        splitIndices.add(i)
+                    }
+                }
+            }
+            prevPt = pt
+
             // Check OSM nodes
             var nearSignal = false
             for (node in signalNodes) {

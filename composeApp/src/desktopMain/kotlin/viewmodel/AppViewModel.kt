@@ -872,6 +872,7 @@ class AppViewModel(
     var isDetectingSegments by mutableStateOf(false)
     var segmentDetectionProgressText by mutableStateOf("")
     var minSegmentDistanceMeters by mutableStateOf(1000.0)
+    var autoPauseGapSeconds by mutableStateOf(3.0)
 
     fun startSegmentDetection(coroutineScope: kotlinx.coroutines.CoroutineScope) {
         if (telemetryPoints.isEmpty()) {
@@ -907,7 +908,8 @@ class AppViewModel(
                     bbox = bbox, 
                     telemetryPoints = telemetryPoints, 
                     minDistanceMeters = minSegmentDistanceMeters,
-                    videoPath = videoPath
+                    videoPath = videoPath,
+                    autoPauseGapSeconds = autoPauseGapSeconds
                 )
 
                 withContext(kotlinx.coroutines.Dispatchers.Main) {

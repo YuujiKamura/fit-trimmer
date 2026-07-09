@@ -226,4 +226,60 @@ class OsmTrafficSignalDetectorTest {
         
         assertEquals(result1.size, result2.size)
     }
+
+    @Test
+    fun testDetectSegmentsWithTimeGap() = runTest {
+        val mockJson = """{ "elements": [] }"""
+        val mockHttp = MockHttpRequester(mockJson)
+        val detector = OsmTrafficSignalDetector(mockHttp)
+
+        val points = mutableListOf<FitParser.TelemetryPoint>()
+        for (i in 0..40) {
+            val progress = i / 40.0
+            // Timestamp jumps by 10 seconds between 18 and 19
+            val tsOffset = if (i >= 19) 100.0 else 0.0
+            val speed = 10.0 // Constant speed (no speed drops)
+            
+            points.add(
+                FitParser.TelemetryPoint(
+                    1782000000.0 + i + tsOffset,
+                    speed,
+                    200.0,
+                    90.0,
+                    140.0,
+                    100.0 + i * 5,
+                    5.0,
+                    32.800 + progress * 0.005,
+                    130.800 + progress * 0.005,
+                    i * 100.0,
+                    i * 10,
+                    0.0
+                )
+            )
+        }
+
+        val bbox = BBox(32.79, 130.79, 32.81, 130.81)
+
+        // Case 1: autoPauseGapSeconds = 5.0s (should detect the 110s - 10s = 100s gap and split)
+        val segmentsSplit = detector.detectSegments(
+            bbox = bbox,
+            telemetryPoints = points,
+            minDistanceMeters = 50.0,
+            autoPauseGapSeconds = 5.0
+        )
+        println("DEBUG TEST: segmentsSplit size = ${segmentsSplit.size}")
+        segmentsSplit.forEach { println("  Seg: ${it.id} start=${it.startIndex} end=${it.endIndex} dist=${it.distanceMeters}") }
+        assertEquals(2, segmentsSplit.size, "Should split into 2 segments due to the 100s gap")
+
+        // Case 2: autoPauseGapSeconds = 150.0s (gap of 100s < 150s, should NOT split)
+        val segmentsNoSplit = detector.detectSegments(
+            bbox = bbox,
+            telemetryPoints = points,
+            minDistanceMeters = 50.0,
+            autoPauseGapSeconds = 150.0
+        )
+        println("DEBUG TEST: segmentsNoSplit size = ${segmentsNoSplit.size}")
+        segmentsNoSplit.forEach { println("  Seg: ${it.id} start=${it.startIndex} end=${it.endIndex} dist=${it.distanceMeters}") }
+        assertEquals(1, segmentsNoSplit.size, "Should not split because the gap is smaller than threshold")
+    }
 }

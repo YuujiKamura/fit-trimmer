@@ -3864,6 +3864,30 @@ fun FitTrimmerMainContent(
 
                                                 Spacer(modifier = Modifier.height(4.dp))
 
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Text("停車（オートポーズ）検知しきい値", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                                                    Text("${String.format(java.util.Locale.US, "%.1f", viewModel.autoPauseGapSeconds)} 秒", color = Color(0xFF007AFF), fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                                                }
+                                                Spacer(modifier = Modifier.height(2.dp))
+                                                Slider(
+                                                    value = viewModel.autoPauseGapSeconds.toFloat(),
+                                                    onValueChange = { viewModel.autoPauseGapSeconds = it.toDouble() },
+                                                    valueRange = 2.0f..15.0f,
+                                                    steps = 26,
+                                                    modifier = Modifier.fillMaxWidth().height(24.dp),
+                                                    colors = SliderDefaults.colors(
+                                                        thumbColor = Color(0xFF007AFF),
+                                                        activeTrackColor = Color(0xFF007AFF),
+                                                        inactiveTrackColor = Color(0xFFE5E5EA)
+                                                    )
+                                                )
+
+                                                Spacer(modifier = Modifier.height(4.dp))
+
                                                 val hasTelemetry = telemetryPoints.isNotEmpty()
                                                 Button(
                                                     onClick = { viewModel.startSegmentDetection(scope) },
