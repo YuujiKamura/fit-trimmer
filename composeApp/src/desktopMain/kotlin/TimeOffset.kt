@@ -18,7 +18,14 @@ class TimeAlignmentState(initialMillis: Int) {
     }
 
     fun adjust(videoStartUtc: String): String {
-        return coreState.adjust(videoStartUtc)
+        val currentMillis = millis
+        if (videoStartUtc.isEmpty()) return ""
+        return try {
+            val baseInstant = java.time.Instant.parse(videoStartUtc)
+            baseInstant.plusMillis(currentMillis.toLong()).toString()
+        } catch (e: Exception) {
+            videoStartUtc
+        }
     }
 
     fun updateTimeComponents(hour: Int, minute: Int, second: Int, baseUtcStr: String) {
