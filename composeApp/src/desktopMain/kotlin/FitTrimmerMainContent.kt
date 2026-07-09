@@ -3838,6 +3838,30 @@ fun FitTrimmerMainContent(
                                                 Text("セグメント自動検出", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 0.5.sp)
                                                 Text("GPSルート上の踏切や信号機を避け、ノンストップで走れる登り坂（1km以上）を自動で抽出します。", color = Color(0xFF636366), fontSize = 10.sp, lineHeight = 13.sp)
 
+                                                Spacer(modifier = Modifier.height(6.dp))
+
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Text("最小区間長しきい値", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                                                    Text("${viewModel.minSegmentDistanceMeters.toInt()} m", color = Color(0xFF007AFF), fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                                                }
+                                                Spacer(modifier = Modifier.height(2.dp))
+                                                Slider(
+                                                    value = viewModel.minSegmentDistanceMeters.toFloat(),
+                                                    onValueChange = { viewModel.minSegmentDistanceMeters = it.toDouble() },
+                                                    valueRange = 100f..2000f,
+                                                    steps = 18,
+                                                    modifier = Modifier.fillMaxWidth().height(24.dp),
+                                                    colors = SliderDefaults.colors(
+                                                        thumbColor = Color(0xFF007AFF),
+                                                        activeTrackColor = Color(0xFF007AFF),
+                                                        inactiveTrackColor = Color(0xFFE5E5EA)
+                                                    )
+                                                )
+
                                                 Spacer(modifier = Modifier.height(4.dp))
 
                                                 val hasTelemetry = telemetryPoints.isNotEmpty()

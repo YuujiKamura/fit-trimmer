@@ -871,6 +871,7 @@ class AppViewModel(
     val detectedSegments = mutableStateListOf<fit.AutoDetectedSegment>()
     var isDetectingSegments by mutableStateOf(false)
     var segmentDetectionProgressText by mutableStateOf("")
+    var minSegmentDistanceMeters by mutableStateOf(1000.0)
 
     fun startSegmentDetection(coroutineScope: kotlinx.coroutines.CoroutineScope) {
         if (telemetryPoints.isEmpty()) {
@@ -902,13 +903,18 @@ class AppViewModel(
                 val cache = fit.FileSignalCache()
                 val detector = fit.OsmTrafficSignalDetector(requester, cache)
 
-                val result = detector.detectSegments(bbox, telemetryPoints, videoPath = videoPath)
+                val result = detector.detectSegments(
+                    bbox = bbox, 
+                    telemetryPoints = telemetryPoints, 
+                    minDistanceMeters = minSegmentDistanceMeters,
+                    videoPath = videoPath
+                )
 
                 withContext(kotlinx.coroutines.Dispatchers.Main) {
                     detectedSegments.addAll(result)
                     isDetectingSegments = false
                     segmentDetectionProgressText = if (result.isEmpty()) {
-                        "No climb segments found (no continuous 1km+ climbs without traffic signals)."
+                        "No climb segments found (no continuous ${minSegmentDistanceMeters.toInt()}m+ climbs without traffic signals/stops)."
                     } else {
                         "Successfully detected ${result.size} climb segment(s)."
                     }
