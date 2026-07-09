@@ -3390,111 +3390,7 @@ fun FitTrimmerMainContent(
                     }
                                     }
                                 }
-                                VerticalScrollbar(
-                                    adapter = rememberScrollbarAdapter(currentScrollState),
-                                    modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight()
-                                )
-                            } // Box(scrollable) 閉じ
 
-                            // 7. Sticky に下部固定する Primary encode actions Card （バッチジョブキュー表示を含む）
-                            Card(
-                                backgroundColor = Color.White,
-                                shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
-                                border = BorderStroke(1.dp, Color(0xFFE5E5EA)),
-                                elevation = 1.dp,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(12.dp),
-                                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Text("エンコード", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 0.5.sp)
-                                    val isActiveEncoding = isEncoding || viewModel.isBatchRunning
-                                    if (!isActiveEncoding) {
-                                        Text("現在の設定でHUD付き動画を書き出します。複数の設定をキューに追加して、後でまとめて一括エンコードできます。", color = Color(0xFF636366), fontSize = 10.sp, lineHeight = 13.sp)
-                                        val isQueueEnabled = fitPath.isNotEmpty() && videoPath.isNotEmpty()
-                                        Row(
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            OutlinedButton(
-                                                onClick = {
-                                                    viewModel.addToBatchQueue()
-                                                    statusText = "ジョブをキューに追加しました"
-                                                },
-                                                modifier = Modifier.weight(1f).height(40.dp),
-                                                enabled = isQueueEnabled,
-                                                colors = ButtonDefaults.outlinedButtonColors(
-                                                    contentColor = Color(0xFF34C759),
-                                                    disabledContentColor = Color(0xFF8E8E93)
-                                                ),
-                                                border = BorderStroke(1.5.dp, if (isQueueEnabled) Color(0xFF34C759) else Color(0xFFE5E5EA)),
-                                                shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
-                                            ) {
-                                                Text("キューに追加", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                            }
-                                            Button(
-                                                onClick = onNativeEncodeClick,
-                                                modifier = Modifier.weight(1.5f).height(40.dp),
-                                                enabled = hasEnoughSpace && fitPath.isNotEmpty() && videoPath.isNotEmpty(),
-                                                colors = ButtonDefaults.buttonColors(
-                                                    backgroundColor = if (hasEnoughSpace) Color(0xFF007AFF) else Color(0xFFD1D1D6),
-                                                    disabledBackgroundColor = Color(0xFFE5E5EA)
-                                                ),
-                                                shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
-                                            ) {
-                                                Text(if (hasEnoughSpace) "エンコード開始" else "ディスク容量不足", color = if (hasEnoughSpace) Color.White else Color(0xFF8E8E93), fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                            }
-                                        }
-
-                                    } else if (viewModel.isBatchRunning) {
-                                        // Recomposition 負荷を最小限にする静的パネル表示
-                                        Text("エンコードジョブを実行中です。詳細な進行状況はエンコード管理画面で確認できます。", color = Color(0xFF636366), fontSize = 10.sp, lineHeight = 13.sp)
-                                        Button(
-                                            onClick = {
-                                                viewModel.requestBatchConfirmDialog("sidebar-button")
-                                            },
-                                            modifier = Modifier.fillMaxWidth().height(36.dp),
-                                            colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF007AFF), contentColor = Color.White),
-                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
-                                        ) {
-                                            Text("進行管理画面を開く", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                        }
-                                    } else {
-                                        // サンプル等での単独書き出し中（進捗インジケータを表示）
-                                        val currentStatusText = statusText
-                                        val currentProgress = progress
-                                        if (currentStatusText.contains("Merging", ignoreCase = true)) {
-                                            LinearProgressIndicator(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                color = Color(0xFF34C759),
-                                                backgroundColor = Color(0xFFE5E5EA)
-                                            )
-                                        } else {
-                                            LinearProgressIndicator(
-                                                progress = currentProgress,
-                                                modifier = Modifier.fillMaxWidth(),
-                                                color = Color(0xFF007AFF),
-                                                backgroundColor = Color(0xFFE5E5EA)
-                                            )
-                                        }
-                                        Text(currentStatusText, color = Color(0xFF1C1C1E), fontSize = 11.sp, lineHeight = 14.sp)
-                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            Button(
-                                                onClick = {
-                                                    isCanceled = true
-                                                },
-                                                modifier = Modifier.weight(1f).height(32.dp),
-                                                colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFEF4444)),
-                                                shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
-                                            ) {
-                                                Text("CANCEL", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                            }
-                                        }
-                                    }
-                                }
-                            }
                                     if (selectedTab == 3) {
                                         Card(
                                             backgroundColor = Color.White,
@@ -4003,7 +3899,8 @@ fun FitTrimmerMainContent(
                                                                         val videoStart = viewModel.videoStartInstant
                                                                         if (startPt != null && endPt != null && videoStart != null) {
                                                                             val fitEpoch = java.time.Instant.parse("1989-12-31T00:00:00Z").epochSecond
-                                                                            val videoStartFit = videoStart.epochSecond - fitEpoch
+                                                                            val offsetSeconds = timeOffsetState.millis / 1000.0
+                                                                            val videoStartFit = videoStart.epochSecond - fitEpoch + offsetSeconds
                                                                             val startSec = startPt.timestamp - videoStartFit
                                                                             val endSec = endPt.timestamp - videoStartFit
                                                                             
@@ -4036,6 +3933,113 @@ fun FitTrimmerMainContent(
                                             }
                                         }
                                     }
+
+                                VerticalScrollbar(
+                                    adapter = rememberScrollbarAdapter(currentScrollState),
+                                    modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight()
+                                )
+                            } // Box(scrollable) 閉じ
+
+                            // 7. Sticky に下部固定する Primary encode actions Card （バッチジョブキュー表示を含む）
+                            Card(
+                                backgroundColor = Color.White,
+                                shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                                border = BorderStroke(1.dp, Color(0xFFE5E5EA)),
+                                elevation = 1.dp,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text("エンコード", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 0.5.sp)
+                                    val isActiveEncoding = isEncoding || viewModel.isBatchRunning
+                                    if (!isActiveEncoding) {
+                                        Text("現在の設定でHUD付き動画を書き出します。複数の設定をキューに追加して、後でまとめて一括エンコードできます。", color = Color(0xFF636366), fontSize = 10.sp, lineHeight = 13.sp)
+                                        val isQueueEnabled = fitPath.isNotEmpty() && videoPath.isNotEmpty()
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            OutlinedButton(
+                                                onClick = {
+                                                    viewModel.addToBatchQueue()
+                                                    statusText = "ジョブをキューに追加しました"
+                                                },
+                                                modifier = Modifier.weight(1f).height(40.dp),
+                                                enabled = isQueueEnabled,
+                                                colors = ButtonDefaults.outlinedButtonColors(
+                                                    contentColor = Color(0xFF34C759),
+                                                    disabledContentColor = Color(0xFF8E8E93)
+                                                ),
+                                                border = BorderStroke(1.5.dp, if (isQueueEnabled) Color(0xFF34C759) else Color(0xFFE5E5EA)),
+                                                shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                                            ) {
+                                                Text("キューに追加", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                            Button(
+                                                onClick = onNativeEncodeClick,
+                                                modifier = Modifier.weight(1.5f).height(40.dp),
+                                                enabled = hasEnoughSpace && fitPath.isNotEmpty() && videoPath.isNotEmpty(),
+                                                colors = ButtonDefaults.buttonColors(
+                                                    backgroundColor = if (hasEnoughSpace) Color(0xFF007AFF) else Color(0xFFD1D1D6),
+                                                    disabledBackgroundColor = Color(0xFFE5E5EA)
+                                                ),
+                                                shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                                            ) {
+                                                Text(if (hasEnoughSpace) "エンコード開始" else "ディスク容量不足", color = if (hasEnoughSpace) Color.White else Color(0xFF8E8E93), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+
+                                    } else if (viewModel.isBatchRunning) {
+                                        // Recomposition 負荷を最小限にする静的パネル表示
+                                        Text("エンコードジョブを実行中です。詳細な進行状況はエンコード管理画面で確認できます。", color = Color(0xFF636366), fontSize = 10.sp, lineHeight = 13.sp)
+                                        Button(
+                                            onClick = {
+                                                viewModel.requestBatchConfirmDialog("sidebar-button")
+                                            },
+                                            modifier = Modifier.fillMaxWidth().height(36.dp),
+                                            colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF007AFF), contentColor = Color.White),
+                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                                        ) {
+                                            Text("進行管理画面を開く", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    } else {
+                                        // サンプル等での単独書き出し中（進捗インジケータを表示）
+                                        val currentStatusText = statusText
+                                        val currentProgress = progress
+                                        if (currentStatusText.contains("Merging", ignoreCase = true)) {
+                                            LinearProgressIndicator(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                color = Color(0xFF34C759),
+                                                backgroundColor = Color(0xFFE5E5EA)
+                                            )
+                                        } else {
+                                            LinearProgressIndicator(
+                                                progress = currentProgress,
+                                                modifier = Modifier.fillMaxWidth(),
+                                                color = Color(0xFF007AFF),
+                                                backgroundColor = Color(0xFFE5E5EA)
+                                            )
+                                        }
+                                        Text(currentStatusText, color = Color(0xFF1C1C1E), fontSize = 11.sp, lineHeight = 14.sp)
+                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Button(
+                                                onClick = {
+                                                    isCanceled = true
+                                                },
+                                                modifier = Modifier.weight(1f).height(32.dp),
+                                                colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFEF4444)),
+                                                shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
+                                            ) {
+                                                Text("CANCEL", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
 
                         }
                     }
