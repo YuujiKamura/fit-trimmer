@@ -94,6 +94,7 @@ object HudEncodePipeline {
         videoStartUtc: String,
         sourceVideoStartUtc: String = videoStartUtc,
         timeOffsetMillis: Long = 0L,
+        imuTimeOffsetMillis: Long? = null,
         ranges: List<Pair<Double, Double>>,
         destFiles: List<File>,
         shouldResume: Boolean = false,
@@ -217,7 +218,8 @@ object HudEncodePipeline {
                         sourceVideoPath = videoPath,
                         sourceVideoStartUtc = sourceVideoStartUtc,
                         alignedVideoStartUtc = videoStartUtc,
-                        timeOffsetMillis = timeOffsetMillis
+                        timeOffsetMillis = timeOffsetMillis,
+                        imuTimeOffsetMillis = imuTimeOffsetMillis
                     )
                 )
 

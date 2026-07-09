@@ -1,0 +1,21 @@
+[
+  {
+    "fit_relative_path": "20260708/Evening_Ride.fit",
+    "video_relative_path": "20260708/VID_20260708_184458_001.mp4",
+    "trimmed_fit_relative_path": "20260708/VID_20260708_184458_001_KMP_HUD_2.7k.fit",
+    "approx_start_utc": "2026-07-08T09:44:58Z",
+    "expected_offset_seconds": -5.631,
+    "description": "7月8日直前時計合わせ済みテストデータ",
+    "tolerance_seconds": 1.0,
+    "window_seconds": 60.0
+  },
+  {
+    "fit_relative_path": "20260707/Afternoon_Ride.fit",
+    "video_relative_path": "20260707/VID_20260707_183614_005.mp4",
+    "approx_start_utc": "2026-07-07T09:36:14Z",
+    "expected_offset_seconds": -62.665,
+    "description": "7月7日テストデータ",
+    "tolerance_seconds": 1.0,
+    "window_seconds": 60.0
+  }
+]
