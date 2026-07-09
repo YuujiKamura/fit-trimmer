@@ -234,11 +234,9 @@ class HudRenderer(val config: HudConfig) {
         // 5. W/KG
         drawMetric(layout.wkg)
 
-        // Sync cy to layout engine final output coordinate
-        cy = layout.finalCy
-
         // 6. POWER TREND (Bar graph)
         if (config.showPowerTrend) {
+            cy = layout.powerTrendY
             if (config.hudBgAlpha > 0f) {
                 val padX = 20f * sf
                 val padY = 8f * sf

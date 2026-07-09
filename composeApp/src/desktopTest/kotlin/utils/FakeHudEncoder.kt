@@ -66,7 +66,7 @@ class FakeHudEncoderFactory(
     override fun create(
         settings: HudSettings,
         onProgress: (Float, String) -> Unit,
-        onFrameRendered: (BufferedImage) -> Unit,
+        onFrameRendered: (Any) -> Unit,
         pauseSupplier: () -> Boolean,
         cancelSupplier: () -> Boolean,
         customRenderer: ((HudCanvas, TelemetryPoint, List<TelemetryPoint>, List<TelemetryPoint>, List<Double>, Float) -> Unit)?,
