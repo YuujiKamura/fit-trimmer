@@ -787,7 +787,7 @@ fun FitTrimmerMainContent(
                     val telemetry = parser.getTelemetry()
                     println("DEBUG: FIT file parsed successfully. Points=${telemetry.size}")
                     viewModel.updateTelemetry(telemetry)
-                    val fitEpoch = java.time.Instant.parse("1989-12-31T00:00:00Z").epochSecond
+                    val fitEpoch = 631065600L
                     val firstPoint = telemetry.firstOrNull()
                     val videoInstant = try { java.time.Instant.parse(videoStartUtc) } catch(e: Exception) { null }
                     if (firstPoint != null && videoInstant != null) {
@@ -3932,13 +3932,9 @@ fun FitTrimmerMainContent(
                                                                         .clickable {
                                                                             val startPt = telemetryPoints.getOrNull(seg.startIndex)
                                                                             val endPt = telemetryPoints.getOrNull(seg.endIndex)
-                                                                            val videoStart = viewModel.videoStartInstant
-                                                                            if (startPt != null && endPt != null && videoStart != null) {
-                                                                                val fitEpoch = java.time.Instant.parse("1989-12-31T00:00:00Z").epochSecond
-                                                                                val offsetSeconds = timeOffsetState.millis / 1000.0
-                                                                                val videoStartFit = videoStart.epochSecond - fitEpoch + offsetSeconds
-                                                                                val startSec = startPt.timestamp - videoStartFit
-                                                                                val endSec = endPt.timestamp - videoStartFit
+                                                                            if (startPt != null && endPt != null && viewModel.timeSynchronizer.isReady) {
+                                                                                val startSec = viewModel.timeSynchronizer.fitToVideoSeconds(startPt.timestamp)
+                                                                                val endSec = viewModel.timeSynchronizer.fitToVideoSeconds(endPt.timestamp)
                                                                                 
                                                                                 viewModel.trimStartSeconds = startSec.coerceAtLeast(0.0)
                                                                                 viewModel.trimEndSeconds = endSec.coerceAtLeast(0.0)
@@ -3971,13 +3967,8 @@ fun FitTrimmerMainContent(
                                                                                 color = Color(0xFF007AFF),
                                                                                 modifier = Modifier
                                                                                     .clickable {
-                                                                                        val fitEpoch = java.time.Instant.parse("1989-12-31T00:00:00Z").epochSecond
-                                                                                        val videoStart = viewModel.videoStartInstant
-                                                                                        val offsetSeconds = timeOffsetState.millis / 1000.0
-                                                                                        val videoStartFit = if (videoStart != null) videoStart.epochSecond - fitEpoch + offsetSeconds else 0.0
-                                                                                        
-                                                                                        val startSec = seg.startFitTimestamp - videoStartFit
-                                                                                        val endSec = seg.endFitTimestamp - videoStartFit
+                                                                                        val startSec = viewModel.timeSynchronizer.fitToVideoSeconds(seg.startFitTimestamp)
+                                                                                        val endSec = viewModel.timeSynchronizer.fitToVideoSeconds(seg.endFitTimestamp)
                                                                                         
                                                                                         val formatTime = { sec: Double ->
                                                                                             val s = sec.coerceAtLeast(0.0)

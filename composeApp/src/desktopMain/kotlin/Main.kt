@@ -1096,7 +1096,7 @@ suspend fun detectRoadSegments(
     if (!enableRoadDetection) return emptyList()
     if (points.isEmpty() || videoStartUtc.isEmpty()) return emptyList()
     if (cancelCheck()) throw IllegalStateException("Encoding Canceled")
-    val fitEpoch = java.time.Instant.parse("1989-12-31T00:00:00Z").epochSecond
+    val fitEpoch = 631065600L
     val videoStartInstant = try {
         java.time.Instant.parse(videoStartUtc).plusMillis(timeOffsetMillis)
     } catch (e: Exception) {
