@@ -50,6 +50,16 @@ import kotlinx.coroutines.Dispatchers
 
 import kotlinx.coroutines.launch
 
+import io.github.kdroidfilter.composemediaplayer.rememberVideoPlayerState
+import io.github.kdroidfilter.composemediaplayer.VideoPlayerSurface
+import components.VideoPreviewArea
+import fit.TelemetryPoint
+import fit.HudSettings
+import fit.HudConfig
+import fit.DynamicRendererProxy
+import androidx.compose.ui.text.rememberTextMeasurer
+import java.io.File
+import kotlinx.coroutines.delay
 import viewmodel.AppViewModel
 
 import viewmodel.BatchJobStatus
@@ -94,7 +104,70 @@ fun BatchQueueDialog(
 
     ) {
 
-        // パルス（点滅）アニメーションの定義（実行中のフェーズやジョブ枠線の鼓動感に使用）
+        // パルス（点滅）アニメーションの定義（実行中のフェーズやジョブ枠線の鼓動感に使用）        // プレビュー状態管理
+        var selectedJobIdx by remember { mutableStateOf(0) }
+        val selectedJob = viewModel.batchQueue.getOrNull(selectedJobIdx)
+        val previewPlayerState = rememberVideoPlayerState()
+        var previewTimeMs by remember { mutableStateOf(0L) }
+        var isSeeking by remember { mutableStateOf(false) }
+        var seekTargetTimeMs by remember { mutableStateOf(0L) }
+        
+        var selectedTelemetryPoints by remember { mutableStateOf<List<TelemetryPoint>>(emptyList()) }
+        var selectedTrimmedPoints by remember { mutableStateOf<List<TelemetryPoint>>(emptyList()) }
+        
+        LaunchedEffect(selectedJob?.fitPath, selectedJob?.videoStartUtc, selectedJob?.timeOffsetMillis, selectedJob?.trimStartSeconds, selectedJob?.trimEndSeconds) {
+            val job = selectedJob
+            if (job == null) {
+                selectedTelemetryPoints = emptyList()
+                selectedTrimmedPoints = emptyList()
+                return@LaunchedEffect
+            }
+            
+            val fitFile = File(job.fitPath)
+            if (fitFile.exists()) {
+                scope.launch(Dispatchers.IO) {
+                    try {
+                        val bytes = fitFile.readBytes()
+                        val parser = fit.FitParser(bytes)
+                        parser.parse()
+                        val points = parser.getTelemetry()
+                        selectedTelemetryPoints = points
+                        
+                        val startTime = try { java.time.Instant.parse(job.videoStartUtc) } catch(e: Exception) { java.time.Instant.EPOCH }
+                        val fitEpoch = java.time.Instant.parse("1989-12-31T00:00:00Z").epochSecond
+                        val startUtcSeconds = startTime.toEpochMilli() / 1000.0 + job.timeOffsetMillis / 1000.0
+                        
+                        val videoStartFit = startUtcSeconds + job.trimStartSeconds - fitEpoch
+                        val videoEndFit = startUtcSeconds + job.trimEndSeconds - fitEpoch
+                        
+                        selectedTrimmedPoints = points.filter { it.timestamp in videoStartFit..videoEndFit }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+            } else {
+                selectedTelemetryPoints = emptyList()
+                selectedTrimmedPoints = emptyList()
+            }
+        }
+        
+        LaunchedEffect(selectedJob?.videoPath) {
+            val path = selectedJob?.videoPath ?: ""
+            if (path.isNotEmpty() && File(path).exists()) {
+                previewPlayerState.openUri(path)
+                val startMs = ((selectedJob?.trimStartSeconds ?: 0.0) * 1000).toLong()
+                previewPlayerState.seekTo(startMs.toFloat())
+                previewTimeMs = startMs
+            }
+        }
+        
+        DisposableEffect(Unit) {
+            onDispose {
+                previewPlayerState.dispose()
+            }
+        }
+
+
 
         val infiniteTransition = rememberInfiniteTransition()
 
@@ -131,30 +204,22 @@ fun BatchQueueDialog(
         ) {
 
             Card(
-
                 modifier = Modifier
-
-                    .width(1000.dp)
-
+                    .width(1300.dp)
                     .fillMaxHeight(0.96f)
-
                     .padding(16.dp),
-
                 shape = RoundedCornerShape(16.dp),
-
                 elevation = 12.dp
-
             ) {
-
-                Column(
-
-                    modifier = Modifier.padding(20.dp),
-
-                    horizontalAlignment = Alignment.Start,
-
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-
+                Row(
+                    modifier = Modifier.fillMaxSize().padding(20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(20.dp)
                 ) {
+                    Column(
+                        modifier = Modifier.weight(1.3f).fillMaxHeight(),
+                        horizontalAlignment = Alignment.Start,
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
 
                     // ヘッダー
 
@@ -346,44 +411,31 @@ fun BatchQueueDialog(
 
                                 
 
+                                val isSelected = idx == selectedJobIdx
                                 val cardBgColor = if (job.status == BatchJobStatus.RUNNING) {
-
                                     Color(0xFFF2F8FF)
-
+                                } else if (isSelected) {
+                                    Color(0xFFF2F8FF).copy(alpha = 0.5f)
                                 } else {
-
                                     Color.White
-
                                 }
-
                                 // 実行中のカードの枠線をパルス点滅させてアクティブ感を強調
-
                                 val cardBorderColor = if (job.status == BatchJobStatus.RUNNING) {
-
                                     Color(0xFF007AFF).copy(alpha = pulseAlpha)
-
+                                } else if (isSelected) {
+                                    Color(0xFF007AFF)
                                 } else {
-
                                     Color(0xFFE5E5EA)
-
                                 }
-
                                 
-
                                 Column(
-
                                     modifier = Modifier
-
                                         .fillMaxWidth()
-
                                         .background(cardBgColor, RoundedCornerShape(10.dp))
-
-                                        .border(1.dp, cardBorderColor, RoundedCornerShape(10.dp))
-
+                                        .border(if (isSelected) 2.dp else 1.dp, cardBorderColor, RoundedCornerShape(10.dp))
+                                        .clickable { selectedJobIdx = idx }
                                         .padding(12.dp),
-
                                     verticalArrangement = Arrangement.spacedBy(8.dp)
-
                                 ) {
 
                                     // 上段: ファイル名/編集と操作ボタン
@@ -1277,29 +1329,109 @@ fun BatchQueueDialog(
                             ) {
 
                                 Text(
-
                                     text = "エンコードを開始",
-
                                     fontSize = 14.sp,
-
                                     fontWeight = FontWeight.Bold
-
                                 )
-
                             }
-
                         }
-
                     }
+                    } // Left Column End
 
-                }
-
+                    // Right Column (HUD & Video Layout Preview)
+                    Column(
+                        modifier = Modifier.weight(1f).fillMaxHeight().padding(start = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        horizontalAlignment = Alignment.Start
+                    ) {
+                        Text(
+                            text = "HUDレイアウトプレビュー",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF007AFF)
+                        )
+                        
+                        if (selectedJob != null) {
+                            val textMeasurer = rememberTextMeasurer()
+                            val hudConfig = remember(selectedJob.settings, selectedJob.trimStartSeconds) {
+                                val s = selectedJob.settings
+                                fit.HudConfig(
+                                    valSize = s.valSize, tightness = s.tightness, spacing = s.spacing,
+                                    xOffset = s.xOffset, yOffset = s.yOffset, graphH = s.graphH, graphW = s.graphW,
+                                    captionPosition = s.captionPosition,
+                                    roadCaptions = s.roadCaptions,
+                                    powerTrendSpanSeconds = s.powerTrendSpanSeconds,
+                                    useImperialUnits = s.useImperialUnits,
+                                    language = s.language,
+                                    elevationGraphScope = s.elevationGraphScope,
+                                    heartRateAccumulationScope = s.heartRateAccumulationScope,
+                                    showSpeed = s.showSpeed,
+                                    showCadence = s.showCadence,
+                                    showHeartRate = s.showHeartRate,
+                                    showPower = s.showPower,
+                                    showWkg = s.showWkg,
+                                    showPowerTrend = s.showPowerTrend,
+                                    showGrade = s.showGrade,
+                                    showElevation = s.showElevation,
+                                    showDistanceTime = s.showDistanceTime,
+                                    bodyWeightKg = s.bodyWeightKg,
+                                    customCaptions = s.customCaptions,
+                                    trimStartSeconds = selectedJob.trimStartSeconds,
+                                    mapSizeScale = s.mapSizeScale,
+                                    mapType = s.mapType,
+                                    mapPosition = s.mapPosition,
+                                    hudBgAlpha = s.hudBgAlpha,
+                                    mapZoomScale = s.mapZoomScale,
+                                    mapZoomOffset = s.mapZoomOffset,
+                                    fixMapNorthUp = s.fixMapNorthUp,
+                                    mapMarkerSizeScale = s.mapMarkerSizeScale,
+                                    mapTextSizeScale = s.mapTextSizeScale,
+                                    mapRangeMode = s.mapRangeMode,
+                                    textShadowAlpha = s.textShadowAlpha,
+                                    showCumulativeDistanceTime = s.showCumulativeDistanceTime
+                                )
+                            }
+                            val rendererProxy = remember(hudConfig) { fit.DynamicRendererProxy(hudConfig) }
+                            val videoLengthMs = (previewPlayerState.metadata.duration ?: 0.0).toLong().coerceAtLeast(1000L)
+                            
+                            VideoPreviewArea(
+                                videoPath = selectedJob.videoPath,
+                                videoLengthMs = videoLengthMs,
+                                adjustedStartUtc = selectedJob.adjustedStartUtc,
+                                telemetryPoints = selectedTelemetryPoints,
+                                trimmedTelemetryPoints = selectedTrimmedPoints,
+                                originalTelemetryPoints = selectedTelemetryPoints,
+                                settings = selectedJob.settings,
+                                rendererProxy = rendererProxy,
+                                textMeasurer = textMeasurer,
+                                playerState = previewPlayerState,
+                                videoCurrentTimeMsProvider = { previewTimeMs },
+                                onCurrentTimeChange = { 
+                                    previewTimeMs = it
+                                },
+                                isSeekingProvider = { isSeeking },
+                                seekTargetTimeMsProvider = { seekTargetTimeMs },
+                                onSeekStart = { isSeeking = true },
+                                onSeekProgress = { seekTargetTimeMs = it },
+                                onSeekEnd = { 
+                                    isSeeking = false
+                                    previewTimeMs = it
+                                    previewPlayerState.seekTo(it.toFloat())
+                                },
+                                modifier = Modifier.weight(1f).fillMaxWidth(),
+                                isEncoding = false,
+                                isDetectingPlates = false
+                            )
+                        } else {
+                            Box(modifier = Modifier.fillMaxSize().background(Color(0xFFF2F2F7)), contentAlignment = Alignment.Center) {
+                                Text("プレビューするジョブを選択してください", color = Color(0xFF8E8E93))
+                            }
+                        }
+                    }
+                } // Row End
             }
-
         }
-
     }
-
 }
 
 
