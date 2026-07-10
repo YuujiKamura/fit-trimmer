@@ -190,6 +190,20 @@ class EncodePlanTest {
     }
 
     @Test
+    fun testBuildEncodeRangesWithStravaAutoTrim() {
+        val settings = HudSettings(exportResolution = "strava")
+        val ranges = buildEncodeRangesWithPlatePolicy(
+            trimStartSeconds = 10.0,
+            trimEndSeconds = 50.0,
+            splitPoints = emptyList(),
+            settings = settings,
+            plateCache = null
+        )
+
+        assertEquals(listOf(10.0 to 40.0), ranges)
+    }
+
+    @Test
     fun testHasTrimmedRangeComparesAgainstVideoDuration() {
         assertEquals(false, hasTrimmedRange(0.0, 120.0, 120.0))
         assertEquals(true, hasTrimmedRange(5.0, 120.0, 120.0))

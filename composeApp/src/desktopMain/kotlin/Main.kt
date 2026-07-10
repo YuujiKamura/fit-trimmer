@@ -994,7 +994,12 @@ fun buildEncodeRangesWithPlatePolicy(
     settings: HudSettings,
     plateCache: fit.VideoPlatesCache?
 ): List<Pair<Double, Double>> {
-    val baseRanges = buildEncodeRanges(trimStartSeconds, trimEndSeconds, splitPoints)
+    val actualEnd = if (settings.exportResolution == "strava") {
+        minOf(trimEndSeconds, trimStartSeconds + 30.0)
+    } else {
+        trimEndSeconds
+    }
+    val baseRanges = buildEncodeRanges(trimStartSeconds, actualEnd, splitPoints)
     if (settings.plateMaskMode != "cut") return baseRanges
     val cutSpans = buildPlateCutSpans(
         plateCache = plateCache,
