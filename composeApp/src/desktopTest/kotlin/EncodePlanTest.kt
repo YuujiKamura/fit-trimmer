@@ -131,6 +131,32 @@ class EncodePlanTest {
     }
 
     @Test
+    fun testBuildEncodeRangesWithPlateCutModeSkipsIfRemainingBelowThreshold() {
+        val cache = VideoPlatesCache(
+            videoPath = "ride.mp4",
+            records = listOf(
+                PlateRecord(10_000L, listOf(PlateBox(0, 0, 10, 10)))
+            )
+        )
+        val settings = HudSettings(
+            blurLicensePlates = true,
+            plateMaskMode = "cut",
+            plateMaskTimeBufferMs = 500L,
+            minRemainingSecondsForCut = 29.5
+        )
+
+        val ranges = buildEncodeRangesWithPlatePolicy(
+            trimStartSeconds = 0.0,
+            trimEndSeconds = 30.0,
+            splitPoints = emptyList(),
+            settings = settings,
+            plateCache = cache
+        )
+
+        kotlin.test.assertTrue(ranges.isEmpty())
+    }
+
+    @Test
     fun testBuildEncodeRangesWithPlateMaskModeKeepsOriginalRanges() {
         val cache = VideoPlatesCache(
             videoPath = "ride.mp4",

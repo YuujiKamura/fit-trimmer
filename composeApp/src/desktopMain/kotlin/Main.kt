@@ -1002,7 +1002,12 @@ fun buildEncodeRangesWithPlatePolicy(
         trimEndSeconds = trimEndSeconds,
         bufferMs = settings.plateMaskTimeBufferMs
     )
-    return subtractCutSpansFromRanges(baseRanges, cutSpans).ifEmpty { baseRanges }
+    val subtracted = subtractCutSpansFromRanges(baseRanges, cutSpans)
+    val totalRemaining = subtracted.sumOf { it.second - it.first }
+    if (totalRemaining < settings.minRemainingSecondsForCut) {
+        return emptyList()
+    }
+    return subtracted.ifEmpty { baseRanges }
 }
 
 
@@ -1771,6 +1776,15 @@ object BatchJobRunner {
             settings = job.settings,
             plateCache = plateCache
         )
+        if (job.settings.plateMaskMode == "cut" && ranges.isEmpty()) {
+            phase.status = BatchJobPhaseStatus.SKIPPED
+            phase.progress = 1.0f
+            updateOverallJobProgress(job, activePhases)
+            viewModel.progress = job.progress
+            viewModel.saveBatchQueue()
+            onProgressUpdate()
+            return
+        }
         val pipelineSettings = if (encodeSettings.plateMaskMode == "cut") {
             encodeSettings.copy(blurLicensePlates = false)
         } else {

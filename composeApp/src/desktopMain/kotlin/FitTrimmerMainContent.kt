@@ -1065,6 +1065,11 @@ fun FitTrimmerMainContent(
                                                 settings = encodeSettings,
                                                 plateCache = viewModel.plateCache
                                             )
+                                            if (encodeSettings.plateMaskMode == "cut" && ranges.isEmpty()) {
+                                                statusText = "Skipped: Remaining duration is less than threshold (${encodeSettings.minRemainingSecondsForCut}s)"
+                                                isEncoding = false
+                                                return@launch
+                                            }
                                             val pipelineSettings = if (encodeSettings.plateMaskMode == "cut") {
                                                 encodeSettings.copy(blurLicensePlates = false)
                                             } else {
@@ -3125,6 +3130,40 @@ fun FitTrimmerMainContent(
                                              color = Color(0xFF1C1C1E),
                                              fontWeight = FontWeight.Medium
                                          )
+                                     }
+                                     if (settings.plateMaskMode == "cut") {
+                                         Spacer(Modifier.height(4.dp))
+                                         Text(
+                                             text = "カット後最小残存秒数:",
+                                             fontSize = 10.sp,
+                                             color = Color(0xFF636366)
+                                         )
+                                         Row(
+                                             verticalAlignment = Alignment.CenterVertically,
+                                             horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                         ) {
+                                             androidx.compose.material.Slider(
+                                                 value = settings.minRemainingSecondsForCut.toFloat(),
+                                                 onValueChange = { newValue ->
+                                                     val rounded = (kotlin.math.round(newValue * 2f) / 2f).toDouble()
+                                                     settings = settings.copy(minRemainingSecondsForCut = rounded.coerceIn(0.5, 30.0))
+                                                 },
+                                                 valueRange = 0.5f..30.0f,
+                                                 steps = 59,
+                                                 enabled = !isEncoding,
+                                                 modifier = Modifier.width(180.dp),
+                                                 colors = androidx.compose.material.SliderDefaults.colors(
+                                                     thumbColor = Color(0xFFFF2D55),
+                                                     activeTrackColor = Color(0xFFFF2D55)
+                                                 )
+                                             )
+                                             Text(
+                                                 text = String.format(java.util.Locale.US, "%.1f s", settings.minRemainingSecondsForCut),
+                                                 fontSize = 10.sp,
+                                                 color = Color(0xFF1C1C1E),
+                                                 fontWeight = FontWeight.Medium
+                                             )
+                                         }
                                      }
                                     if (viewModel.isDetectingPlates) {
                                         Row(
