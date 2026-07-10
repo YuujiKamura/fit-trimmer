@@ -1410,13 +1410,18 @@ class AppViewModel(
                 BatchJobPhase(BatchJobPhaseType.CONCAT_MERGE, initialEnabled = true)
             )
         }
+        val finalTrimEndSeconds = if (jobSettings.exportResolution == "strava") {
+            minOf(jobTrimEndSeconds, jobTrimStartSeconds + 30.0)
+        } else {
+            jobTrimEndSeconds
+        }
         return BatchJob(
             videoPath = jobVideoPath,
             fitPath = jobFitPath,
             videoStartUtc = jobVideoStartUtc,
             timeOffsetMillis = timeOffsetState.millis.toLong(),
             trimStartSeconds = jobTrimStartSeconds,
-            trimEndSeconds = jobTrimEndSeconds,
+            trimEndSeconds = finalTrimEndSeconds,
             splitPoints = jobSplitPoints,
             initialSettings = jobSettings,
             initialAutoDetectRoadCaptionsOnEncode = jobAutoDetectRoadCaptionsOnEncode,
@@ -1426,7 +1431,7 @@ class AppViewModel(
                 jobVideoPath = jobVideoPath,
                 jobVideoStartUtc = jobVideoStartUtc,
                 jobTrimStartSeconds = jobTrimStartSeconds,
-                jobTrimEndSeconds = jobTrimEndSeconds,
+                jobTrimEndSeconds = finalTrimEndSeconds,
                 jobSplitPoints = jobSplitPoints,
                 jobDurationSeconds = jobDurationSeconds
             )
