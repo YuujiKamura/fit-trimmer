@@ -1392,7 +1392,12 @@ fun BatchQueueDialog(
                                 )
                             }
                             val rendererProxy = remember(hudConfig) { fit.DynamicRendererProxy(hudConfig) }
-                            val videoLengthMs = (previewPlayerState.metadata.duration ?: 0.0).toLong().coerceAtLeast(1000L)
+                            val rawDuration = (previewPlayerState.metadata.duration ?: 0.0).toLong()
+                            val videoLengthMs = if (rawDuration > 0L) {
+                                rawDuration
+                            } else {
+                                (selectedJob.trimEndSeconds * 1000).toLong().coerceAtLeast(1000L)
+                            }
                             
                             VideoPreviewArea(
                                 videoPath = selectedJob.videoPath,
