@@ -3086,7 +3086,7 @@ fun FitTrimmerMainContent(
                                             color = Color(0xFF8E8E93)
                                         )
                                     }
-                                    if (viewModel.plateCache == null && !viewModel.isDetectingPlates && videoPath.isNotEmpty()) {
+                                    if (!viewModel.isDetectingPlates && videoPath.isNotEmpty()) {
                                          Spacer(Modifier.height(4.dp))
                                          Button(
                                              onClick = {
