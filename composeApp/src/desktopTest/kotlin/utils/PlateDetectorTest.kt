@@ -907,6 +907,94 @@ class PlateDetectorTest {
         kotlin.test.assertEquals(20.0, range.second, "End range should be mapped back to video timeline (20.0s)")
     }
 
+    @Test
+    fun testPlateDetectionSkipsAlreadyDetectedFrames() = runBlocking {
+        val cropTestMp4 = File("C:\\Users\\yuuji\\fit-trimmer\\composeApp\\scratch\\crop_test.mp4")
+        if (!cropTestMp4.exists()) {
+            println("Skipping testPlateDetectionSkipsAlreadyDetectedFrames: crop_test.mp4 not found")
+            return@runBlocking
+        }
+
+        // Clear existing cache file to start fresh
+        val cacheFile = fit.PlateCacheManager.getPlatesFile(cropTestMp4.absolutePath)
+        if (cacheFile != null && cacheFile.exists()) {
+            cacheFile.delete()
+        }
+
+        val settings = fit.HudSettings(
+            plateDetectionFps = 4.0,
+            plateMaxSpeedKmh = 100.0 // ensure speed filters do not skip frames
+        )
+
+        // 1. First scan: 0.0s to 1.0s (expected to scan 2 frames: 0.0s, 1.0s)
+        val detector = PlateDetector.getInstance()
+        detector.resetPerfStats()
+
+        val cache1 = PlateDetectionManager.detect(
+            videoPath = cropTestMp4.absolutePath,
+            telemetryPoints = emptyList(),
+            adjustedStartUtc = "2026-06-14T08:02:06Z",
+            onProgress = { _, _ -> },
+            onCancel = { false },
+            settings = settings,
+            saveCache = true,
+            scanRanges = listOf(0.0 to 1.0)
+        )
+
+        kotlin.test.assertNotNull(cache1)
+        val firstProcessed = detector.totalFramesProcessed
+        kotlin.test.assertTrue(firstProcessed > 0L, "First scan must process some frames")
+        kotlin.test.assertEquals(1, cache1.scanRanges.size)
+        kotlin.test.assertEquals(0L, cache1.scanRanges[0].startMs)
+        kotlin.test.assertEquals(1000L, cache1.scanRanges[0].endMs)
+
+        // 2. Second scan: 0.0s to 1.0s (exact same range, should skip all ONNX inferences)
+        detector.resetPerfStats()
+        val cache2 = PlateDetectionManager.detect(
+            videoPath = cropTestMp4.absolutePath,
+            telemetryPoints = emptyList(),
+            adjustedStartUtc = "2026-06-14T08:02:06Z",
+            onProgress = { _, _ -> },
+            onCancel = { false },
+            settings = settings,
+            saveCache = true,
+            scanRanges = listOf(0.0 to 1.0)
+        )
+
+        kotlin.test.assertNotNull(cache2)
+        val secondProcessed = detector.totalFramesProcessed
+        kotlin.test.assertEquals(0L, secondProcessed, "Second identical scan must skip all frames")
+
+        // 3. Third scan: 0.0s to 2.0s (extends range, should only scan the new part: 1.0s to 2.0s)
+        detector.resetPerfStats()
+        val cache3 = PlateDetectionManager.detect(
+            videoPath = cropTestMp4.absolutePath,
+            telemetryPoints = emptyList(),
+            adjustedStartUtc = "2026-06-14T08:02:06Z",
+            onProgress = { _, _ -> },
+            onCancel = { false },
+            settings = settings,
+            saveCache = true,
+            scanRanges = listOf(0.0 to 2.0)
+        )
+
+        kotlin.test.assertNotNull(cache3)
+        val thirdProcessed = detector.totalFramesProcessed
+        kotlin.test.assertTrue(thirdProcessed > 0L, "Third scan must process the newly extended range")
+        // The newly processed count should be smaller than a full scan of 0.0 to 2.0
+        kotlin.test.assertTrue(thirdProcessed < firstProcessed * 2, "Third scan should only process new frames, skipping previously cached ones")
+
+        // Verify that ranges are correctly merged in cache3: should be consolidated into one range [0L..2000L]
+        kotlin.test.assertEquals(1, cache3.scanRanges.size)
+        kotlin.test.assertEquals(0L, cache3.scanRanges[0].startMs)
+        kotlin.test.assertEquals(2000L, cache3.scanRanges[0].endMs)
+
+        // Cleanup cache file
+        if (cacheFile != null && cacheFile.exists()) {
+            cacheFile.delete()
+        }
+    }
+
     private class SGObserver : java.awt.image.ImageObserver {
         override fun imageUpdate(img: java.awt.Image?, infoflags: Int, x: Int, y: Int, width: Int, height: Int): Boolean {
             return false

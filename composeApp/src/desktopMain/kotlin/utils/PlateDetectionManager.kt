@@ -42,6 +42,8 @@ object PlateDetectionManager : fit.PlateDetector {
         val videoFile = File(videoPath)
         if (!videoFile.exists()) return@withContext null
 
+        val existingCache = if (saveCache) fit.PlateCacheManager.loadCache(videoPath) else null
+
         var localVideoPath = videoPath
         var tempLocalVideo: File? = null
 
@@ -192,6 +194,10 @@ object PlateDetectionManager : fit.PlateDetector {
         for (f in 0 until totalFrames) {
             val timeMs = (f * 1000.0 / effectiveDetectionFps).toLong()
             if (!isInRequestedRange(timeMs)) {
+                rawRequired[f.toInt()] = false
+                continue
+            }
+            if (existingCache != null && existingCache.scanRanges.any { timeMs in it.startMs..it.endMs }) {
                 rawRequired[f.toInt()] = false
                 continue
             }
@@ -612,9 +618,13 @@ object PlateDetectionManager : fit.PlateDetector {
                     sourceHeight = videoHeight,
                     scanRanges = listOf(partialRange)
                 )
-                cache
+                val finalCache = if (existingCache != null) existingCache.mergedWith(cache) else cache
+                if (saveCache) {
+                    PlateCacheManager.saveCache(videoPath, finalCache)
+                }
+                finalCache
             } else {
-                null
+                existingCache
             }
         } else {
             val ratio = if (frameIndex > 0) skippedFrames.toFloat() / frameIndex.toFloat() * 100f else 0f
@@ -627,10 +637,11 @@ object PlateDetectionManager : fit.PlateDetector {
                 sourceHeight = videoHeight,
                 scanRanges = normalizedScanRanges
             )
+            val finalCache = if (existingCache != null) existingCache.mergedWith(cache) else cache
             if (saveCache) {
-                PlateCacheManager.saveCache(videoPath, cache)
+                PlateCacheManager.saveCache(videoPath, finalCache)
             }
-            cache
+            finalCache
         }
     }
 
