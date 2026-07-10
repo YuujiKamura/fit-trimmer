@@ -49,6 +49,7 @@ data class BatchJob(
     val trimStartSeconds: Double,
     val trimEndSeconds: Double,
     val splitPoints: List<Double>,
+    val durationSeconds: Double? = null,
     private val initialSettings: HudSettings,
     private val initialAutoDetectRoadCaptionsOnEncode: Boolean = false,
     private val initialOutputFileNames: List<String> = listOf(videoPath.substringAfterLast('\\').substringAfterLast('/')),
