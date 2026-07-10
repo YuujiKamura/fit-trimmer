@@ -153,6 +153,7 @@ internal class DefaultCacheJob(
         val concatArgs = listOf(
             ffmpegPath, "-y",
             "-nostdin",
+            "-fflags", "+genpts",
             "-f", "concat",
             "-safe", "0",
             "-i", partsListFile.absolutePath,
