@@ -989,7 +989,7 @@ class NativeHudEncoder(
         var exportHeight = videoHeight
         val maxLongEdge = when (settings.exportResolution) {
             "1080p" -> 1920.0
-            "strava" -> 1920.0
+            "strava" -> 1280.0
             "2.7k" -> 2704.0
             else -> 0.0 // "original" size
         }
@@ -1588,13 +1588,13 @@ class NativeHudEncoder(
                 pbArgs.add("-sc_threshold")
                 pbArgs.add("0")
                 pbArgs.add("-b:v")
-                pbArgs.add("6M")
-                pbArgs.add("-minrate")
                 pbArgs.add("4M")
+                pbArgs.add("-minrate")
+                pbArgs.add("2.5M")
                 pbArgs.add("-maxrate")
-                pbArgs.add("8M")
+                pbArgs.add("5M")
                 pbArgs.add("-bufsize")
-                pbArgs.add("12M")
+                pbArgs.add("8M")
                 if (encoderName.contains("h264") || encoderName.contains("x264")) {
                     pbArgs.add("-profile:v")
                     pbArgs.add("high")
@@ -2345,7 +2345,7 @@ class NativeHudEncoder(
                 val (exportWidth, exportHeight) = when (settings.exportResolution) {
                     "4K" -> 3840 to 2160
                     "1080p" -> 1920 to 1080
-                    "strava" -> 1920 to 1080
+                    "strava" -> 1280 to 720
                     "720p" -> 1280 to 720
                     else -> videoWidth to videoHeight
                 }
