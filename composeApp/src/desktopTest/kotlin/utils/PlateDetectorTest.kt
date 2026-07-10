@@ -862,9 +862,9 @@ class PlateDetectorTest {
         val offset = videoStartEpoch - fitStartEpoch // Offset of video start in FIT timeline
 
         // Simulating a trim range of 10s to 20s relative to the video range
-        // In unconfirmed state, trimStartSeconds/trimEndSeconds are on the FIT timeline
-        viewModel.trimStartSeconds = offset + 10.0
-        viewModel.trimEndSeconds = offset + 20.0
+        // In the unified time-system, trimStartSeconds/trimEndSeconds are always relative to the video range
+        viewModel.trimStartSeconds = 10.0
+        viewModel.trimEndSeconds = 20.0
 
         // Capture detect parameters
         var capturedScanRanges: List<Pair<Double, Double>>? = null

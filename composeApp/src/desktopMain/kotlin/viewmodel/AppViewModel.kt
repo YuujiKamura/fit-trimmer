@@ -298,20 +298,10 @@ class AppViewModel(
         onCancel: () -> Boolean,
         onPartialResult: (fit.VideoPlatesCache) -> Unit = {}
     ): fit.VideoPlatesCache? {
+        // In the unified time-system, trimStart and trimEnd are always relative to the video,
+        // so no offset subtraction is necessary here.
         val ranges = if (trimEnd > trimStart) {
-            val offset = if (!isTelemetryCut && telemetryPoints.isNotEmpty() && adjustedStartUtc.isNotEmpty()) {
-                val firstPoint = telemetryPoints.firstOrNull()
-                val videoInstant = try { java.time.Instant.parse(adjustedStartUtc) } catch (e: Exception) { null }
-                if (firstPoint != null && videoInstant != null) {
-                    val fitStartEpoch = firstPoint.timestamp + 631065600L
-                    val videoStartEpoch = videoInstant.toEpochMilli() / 1000.0
-                    (videoStartEpoch - fitStartEpoch).coerceAtLeast(0.0)
-                } else 0.0
-            } else 0.0
-
-            val start = (trimStart - offset).coerceAtLeast(0.0)
-            val end = (trimEnd - offset).coerceAtLeast(0.0)
-            if (end > start) listOf(start to end) else null
+            listOf(trimStart to trimEnd)
         } else null
 
         return plateDetector.detect(
