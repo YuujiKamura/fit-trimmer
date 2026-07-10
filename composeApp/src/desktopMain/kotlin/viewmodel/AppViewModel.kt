@@ -299,9 +299,9 @@ class AppViewModel(
         onPartialResult: (fit.VideoPlatesCache) -> Unit = {}
     ): fit.VideoPlatesCache? {
         val ranges = if (trimEnd > trimStart) {
-            val offset = if (!isTelemetryCut && telemetryPoints.isNotEmpty() && videoStartUtc.isNotEmpty()) {
+            val offset = if (!isTelemetryCut && telemetryPoints.isNotEmpty() && adjustedStartUtc.isNotEmpty()) {
                 val firstPoint = telemetryPoints.firstOrNull()
-                val videoInstant = try { java.time.Instant.parse(videoStartUtc) } catch (e: Exception) { null }
+                val videoInstant = try { java.time.Instant.parse(adjustedStartUtc) } catch (e: Exception) { null }
                 if (firstPoint != null && videoInstant != null) {
                     val fitStartEpoch = firstPoint.timestamp + 631065600L
                     val videoStartEpoch = videoInstant.toEpochMilli() / 1000.0
