@@ -151,7 +151,8 @@ fun FitTrimmerMainContent(
             mapMarkerSizeScale = settings.mapMarkerSizeScale,
             mapTextSizeScale = settings.mapTextSizeScale,
             mapRangeMode = settings.mapRangeMode,
-            textShadowAlpha = settings.textShadowAlpha
+            textShadowAlpha = settings.textShadowAlpha,
+            showCumulativeDistanceTime = settings.showCumulativeDistanceTime
         )
     }
     var reloadTrigger by remember { mutableStateOf(0) }
