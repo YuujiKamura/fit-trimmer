@@ -814,6 +814,22 @@ class HudRendererTest {
         // カロリー表示が "CALORIES: 40 kcal" になっているか確認
         assertTrue(canvas.drawnTexts.contains("CALORIES: 40 kcal"), "Should display calculated calories based on power: CALORIES: 40 kcal (got ${canvas.drawnTexts})")
 
+        // 1.5. パワーデータがあるが、途中でパワーが0になった場合（心拍数にフォールバックせずパワー0Wとして計算されるかのテスト）
+        val pZero2 = p2.copy(power = 0.0) // 1100s で 0W (足を止めている)
+        val allPointsWithZero = listOf(p1, pZero2, p3)
+        val canvasZero = TestHudCanvas()
+        renderer.renderFrame(
+            canvasZero,
+            p3,
+            allPointsWithZero,
+            emptyList(),
+            emptyList(),
+            1.0f,
+            isValid = true
+        )
+        // 200W * 100s / 1000 = 20 kcal (p1->pZero2 は 0Wなので 0 kcal、pZero2->p3 は 200Wなので 20 kcal)
+        assertTrue(canvasZero.drawnTexts.contains("CALORIES: 20 kcal"), "Should display 20 kcal without fallback to HR (got ${canvasZero.drawnTexts})")
+
         // 2. パワーデータがなく心拍数だけがある場合の累積カロリーテスト
         val hp1 = TelemetryPoint(
             timestamp = 1000.0, speed = 10.0, power = 0.0, cadence = 80.0, heartRate = 140.0, elevation = 50.0, grade = 2.0
