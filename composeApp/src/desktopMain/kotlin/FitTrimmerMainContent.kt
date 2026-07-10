@@ -2745,6 +2745,7 @@ fun FitTrimmerMainContent(
                                 Triple("show_grade", settings.showGrade) { v: Boolean -> settings = settings.copy(showGrade = v) },
                                 Triple("show_elevation", settings.showElevation) { v: Boolean -> settings = settings.copy(showElevation = v) },
                                 Triple("show_distance_time", settings.showDistanceTime) { v: Boolean -> settings = settings.copy(showDistanceTime = v) },
+                                Triple("show_cumulative_distance_time", settings.showCumulativeDistanceTime) { v: Boolean -> settings = settings.copy(showCumulativeDistanceTime = v) },
                                 Triple("fix_map_north_up", settings.fixMapNorthUp) { v: Boolean -> settings = settings.copy(fixMapNorthUp = v) }
                             )
                             

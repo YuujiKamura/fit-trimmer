@@ -43,7 +43,8 @@ data class HudConfig(
     val mapMarkerSizeScale: Float = 1.0f,
     val mapTextSizeScale: Float = 1.0f,
     val mapRangeMode: String = "full",
-    val textShadowAlpha: Float = 0.8f
+    val textShadowAlpha: Float = 0.8f,
+    val showCumulativeDistanceTime: Boolean = false
 )
 
 
@@ -388,12 +389,15 @@ class HudRenderer(val config: HudConfig) {
                 val fitTimeText = formatTime(fitElapsedSeconds)
                 val videoTimeText = formatTime(videoElapsedSeconds)
                 
+                val targetDistText = if (config.showCumulativeDistanceTime) fitDistText else videoDistText
+                val targetTimeText = if (config.showCumulativeDistanceTime) fitTimeText else videoTimeText
+                
                 val infoSize = 16f
                 val isJa = config.language.lowercase().let { it == "ja" || it.startsWith("ja-") }
                 val line = if (isJa) {
-                    "距離: $videoDistText   時間: $videoTimeText"
+                    "距離: $targetDistText   時間: $targetTimeText"
                 } else {
-                    "Distance: $videoDistText   Time: $videoTimeText"
+                    "Distance: $targetDistText   Time: $targetTimeText"
                 }
                 
                 drawShadowedText(canvas, line, cx, cy, infoSize, "#ffffff", bold = true, sf = sf)
@@ -662,12 +666,15 @@ class HudRenderer(val config: HudConfig) {
                 val fitTimeText = formatTime(fitElapsedSeconds)
                 val videoTimeText = formatTime(videoElapsedSeconds)
                 
+                val targetDistText = if (config.showCumulativeDistanceTime) fitDistText else videoDistText
+                val targetTimeText = if (config.showCumulativeDistanceTime) fitTimeText else videoTimeText
+                
                 val infoSize = 16f
                 val isJa = config.language.lowercase().let { it == "ja" || it.startsWith("ja-") }
                 val line = if (isJa) {
-                    "距離: $videoDistText   時間: $videoTimeText"
+                    "距離: $targetDistText   時間: $targetTimeText"
                 } else {
-                    "Distance: $videoDistText   Time: $videoTimeText"
+                    "Distance: $targetDistText   Time: $targetTimeText"
                 }
                 
                 drawShadowedText(canvas, line, cx, cy, infoSize, "#ffffff", bold = true, sf = sf)
