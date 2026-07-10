@@ -537,7 +537,7 @@ fun VideoPreviewArea(
             val getPlayerCurrentTimeMs = {
                 val sliderPos = playerState.sliderPos
                 val durationMs = playerState.metadata.duration ?: 0L
-                if (trimStartSeconds > 0.0 && durationMs > 0L) {
+                if (durationMs > 0L && durationMs > videoLengthMs) {
                     val absoluteTimeMs = ((sliderPos / 1000f) * durationMs).toLong()
                     (absoluteTimeMs - (trimStartSeconds * 1000).toLong()).coerceIn(0L, videoLengthMs)
                 } else {
@@ -576,7 +576,7 @@ fun VideoPreviewArea(
         snapshotFlow { playerState.sliderPos to (playerState.metadata.duration ?: 0L) }
             .collect { (sliderPos, durationMs) ->
                 if (!isSeekingProvider()) {
-                    val elapsedMs = if (trimStartSeconds > 0.0 && durationMs > 0L) {
+                    val elapsedMs = if (durationMs > 0L && durationMs > videoLengthMs) {
                         val absoluteTimeMs = ((sliderPos / 1000f) * durationMs).toLong()
                         (absoluteTimeMs - (trimStartSeconds * 1000).toLong()).coerceIn(0L, videoLengthMs)
                     } else {
