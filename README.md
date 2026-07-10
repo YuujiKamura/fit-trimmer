@@ -4,7 +4,7 @@
 
 サイクリング動画に走行データ（GPSログ）をメーター風に重ね合わせて表示するHUD動画を作成する際、動画と走行ログのスタート位置を同期し、トリミングや合成処理を効率化するローカルツールです。
 
-![FIT TRIMMER GUI](docs/images/gui_screenshot.png)
+<img width="1005" height="709" alt="image" src="https://github.com/user-attachments/assets/4e1fe187-dad9-4b6c-a176-9b194fa1009b" />
 
 ### 提供形態
 * **デスクトップアプリ版 (Windows専用 / HUDエンコーダー搭載) [メイン]**: [Releases](https://github.com/YuujiKamura/fit-trimmer/releases) ページからビルド済みバイナリをダウンロードして使用できます。動画プレビュー再生等に Windows Media Foundation API を使用するため、Windows 専用です。スピードやパワー、心拍数などのHUDメーター情報を重ね合わせた動画を直接エンコード出力できます。
