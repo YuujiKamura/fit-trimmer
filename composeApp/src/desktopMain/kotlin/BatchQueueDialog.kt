@@ -157,7 +157,7 @@ fun BatchQueueDialog(
                 previewPlayerState.openUri(path)
                 val startMs = ((selectedJob?.trimStartSeconds ?: 0.0) * 1000).toLong()
                 previewPlayerState.seekTo(startMs.toFloat())
-                previewTimeMs = startMs
+                previewTimeMs = 0L // set relative time to 0L
             }
         }
         
@@ -1392,9 +1392,7 @@ fun BatchQueueDialog(
                                 )
                             }
                             val rendererProxy = remember(hudConfig) { fit.DynamicRendererProxy(hudConfig) }
-                            val videoLengthMs = selectedJob.durationSeconds?.let { (it * 1000).toLong() }
-                                ?: (previewPlayerState.metadata.duration ?: 0.0).toLong().takeIf { it > 0L }
-                                ?: (selectedJob.trimEndSeconds * 1000).toLong().coerceAtLeast(1000L)
+                            val videoLengthMs = ((selectedJob.trimEndSeconds - selectedJob.trimStartSeconds) * 1000).toLong().coerceAtLeast(1000L)
                             
                             VideoPreviewArea(
                                 videoPath = selectedJob.videoPath,
@@ -1418,8 +1416,10 @@ fun BatchQueueDialog(
                                 onSeekEnd = { 
                                     isSeeking = false
                                     previewTimeMs = it
-                                    previewPlayerState.seekTo(it.toFloat())
+                                    val targetPlayerMs = ((selectedJob.trimStartSeconds * 1000) + it).toFloat()
+                                    previewPlayerState.seekTo(targetPlayerMs)
                                 },
+                                trimStartSeconds = selectedJob.trimStartSeconds,
                                 modifier = Modifier.weight(1f).fillMaxWidth(),
                                 isEncoding = false,
                                 isDetectingPlates = false

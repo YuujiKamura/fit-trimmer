@@ -441,7 +441,8 @@ fun VideoPreviewArea(
     onFullscreenToggle: (() -> Unit)? = null,
     plateCache: fit.VideoPlatesCache? = null,
     videoRotation: Int = 0,
-    renderVideoSurface: Boolean = true
+    renderVideoSurface: Boolean = true,
+    trimStartSeconds: Double = 0.0
 ) {
     val previewScope = rememberCoroutineScope()
     var isPlaying by remember { mutableStateOf(false) }
@@ -536,7 +537,12 @@ fun VideoPreviewArea(
             val getPlayerCurrentTimeMs = {
                 val sliderPos = playerState.sliderPos
                 val durationMs = playerState.metadata.duration ?: 0L
-                fit.TimelineMapper.calculateCurrentTimeMs(sliderPos, durationMs, videoLengthMs)
+                if (trimStartSeconds > 0.0 && durationMs > 0L) {
+                    val absoluteTimeMs = ((sliderPos / 1000f) * durationMs).toLong()
+                    (absoluteTimeMs - (trimStartSeconds * 1000).toLong()).coerceIn(0L, videoLengthMs)
+                } else {
+                    fit.TimelineMapper.calculateCurrentTimeMs(sliderPos, durationMs, videoLengthMs)
+                }
             }
             var startPlayerTimeMs = getPlayerCurrentTimeMs()
             var lastSyncNanos = System.nanoTime()
@@ -566,15 +572,20 @@ fun VideoPreviewArea(
         }
     }
 
-    LaunchedEffect(playerState, videoLengthMs) {
+    LaunchedEffect(playerState, videoLengthMs, trimStartSeconds) {
         snapshotFlow { playerState.sliderPos to (playerState.metadata.duration ?: 0L) }
             .collect { (sliderPos, durationMs) ->
                 if (!isSeekingProvider()) {
-                    val elapsedMs = fit.TimelineMapper.calculateCurrentTimeMs(
-                        sliderPos = sliderPos,
-                        durationMs = durationMs,
-                        fullVideoLengthMs = videoLengthMs
-                    )
+                    val elapsedMs = if (trimStartSeconds > 0.0 && durationMs > 0L) {
+                        val absoluteTimeMs = ((sliderPos / 1000f) * durationMs).toLong()
+                        (absoluteTimeMs - (trimStartSeconds * 1000).toLong()).coerceIn(0L, videoLengthMs)
+                    } else {
+                        fit.TimelineMapper.calculateCurrentTimeMs(
+                            sliderPos = sliderPos,
+                            durationMs = durationMs,
+                            fullVideoLengthMs = videoLengthMs
+                        )
+                    }
                     onCurrentTimeChange(elapsedMs)
                 }
             }
