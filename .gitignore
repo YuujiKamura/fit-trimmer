@@ -57,6 +57,7 @@ tmp_hud/
 
 # Generated charts, visuals, & frames
 *.png
+!docs/images/*.png
 *.jpg
 *.jpeg
 
