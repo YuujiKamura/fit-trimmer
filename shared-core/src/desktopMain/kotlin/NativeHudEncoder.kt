@@ -1577,6 +1577,22 @@ class NativeHudEncoder(
                 pbArgs.add("-crf")
                 pbArgs.add(qualityVal)
             }
+            
+            if (settings.exportResolution == "strava") {
+                val fpsVal = videoFps.toIntOrNull() ?: 30
+                val gopSize = fpsVal * 2
+                pbArgs.add("-g")
+                pbArgs.add(gopSize.toString())
+                pbArgs.add("-keyint_min")
+                pbArgs.add(gopSize.toString())
+                pbArgs.add("-sc_threshold")
+                pbArgs.add("0")
+                pbArgs.add("-maxrate")
+                pbArgs.add("12M")
+                pbArgs.add("-bufsize")
+                pbArgs.add("24M")
+            }
+
             pbArgs.add("-pix_fmt")
             pbArgs.add("yuv420p")
             pbArgs.add("-c:a")
