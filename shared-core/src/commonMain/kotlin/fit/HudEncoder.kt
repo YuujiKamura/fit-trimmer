@@ -101,7 +101,9 @@ interface HudEncoder {
         trimEndSeconds: Double = -1.0,
         shouldResume: Boolean = false,
         skipConcat: Boolean = false,
-        groundTruthMetadata: EncodeGroundTruthMetadata? = null
+        groundTruthMetadata: EncodeGroundTruthMetadata? = null,
+        hudTelemetryStartSeconds: Double? = null,
+        hudTelemetryEndSeconds: Double? = null
     )
 }
 

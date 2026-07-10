@@ -247,6 +247,39 @@ class HudEncodePipelineTest {
     }
 
     @Test
+    fun testExecutePassesStableHudTelemetryRangeAcrossCutParts() = runBlocking {
+        val originalFactory = HudEncodePipeline.hudEncoderFactory
+        val fakeEncoder = utils.FakeHudEncoder()
+        HudEncodePipeline.hudEncoderFactory = utils.FakeHudEncoderFactory(fakeEncoder)
+
+        try {
+            HudEncodePipeline.execute(
+                s = HudSettings(blurLicensePlates = false),
+                fitPath = "",
+                videoPath = "C:/videos/ride.mp4",
+                outputDir = System.getProperty("java.io.tmpdir"),
+                videoStartUtc = "2026-07-02T17:53:06Z",
+                ranges = listOf(5.0 to 10.0, 12.0 to 20.0, 25.0 to 65.0),
+                destFiles = emptyList(),
+                shouldResume = false,
+                skipConcat = true,
+                hudTelemetryRange = 5.0 to 65.0,
+                onProgress = { _, _ -> },
+                onFrame = {},
+                cancelSupplier = { false },
+                showLivePreviewSupplier = { false }
+            )
+
+            assertEquals(
+                listOf<Pair<Double?, Double?>>(5.0 to 65.0, 5.0 to 65.0, 5.0 to 65.0),
+                fakeEncoder.hudTelemetryRanges
+            )
+        } finally {
+            HudEncodePipeline.hudEncoderFactory = originalFactory
+        }
+    }
+
+    @Test
     fun testPlateMaskingRealDatasetTenSeconds() = runBlocking {
         val videoPath = "F:\\Insta360\\20260708\\VID_20260708_184458_001.mp4"
         val fitPath = "F:\\Insta360\\20260708\\Evening_Ride.fit"

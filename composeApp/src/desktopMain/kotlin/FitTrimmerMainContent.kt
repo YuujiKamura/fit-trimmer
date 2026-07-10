@@ -1138,7 +1138,8 @@ fun FitTrimmerMainContent(
                                                     viewModel.encodingSegmentStart = pStart
                                                     viewModel.encodingSegmentEnd = pEnd
                                                 },
-                                                mergeOutputFile = mergeOutputFile
+                                                mergeOutputFile = mergeOutputFile,
+                                                hudTelemetryRange = mergeOutputFile?.let { trimStartSeconds to trimEndSeconds }
                                             )
                                             statusText = resultMsg
                                             if (args.contains("--auto-sample")) {
