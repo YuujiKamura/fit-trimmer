@@ -30,7 +30,8 @@ data class SerializedBatchJob(
     val status: String,
     val progress: Float,
     val errorMessage: String?,
-    val phases: List<SerializedBatchJobPhase>? = null
+    val phases: List<SerializedBatchJobPhase>? = null,
+    val durationSeconds: Double? = null
 )
 
 object BatchQueueCache {

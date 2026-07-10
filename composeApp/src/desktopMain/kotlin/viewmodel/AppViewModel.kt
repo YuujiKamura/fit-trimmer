@@ -1277,6 +1277,7 @@ class AppViewModel(
                         trimStartSeconds = it.trimStartSeconds,
                         trimEndSeconds = it.trimEndSeconds,
                         splitPoints = it.splitPoints,
+                        durationSeconds = it.durationSeconds,
                         initialSettings = it.settings,
                         initialAutoDetectRoadCaptionsOnEncode = it.autoDetectRoadCaptionsOnEncode,
                         initialOutputFileNames = it.outputFileNames,
@@ -1423,6 +1424,7 @@ class AppViewModel(
             trimStartSeconds = jobTrimStartSeconds,
             trimEndSeconds = finalTrimEndSeconds,
             splitPoints = jobSplitPoints,
+            durationSeconds = jobDurationSeconds,
             initialSettings = jobSettings,
             initialAutoDetectRoadCaptionsOnEncode = jobAutoDetectRoadCaptionsOnEncode,
             initialPhases = phases,
@@ -1527,6 +1529,7 @@ class AppViewModel(
                 status = it.status.name,
                 progress = it.progress,
                 errorMessage = it.errorMessage,
+                durationSeconds = it.durationSeconds,
                 phases = it.phases.map { phase ->
                     utils.SerializedBatchJobPhase(
                         type = phase.type.name,
