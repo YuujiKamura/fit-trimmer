@@ -19,6 +19,7 @@ object HudFileNameFormatter {
         val resSuffix = when (settings.exportResolution) {
             "1080p" -> "_1080p"
             "2.7k" -> "_2.7k"
+            "strava" -> "_strava"
             else -> "_orig"
         }
         val suffix = "${trimSuffix}${partSuffix}_KMP_HUD${resSuffix}.mp4"

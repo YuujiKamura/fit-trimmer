@@ -989,6 +989,7 @@ class NativeHudEncoder(
         var exportHeight = videoHeight
         val maxLongEdge = when (settings.exportResolution) {
             "1080p" -> 1920.0
+            "strava" -> 1920.0
             "2.7k" -> 2704.0
             else -> 0.0 // "original" size
         }
@@ -2318,6 +2319,7 @@ class NativeHudEncoder(
                 val (exportWidth, exportHeight) = when (settings.exportResolution) {
                     "4K" -> 3840 to 2160
                     "1080p" -> 1920 to 1080
+                    "strava" -> 1920 to 1080
                     "720p" -> 1280 to 720
                     else -> videoWidth to videoHeight
                 }

@@ -1753,10 +1753,11 @@ fun FitTrimmerMainContent(
                                      horizontalArrangement = Arrangement.spacedBy(4.dp)
                                  ) {
                                      val options = listOf(
-                                         Triple("1080p", "1080p", Modifier.weight(1f)),
-                                         Triple("2.7k", "2.7K", Modifier.weight(1f)),
-                                         Triple("original", "Original", Modifier.weight(1.2f))
-                                     )
+                                          Triple("1080p", "1080p", Modifier.weight(1f)),
+                                          Triple("2.7k", "2.7K", Modifier.weight(1f)),
+                                          Triple("strava", "Strava", Modifier.weight(1f)),
+                                          Triple("original", "Original", Modifier.weight(1.2f))
+                                      )
                                      options.forEach { (value, label, weightModifier) ->
                                          val isSelected = settings.exportResolution == value
                                          Button(
