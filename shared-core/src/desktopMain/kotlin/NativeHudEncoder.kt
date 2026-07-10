@@ -891,7 +891,9 @@ class NativeHudEncoder(
         trimEndSeconds: Double,
         shouldResume: Boolean,
         skipConcat: Boolean,
-        groundTruthMetadata: EncodeGroundTruthMetadata?
+        groundTruthMetadata: EncodeGroundTruthMetadata?,
+        hudTelemetryStartSeconds: Double?,
+        hudTelemetryEndSeconds: Double?
     ) {
         val profiler = EncodeProfiler()
         try {
@@ -1130,8 +1132,15 @@ class NativeHudEncoder(
         val fitEpoch = Instant.parse("1989-12-31T00:00:00Z").epochSecond
 
         val startUtcSeconds = startTime.toEpochMilli() / 1000.0
-        val videoStartFit = startUtcSeconds + actualTrimStart - fitEpoch
-        val videoEndFit = startUtcSeconds + actualTrimEnd - fitEpoch
+        val hudTelemetryStart = hudTelemetryStartSeconds
+            ?.coerceIn(0.0, videoDurationSeconds.toDouble())
+            ?: actualTrimStart
+        val hudTelemetryEnd = hudTelemetryEndSeconds
+            ?.takeIf { it > hudTelemetryStart }
+            ?.coerceIn(hudTelemetryStart, videoDurationSeconds.toDouble())
+            ?: actualTrimEnd
+        val videoStartFit = startUtcSeconds + hudTelemetryStart - fitEpoch
+        val videoEndFit = startUtcSeconds + hudTelemetryEnd - fitEpoch
         val trimmedTelemetryRaw = telemetry.filter { it.timestamp in videoStartFit..videoEndFit }
         val trimmedTelemetry = if (trimmedTelemetryRaw.isNotEmpty()) trimmedTelemetryRaw else telemetry
 

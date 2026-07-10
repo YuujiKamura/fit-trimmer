@@ -107,7 +107,8 @@ object HudEncodePipeline {
         showLivePreviewSupplier: () -> Boolean,
         onSegmentStart: (start: Double, end: Double) -> Unit = { _, _ -> },
         skipConcat: Boolean = false,
-        mergeOutputFile: File? = null
+        mergeOutputFile: File? = null,
+        hudTelemetryRange: Pair<Double, Double>? = null
     ): String {
         return withContext(Dispatchers.IO) {
             val lockFile = File(fit.PathResolver.getProjectRoot(), "temp_work/encoding.lock")
@@ -223,7 +224,9 @@ object HudEncodePipeline {
                         alignedVideoStartUtc = videoStartUtc,
                         timeOffsetMillis = timeOffsetMillis,
                         imuTimeOffsetMillis = imuTimeOffsetMillis
-                    )
+                    ),
+                    hudTelemetryStartSeconds = hudTelemetryRange?.first,
+                    hudTelemetryEndSeconds = hudTelemetryRange?.second
                 )
 
                 if (!skipConcat && destFiles.isNotEmpty() && !cancelSupplier()) {

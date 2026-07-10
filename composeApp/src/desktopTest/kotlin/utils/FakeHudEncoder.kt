@@ -15,6 +15,7 @@ class FakeHudEncoder(
     var onProgress: (Float, String) -> Unit = { _, _ -> },
     var profileSink: ((EncodeProfileReport) -> Unit)? = null
 ) : HudEncoder {
+    val hudTelemetryRanges = mutableListOf<Pair<Double?, Double?>>()
 
     override fun encode(
         fitPath: String,
@@ -26,8 +27,11 @@ class FakeHudEncoder(
         trimEndSeconds: Double,
         shouldResume: Boolean,
         skipConcat: Boolean,
-        groundTruthMetadata: EncodeGroundTruthMetadata?
+        groundTruthMetadata: EncodeGroundTruthMetadata?,
+        hudTelemetryStartSeconds: Double?,
+        hudTelemetryEndSeconds: Double?
     ) {
+        hudTelemetryRanges.add(hudTelemetryStartSeconds to hudTelemetryEndSeconds)
         onEncodeCalled?.invoke()
 
         if (shouldThrowError) {
