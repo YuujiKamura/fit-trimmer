@@ -207,7 +207,7 @@ class AppViewModel(
 
                 
 
-                plateCache = fit.PlateCacheManager.loadCache(value)
+                restorePlateCacheIfAvailable(value)
 
                 videoRotation = utils.getVideoRotation(value)
 
@@ -296,13 +296,15 @@ class AppViewModel(
         settings: fit.HudSettings,
         onProgress: (percent: Float, status: String) -> Unit,
         onCancel: () -> Boolean,
-        onPartialResult: (fit.VideoPlatesCache) -> Unit = {}
+        onPartialResult: (fit.VideoPlatesCache) -> Unit = {},
+        videoDurationSeconds: Double? = null,
+        maxRecords: Int? = null
     ): fit.VideoPlatesCache? {
         // In the unified time-system, trimStart and trimEnd are always relative to the video,
         // so no offset subtraction is necessary here.
-        val ranges = if (trimEnd > trimStart) {
-            listOf(trimStart to trimEnd)
-        } else null
+        val durationFallback = videoDurationSeconds
+            ?: if (this.videoPath == videoPath && videoLengthMs > 0L) videoLengthMs / 1000.0 else null
+        val ranges = buildPlateScanRanges(trimStart, trimEnd, durationFallback)
 
         return plateDetector.detect(
             videoPath = videoPath,
@@ -313,8 +315,24 @@ class AppViewModel(
             onPartialResult = onPartialResult,
             saveCache = true,
             settings = settings,
-            scanRanges = ranges
+            scanRanges = ranges,
+            maxRecords = maxRecords
         )
+    }
+
+    internal fun buildPlateScanRanges(
+        trimStart: Double,
+        trimEnd: Double,
+        videoDurationSeconds: Double?
+    ): List<Pair<Double, Double>>? {
+        val duration = videoDurationSeconds?.takeIf { it > 0.0 }
+        val start = if (duration != null) trimStart.coerceIn(0.0, duration) else trimStart.coerceAtLeast(0.0)
+        val end = when {
+            trimEnd > trimStart -> if (duration != null) trimEnd.coerceIn(0.0, duration) else trimEnd
+            duration != null -> duration
+            else -> trimEnd
+        }
+        return if (end > start) listOf(start to end) else null
     }
 
     fun runPlateDetection(
@@ -379,7 +397,7 @@ class AppViewModel(
                     adjustedStartUtc = adjustedStartUtc,
                     trimStart = trimStartSeconds,
                     trimEnd = trimEndSeconds,
-                    settings = fit.HudSettings(
+                    settings = settings.copy(
                         plateMaxSpeedKmh = plateDetectionMaxSpeedKmh,
                         plateDetectionFps = plateDetectionFps,
                         platePaddingSeconds = plateDetectionPaddingSeconds,
@@ -396,7 +414,8 @@ class AppViewModel(
                         coroutineScope.launch(kotlinx.coroutines.Dispatchers.Main) {
                             plateCache = partialCache
                         }
-                    }
+                    },
+                    maxRecords = maxRecords
                 )
 
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
@@ -413,7 +432,11 @@ class AppViewModel(
 
                     } else {
 
-                        if (isActive) {
+                        if (plateDetectionStopRequested) {
+
+                            plateDetectionProgress = "Stopped"
+
+                        } else if (isActive) {
 
                             plateDetectionError = utils.Localizer.get("plate_error_unknown", settings.language)
 
@@ -471,19 +494,26 @@ class AppViewModel(
         settings = settings.copy(blurLicensePlates = enabled)
         if (enabled) {
             if (plateCache == null && videoPath.isNotEmpty()) {
-                if (fit.PlateCacheManager.cacheExists(videoPath)) {
-                    plateCache = fit.PlateCacheManager.loadCache(videoPath)
-                    plateDetectionProgress = "Restored"
-                } else {
-                    plateDetectionProgress = "Not Scanned"
-                }
+                restorePlateCacheIfAvailable(videoPath)
             }
         } else {
             println("DEBUG: Blur settings disabled. Cancelling active plate detection job.")
             plateDetectionJob?.cancel()
             isDetectingPlates = false
-            plateDetectionProgress = "Canceled"
+            plateDetectionProgress = if (plateCache != null) "Cached" else "Canceled"
         }
+    }
+
+    fun restorePlateCacheIfAvailable(path: String = videoPath): Boolean {
+        if (path.isEmpty()) return false
+        val restored = fit.PlateCacheManager.loadCache(path)
+        plateCache = restored
+        plateDetectionProgress = if (restored != null) {
+            "Restored"
+        } else {
+            "Not Scanned"
+        }
+        return restored != null
     }
     
     fun onDetectPedestriansChanged(enabled: Boolean, coroutineScope: kotlinx.coroutines.CoroutineScope) {
@@ -1047,10 +1077,13 @@ class AppViewModel(
                 }
 
             } else if (value > 0L) {
-
-                trimStartSeconds = 0.0
-
-                trimEndSeconds = value / 1000.0
+                val durationSeconds = value / 1000.0
+                if (trimStartSeconds >= durationSeconds) {
+                    trimStartSeconds = 0.0
+                    trimEndSeconds = durationSeconds
+                } else if (trimEndSeconds > durationSeconds) {
+                    trimEndSeconds = durationSeconds
+                }
 
             }
 

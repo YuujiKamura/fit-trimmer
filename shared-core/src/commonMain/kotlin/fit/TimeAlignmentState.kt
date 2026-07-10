@@ -36,8 +36,9 @@ class TimeAlignmentState(initialMillis: Int) {
         if (baseUtcStr.isEmpty()) return
         try {
             val baseInstant = Instant.parse(baseUtcStr)
-            val tokyoZone = TimeZone.of("Asia/Tokyo")
-            val baseDateTime = baseInstant.toLocalDateTime(tokyoZone)
+            val tokyoOffsetMillis = 9L * 60L * 60L * 1000L
+            val baseTokyoInstant = Instant.fromEpochMilliseconds(baseInstant.toEpochMilliseconds() + tokyoOffsetMillis)
+            val baseDateTime = baseTokyoInstant.toLocalDateTime(TimeZone.UTC)
             val newDateTime = kotlinx.datetime.LocalDateTime(
                 year = baseDateTime.year,
                 monthNumber = baseDateTime.monthNumber,
@@ -47,8 +48,8 @@ class TimeAlignmentState(initialMillis: Int) {
                 second = second.coerceIn(0, 59),
                 nanosecond = 0
             )
-            val newInstant = newDateTime.toInstant(tokyoZone)
-            val diffMs = newInstant.toEpochMilliseconds() - baseInstant.toEpochMilliseconds()
+            val newTokyoInstant = newDateTime.toInstant(TimeZone.UTC)
+            val diffMs = newTokyoInstant.toEpochMilliseconds() - baseTokyoInstant.toEpochMilliseconds()
             update(diffMs.toInt())
         } catch (e: Exception) {
             e.printStackTrace()

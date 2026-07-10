@@ -1,4 +1,11 @@
 import java.io.IOException
+import org.gradle.api.file.ConfigurableFileCollection
+import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.tasks.InputFiles
+import org.gradle.api.tasks.Internal
+import org.gradle.api.tasks.PathSensitive
+import org.gradle.api.tasks.PathSensitivity
+import org.gradle.api.tasks.TaskAction
 
 plugins {
     kotlin("multiplatform")
@@ -53,13 +60,33 @@ tasks.register<JavaExec>("runFitCLI") {
     classpath = compilation.output.allOutputs + compilation.runtimeDependencyFiles
 }
 
-tasks.register<Copy>("copyWasmToSrc") {
-    from(layout.buildDirectory.dir("dist/wasmJs/productionExecutable"))
-    from(layout.buildDirectory.dir("dist/wasmJs/developmentExecutable"))
-    into(rootProject.layout.projectDirectory)
-    include("*.js", "*.wasm", "*.map")
-    duplicatesStrategy = DuplicatesStrategy.INCLUDE
-    doNotTrackState("Copying to root directory which contains untrackable .gradle files")
+abstract class CopyWasmToSrcTask : DefaultTask() {
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val sourceFiles: ConfigurableFileCollection
+
+    @get:Internal
+    abstract val outputDir: DirectoryProperty
+
+    @TaskAction
+    fun copyFiles() {
+        val destinationDir = outputDir.get().asFile
+        sourceFiles.files.forEach { source ->
+            source.copyTo(File(destinationDir, source.name), overwrite = true)
+        }
+    }
+}
+
+tasks.register<CopyWasmToSrcTask>("copyWasmToSrc") {
+    sourceFiles.from(
+        fileTree(layout.buildDirectory.dir("dist/wasmJs/productionExecutable")) {
+            include("*.js", "*.wasm", "*.map")
+        },
+        fileTree(layout.buildDirectory.dir("dist/wasmJs/developmentExecutable")) {
+            include("*.js", "*.wasm", "*.map")
+        }
+    )
+    outputDir.set(rootProject.layout.projectDirectory)
 }
 
 tasks.named("wasmJsBrowserDistribution") {

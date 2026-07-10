@@ -1,4 +1,7 @@
-import fit.HudSettings
+import fit.HudSettings
+import fit.PlateBox
+import fit.PlateRecord
+import fit.VideoPlatesCache
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -81,7 +84,74 @@ class EncodePlanTest {
     }
 
     @Test
-    fun testHasTrimmedRangeComparesAgainstVideoDuration() {
+    fun testBuildPlateCutSpansMergesBufferedPlateRecords() {
+        val cache = VideoPlatesCache(
+            videoPath = "ride.mp4",
+            records = listOf(
+                PlateRecord(10_000L, listOf(PlateBox(0, 0, 10, 10))),
+                PlateRecord(10_200L, listOf(PlateBox(0, 0, 10, 10))),
+                PlateRecord(20_000L, listOf(PlateBox(0, 0, 10, 10)))
+            )
+        )
+
+        val cuts = buildPlateCutSpans(
+            plateCache = cache,
+            trimStartSeconds = 0.0,
+            trimEndSeconds = 30.0,
+            bufferMs = 300L
+        )
+
+        assertEquals(listOf(fit.CutSpan(9.7, 10.5), fit.CutSpan(19.7, 20.3)), cuts)
+    }
+
+    @Test
+    fun testBuildEncodeRangesWithPlateCutModeSubtractsDetectedSpans() {
+        val cache = VideoPlatesCache(
+            videoPath = "ride.mp4",
+            records = listOf(
+                PlateRecord(10_000L, listOf(PlateBox(0, 0, 10, 10))),
+                PlateRecord(20_000L, listOf(PlateBox(0, 0, 10, 10)))
+            )
+        )
+        val settings = HudSettings(
+            blurLicensePlates = true,
+            plateMaskMode = "cut",
+            plateMaskTimeBufferMs = 500L
+        )
+
+        val ranges = buildEncodeRangesWithPlatePolicy(
+            trimStartSeconds = 0.0,
+            trimEndSeconds = 30.0,
+            splitPoints = emptyList(),
+            settings = settings,
+            plateCache = cache
+        )
+
+        assertEquals(listOf(0.0 to 9.5, 10.5 to 19.5, 20.5 to 30.0), ranges)
+    }
+
+    @Test
+    fun testBuildEncodeRangesWithPlateMaskModeKeepsOriginalRanges() {
+        val cache = VideoPlatesCache(
+            videoPath = "ride.mp4",
+            records = listOf(PlateRecord(10_000L, listOf(PlateBox(0, 0, 10, 10))))
+        )
+        val settings = HudSettings(blurLicensePlates = true, plateMaskMode = "plate")
+
+        val ranges = buildEncodeRangesWithPlatePolicy(
+            trimStartSeconds = 0.0,
+            trimEndSeconds = 30.0,
+            splitPoints = listOf(15.0),
+            settings = settings,
+            plateCache = cache
+        )
+
+        assertEquals(listOf(0.0 to 15.0, 15.0 to 30.0), ranges)
+    }
+
+    @Test
+
+    fun testHasTrimmedRangeComparesAgainstVideoDuration() {
         assertEquals(false, hasTrimmedRange(0.0, 120.0, 120.0))
         assertEquals(true, hasTrimmedRange(5.0, 120.0, 120.0))
         assertEquals(true, hasTrimmedRange(0.0, 90.0, 120.0))

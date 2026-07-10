@@ -106,7 +106,8 @@ object HudEncodePipeline {
         cancelSupplier: () -> Boolean,
         showLivePreviewSupplier: () -> Boolean,
         onSegmentStart: (start: Double, end: Double) -> Unit = { _, _ -> },
-        skipConcat: Boolean = false
+        skipConcat: Boolean = false,
+        mergeOutputFile: File? = null
     ): String {
         return withContext(Dispatchers.IO) {
             val lockFile = File(fit.PathResolver.getProjectRoot(), "temp_work/encoding.lock")
@@ -254,6 +255,15 @@ object HudEncodePipeline {
                 throw Exception("Encoding Canceled")
             }
 
+            if (mergeOutputFile != null && destFiles.size > 1) {
+                onProgress(1.0f, "Merging cut segments...")
+                mergeEncodedSegments(destFiles, mergeOutputFile)
+                finalOutPath = mergeOutputFile.absolutePath
+                destFiles
+                    .filter { it.absolutePath != mergeOutputFile.absolutePath }
+                    .forEach { it.delete() }
+            }
+
             if (hasCloudSyncMsg) {
                 "✨ Copied to Cloud. Drive Desktop is syncing in background (Check system tray)."
             } else {
@@ -270,6 +280,46 @@ object HudEncodePipeline {
                     if (lockFile.exists()) lockFile.delete()
                 } catch (e: Exception) {}
             }
+        }
+    }
+
+    private fun mergeEncodedSegments(segmentFiles: List<File>, outputFile: File) {
+        val existingSegments = segmentFiles.filter { it.exists() && it.length() > 0L }
+        if (existingSegments.isEmpty()) {
+            throw Exception("No encoded cut segments were produced.")
+        }
+        outputFile.parentFile?.mkdirs()
+        if (existingSegments.size == 1) {
+            Files.copy(existingSegments.first().toPath(), outputFile.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            return
+        }
+
+        val ffmpegPath = fit.findFfmpegPath()
+        val listFile = File(outputFile.parentFile ?: File("."), outputFile.nameWithoutExtension + "_concat.txt")
+        listFile.writeText(
+            existingSegments.joinToString(System.lineSeparator()) { file ->
+                "file '${file.absolutePath.replace("\\", "/").replace("'", "'\\''")}'"
+            },
+            Charsets.UTF_8
+        )
+        try {
+            val pb = ProcessBuilder(
+                ffmpegPath, "-y",
+                "-f", "concat",
+                "-safe", "0",
+                "-i", listFile.absolutePath,
+                "-c", "copy",
+                outputFile.absolutePath
+            )
+            pb.redirectErrorStream(true)
+            val process = pb.start()
+            val output = process.inputStream.bufferedReader().readText()
+            val exitCode = process.waitFor()
+            if (exitCode != 0) {
+                throw Exception("Failed to merge cut segments. ffmpeg exited with code $exitCode.\n$output")
+            }
+        } finally {
+            listFile.delete()
         }
     }
 }
