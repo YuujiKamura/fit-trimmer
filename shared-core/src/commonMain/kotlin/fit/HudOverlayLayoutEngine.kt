@@ -33,7 +33,8 @@ data class HeartRateLayout(
     val barX: Float,
     val barY: Float,
     val barW: Float,
-    val barH: Float
+    val barH: Float,
+    val totalCalories: Double
 )
 
 data class HudOverlayLayout(
@@ -63,6 +64,7 @@ class HudOverlayLayoutEngine {
         // 心拍ゾーンの統計情報
         zonesCurrent: IntArray,
         cachedZonesTotal: IntArray?,
+        totalCalories: Double,
         // テキスト幅測定用ラムダ
         getTextWidth: (text: String, size: Float, bold: Boolean) -> Float,
         // 日時、値フォーマッタ用ラムダ（Main側の依存を逃がす）
@@ -174,8 +176,15 @@ class HudOverlayLayoutEngine {
         val heartRate = if (config.showHeartRate) {
             val hrStr = if (isValid) point.heartRate.toInt().toString() else "-"
             val valW = getTextWidth(hrStr, valSize, true)
-            val cellW = 160f
-            val cellH = labelSize + tightness + valSize + 28f * sf // ゾーンテキストの高さを含む
+            
+            val isJa = config.language.lowercase().let { it == "ja" || it.startsWith("ja-") }
+            val calLabel = if (isJa) "消費カロリー" else "CALORIES"
+            val calValStr = if (isValid) "${totalCalories.roundToInt()} kcal" else "- kcal"
+            val calText = "$calLabel: $calValStr"
+            val calTextW = getTextWidth(calText, labelSize, true)
+            
+            val cellW = maxOf(160f, calTextW)
+            val cellH = labelSize + tightness + valSize + 50f * sf // ゾーンテキスト (28f) + カロリーテキスト (22f) の高さを含む
             
             val valY = cy + labelSize + tightness
             
@@ -249,7 +258,8 @@ class HudOverlayLayoutEngine {
                 barX = barX,
                 barY = barY,
                 barW = barW,
-                barH = barH
+                barH = barH,
+                totalCalories = totalCalories
             )
         } else null
 

@@ -57,6 +57,7 @@ class HudOverlayLayoutEngineTest {
             sf = 1.0f,
             zonesCurrent = IntArray(7) { 10 },
             cachedZonesTotal = IntArray(7) { 100 },
+            totalCalories = 0.0,
             getTextWidth = textWidthMeasurer,
             formatDateTime = { "18:40:00" },
             formatOneDecimal = { "%.1f".format(java.util.Locale.US, it) },
@@ -80,7 +81,7 @@ class HudOverlayLayoutEngineTest {
         // Verify W/kg (4.0 W/kg)
         assertNotNull(layout.wkg)
         assertEquals("4.0", layout.wkg.valueText)
-        assertEquals(752.8f, layout.finalCy)
+        assertEquals(774.8f, layout.finalCy)
     }
 
     @Test
@@ -124,6 +125,7 @@ class HudOverlayLayoutEngineTest {
             sf = 1.0f,
             zonesCurrent = IntArray(7),
             cachedZonesTotal = null,
+            totalCalories = 0.0,
             getTextWidth = textWidthMeasurer,
             formatDateTime = { "" },
             formatOneDecimal = { "%.1f".format(java.util.Locale.US, it) },

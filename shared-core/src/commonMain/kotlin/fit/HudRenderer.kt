@@ -122,14 +122,33 @@ class HudRenderer(val config: HudConfig) {
         // 標高グラフ描画用のターゲットポイントリスト
         val elevGraphPoints = if (config.elevationGraphScope == "video") videoPoints else allPoints
 
-        // Calculate heart rate zones current accumulation for this frame
+        // Calculate heart rate zones current accumulation and cumulative calories for this frame
         val zonesCurrent = IntArray(7)
+        var totalCalories = 0.0
+        var prevTimestamp = -1.0
         if (isValid && hrAccumPoints.isNotEmpty()) {
             for (pt in hrAccumPoints) {
                 if (pt.timestamp > telemetry.timestamp) break
                 val zIdx = getHrZoneIndex(pt.heartRate)
                 if (zIdx in 0..6) {
                     zonesCurrent[zIdx]++
+                }
+                
+                val dt = if (prevTimestamp < 0.0) {
+                    0.0
+                } else {
+                    (pt.timestamp - prevTimestamp).coerceAtLeast(0.0)
+                }
+                prevTimestamp = pt.timestamp
+                
+                if (dt > 0.0) {
+                    if (pt.power > 0.0) {
+                        totalCalories += (pt.power * dt) / 1000.0
+                    } else if (pt.heartRate > 0.0) {
+                        val weight = if (config.bodyWeightKg > 0.0) config.bodyWeightKg else 70.0
+                        val calPerSec = (-37.75 + 0.54 * pt.heartRate + 0.16 * weight + 3.5) / 251.04
+                        totalCalories += maxOf(0.0, calPerSec) * dt
+                    }
                 }
             }
         }
@@ -155,6 +174,7 @@ class HudRenderer(val config: HudConfig) {
             sf = sf,
             zonesCurrent = zonesCurrent,
             cachedZonesTotal = cachedZonesTotal,
+            totalCalories = totalCalories,
             getTextWidth = { text, size, bold -> canvas.getTextWidth(text, size, bold) },
             formatDateTime = { formatDateTime(it) },
             formatOneDecimal = { formatOneDecimal(it) },
@@ -218,6 +238,16 @@ class HudRenderer(val config: HudConfig) {
                 drawShadowedText(canvas, zoneText, m.x, subCy, labelSize, "#ffffff", bold = true, sf = sf)
             } else {
                 drawShadowedText(canvas, "ZONE -: --:--", m.x, subCy, labelSize, "#9ca3af", bold = true, sf = sf)
+            }
+            
+            val subCy2 = subCy + 22f * sf
+            val calLabel = getLabel("CALORIES")
+            if (isValid) {
+                val calText = "$calLabel: ${hr.totalCalories.roundToInt()} kcal"
+                drawShadowedText(canvas, calText, m.x, subCy2, labelSize, "#ffffff", bold = true, sf = sf)
+            } else {
+                val calText = "$calLabel: - kcal"
+                drawShadowedText(canvas, calText, m.x, subCy2, labelSize, "#9ca3af", bold = true, sf = sf)
             }
         }
 
@@ -782,6 +812,7 @@ class HudRenderer(val config: HudConfig) {
             "ELEVATION" -> if (isJa) "標高" else "ELEVATION"
             "POWER TREND" -> if (isJa) "パワートレンド" else "POWER TREND"
             "DATE/TIME" -> if (isJa) "日時" else "DATE/TIME"
+            "CALORIES" -> if (isJa) "消費カロリー" else "CALORIES"
             else -> key
         }
     }
