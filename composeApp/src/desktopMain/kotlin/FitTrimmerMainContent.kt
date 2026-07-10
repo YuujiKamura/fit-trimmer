@@ -809,17 +809,9 @@ fun FitTrimmerMainContent(
                     val fitEpoch = 631065600L
                     val firstPoint = telemetry.firstOrNull()
                     val videoInstant = try { java.time.Instant.parse(videoStartUtc) } catch(e: Exception) { null }
-                    if (firstPoint != null && videoInstant != null) {
-                        val fitStartEpoch = firstPoint.timestamp + fitEpoch
-                        val videoStartEpoch = videoInstant.toEpochMilli() / 1000.0
-                        val totalFitDuration = telemetry.last().timestamp - telemetry.first().timestamp
-                        val initialStartSec = (videoStartEpoch - fitStartEpoch).coerceIn(0.0, kotlin.math.max(0.0, totalFitDuration - (videoLengthMs / 1000.0)))
-                        trimStartSeconds = initialStartSec
-                        trimEndSeconds = initialStartSec + (videoLengthMs / 1000.0)
-                    } else {
-                        trimStartSeconds = 0.0
-                        trimEndSeconds = videoLengthMs / 1000.0
-                    }
+                    // In the unified time-system, trimStartSeconds/trimEndSeconds are always relative to the video range
+                    trimStartSeconds = 0.0
+                    trimEndSeconds = videoLengthMs / 1000.0
                 } catch (e: Exception) {
                     println("ERROR: Failed to parse FIT file: ${e.message}")
                     e.printStackTrace()
