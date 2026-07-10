@@ -483,8 +483,15 @@ class AppViewModel(
             plateDetectionProgress = "Canceled"
         }
     }
-
-
+    
+    fun onDetectPedestriansChanged(enabled: Boolean, coroutineScope: kotlinx.coroutines.CoroutineScope) {
+        val oldDetectPedestrians = settings.detectPedestrians
+        settings = settings.copy(detectPedestrians = enabled)
+        if (oldDetectPedestrians != enabled && settings.blurLicensePlates && videoPath.isNotEmpty()) {
+            println("DEBUG: detectPedestrians changed from $oldDetectPedestrians to $enabled. Resetting plate detection cache for re-scan.")
+            resetPlateDetection()
+        }
+    }
 
     fun resetPlateDetection() {
 

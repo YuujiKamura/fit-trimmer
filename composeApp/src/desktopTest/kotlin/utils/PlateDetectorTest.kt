@@ -766,6 +766,55 @@ class PlateDetectorTest {
         }
     }
 
+    @Test
+    fun testPedestrianDetectionOptionSignature() {
+        val detector = PlateDetector.getInstance()
+        val dummyImage = BufferedImage(640, 640, BufferedImage.TYPE_3BYTE_BGR)
+        // Verify detect signature accepts detectPedestrians
+        val result = detector.detect(dummyImage, confThreshold = 0.25f, iouThreshold = 0.45f, detectPedestrians = true)
+        kotlin.test.assertNotNull(result)
+    }
+
+    @Test
+    fun testRealVideoPedestrianDetectionIntegration() {
+        val cropTestMp4 = File("C:\\Users\\yuuji\\fit-trimmer\\composeApp\\scratch\\crop_test.mp4")
+        if (!cropTestMp4.exists()) {
+            println("Skipping real video integration test: crop_test.mp4 not found")
+            return
+        }
+
+        val settings = fit.HudSettings(
+            detectPedestrians = true,
+            plateDetectionFps = 1.0,
+            plateMaxSpeedKmh = 100.0
+        )
+
+        println("⚡ Starting real video pedestrian detection integration test using: ${cropTestMp4.absolutePath}")
+        
+        val cache = runBlocking {
+            PlateDetectionManager.detect(
+                videoPath = cropTestMp4.absolutePath,
+                telemetryPoints = emptyList(),
+                adjustedStartUtc = "2026-06-14T08:02:06Z",
+                onProgress = { progress, msg ->
+                    println("🔍 Detection Progress: ${(progress * 100).toInt()}% - $msg")
+                },
+                onCancel = { false },
+                maxRecords = 3,
+                settings = settings
+            )
+        }
+
+        kotlin.test.assertNotNull(cache, "Scan cache must not be null")
+        println("✅ Real video scan finished. Total records created: ${cache.records.size}")
+        for (record in cache.records) {
+            println("   - Time: ${record.timeMs}ms | Detected plates/pedestrians: ${record.boxes.size}")
+            for ((idx, box) in record.boxes.withIndex()) {
+                println("     [$idx] Box: (${box.x1}, ${box.y1}) -> (${box.x2}, ${box.y2})")
+            }
+        }
+    }
+
     private class SGObserver : java.awt.image.ImageObserver {
         override fun imageUpdate(img: java.awt.Image?, infoflags: Int, x: Int, y: Int, width: Int, height: Int): Boolean {
             return false
