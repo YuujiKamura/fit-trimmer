@@ -12,6 +12,15 @@ data class RoadCaptionSegment(
 )
 
 @Serializable
+data class RiskTimeSpan(
+    val id: String,
+    val startSeconds: Double,
+    val endSeconds: Double,
+    val type: String, // "cut" or "mask"
+    val isEnabled: Boolean = true
+)
+
+@Serializable
 data class HudSettings(
     val valSize: Float = 59.27f,
     val tightness: Float = -10.0f,
@@ -59,6 +68,8 @@ data class HudSettings(
     val mapMarkerSizeScale: Float = 1.0f,
     val mapTextSizeScale: Float = 1.0f,
     val mapRangeMode: String = "full",
-    val textShadowAlpha: Float = 0.8f
+    val textShadowAlpha: Float = 0.8f,
+    val riskTimeSpans: List<RiskTimeSpan> = emptyList(),
+    val detectPedestrians: Boolean = false
 )
 

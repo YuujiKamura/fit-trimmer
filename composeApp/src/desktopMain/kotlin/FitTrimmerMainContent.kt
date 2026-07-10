@@ -2914,6 +2914,28 @@ fun FitTrimmerMainContent(
                                     modifier = Modifier.padding(start = 24.dp, top = 2.dp, bottom = 4.dp),
                                     verticalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
+                                    Row(
+                                        modifier = Modifier.clickable(enabled = !isEncoding) {
+                                            viewModel.onDetectPedestriansChanged(!viewModel.settings.detectPedestrians, scope)
+                                        },
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Checkbox(
+                                            checked = viewModel.settings.detectPedestrians,
+                                            onCheckedChange = { checked ->
+                                                viewModel.onDetectPedestriansChanged(checked, scope)
+                                            },
+                                            enabled = !isEncoding,
+                                            colors = CheckboxDefaults.colors(checkedColor = Color(0xFF007AFF))
+                                        )
+                                        Text(
+                                            text = utils.Localizer.get("detect_pedestrians", viewModel.settings.language),
+                                            fontSize = 11.sp,
+                                            color = Color(0xFF1C1C1E),
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    }
                                     Text(
                                         text = String.format(
                                             java.util.Locale.US,

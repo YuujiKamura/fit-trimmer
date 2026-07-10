@@ -110,7 +110,7 @@ class PlateDetector private constructor() : AutoCloseable {
 
     data class DetectedBox(val x1: Float, val y1: Float, val x2: Float, val y2: Float, val score: Float, val classId: Int)
 
-    fun detect(image: BufferedImage, confThreshold: Float = 0.25f, iouThreshold: Float = 0.45f): List<PlateBox> {
+    fun detect(image: BufferedImage, confThreshold: Float = 0.25f, iouThreshold: Float = 0.45f, detectPedestrians: Boolean = false): List<PlateBox> {
         val t0 = System.nanoTime()
         val width = image.width
         val height = image.height
@@ -179,9 +179,13 @@ class PlateDetector private constructor() : AutoCloseable {
                 buffer.get(outputData)
                 
                 val boxes = mutableListOf<DetectedBox>()
-                // Target COCO classes for vehicles: 2 (car), 3 (motorcycle), 5 (bus), 7 (truck)
-                // In YOLOv8, class scores start at index 4, so offset = 4 + classIndex
-                val targetOffsets = intArrayOf(6, 7, 9, 11)
+                // Target COCO classes: 2 (car), 3 (motorcycle), 5 (bus), 7 (truck).
+                // If detectPedestrians is enabled, also include 0 (person) represented by offset 4.
+                val targetOffsets = if (detectPedestrians) {
+                    intArrayOf(4, 6, 7, 9, 11)
+                } else {
+                    intArrayOf(6, 7, 9, 11)
+                }
 
                 for (i in 0 until 8400) {
                     var maxScore = 0f
@@ -190,7 +194,7 @@ class PlateDetector private constructor() : AutoCloseable {
                         val score = outputData[offset * 8400 + i]
                         if (score > maxScore) {
                             maxScore = score
-                            bestClassId = offset - 4 // classIndex (2, 3, 5, 7)
+                            bestClassId = offset - 4
                         }
                     }
 
@@ -218,10 +222,15 @@ class PlateDetector private constructor() : AutoCloseable {
                     val bx2 = (box.x2 * scaleX).coerceIn(0f, width.toFloat())
                     val by2 = (box.y2 * scaleY).coerceIn(0f, height.toFloat())
 
-                    // Crop to vehicle bottom 50% for standard cars, or 75% for motorcycles to handle rider height overhead safely
-                    val carHeight = by2 - by1
-                    val cropRatio = if (box.classId == 3) 0.25f else 0.50f // classId 3 is motorcycle
-                    val finalY1 = by1 + (carHeight * cropRatio)
+                    // Crop to vehicle bottom 50% for standard cars, 75% for motorcycles to handle rider height,
+                    // or 100% (cropRatio = 0.0f) for pedestrians to mask their entire body safely.
+                    val boxHeight = by2 - by1
+                    val cropRatio = when (box.classId) {
+                        0 -> 0.0f  // Pedestrian (full body)
+                        3 -> 0.25f // Motorcycle
+                        else -> 0.50f // Standard vehicle (car, truck, bus)
+                    }
+                    val finalY1 = by1 + (boxHeight * cropRatio)
 
                     PlateBox(
                         x1 = bx1.toInt(),

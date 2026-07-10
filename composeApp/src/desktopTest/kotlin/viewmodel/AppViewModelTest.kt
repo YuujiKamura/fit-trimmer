@@ -1044,6 +1044,13 @@ class AppViewModelTest {
     }
 
     @Test
+    fun testHudSettingsDefaultRiskSettings() {
+        val settings = HudSettings()
+        assertEquals(emptyList<fit.RiskTimeSpan>(), settings.riskTimeSpans, "Default riskTimeSpans should be empty list")
+        assertEquals(false, settings.detectPedestrians, "Default detectPedestrians should be false")
+    }
+
+    @Test
     fun testHudSettingsDefaultEnableRoadDetectionIsTrue() {
         val settings = HudSettings()
         assertTrue(settings.enableRoadDetection, "Default enableRoadDetection should be true")
