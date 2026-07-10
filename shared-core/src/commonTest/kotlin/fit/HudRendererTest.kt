@@ -779,6 +779,65 @@ class HudRendererTest {
         assertFalse(canvas.drawnTexts.contains("190+"), "Zone 190+ should NOT be drawn as a separate table row")
     }
 
+    @Test
+    fun testHeartRateCaloriesRendering() {
+        val config = HudConfig(
+            valSize = 40f, tightness = 1f, spacing = 20f,
+            xOffset = 40f, yOffset = 100f, graphH = 60f, graphW = 300f,
+            captionPosition = "bottom_center"
+        )
+        val renderer = HudRenderer(config)
+
+        // 1. パワーデータがある場合の累積カロリーテスト
+        val p1 = TelemetryPoint(
+            timestamp = 1000.0, speed = 10.0, power = 200.0, cadence = 80.0, heartRate = 145.0, elevation = 50.0, grade = 2.0
+        )
+        val p2 = TelemetryPoint(
+            timestamp = 1100.0, speed = 12.0, power = 200.0, cadence = 82.0, heartRate = 145.0, elevation = 52.0, grade = 2.2
+        )
+        val p3 = TelemetryPoint(
+            timestamp = 1200.0, speed = 11.0, power = 200.0, cadence = 81.0, heartRate = 145.0, elevation = 51.0, grade = 2.1
+        )
+        val allPoints = listOf(p1, p2, p3)
+
+        val canvas = TestHudCanvas()
+        renderer.renderFrame(
+            canvas,
+            p3, // Current frame is p3
+            allPoints,
+            emptyList(),
+            emptyList(),
+            1.0f,
+            isValid = true
+        )
+
+        // カロリー表示が "CALORIES: 40 kcal" になっているか確認
+        assertTrue(canvas.drawnTexts.contains("CALORIES: 40 kcal"), "Should display calculated calories based on power: CALORIES: 40 kcal (got ${canvas.drawnTexts})")
+
+        // 2. パワーデータがなく心拍数だけがある場合の累積カロリーテスト
+        val hp1 = TelemetryPoint(
+            timestamp = 1000.0, speed = 10.0, power = 0.0, cadence = 80.0, heartRate = 140.0, elevation = 50.0, grade = 2.0
+        )
+        val hp2 = TelemetryPoint(
+            timestamp = 1100.0, speed = 12.0, power = 0.0, cadence = 82.0, heartRate = 140.0, elevation = 52.0, grade = 2.2
+        )
+        val hallPoints = listOf(hp1, hp2)
+
+        val canvasHr = TestHudCanvas()
+        renderer.renderFrame(
+            canvasHr,
+            hp2,
+            hallPoints,
+            emptyList(),
+            emptyList(),
+            1.0f,
+            isValid = true
+        )
+
+        assertTrue(canvasHr.drawnTexts.contains("CALORIES: 21 kcal"), "Should display calculated calories based on heart rate: CALORIES: 21 kcal (got ${canvasHr.drawnTexts})")
+    }
+
+
     class CustomCaptionTestHudCanvas : HudCanvas {
         override val width: Float = 1920f
         override val height: Float = 1080f
