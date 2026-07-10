@@ -157,6 +157,7 @@ internal class DefaultCacheJob(
             "-safe", "0",
             "-i", partsListFile.absolutePath,
             "-c", "copy",
+            "-movflags", "+faststart"
         ) + metadataArgs + outputFile.absolutePath
 
         val totalBytes = parts.sumOf { it.length() }
