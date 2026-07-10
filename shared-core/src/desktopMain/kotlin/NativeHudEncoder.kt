@@ -1591,10 +1591,12 @@ class NativeHudEncoder(
                 pbArgs.add("8M")
                 pbArgs.add("-bufsize")
                 pbArgs.add("16M")
-                pbArgs.add("-profile:v")
-                pbArgs.add("high")
-                pbArgs.add("-level")
-                pbArgs.add("4.1")
+                if (encoderName.contains("h264") || encoderName.contains("x264")) {
+                    pbArgs.add("-profile:v")
+                    pbArgs.add("high")
+                    pbArgs.add("-level")
+                    pbArgs.add("4.1")
+                }
             }
 
             pbArgs.add("-pix_fmt")
