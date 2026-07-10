@@ -70,6 +70,7 @@ data class HudSettings(
     val mapRangeMode: String = "full",
     val textShadowAlpha: Float = 0.8f,
     val riskTimeSpans: List<RiskTimeSpan> = emptyList(),
-    val detectPedestrians: Boolean = false
+    val detectPedestrians: Boolean = false,
+    val showCumulativeDistanceTime: Boolean = false
 )
 

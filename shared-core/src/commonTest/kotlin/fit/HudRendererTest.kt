@@ -333,6 +333,44 @@ class HudRendererTest {
     }
 
     @Test
+    fun testHudCumulativeDistanceAndTimeLabels() {
+        val config = HudConfig(
+            valSize = 40f, tightness = 1f, spacing = 20f,
+            xOffset = 40f, yOffset = 100f, graphH = 60f, graphW = 300f,
+            language = "ja",
+            showCumulativeDistanceTime = true
+        )
+        val renderer = HudRenderer(config)
+        
+        val startPoint = TelemetryPoint(
+            timestamp = 1000.0, speed = 10.0, power = 100.0, cadence = 80.0, heartRate = 120.0, elevation = 50.0, grade = 2.0,
+            distance = 1000.0, elapsedSeconds = 10
+        )
+        val currentPoint = TelemetryPoint(
+            timestamp = 1100.0, speed = 12.0, power = 110.0, cadence = 82.0, heartRate = 122.0, elevation = 52.0, grade = 2.2,
+            distance = 2500.5, elapsedSeconds = 110
+        )
+        val allPoints = listOf(startPoint, currentPoint)
+        
+        val canvas = TestHudCanvas()
+        renderer.renderFrame(
+            canvas,
+            currentPoint,
+            allPoints,
+            emptyList(),
+            emptyList(),
+            100.0f,
+            isValid = true
+        )
+        
+        val clipLine = canvas.drawnTexts.find { it.contains("距離:") }
+        
+        assertTrue(clipLine != null, "HUD should display '距離:' line (got ${canvas.drawnTexts})")
+        assertTrue(clipLine.contains("距離: 2.50 km"), "Cumulative distance should be 2.50 km (got '$clipLine')")
+        assertTrue(clipLine.contains("時間: 01:50"), "Cumulative time should be 01:50 (got '$clipLine')")
+    }
+
+    @Test
     fun testElevationGraph_DisplaysHeadingAndValleyPoints() {
         val config = HudConfig(
             valSize = 40f, tightness = 1f, spacing = 20f,
