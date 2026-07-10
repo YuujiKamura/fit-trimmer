@@ -1076,7 +1076,8 @@ fun FitTrimmerMainContent(
                                                 outputDir = outputDir,
                                                 videoStartUtc = adjustedStartUtc,
                                                 sourceVideoStartUtc = videoStartUtc,
-                                                timeOffsetMillis = viewModel.timeOffsetState.millis.toLong(),
+                                                timeOffsetMillis = viewModel.timeOffsetState.millis.toLong(),
+
                                                 imuTimeOffsetMillis = viewModel.imuTimeOffsetMs,
                                                 ranges = ranges,
                                                 destFiles = destFiles,
@@ -1196,7 +1197,8 @@ fun FitTrimmerMainContent(
                                                 if (originalInstant != null && alignedInstant != null) {
                                                     val diffMs = alignedInstant.toEpochMilli() - originalInstant.toEpochMilli()
                                                     val diffSec = diffMs / 1000.0
-                                                    viewModel.imuTimeOffsetMs = diffMs
+                                                    viewModel.imuTimeOffsetMs = diffMs
+
                                             statusText = "IMU Sync: Applied candidate #1 %.3f seconds (r=%.2f, %d candidates)".format(java.util.Locale.US, diffSec, candidate.correlation, candidates.size)
                                                     timeOffsetState.update(diffMs.toInt())
                                                     viewModel.syncAnchorSec = utils.TelemetryAligner.lastAnchorSec
@@ -2257,7 +2259,8 @@ fun FitTrimmerMainContent(
                                 timeOffsetState.update(diffMs.toInt())
                                 viewModel.syncCorrelation = candidate.correlation
                                 viewModel.syncAnchorSec = utils.TelemetryAligner.lastAnchorSec
-                                viewModel.imuTimeOffsetMs = diffMs
+                                viewModel.imuTimeOffsetMs = diffMs
+
                                 statusText = "IMU Sync: Applied candidate #${candidate.rank} %.3f seconds (r=%.2f)".format(java.util.Locale.US, diffMs / 1000.0, candidate.correlation)
                             }
                         },
@@ -2282,7 +2285,8 @@ fun FitTrimmerMainContent(
                                         if (originalInstant != null && alignedInstant != null) {
                                             val diffMs = alignedInstant.toEpochMilli() - originalInstant.toEpochMilli()
                                             val diffSec = diffMs / 1000.0
-                                            viewModel.imuTimeOffsetMs = diffMs
+                                            viewModel.imuTimeOffsetMs = diffMs
+
                                             statusText = "IMU Sync: Applied candidate #1 %.3f seconds (r=%.2f, %d candidates)".format(java.util.Locale.US, diffSec, candidate.correlation, candidates.size)
                                             timeOffsetState.update(diffMs.toInt())
                                             viewModel.syncAnchorSec = utils.TelemetryAligner.lastAnchorSec
@@ -3099,6 +3103,20 @@ fun FitTrimmerMainContent(
                                              Text("プレートスキャン実行", fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                          }
                                          Spacer(Modifier.height(4.dp))
+                                    } else if (viewModel.isDetectingPlates) {
+                                        Spacer(Modifier.height(4.dp))
+                                        Button(
+                                            onClick = {
+                                                viewModel.stopPlateDetection()
+                                            },
+                                            colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFFF9500), contentColor = Color.White),
+                                            modifier = Modifier.height(28.dp),
+                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp),
+                                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp)
+                                        ) {
+                                            Text("プレートスキャン停止", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                        Spacer(Modifier.height(4.dp))
                                     }
                                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                         Text(
