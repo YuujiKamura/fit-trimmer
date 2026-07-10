@@ -4190,6 +4190,7 @@ fun FitTrimmerMainContent(
                                 adjustedStartUtc = adjustedStartUtc,
                                 telemetryPoints = telemetryPoints,
                                 trimmedTelemetryPoints = trimmedTelemetryPoints,
+                                originalTelemetryPoints = viewModel.originalTelemetryPoints,
                                 settings = settings,
                                 rendererProxy = rendererProxy,
                                 textMeasurer = textMeasurer,
