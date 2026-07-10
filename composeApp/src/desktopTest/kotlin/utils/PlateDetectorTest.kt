@@ -815,6 +815,98 @@ class PlateDetectorTest {
         }
     }
 
+    @Test
+    fun testTelemetryUnconfirmedScanRange() {
+        // 1. Load GUI cache
+        val cacheFile = File(System.getProperty("user.home"), ".fittrimmer_gui_cache.json")
+        if (!cacheFile.exists()) {
+            println("Skipping testTelemetryUnconfirmedScanRange: GUI cache file not found.")
+            return
+        }
+        val content = cacheFile.readText(Charsets.UTF_8)
+        val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+        val cache = json.decodeFromString<utils.GuiPathCache>(content)
+
+        val fitFile = File(cache.fitPath)
+        if (!fitFile.exists()) {
+            println("Skipping testTelemetryUnconfirmedScanRange: FIT file '${cache.fitPath}' not found.")
+            return
+        }
+
+        // 2. Initialize AppViewModel simulating "Telemetry Unconfirmed" state
+        val viewModel = viewmodel.AppViewModel(initialCache = null)
+        viewModel.videoPath = cache.videoPath
+        viewModel.fitPath = cache.fitPath
+        
+        // Simulating video loading
+        val videoLengthMs = 1800000L // 30 minutes (1800 seconds)
+        viewModel.videoLengthMs = videoLengthMs
+
+        // Parse and set telemetry points (keep telemetry UNCONFIRMED)
+        val bytes = fitFile.readBytes()
+        val parser = fit.FitParser(bytes)
+        parser.parse()
+        val telemetry = parser.getTelemetry()
+        viewModel.updateTelemetry(telemetry)
+
+        // Telemetry is loaded but NOT confirmed for video range (isTelemetryCut is false)
+        viewModel.videoStartUtc = cache.videoStartUtc // e.g. "2026-07-09T08:07:21Z"
+        viewModel.resetTelemetryCut() // keeps isTelemetryCut = false
+
+        // Compute videoStartOffsetInFit
+        val fitEpoch = 631065600L
+        val firstPoint = telemetry.firstOrNull()
+        val videoInstant = java.time.Instant.parse(cache.videoStartUtc)
+        val fitStartEpoch = firstPoint!!.timestamp + fitEpoch
+        val videoStartEpoch = videoInstant.toEpochMilli() / 1000.0
+        val offset = videoStartEpoch - fitStartEpoch // Offset of video start in FIT timeline
+
+        // Simulating a trim range of 10s to 20s relative to the video range
+        // In unconfirmed state, trimStartSeconds/trimEndSeconds are on the FIT timeline
+        viewModel.trimStartSeconds = offset + 10.0
+        viewModel.trimEndSeconds = offset + 20.0
+
+        // Capture detect parameters
+        var capturedScanRanges: List<Pair<Double, Double>>? = null
+        var detectCalled = false
+
+        viewModel.plateDetector = object : fit.PlateDetector {
+            override suspend fun detect(
+                videoPath: String,
+                telemetryPoints: List<fit.TelemetryPoint>,
+                adjustedStartUtc: String,
+                onProgress: (Float, String) -> Unit,
+                onCancel: () -> Boolean,
+                onPartialResult: (fit.VideoPlatesCache) -> Unit,
+                maxRecords: Int?,
+                saveCache: Boolean,
+                settings: fit.HudSettings,
+                scanRanges: List<Pair<Double, Double>>?
+            ): fit.VideoPlatesCache? {
+                detectCalled = true
+                capturedScanRanges = scanRanges
+                return null
+            }
+        }
+
+        runBlocking {
+            viewModel.runPlateDetection(this)
+            while (viewModel.isDetectingPlates) {
+                kotlinx.coroutines.delay(50)
+            }
+        }
+
+        // Assertions: 
+        // 1. Detect should be called
+        kotlin.test.assertTrue(detectCalled, "detect must be called")
+        // 2. capturedScanRanges must NOT be null, AND it should be mapped back to the video timeline (10.0 to 20.0)
+        kotlin.test.assertNotNull(capturedScanRanges, "scanRanges should not be null")
+        kotlin.test.assertEquals(1, capturedScanRanges!!.size)
+        val range = capturedScanRanges!![0]
+        kotlin.test.assertEquals(10.0, range.first, "Start range should be mapped back to video timeline (10.0s)")
+        kotlin.test.assertEquals(20.0, range.second, "End range should be mapped back to video timeline (20.0s)")
+    }
+
     private class SGObserver : java.awt.image.ImageObserver {
         override fun imageUpdate(img: java.awt.Image?, infoflags: Int, x: Int, y: Int, width: Int, height: Int): Boolean {
             return false

@@ -299,7 +299,19 @@ class AppViewModel(
         onPartialResult: (fit.VideoPlatesCache) -> Unit = {}
     ): fit.VideoPlatesCache? {
         val ranges = if (trimEnd > trimStart) {
-            listOf(trimStart to trimEnd)
+            val offset = if (!isTelemetryCut && telemetryPoints.isNotEmpty() && videoStartUtc.isNotEmpty()) {
+                val firstPoint = telemetryPoints.firstOrNull()
+                val videoInstant = try { java.time.Instant.parse(videoStartUtc) } catch (e: Exception) { null }
+                if (firstPoint != null && videoInstant != null) {
+                    val fitStartEpoch = firstPoint.timestamp + 631065600L
+                    val videoStartEpoch = videoInstant.toEpochMilli() / 1000.0
+                    (videoStartEpoch - fitStartEpoch).coerceAtLeast(0.0)
+                } else 0.0
+            } else 0.0
+
+            val start = (trimStart - offset).coerceAtLeast(0.0)
+            val end = (trimEnd - offset).coerceAtLeast(0.0)
+            if (end > start) listOf(start to end) else null
         } else null
 
         return plateDetector.detect(
