@@ -516,6 +516,12 @@ class PlateDetectorTest {
             return
         }
 
+        // Clear existing cache file to prevent test contamination
+        val cacheFile = fit.PlateCacheManager.getPlatesFile(cropTestMp4.absolutePath)
+        if (cacheFile != null && cacheFile.exists()) {
+            cacheFile.delete()
+        }
+
         // Create dummy high-speed telemetry (all points at 25.0 km/h)
         val telemetry = List(21) { idx ->
             fit.TelemetryPoint(
