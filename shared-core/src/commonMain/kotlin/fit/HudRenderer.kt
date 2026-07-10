@@ -126,6 +126,11 @@ class HudRenderer(val config: HudConfig) {
         val zonesCurrent = IntArray(7)
         var totalCalories = 0.0
         var prevTimestamp = -1.0
+        val hasPowerData = if (isValid && hrAccumPoints.isNotEmpty()) {
+            hrAccumPoints.any { it.power > 0.0 }
+        } else {
+            false
+        }
         if (isValid && hrAccumPoints.isNotEmpty()) {
             for (pt in hrAccumPoints) {
                 if (pt.timestamp > telemetry.timestamp) break
@@ -142,7 +147,7 @@ class HudRenderer(val config: HudConfig) {
                 prevTimestamp = pt.timestamp
                 
                 if (dt > 0.0) {
-                    if (pt.power > 0.0) {
+                    if (hasPowerData) {
                         totalCalories += (pt.power * dt) / 1000.0
                     } else if (pt.heartRate > 0.0) {
                         val weight = if (config.bodyWeightKg > 0.0) config.bodyWeightKg else 70.0
