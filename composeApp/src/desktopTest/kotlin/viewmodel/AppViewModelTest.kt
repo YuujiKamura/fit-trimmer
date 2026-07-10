@@ -453,11 +453,141 @@ class AppViewModelTest {
         assertEquals(50.0, viewModel.trimEndSeconds)
 
         // シナリオ2: 2回目以降の設定 (oldVal > 0L)
-        // 値が更新されると、トリム範囲は強制リセットされること
+        // 再取得された動画長で、既存のトリム範囲が破壊されないこと
         viewModel.videoLengthMs = 120000L // 120s
         androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
-        assertEquals(0.0, viewModel.trimStartSeconds)
-        assertEquals(120.0, viewModel.trimEndSeconds)
+        assertEquals(10.0, viewModel.trimStartSeconds)
+        assertEquals(50.0, viewModel.trimEndSeconds)
+    }
+
+    @Test
+    fun testVideoLengthMsSetterClampsOnlyWhenExistingTrimExceedsDuration() {
+        val viewModel = AppViewModel(null)
+        viewModel.videoLengthMs = 120000L
+        viewModel.trimStartSeconds = 10.0
+        viewModel.trimEndSeconds = 110.0
+
+        viewModel.videoLengthMs = 90000L
+        androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
+
+        assertEquals(10.0, viewModel.trimStartSeconds)
+        assertEquals(90.0, viewModel.trimEndSeconds)
+    }
+
+    @Test
+    fun testPlateScanUsesVideoDurationWhenTrimEndIsZero() = runBlocking {
+        val viewModel = AppViewModel(null)
+        viewModel.videoPath = "/tmp/ride.mp4"
+        viewModel.videoLengthMs = 120000L
+        viewModel.trimStartSeconds = 0.0
+        viewModel.trimEndSeconds = 0.0
+
+        var capturedScanRanges: List<Pair<Double, Double>>? = null
+        viewModel.plateDetector = object : fit.PlateDetector {
+            override suspend fun detect(
+                videoPath: String,
+                telemetryPoints: List<fit.TelemetryPoint>,
+                adjustedStartUtc: String,
+                onProgress: (Float, String) -> Unit,
+                onCancel: () -> Boolean,
+                onPartialResult: (fit.VideoPlatesCache) -> Unit,
+                maxRecords: Int?,
+                saveCache: Boolean,
+                settings: fit.HudSettings,
+                scanRanges: List<Pair<Double, Double>>?
+            ): fit.VideoPlatesCache? {
+                capturedScanRanges = scanRanges
+                return fit.VideoPlatesCache(videoPath = videoPath, records = emptyList())
+            }
+        }
+
+        viewModel.executePlateScanCore(
+            videoPath = viewModel.videoPath,
+            telemetryPoints = emptyList(),
+            adjustedStartUtc = "",
+            trimStart = viewModel.trimStartSeconds,
+            trimEnd = viewModel.trimEndSeconds,
+            settings = fit.HudSettings(),
+            onProgress = { _, _ -> },
+            onCancel = { false }
+        )
+
+        assertEquals(listOf(0.0 to 120.0), capturedScanRanges)
+    }
+
+    @Test
+    fun testManualPlateScanPreservesDetectionSettings() = runBlocking {
+        val viewModel = AppViewModel(null)
+        viewModel.videoPath = "/tmp/ride.mp4"
+        viewModel.settings = viewModel.settings.copy(
+            detectPedestrians = true,
+            plateMinMaskHeightRatio = 0.02
+        )
+
+        var capturedSettings: fit.HudSettings? = null
+        viewModel.plateDetector = object : fit.PlateDetector {
+            override suspend fun detect(
+                videoPath: String,
+                telemetryPoints: List<fit.TelemetryPoint>,
+                adjustedStartUtc: String,
+                onProgress: (Float, String) -> Unit,
+                onCancel: () -> Boolean,
+                onPartialResult: (fit.VideoPlatesCache) -> Unit,
+                maxRecords: Int?,
+                saveCache: Boolean,
+                settings: fit.HudSettings,
+                scanRanges: List<Pair<Double, Double>>?
+            ): fit.VideoPlatesCache? {
+                capturedSettings = settings
+                return fit.VideoPlatesCache(videoPath = videoPath, records = emptyList())
+            }
+        }
+
+        viewModel.executePlateScanCore(
+            videoPath = viewModel.videoPath,
+            telemetryPoints = emptyList(),
+            adjustedStartUtc = "",
+            trimStart = 0.0,
+            trimEnd = 1.0,
+            settings = viewModel.settings.copy(plateMaxSpeedKmh = 40.0),
+            onProgress = { _, _ -> },
+            onCancel = { false }
+        )
+
+        assertEquals(true, capturedSettings?.detectPedestrians)
+        assertEquals(0.02, capturedSettings?.plateMinMaskHeightRatio)
+        assertEquals(40.0, capturedSettings?.plateMaxSpeedKmh)
+    }
+
+    @Test
+    fun testStoppedPlateScanNullResultDoesNotBecomeFailure() = runBlocking {
+        val viewModel = AppViewModel(null)
+        viewModel.videoPath = "/tmp/ride.mp4"
+        viewModel.plateDetector = object : fit.PlateDetector {
+            override suspend fun detect(
+                videoPath: String,
+                telemetryPoints: List<fit.TelemetryPoint>,
+                adjustedStartUtc: String,
+                onProgress: (Float, String) -> Unit,
+                onCancel: () -> Boolean,
+                onPartialResult: (fit.VideoPlatesCache) -> Unit,
+                maxRecords: Int?,
+                saveCache: Boolean,
+                settings: fit.HudSettings,
+                scanRanges: List<Pair<Double, Double>>?
+            ): fit.VideoPlatesCache? {
+                viewModel.stopPlateDetection()
+                return null
+            }
+        }
+
+        viewModel.runPlateDetection(this)
+        while (viewModel.isDetectingPlates) {
+            kotlinx.coroutines.delay(10)
+        }
+
+        assertEquals("Stopped", viewModel.plateDetectionProgress)
+        assertNull(viewModel.plateDetectionError)
     }
 
     @Test

@@ -198,7 +198,8 @@ class PlateDetector private constructor() : AutoCloseable {
                         }
                     }
 
-                    if (maxScore >= confThreshold) {
+                    val classThreshold = if (bestClassId == 0) maxOf(confThreshold, 0.35f) else confThreshold
+                    if (maxScore >= classThreshold) {
                         val cx = outputData[0 * 8400 + i]
                         val cy = outputData[1 * 8400 + i]
                         val w = outputData[2 * 8400 + i]

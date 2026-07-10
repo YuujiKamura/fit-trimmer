@@ -45,6 +45,7 @@ data class HudSettings(
     val platePaddingSeconds: Double = 2.0,
     val plateMergeGapSeconds: Double = 5.0,
     val plateMaskExpandRatio: Double = 0.2,
+    val plateMinMaskHeightRatio: Double = 0.006,
     val plateMaskTimeBufferMs: Long = 300L,
     val elevationGraphScope: String = "video", // "video" or "activity"
     val heartRateAccumulationScope: String = "activity", // "video" or "activity"
@@ -73,4 +74,3 @@ data class HudSettings(
     val detectPedestrians: Boolean = false,
     val showCumulativeDistanceTime: Boolean = false
 )
-

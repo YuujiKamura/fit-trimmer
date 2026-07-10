@@ -9,6 +9,9 @@ sealed class CpCommand {
     
     @Serializable @kotlinx.serialization.SerialName("set_files")
     data class SetFiles(val fit: String, val video: String, val startUtc: String? = null) : CpCommand()
+
+    @Serializable @kotlinx.serialization.SerialName("set_trim")
+    data class SetTrim(val startSeconds: Double, val endSeconds: Double) : CpCommand()
     
     @Serializable @kotlinx.serialization.SerialName("fire")
     object Fire : CpCommand()
@@ -93,6 +96,8 @@ data class CpState(
     val plateCacheLoaded: Boolean = false,
     val isPlaying: Boolean = false,
     val videoLengthMs: Long = 0,
+    val trimStartSeconds: Double = 0.0,
+    val trimEndSeconds: Double = 0.0,
     val videoCurrentTimeMs: Long = 0,
     val videoDisplayCurrentTimeMs: Long = 0,
     val activePlateBoxCount: Int = 0,

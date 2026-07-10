@@ -46,6 +46,7 @@ object PlateDetectionManager : fit.PlateDetector {
 
         var localVideoPath = videoPath
         var tempLocalVideo: File? = null
+        var localVideoTimelineOffsetSec = 0.0
 
         // Google Drive mitigation: pre-copy video locally to avoid network read bottleneck
         if (isGoogleDrivePath(videoPath)) {
@@ -55,23 +56,42 @@ object PlateDetectionManager : fit.PlateDetector {
             val jobDir = File(workDir, "scan_$jobHash")
             if (!jobDir.exists()) jobDir.mkdirs()
             
-            val tempFile = File(jobDir, "temp_scan_input.mp4")
+            val copyRange = scanRanges
+                ?.filter { it.second > it.first }
+                ?.takeIf { it.isNotEmpty() }
+                ?.let { ranges ->
+                    val start = ranges.minOf { it.first }.coerceAtLeast(0.0)
+                    val end = ranges.maxOf { it.second }.coerceAtLeast(start)
+                    if (end > start) start to end else null
+                }
+            val rangeSuffix = copyRange?.let { (start, end) ->
+                "_${(start * 1000).toLong()}_${(end * 1000).toLong()}"
+            } ?: "_full"
+            val tempFile = File(jobDir, "temp_scan_input$rangeSuffix.mp4")
             if (!tempFile.exists() || tempFile.length() == 0L) {
                 println("⚠️ Cloud drive path detected during plate scan: $videoPath")
                 println("📥 Pre-copying video to local temp file to avoid network bottlenecks: ${tempFile.absolutePath}")
-                
+
                 try {
-                    val pbCopy = ProcessBuilder(
-                        ffmpegPath,
-                        "-y",
-                        "-i", videoPath,
-                        "-vf", "scale=640:-2",
-                        "-c:v", "libx264",
-                        "-preset", "ultrafast",
-                        "-crf", "32",
-                        "-an",
-                        tempFile.absolutePath
+                    val copyArgs = mutableListOf(ffmpegPath, "-y")
+                    copyRange?.let { (start, end) ->
+                        copyArgs.add("-ss")
+                        copyArgs.add(String.format(java.util.Locale.US, "%.3f", start))
+                        copyArgs.add("-t")
+                        copyArgs.add(String.format(java.util.Locale.US, "%.3f", end - start))
+                    }
+                    copyArgs.addAll(
+                        listOf(
+                            "-i", videoPath,
+                            "-vf", "scale=640:-2",
+                            "-c:v", "libx264",
+                            "-preset", "ultrafast",
+                            "-crf", "32",
+                            "-an",
+                            tempFile.absolutePath
+                        )
                     )
+                    val pbCopy = ProcessBuilder(copyArgs)
                     pbCopy.redirectError(ProcessBuilder.Redirect.DISCARD)
                     val pCopy = pbCopy.start()
                     
@@ -102,6 +122,7 @@ object PlateDetectionManager : fit.PlateDetector {
             if (tempFile.exists() && tempFile.length() > 0L) {
                 localVideoPath = tempFile.absolutePath
                 tempLocalVideo = tempFile
+                localVideoTimelineOffsetSec = copyRange?.first ?: 0.0
             }
         }
 
@@ -354,14 +375,15 @@ object PlateDetectionManager : fit.PlateDetector {
                         segIdx++
                         
                         val startSec = seg.startFrame * 1000.0 / effectiveDetectionFps / 1000.0
+                        val localStartSec = (startSec - localVideoTimelineOffsetSec).coerceAtLeast(0.0)
                         val durSec = (seg.endFrame - seg.startFrame + 1) * 1000.0 / effectiveDetectionFps / 1000.0
-                        
+
                         println("DEBUG: Scanning Segment [${segIdx - 1}/${segments.size - 1}] - Frames [${seg.startFrame} to ${seg.endFrame}] | Start: ${String.format(java.util.Locale.US, "%.2f", startSec)}s, Duration: ${String.format(java.util.Locale.US, "%.2f", durSec)}s")
                         
                         val pb = ProcessBuilder(
                             ffmpegPath,
                             "-threads", "0",
-                            "-ss", String.format(java.util.Locale.US, "%.3f", startSec),
+                            "-ss", String.format(java.util.Locale.US, "%.3f", localStartSec),
                             "-t", String.format(java.util.Locale.US, "%.3f", durSec),
                             "-i", localVideoPath,
                             "-vf", filterChain,
@@ -484,13 +506,14 @@ object PlateDetectionManager : fit.PlateDetector {
                             y2 = (box.y2 * scaleY).toInt().coerceAtMost(videoHeight)
                         )
                     }
-                    
-                    if (scaledBoxes.isNotEmpty()) {
+                    val maskBoxes = filterBoxesForMaskSize(scaledBoxes, videoHeight, settings)
+
+                    if (maskBoxes.isNotEmpty()) {
                         trackingActive = true
                         consecutiveNoneFrames = 0
                         // Scan every single frame (0 skip) during active tracking to ensure seamless path follow
                         skipInferenceFramesLeft = 0
-                        cachedBoxes = scaledBoxes
+                        cachedBoxes = maskBoxes
                     } else {
                         if (trackingActive) {
                             consecutiveNoneFrames++
@@ -501,7 +524,7 @@ object PlateDetectionManager : fit.PlateDetector {
                         skipInferenceFramesLeft = 0
                         cachedBoxes = emptyList()
                     }
-                    scaledBoxes
+                    maskBoxes
                 }
                 val tDetectEnd = System.nanoTime()
                 val dDetect = (tDetectEnd - tConsumeStart) / 1_000_000.0
@@ -607,16 +630,12 @@ object PlateDetectionManager : fit.PlateDetector {
         if (onCancel()) {
             println("DEBUG: Scan canceled. Processed $frameIndex frames.")
             if (records.isNotEmpty()) {
-                val partialRange = PlateScanRange(
-                    records.minOf { it.timeMs },
-                    records.maxOf { it.timeMs }
-                )
                 val cache = VideoPlatesCache(
                     videoPath = videoPath,
                     records = records,
                     sourceWidth = videoWidth,
                     sourceHeight = videoHeight,
-                    scanRanges = listOf(partialRange)
+                    scanRanges = normalizedScanRanges
                 )
                 val finalCache = if (existingCache != null) existingCache.mergedWith(cache) else cache
                 if (saveCache) {
@@ -682,10 +701,22 @@ object PlateDetectionManager : fit.PlateDetector {
 
     private fun isGoogleDrivePath(path: String): Boolean {
         val normalized = path.replace("\\", "/").lowercase()
-        return normalized.contains("google drive") || 
-               normalized.contains("マイドライブ") || 
+        return normalized.contains("google drive") ||
+               normalized.contains("マイドライブ") ||
                normalized.contains("my drive") ||
-               normalized.startsWith("g:/") || 
+               normalized.startsWith("g:/") ||
                normalized.startsWith("h:/")
+    }
+
+    internal fun filterBoxesForMaskSize(
+        boxes: List<fit.PlateBox>,
+        videoHeight: Int,
+        settings: fit.HudSettings
+    ): List<fit.PlateBox> {
+        val minHeight = (videoHeight.coerceAtLeast(1) * settings.plateMinMaskHeightRatio.coerceAtLeast(0.0))
+            .coerceAtLeast(1.0)
+        return boxes.filter { box ->
+            (box.y2 - box.y1).coerceAtLeast(0) >= minHeight
+        }
     }
 }

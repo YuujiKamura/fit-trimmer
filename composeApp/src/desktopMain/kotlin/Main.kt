@@ -930,6 +930,81 @@ fun buildEncodeRanges(
 
 }
 
+fun buildPlateCutSpans(
+    plateCache: fit.VideoPlatesCache?,
+    trimStartSeconds: Double,
+    trimEndSeconds: Double,
+    bufferMs: Long
+): List<fit.CutSpan> {
+    val cache = plateCache ?: return emptyList()
+    val bufferSeconds = bufferMs.coerceAtLeast(0L).toDouble() / 1000.0
+    val rawSpans = cache.records
+        .filter { it.boxes.isNotEmpty() }
+        .mapNotNull { record ->
+            val center = record.timeMs.toDouble() / 1000.0
+            val start = (center - bufferSeconds).coerceAtLeast(trimStartSeconds)
+            val end = (center + bufferSeconds).coerceAtMost(trimEndSeconds)
+            if (end > start) fit.CutSpan(start, end) else null
+        }
+        .sortedBy { it.startSec }
+
+    return rawSpans.fold(mutableListOf()) { acc, span ->
+        val last = acc.lastOrNull()
+        if (last != null && span.startSec <= last.endSec) {
+            acc[acc.lastIndex] = fit.CutSpan(last.startSec, maxOf(last.endSec, span.endSec))
+        } else {
+            acc.add(span)
+        }
+        acc
+    }
+}
+
+fun subtractCutSpansFromRanges(
+    ranges: List<Pair<Double, Double>>,
+    cutSpans: List<fit.CutSpan>,
+    minKeepSeconds: Double = 0.05
+): List<Pair<Double, Double>> {
+    if (cutSpans.isEmpty()) return ranges
+    val sortedCuts = cutSpans.sortedBy { it.startSec }
+    val keepRanges = mutableListOf<Pair<Double, Double>>()
+
+    for ((rangeStart, rangeEnd) in ranges) {
+        var cursor = rangeStart
+        for (cut in sortedCuts) {
+            if (cut.endSec <= cursor) continue
+            if (cut.startSec >= rangeEnd) break
+            val keepEnd = cut.startSec.coerceAtMost(rangeEnd)
+            if (keepEnd - cursor >= minKeepSeconds) {
+                keepRanges.add(cursor to keepEnd)
+            }
+            cursor = maxOf(cursor, cut.endSec.coerceAtMost(rangeEnd))
+        }
+        if (rangeEnd - cursor >= minKeepSeconds) {
+            keepRanges.add(cursor to rangeEnd)
+        }
+    }
+
+    return keepRanges
+}
+
+fun buildEncodeRangesWithPlatePolicy(
+    trimStartSeconds: Double,
+    trimEndSeconds: Double,
+    splitPoints: List<Double>,
+    settings: HudSettings,
+    plateCache: fit.VideoPlatesCache?
+): List<Pair<Double, Double>> {
+    val baseRanges = buildEncodeRanges(trimStartSeconds, trimEndSeconds, splitPoints)
+    if (settings.plateMaskMode != "cut") return baseRanges
+    val cutSpans = buildPlateCutSpans(
+        plateCache = plateCache,
+        trimStartSeconds = trimStartSeconds,
+        trimEndSeconds = trimEndSeconds,
+        bufferMs = settings.plateMaskTimeBufferMs
+    )
+    return subtractCutSpansFromRanges(baseRanges, cutSpans).ifEmpty { baseRanges }
+}
+
 
 
 fun buildEncodeOutputFileName(
@@ -1684,11 +1759,27 @@ object BatchJobRunner {
 
         }
 
-        val ranges = buildEncodeRanges(job.trimStartSeconds, job.trimEndSeconds, job.splitPoints)
+        val plateCache = if (job.settings.plateMaskMode == "cut") {
+            fit.PlateCacheManager.loadCache(job.videoPath)
+        } else {
+            null
+        }
+        val ranges = buildEncodeRangesWithPlatePolicy(
+            trimStartSeconds = job.trimStartSeconds,
+            trimEndSeconds = job.trimEndSeconds,
+            splitPoints = job.splitPoints,
+            settings = job.settings,
+            plateCache = plateCache
+        )
+        val pipelineSettings = if (encodeSettings.plateMaskMode == "cut") {
+            encodeSettings.copy(blurLicensePlates = false)
+        } else {
+            encodeSettings
+        }
 
         val encodePlan = buildEncodePlan(
 
-            settings = encodeSettings,
+            settings = pipelineSettings,
 
             videoPath = job.videoPath,
 
@@ -1714,7 +1805,35 @@ object BatchJobRunner {
 
         )
 
-        val destFiles = encodePlan.segments.map { it.finalOutputFile }
+        val shouldMergePlateCut = job.settings.plateMaskMode == "cut" &&
+            job.splitPoints.isEmpty() &&
+            ranges.size > 1
+        val mergeOutputFile = if (shouldMergePlateCut) {
+            buildEncodePlan(
+                settings = pipelineSettings,
+                videoPath = job.videoPath,
+                outputDir = outputDir,
+                moveOutputToSource = moveOutputToSource,
+                ranges = buildEncodeRanges(job.trimStartSeconds, job.trimEndSeconds, emptyList()),
+                includeTrimRangeInFileName = hasTrimmedRange(
+                    trimStartSeconds = job.trimStartSeconds,
+                    trimEndSeconds = job.trimEndSeconds,
+                    videoDurationSeconds = detectedVideoDurationSeconds
+                ),
+                dateTag = buildDateTagFromUtc(job.adjustedStartUtc),
+                outputFileNames = job.outputFileNames?.takeIf { it.size == 1 }
+            ).segments.firstOrNull()?.finalOutputFile
+        } else {
+            null
+        }
+        val destFiles = if (mergeOutputFile != null) {
+            val partDir = File(outputDir, ".fittrimmer_cut_parts").apply { mkdirs() }
+            encodePlan.segments.mapIndexed { idx, segment ->
+                File(partDir, "${mergeOutputFile.nameWithoutExtension}_cutpart${idx + 1}_${segment.startSeconds}-${segment.endSeconds}.mp4")
+            }
+        } else {
+            encodePlan.segments.map { it.finalOutputFile }
+        }
 
         
 
@@ -1722,13 +1841,13 @@ object BatchJobRunner {
 
         val nextConcatMerge = activePhases.find { it.type == BatchJobPhaseType.CONCAT_MERGE }
 
-        val skipConcat = nextConcatMerge != null
+        val skipConcat = nextConcatMerge != null && job.settings.plateMaskMode != "cut"
 
         
 
         HudEncodePipeline.execute(
 
-            s = encodeSettings,
+            s = pipelineSettings,
 
             fitPath = job.fitPath,
 
@@ -1816,7 +1935,8 @@ object BatchJobRunner {
 
             },
 
-            skipConcat = skipConcat
+            skipConcat = skipConcat,
+            mergeOutputFile = mergeOutputFile
 
         )
 
@@ -1858,9 +1978,24 @@ object BatchJobRunner {
 
         viewModel.batchStatusText = "[${jobIdx + 1}/$totalJobs] 動画を結合マージ中..."
 
-        val detectedVideoDurationSeconds = getVideoDuration(job.videoPath)?.toDouble()?.div(1000.0)
+        if (job.settings.plateMaskMode == "cut") {
+            phase.status = BatchJobPhaseStatus.SKIPPED
+            phase.progress = 1.0f
+            updateOverallJobProgress(job, activePhases)
+            viewModel.progress = job.progress
+            viewModel.saveBatchQueue()
+            onProgressUpdate()
+            return
+        }
 
-        val ranges = buildEncodeRanges(job.trimStartSeconds, job.trimEndSeconds, job.splitPoints)
+        val detectedVideoDurationSeconds = getVideoDuration(job.videoPath)?.toDouble()?.div(1000.0)
+        val ranges = buildEncodeRangesWithPlatePolicy(
+            trimStartSeconds = job.trimStartSeconds,
+            trimEndSeconds = job.trimEndSeconds,
+            splitPoints = job.splitPoints,
+            settings = job.settings,
+            plateCache = if (job.settings.plateMaskMode == "cut") fit.PlateCacheManager.loadCache(job.videoPath) else null
+        )
 
         val encodePlan = buildEncodePlan(
 
@@ -1891,7 +2026,6 @@ object BatchJobRunner {
         )
 
         
-
         val availableJobs = fit.CacheJobManager.getInstance().scanJobs(job.videoPath)
 
         val targetJob = availableJobs.firstOrNull() ?: throw Exception("結合する一時エンコードデータ（キャッシュ）が見つかりません。")

@@ -473,14 +473,9 @@ fun FitTrimmerMainContent(
             isSeeking = false
         }
     }
-    LaunchedEffect(videoPath, settings.blurLicensePlates, viewModel.videoStartUtc) {
-        if (settings.blurLicensePlates && videoPath.isNotEmpty() && viewModel.plateCache == null) {
-            if (fit.PlateCacheManager.cacheExists(videoPath)) {
-                viewModel.plateCache = fit.PlateCacheManager.loadCache(videoPath)
-                viewModel.plateDetectionProgress = "Restored"
-            } else {
-                viewModel.plateDetectionProgress = "Not Scanned"
-            }
+    LaunchedEffect(videoPath) {
+        if (videoPath.isNotEmpty() && viewModel.plateCache == null) {
+            viewModel.restorePlateCacheIfAvailable(videoPath)
         }
     }
     val triggerUpdatePrompt = remember(latestReleaseInfo, composeWindow) {
@@ -1043,6 +1038,17 @@ fun FitTrimmerMainContent(
                                     }
                                     cmd.startUtc?.let { videoStartUtc = it }
                                 }
+                                is CpCommand.SetTrim -> {
+                                    val durationSeconds = if (videoLengthMs > 0L) videoLengthMs / 1000.0 else Double.MAX_VALUE
+                                    val start = cmd.startSeconds.coerceIn(0.0, durationSeconds)
+                                    val end = cmd.endSeconds.coerceIn(start, durationSeconds)
+                                    trimStartSeconds = start
+                                    trimEndSeconds = end
+                                    val targetMs = (start * 1000.0).toLong().coerceIn(0L, videoLengthMs)
+                                    val ratio = if (videoLengthMs > 0) targetMs.toFloat() / videoLengthMs.toFloat() else 0f
+                                    playerState.seekTo(ratio * 1000f)
+                                    videoCurrentTimeMs = targetMs
+                                }
                                 is CpCommand.Fire -> {
                                     scope.launch {
                                         encodingPreviewImage = null
@@ -1052,17 +1058,49 @@ fun FitTrimmerMainContent(
                                         var lastPreviewTime = 0L
                                         try {
                                             val encodeSettings = prepareSettingsForEncode(settings)
-                                            val ranges = viewModel.getSplitRanges()
-                                            val encodePlan = buildEncodePlan(
+                                            val ranges = buildEncodeRangesWithPlatePolicy(
+                                                trimStartSeconds = trimStartSeconds,
+                                                trimEndSeconds = trimEndSeconds,
+                                                splitPoints = viewModel.splitPoints,
                                                 settings = encodeSettings,
+                                                plateCache = viewModel.plateCache
+                                            )
+                                            val pipelineSettings = if (encodeSettings.plateMaskMode == "cut") {
+                                                encodeSettings.copy(blurLicensePlates = false)
+                                            } else {
+                                                encodeSettings
+                                            }
+                                            val encodePlan = buildEncodePlan(
+                                                settings = pipelineSettings,
                                                 videoPath = videoPath,
                                                 outputDir = outputDir,
                                                 moveOutputToSource = moveOutputToSource,
                                                 ranges = ranges
                                             )
-                                            val destFiles = encodePlan.segments.map { it.finalOutputFile }
+                                            val shouldMergePlateCut = encodeSettings.plateMaskMode == "cut" &&
+                                                viewModel.splitPoints.isEmpty() &&
+                                                ranges.size > 1
+                                            val mergeOutputFile = if (shouldMergePlateCut) {
+                                                buildEncodePlan(
+                                                    settings = pipelineSettings,
+                                                    videoPath = videoPath,
+                                                    outputDir = outputDir,
+                                                    moveOutputToSource = moveOutputToSource,
+                                                    ranges = buildEncodeRanges(trimStartSeconds, trimEndSeconds, emptyList())
+                                                ).segments.firstOrNull()?.finalOutputFile
+                                            } else {
+                                                null
+                                            }
+                                            val destFiles = if (mergeOutputFile != null) {
+                                                val partDir = File(outputDir, ".fittrimmer_cut_parts").apply { mkdirs() }
+                                                encodePlan.segments.mapIndexed { idx, segment ->
+                                                    File(partDir, "${mergeOutputFile.nameWithoutExtension}_cutpart${idx + 1}_${segment.startSeconds}-${segment.endSeconds}.mp4")
+                                                }
+                                            } else {
+                                                encodePlan.segments.map { it.finalOutputFile }
+                                            }
                                             val resultMsg = HudEncodePipeline.execute(
-                                                s = encodeSettings,
+                                                s = pipelineSettings,
                                                 fitPath = fitPath,
                                                 videoPath = videoPath,
                                                 outputDir = outputDir,
@@ -1099,7 +1137,8 @@ fun FitTrimmerMainContent(
                                                 onSegmentStart = { pStart, pEnd ->
                                                     viewModel.encodingSegmentStart = pStart
                                                     viewModel.encodingSegmentEnd = pEnd
-                                                }
+                                                },
+                                                mergeOutputFile = mergeOutputFile
                                             )
                                             statusText = resultMsg
                                             if (args.contains("--auto-sample")) {
@@ -1306,6 +1345,8 @@ fun FitTrimmerMainContent(
                     plateCacheLoaded = viewModel.plateCache != null,
                     isPlaying = playerState.isPlaying,
                     videoLengthMs = videoLengthMs,
+                    trimStartSeconds = trimStartSeconds,
+                    trimEndSeconds = trimEndSeconds,
                     videoCurrentTimeMs = videoCurrentTimeMs,
                     videoDisplayCurrentTimeMs = videoDisplayCurrentTimeMs,
                     activePlateBoxCount = activePlateBoxes.size,
@@ -2946,6 +2987,32 @@ fun FitTrimmerMainContent(
                                     )
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Text(
+                                            text = "検出範囲:",
+                                            fontSize = 10.sp,
+                                            color = Color(0xFF636366)
+                                        )
+                                        listOf("plate" to "マスク", "cut" to "カット").forEach { (mode, label) ->
+                                            val selected = settings.plateMaskMode == mode
+                                            Text(
+                                                text = label,
+                                                fontSize = 10.sp,
+                                                color = if (selected) Color.White else Color(0xFF1C1C1E),
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier
+                                                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(5.dp))
+                                                    .background(if (selected) Color(0xFF007AFF) else Color(0xFFE5E5EA))
+                                                    .clickable(enabled = !isEncoding && !viewModel.isDetectingPlates) {
+                                                        settings = settings.copy(plateMaskMode = mode)
+                                                    }
+                                                    .padding(horizontal = 10.dp, vertical = 5.dp)
+                                            )
+                                        }
+                                    }
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
                                         androidx.compose.material.Slider(
@@ -2995,6 +3062,32 @@ fun FitTrimmerMainContent(
                                         )
                                         Text(
                                             text = String.format(java.util.Locale.US, "+%.0f%%", settings.plateMaskExpandRatio * 100),
+                                            fontSize = 10.sp,
+                                            color = Color(0xFF1C1C1E),
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    }
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        androidx.compose.material.Slider(
+                                            value = (settings.plateMinMaskHeightRatio * 100.0).toFloat(),
+                                            onValueChange = { newValue ->
+                                                val rounded = kotlin.math.round(newValue * 10f) / 10f
+                                                settings = settings.copy(plateMinMaskHeightRatio = (rounded / 100f).toDouble().coerceIn(0.0, 0.03))
+                                            },
+                                            valueRange = 0.0f..3.0f,
+                                            steps = 29,
+                                            enabled = !isEncoding && !viewModel.isDetectingPlates,
+                                            modifier = Modifier.width(180.dp),
+                                            colors = androidx.compose.material.SliderDefaults.colors(
+                                                thumbColor = Color(0xFFFF9500),
+                                                activeTrackColor = Color(0xFFFF9500)
+                                            )
+                                        )
+                                        Text(
+                                            text = String.format(java.util.Locale.US, "min %.1f%%H", settings.plateMinMaskHeightRatio * 100.0),
                                             fontSize = 10.sp,
                                             color = Color(0xFF1C1C1E),
                                             fontWeight = FontWeight.Medium

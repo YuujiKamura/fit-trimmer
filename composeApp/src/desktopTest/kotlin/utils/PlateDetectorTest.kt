@@ -782,6 +782,23 @@ class PlateDetectorTest {
     }
 
     @Test
+    fun testSmallPlateMaskCandidatesCanBeSuppressedByHeightRatio() {
+        val settings = fit.HudSettings(plateMinMaskHeightRatio = 0.01)
+        val boxes = listOf(
+            PlateBox(10, 10, 60, 18),
+            PlateBox(20, 20, 90, 36)
+        )
+
+        val filtered = PlateDetectionManager.filterBoxesForMaskSize(
+            boxes = boxes,
+            videoHeight = 1000,
+            settings = settings
+        )
+
+        kotlin.test.assertEquals(listOf(boxes[1]), filtered)
+    }
+
+    @Test
     fun testRealVideoPedestrianDetectionIntegration() {
         val cropTestMp4 = File("C:\\Users\\yuuji\\fit-trimmer\\composeApp\\scratch\\crop_test.mp4")
         if (!cropTestMp4.exists()) {
