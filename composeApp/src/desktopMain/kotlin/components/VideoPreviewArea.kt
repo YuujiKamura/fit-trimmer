@@ -420,6 +420,7 @@ fun VideoPreviewArea(
     adjustedStartUtc: String,
     telemetryPoints: List<TelemetryPoint>,
     trimmedTelemetryPoints: List<TelemetryPoint>,
+    originalTelemetryPoints: List<TelemetryPoint> = emptyList(),
     settings: HudSettings,
     rendererProxy: fit.DynamicRendererProxy,
     textMeasurer: TextMeasurer,
@@ -1100,7 +1101,7 @@ fun VideoPreviewArea(
                         rendererProxy.renderFrame(
                             composeCanvas,
                             telemetryPoint,
-                            telemetryPoints,
+                            if (originalTelemetryPoints.isNotEmpty()) originalTelemetryPoints else telemetryPoints,
                             trimmedTelemetryPoints,
                             pBuf,
                             currentSeconds,
