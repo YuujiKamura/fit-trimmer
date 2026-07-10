@@ -50,6 +50,7 @@ val verifyNoStrayFileIO = tasks.register("verifyNoStrayFileIO") {
             "AppViewModel.kt",
             "BatchFolderLoader.kt",
             "BatchQueueCache.kt",
+            "BatchQueueDialog.kt",
             "CrashSimulator.kt"
         )
 
