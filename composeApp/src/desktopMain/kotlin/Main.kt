@@ -135,6 +135,7 @@ const val MAX_ROAD_SNAP_DISTANCE_METERS = 15.0
 @OptIn(ExperimentalTextApi::class)
 
 fun main(args: Array<String>) {
+    utils.AppMetadata.setAppUserModelId()
     utils.TelemetryAligner.loadConfig(File("imu_align_config.json"))
 
     // Eagerly load and initialize DesktopLog on application startup to prevent class loader issues on native/AWT threads
@@ -738,7 +739,9 @@ fun startGui(args: Array<String>) = application {
 
         title = "HUD エンコーダー",
 
-        state = windowState
+        state = windowState,
+
+        icon = androidx.compose.ui.res.painterResource("icon.png")
 
     ) {
 
