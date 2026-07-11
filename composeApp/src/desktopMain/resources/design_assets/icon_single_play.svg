@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="512" height="512">
+  <!-- Clean, rounded neon cyan play button triangle -->
+  <path d="M 33 20 L 73 46 C 77 48 77 52 73 54 L 33 80 C 29 82 25 79 25 75 L 25 25 C 25 21 29 18 33 20 Z" 
+        fill="#00E5FF" 
+        stroke="#00E5FF" 
+        stroke-width="8" 
+        stroke-linejoin="round" 
+        stroke-linecap="round" />
+</svg>
