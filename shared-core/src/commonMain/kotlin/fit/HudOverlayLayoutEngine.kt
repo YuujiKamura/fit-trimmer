@@ -65,6 +65,7 @@ class HudOverlayLayoutEngine {
         zonesCurrent: IntArray,
         cachedZonesTotal: IntArray?,
         totalCalories: Double,
+        cropOffset: Float = 0f,
         // テキスト幅測定用ラムダ
         getTextWidth: (text: String, size: Float, bold: Boolean) -> Float,
         // 日時、値フォーマッタ用ラムダ（Main側の依存を逃がす）
@@ -91,7 +92,7 @@ class HudOverlayLayoutEngine {
         val useImperial = config.useImperialUnits
         val bodyWeight = config.bodyWeightKg
 
-        var cx = config.xOffset + if (config.cropToSquare) 28f else 0f
+        var cx = config.xOffset + cropOffset
         var cy = config.yOffset
         val valSize = config.valSize
         val tightness = config.tightness

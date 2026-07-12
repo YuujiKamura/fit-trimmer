@@ -4356,6 +4356,7 @@ fun FitTrimmerMainContent(
                                 isDetectingPlates = viewModel.isDetectingPlates,
                                 previewQualityMode = previewQualityMode,
                                 onPreviewQualityModeChange = { previewQualityMode = it },
+                                onCropToSquareChange = { settings = settings.copy(cropToSquare = it) },
                                 isFullscreen = isPreviewFullscreen,
                                 onFullscreenToggle = { viewModel.isPreviewFullscreen = !viewModel.isPreviewFullscreen },
                                 plateCache = viewModel.plateCache,
