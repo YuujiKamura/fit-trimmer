@@ -1135,6 +1135,24 @@ fun VideoPreviewArea(
                         )
                     }
                 }
+
+                if (settings.cropToSquare && containerWidth > 0.dp && containerHeight > 0.dp && containerWidth > containerHeight) {
+                    val maskWidth = (containerWidth - containerHeight) / 2
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .width(maskWidth)
+                            .fillMaxHeight()
+                            .background(Color.Black)
+                    )
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .width(maskWidth)
+                            .fillMaxHeight()
+                            .background(Color.Black)
+                    )
+                }
             }
         }
     }
