@@ -272,7 +272,7 @@ class HudOverlayLayoutEngine {
         // 4. POWER
         val power = if (config.showPower) {
             val pwrStr = if (isValid) point.power.toInt().toString() else "-"
-            layoutCell(getLabel("POWER"), pwrStr, "W", "#f59e0b", isVisible = true)
+            layoutCell(getLabel("POWER"), pwrStr, "W", "#f59e0b", isVisible = true, hasIcon = config.showAnimatedIcons)
         } else null
 
         // 5. W/kg

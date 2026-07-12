@@ -88,6 +88,12 @@ class HudRenderer(val config: HudConfig) {
     private var lastFormattedDateTime = "----- --:--:--"
     private val systemTimeZone by lazy { TimeZone.currentSystemDefault() }
 
+    // Animation stateful accumulation fields
+    private var lastAnimTimestamp: Double = -1.0
+    private var cadenceAccumRot: Double = 0.0
+    private var hrAccumPhase: Double = 0.0
+    private var powerAccumPhase: Double = 0.0
+
 
 
     // Cache fields for elevation points to avoid recalculation/reallocation every frame
@@ -115,6 +121,20 @@ class HudRenderer(val config: HudConfig) {
     ) {
         // Dynamic scale factor based on configured valSize (relative to base size 40f)
         val sf = (config.valSize / 40.0).toFloat().coerceAtLeast(0.5f)
+
+        // Stateful animation update
+        val t = telemetry.timestamp
+        if (lastAnimTimestamp >= 0.0) {
+            val dt = t - lastAnimTimestamp
+            if (dt in 0.0..2.0) {
+                if (isValid) {
+                    cadenceAccumRot += dt * (telemetry.cadence / 60.0) * 2.0 * PI
+                    hrAccumPhase = (hrAccumPhase + dt * (telemetry.heartRate / 60.0)) % 1.0
+                    powerAccumPhase = (powerAccumPhase + dt * (telemetry.power / 150.0)) % 1.0
+                }
+            }
+        }
+        lastAnimTimestamp = t
 
 
 
@@ -201,7 +221,7 @@ class HudRenderer(val config: HudConfig) {
                 canvas.drawRect(m.x - padX, m.y - padY, m.cellWidth + padX * 2f, m.cellHeight + padY * 2f, "#000000", alpha = config.hudBgAlpha, rx = 8f * sf, ry = 8f * sf)
             }
             
-            val hasIcon = config.showAnimatedIcons && (metricType == "SPEED" || metricType == "CADENCE")
+            val hasIcon = config.showAnimatedIcons && (metricType == "SPEED" || metricType == "CADENCE" || metricType == "POWER")
             val iconSize = 24f
             val iconOffset = if (hasIcon) 32f else 0f
             
@@ -218,30 +238,61 @@ class HudRenderer(val config: HudConfig) {
                 val cy = iconY + iconSize / 2f
                 
                 if (metricType == "SPEED") {
-                    // 背景の円（半透明グレー・アウトライン）
-                    canvas.drawRect(iconX, iconY, iconSize, iconSize, "#80808080", alpha = 1.0f, outline = true, rx = iconSize / 2f, ry = iconSize / 2f)
+                    // 背景の円（半透明グレー・塗りつぶし）
+                    canvas.drawRect(iconX, iconY, iconSize, iconSize, "#808080", alpha = 0.4f, outline = false, rx = iconSize / 2f, ry = iconSize / 2f)
                     
                     // 速度メーターの針（ホワイト）
                     val speedVal = if (config.useImperialUnits) telemetry.speed * 0.621371 else telemetry.speed
                     val vLimit = if (isValid) speedVal.coerceIn(0.0, 100.0) else 0.0
-                    val theta = -PI / 2.0 + (2.0 * PI * (vLimit / 100.0))
+                    val ratio = vLimit / 100.0
+                    val startAngle = 135.0 * PI / 180.0
+                    val sweepAngle = 270.0 * PI / 180.0
+                    val theta = startAngle + (ratio * sweepAngle)
                     val r = iconSize / 2f - 2f
                     val xEnd = cx + r * cos(theta).toFloat()
                     val yEnd = cy + r * sin(theta).toFloat()
                     canvas.drawLine(listOf(cx to cy, xEnd to yEnd), "#ffffff", width = 2.0f, alpha = 1.0f)
                 } else if (metricType == "CADENCE") {
-                    // 背景の円（半透明グレー・アウトライン）
-                    canvas.drawRect(iconX, iconY, iconSize, iconSize, "#80808080", alpha = 1.0f, outline = true, rx = iconSize / 2f, ry = iconSize / 2f)
+                    // 背景の円（半透明グレー・塗りつぶし）
+                    canvas.drawRect(iconX, iconY, iconSize, iconSize, "#808080", alpha = 0.4f, outline = false, rx = iconSize / 2f, ry = iconSize / 2f)
                     
-                    // ペダルの丸（ホワイト）
-                    val cadenceVal = if (isValid) telemetry.cadence else 0.0
-                    val t = telemetry.timestamp
-                    val theta = -PI / 2.0 + (2.0 * PI * (t * (cadenceVal / 60.0)))
+                    // ペダルの丸と軌跡（ホワイト）
+                    val theta = -PI / 2.0 + cadenceAccumRot
                     val rOrbit = iconSize / 2f - 4f
+                    
+                    // 軌跡（残像）ドットを描画
+                    val tails = listOf(
+                        Pair(45.0 * PI / 180.0, 0.2f),
+                        Pair(30.0 * PI / 180.0, 0.4f),
+                        Pair(15.0 * PI / 180.0, 0.7f)
+                    )
+                    for ((delayRad, alphaTail) in tails) {
+                        val thetaTail = theta - delayRad
+                        val xTail = cx + rOrbit * cos(thetaTail).toFloat()
+                        val yTail = cy + rOrbit * sin(thetaTail).toFloat()
+                        val rTail = 2.0f
+                        canvas.drawRect(xTail - rTail, yTail - rTail, rTail * 2f, rTail * 2f, "#ffffff", alpha = alphaTail, rx = rTail, ry = rTail)
+                    }
+                    
+                    // 主ドット
                     val xSmall = cx + rOrbit * cos(theta).toFloat()
                     val ySmall = cy + rOrbit * sin(theta).toFloat()
                     val rSmall = 3f
                     canvas.drawRect(xSmall - rSmall, ySmall - rSmall, rSmall * 2f, rSmall * 2f, "#ffffff", alpha = 1.0f, rx = rSmall, ry = rSmall)
+                } else if (metricType == "POWER") {
+                    // 背景の円（半透明グレー・塗りつぶし）
+                    canvas.drawRect(iconX, iconY, iconSize, iconSize, "#808080", alpha = 0.4f, outline = false, rx = iconSize / 2f, ry = iconSize / 2f)
+                    
+                    // 拍動する稲妻マーク（ホワイト）
+                    val xWave = powerAccumPhase * 2.0 * PI
+                    val wave = sin(xWave) + 0.5 * sin(2.0 * xWave)
+                    val scalePulse = 1.0f + 0.2f * maxOf(0.0f, wave.toFloat())
+                    
+                    val p0 = cx + 2f * scalePulse to cy - 6f * scalePulse
+                    val p1 = cx - 3f * scalePulse to cy + 1f * scalePulse
+                    val p2 = cx + 3f * scalePulse to cy - 1f * scalePulse
+                    val p3 = cx - 2f * scalePulse to cy + 6f * scalePulse
+                    canvas.drawLine(listOf(p0, p1, p2, p3), "#ffffff", width = 2.0f, alpha = 1.0f)
                 }
             }
             
@@ -286,14 +337,11 @@ class HudRenderer(val config: HudConfig) {
                 val cx = iconX + iconSize / 2f
                 val cy = iconY + iconSize / 2f
                 
-                // 背景の円（半透明グレー・アウトライン）
-                canvas.drawRect(iconX, iconY, iconSize, iconSize, "#80808080", alpha = 1.0f, outline = true, rx = iconSize / 2f, ry = iconSize / 2f)
+                // 背景の円（半透明グレー・塗りつぶし）
+                canvas.drawRect(iconX, iconY, iconSize, iconSize, "#808080", alpha = 0.4f, outline = false, rx = iconSize / 2f, ry = iconSize / 2f)
                 
                 // 拍動する円（ホワイト）
-                val hrVal = if (isValid) telemetry.heartRate else 0.0
-                val t = telemetry.timestamp
-                val phase = (t * (hrVal / 60.0)) % 1.0
-                val xWave = phase * 2.0 * PI
+                val xWave = hrAccumPhase * 2.0 * PI
                 val wave = sin(xWave) + 0.5 * sin(2.0 * xWave)
                 val scalePulse = 1.0f + 0.2f * maxOf(0.0f, wave.toFloat())
                 
@@ -328,7 +376,7 @@ class HudRenderer(val config: HudConfig) {
         }
 
         // 4. POWER
-        drawMetric(layout.power)
+        drawMetric(layout.power, "POWER")
 
         // 5. W/KG
         drawMetric(layout.wkg)
