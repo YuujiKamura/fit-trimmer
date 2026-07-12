@@ -312,7 +312,7 @@ fun FitTrimmerMainContent(
                                     autoStatusLabel.text = "解析結果のパースに失敗しました。"
                                 }
                             } else {
-                                autoStatusLabel.text = "自動同期に失敗しました（一致箇所なし）。"
+                                autoStatusLabel.text = "自動同期に失敗しました（十分な停止情報または一致度がないため。スライダーで手動同期を行ってください）。"
                             }
                             runAutoButton.isEnabled = true
                         }
@@ -1245,7 +1245,7 @@ fun FitTrimmerMainContent(
                                                 }
                                             } else {
                                                 viewModel.syncCandidates = emptyList()
-                                                statusText = "IMU Sync failed (no correlation found)"
+                                                statusText = "IMU Sync failed (no clear stopped events or correlation. Please use manual slider to sync)"
                                             }
                                         } finally {
                                             viewModel.isAligningTelemetry = false
@@ -2336,7 +2336,7 @@ fun FitTrimmerMainContent(
                                         }
                                     } else {
                                         viewModel.syncCandidates = emptyList()
-                                        statusText = "IMU Sync failed (no correlation found)"
+                                        statusText = "IMU Sync failed (no clear stopped events or correlation. Please use manual slider to sync)"
                                     }
                                 } finally {
                                     viewModel.isAligningTelemetry = false
