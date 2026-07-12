@@ -91,7 +91,7 @@ class HudOverlayLayoutEngine {
         val useImperial = config.useImperialUnits
         val bodyWeight = config.bodyWeightKg
 
-        var cx = config.xOffset
+        var cx = config.xOffset + if (config.cropToSquare) 28f else 0f
         var cy = config.yOffset
         val valSize = config.valSize
         val tightness = config.tightness

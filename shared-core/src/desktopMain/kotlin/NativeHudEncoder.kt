@@ -1786,7 +1786,8 @@ class NativeHudEncoder(
                     // Render HUD in the top half
                     val gHud = g.create() as java.awt.Graphics2D
                     gHud.clipRect(0, 0, exportWidth, exportHeight)
-                    val scale = exportWidth.toFloat() / 1920f
+                    val baseWidthForScale = if (settings.cropToSquare) exportHeight.toFloat() * (16f / 9f) else exportWidth.toFloat()
+                    val scale = baseWidthForScale / 1920f
                     val canvas = DesktopHudCanvas(gHud, scale, exportWidth.toFloat() / scale, exportHeight.toFloat() / scale)
                     val hudStartNs = System.nanoTime()
                     if (customRenderer != null) {
