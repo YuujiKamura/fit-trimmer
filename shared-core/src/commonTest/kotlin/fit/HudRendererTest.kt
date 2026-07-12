@@ -1451,5 +1451,119 @@ class HudRendererTest {
         val diff = linesOn - linesOff
         assertTrue(diff > 0, "Should draw lightning bolt lines for power icon when showAnimatedIcons is true (got diff: $diff, On: $linesOn, Off: $linesOff)")
     }
+
+    @Test
+    fun testSpeedNeedleTrailAndPowerScaleChanges() {
+        // --- 1. 速度針の軌跡テスト ---
+        val configSpeedOff = HudConfig(
+            valSize = 40f, tightness = 1f, spacing = 20f,
+            xOffset = 40f, yOffset = 100f, graphH = 60f, graphW = 300f,
+            showSpeed = true, showCadence = false, showHeartRate = false,
+            showPower = false,
+            showAnimatedIcons = false
+        )
+        val configSpeedOn = configSpeedOff.copy(showAnimatedIcons = true)
+        
+        val rendererSpeedOff = HudRenderer(configSpeedOff)
+        val rendererSpeedOn = HudRenderer(configSpeedOn)
+        
+        // 3フレーム連続で速度を変化させる
+        val tp1 = TelemetryPoint(timestamp = 0.0, speed = 0.0, power = 0.0, cadence = 0.0, heartRate = 0.0, elevation = 0.0, grade = 0.0)
+        val tp2 = TelemetryPoint(timestamp = 0.5, speed = 20.0, power = 0.0, cadence = 0.0, heartRate = 0.0, elevation = 0.0, grade = 0.0)
+        val tp3 = TelemetryPoint(timestamp = 1.0, speed = 50.0, power = 0.0, cadence = 0.0, heartRate = 0.0, elevation = 0.0, grade = 0.0)
+        
+        // Off側
+        val c1Off = TestHudCanvas()
+        rendererSpeedOff.renderFrame(c1Off, tp1, listOf(tp1), emptyList(), emptyList(), 0.0f, isValid = true)
+        val c2Off = TestHudCanvas()
+        rendererSpeedOff.renderFrame(c2Off, tp2, listOf(tp1, tp2), emptyList(), emptyList(), 0.5f, isValid = true)
+        val c3Off = TestHudCanvas()
+        rendererSpeedOff.renderFrame(c3Off, tp3, listOf(tp1, tp2, tp3), emptyList(), emptyList(), 1.0f, isValid = true)
+
+        // On側
+        val c1On = TestHudCanvas()
+        rendererSpeedOn.renderFrame(c1On, tp1, listOf(tp1), emptyList(), emptyList(), 0.0f, isValid = true)
+        val c2On = TestHudCanvas()
+        rendererSpeedOn.renderFrame(c2On, tp2, listOf(tp1, tp2), emptyList(), emptyList(), 0.5f, isValid = true)
+        val c3On = TestHudCanvas()
+        rendererSpeedOn.renderFrame(c3On, tp3, listOf(tp1, tp2, tp3), emptyList(), emptyList(), 1.0f, isValid = true)
+        
+        // 速度アイコンの針（drawLine）が軌跡分と主針で複数本描画されているはず
+        // 軌跡が未実装なら 1本のみ、実装されれば 3本（最新1本 + 過去2本の軌跡）描画される
+        val speedLinesOff = c3Off.drawnLines.filter { it.color == "#ffffff" }.size
+        val speedLinesOn = c3On.drawnLines.filter { it.color == "#ffffff" }.size
+        val speedLinesDiff = speedLinesOn - speedLinesOff
+        assertEquals(3, speedLinesDiff, "Should draw 1 main needle and 2 trail needles (got diff: $speedLinesDiff, On: $speedLinesOn, Off: $speedLinesOff)")
+
+        // --- 2. パワー稲妻のパワーレベル比例スケールテスト ---
+        val configPower = HudConfig(
+            valSize = 40f, tightness = 1f, spacing = 20f,
+            xOffset = 40f, yOffset = 100f, graphH = 60f, graphW = 300f,
+            showSpeed = false, showCadence = false, showHeartRate = false,
+            showPower = true,
+            showAnimatedIcons = true
+        )
+        val rendererPower = HudRenderer(configPower)
+        
+        // 低パワー（50W）
+        val tpLow = TelemetryPoint(timestamp = 2.0, speed = 0.0, power = 50.0, cadence = 0.0, heartRate = 0.0, elevation = 0.0, grade = 0.0)
+        val cLow = TestHudCanvas()
+        rendererPower.renderFrame(cLow, tpLow, listOf(tpLow), emptyList(), emptyList(), 2.0f, isValid = true)
+        
+        // 高パワー（400W）
+        val tpHigh = TelemetryPoint(timestamp = 2.5, speed = 0.0, power = 400.0, cadence = 0.0, heartRate = 0.0, elevation = 0.0, grade = 0.0)
+        val cHigh = TestHudCanvas()
+        rendererPower.renderFrame(cHigh, tpHigh, listOf(tpLow, tpHigh), emptyList(), emptyList(), 2.5f, isValid = true)
+        
+        val linesLow = cLow.drawnLines.filter { it.color == "#ffffff" }
+        val linesHigh = cHigh.drawnLines.filter { it.color == "#ffffff" }
+        
+        assertTrue(linesLow.isNotEmpty() && linesHigh.isNotEmpty())
+        
+        // 低パワーの稲妻の長さ（始点と終点の距離）
+        val lineL = linesLow.first()
+        val distLow = kotlin.math.hypot(lineL.points.last().first - lineL.points.first().first, lineL.points.last().second - lineL.points.first().second)
+        
+        // 高パワーの稲妻の長さ
+        val lineH = linesHigh.first()
+        val distHigh = kotlin.math.hypot(lineH.points.last().first - lineH.points.first().first, lineH.points.last().second - lineH.points.first().second)
+        
+        // 高パワーの方が明らかに大きいはず
+        assertTrue(distHigh > distLow * 1.5, "High power lightning bolt should be at least 1.5x larger than low power (distHigh: $distHigh, distLow: $distLow)")
+    }
+
+    @Test
+    fun testHeartRateZoneScaleChanges() {
+        val configHR = HudConfig(
+            valSize = 40f, tightness = 1f, spacing = 20f,
+            xOffset = 40f, yOffset = 100f, graphH = 60f, graphW = 300f,
+            showSpeed = false, showCadence = false, showHeartRate = true,
+            showPower = false,
+            showAnimatedIcons = true
+        )
+        val rendererHR = HudRenderer(configHR)
+
+        // 低心拍 (100 bpm) -> 通常 Zone 0 や Zone 1
+        val tpLow = TelemetryPoint(timestamp = 0.0, speed = 0.0, power = 0.0, cadence = 0.0, heartRate = 100.0, elevation = 0.0, grade = 0.0)
+        val cLow = TestHudCanvas()
+        rendererHR.renderFrame(cLow, tpLow, listOf(tpLow), emptyList(), emptyList(), 0.0f, isValid = true)
+
+        // 高心拍 (195 bpm) -> Zone 6
+        val tpHigh = TelemetryPoint(timestamp = 0.5, speed = 0.0, power = 0.0, cadence = 0.0, heartRate = 195.0, elevation = 0.0, grade = 0.0)
+        val cHigh = TestHudCanvas()
+        rendererHR.renderFrame(cHigh, tpHigh, listOf(tpLow, tpHigh), emptyList(), emptyList(), 0.5f, isValid = true)
+
+        // 心拍拍動円（色 #ffffff かつ rx > 0f で、直径が iconSize=24f より小さいもの）をフィルタ
+        val rectsLow = cLow.drawnRects.filter { it.color == "#ffffff" && it.rx > 0f && it.w < 20f }
+        val rectsHigh = cHigh.drawnRects.filter { it.color == "#ffffff" && it.rx > 0f && it.w < 20f }
+
+        assertTrue(rectsLow.isNotEmpty() && rectsHigh.isNotEmpty())
+
+        val sizeLow = rectsLow.first().w
+        val sizeHigh = rectsHigh.first().w
+
+        // 高心拍の方がでかくなっているはず (ゾーン0からゾーン6で、サイズ比が 1.5倍程度以上異なること)
+        assertTrue(sizeHigh > sizeLow * 1.3, "High heart rate pulse circle should be larger than low heart rate (high: $sizeHigh, low: $sizeLow)")
+    }
 }
 
