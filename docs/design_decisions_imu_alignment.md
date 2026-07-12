@@ -65,3 +65,25 @@ data class ImuData(
 )
 ```
 This ensures that if we decide to implement gravity-vector subtraction (using gyro orientation to extract pure forward/backward acceleration) in the future, the data foundation is already fully in place.
+
+---
+
+## 6. Timecode Accumulation and Idle Time Guard
+
+### The Problem: Power-On Idle Time Accumulation
+The raw IMU metadata timecodes in camera files (e.g., Insta360) are recorded relative to **camera power-on (boot) time**, not the recording start time. 
+If a camera is powered on but left idle for 30 minutes before the recording starts, the first IMU sample's timecode (`times[0]`) will start around `1802.66` seconds (30 minutes of idle time + ~2.66s of capture delay).
+
+Because the core alignment logic calculates the final video start timestamp via:
+$$\text{trueFileStartTs} = \text{videoStartTs} - \text{firstFileImuOffset}$$
+where `firstFileImuOffset` was blindly set to the first file's `times[0]`, a 30-minute idle time caused the algorithm to subtract 1800+ seconds from the correct alignment point. This resulted in massive, incorrect time synchronization offsets (e.g., reporting `-1799.0` seconds instead of the true `-10.0` seconds offset).
+
+### The Guard Solution
+The physical delay between clicking the recording button and the gyroscope initializing and writing frames is always small (typically under 3.0 seconds). A delay of 20 seconds or more is physically impossible during normal recording operation and explicitly indicates the presence of boot-to-record idle time (or accumulation from preceding video segments).
+
+To prevent this time drift:
+- We introduce a threshold guard in `TelemetryAligner.kt`.
+- If the extracted `firstFileImuOffset` (or raw `times[0]`) is $\ge 20.0$ seconds, it is treated as containing abnormal idle time.
+- The system automatically bypasses the accumulated raw offset and falls back to the default recording initialization delay offset of `2.664490` seconds.
+
+This ensures that the temporal alignment remains highly accurate (within seconds of the true start time) regardless of how long the camera was kept turned on before recording started.
