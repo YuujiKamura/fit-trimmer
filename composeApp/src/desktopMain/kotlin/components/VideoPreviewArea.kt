@@ -1026,40 +1026,58 @@ fun VideoPreviewArea(
                     Modifier.fillMaxSize().clipToBounds()
                 }
 
+                val cropShape = remember(settings.cropToSquare) {
+                    if (settings.cropToSquare) {
+                        object : androidx.compose.ui.graphics.Shape {
+                            override fun createOutline(
+                                size: androidx.compose.ui.geometry.Size,
+                                layoutDirection: androidx.compose.ui.unit.LayoutDirection,
+                                density: androidx.compose.ui.unit.Density
+                            ): androidx.compose.ui.graphics.Outline {
+                                val w = size.width
+                                val h = size.height
+                                val rect = if (w > h) {
+                                    val offset = (w - h) / 2f
+                                    androidx.compose.ui.geometry.Rect(offset, 0f, offset + h, h)
+                                } else {
+                                    androidx.compose.ui.geometry.Rect(0f, 0f, w, h)
+                                }
+                                return androidx.compose.ui.graphics.Outline.Rectangle(rect)
+                            }
+                        }
+                    } else {
+                        androidx.compose.ui.graphics.RectangleShape
+                    }
+                }
+
                 Box(
-                    modifier = frameModifier,
+                    modifier = frameModifier.clip(cropShape),
                     contentAlignment = Alignment.Center
                 ) {
-                    val containerModifier = if (settings.cropToSquare) {
-                        Modifier.fillMaxHeight().aspectRatio(1f)
-                    } else {
-                        Modifier.fillMaxSize()
-                    }
                     androidx.compose.runtime.key(settings.cropToSquare) {
-                        Box(modifier = containerModifier) {
-                        if (videoPath.isNotEmpty() && renderVideoSurface) {
-                            VideoPlayerSurface(
-                                playerState = playerState,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        } else {
-                            Box(Modifier.fillMaxSize().background(Color.Black))
-                        }
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            if (videoPath.isNotEmpty() && renderVideoSurface) {
+                                VideoPlayerSurface(
+                                    playerState = playerState,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            } else {
+                                Box(Modifier.fillMaxSize().background(Color.Black))
+                            }
 
-                        val density = androidx.compose.ui.platform.LocalDensity.current.density
-                        Canvas(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .clickable {
-                                    togglePlayButton()
-                                }
-                                .testTag("VideoPreviewAreaCanvas")
-                                .semantics {
-                                    blurredRects = plateCache?.shouldBlurAt(currentRenderTimeMs, settings.blurLicensePlates) ?: emptyList()
-                                }
-                        ) {
-                        val baseWidth = if (settings.cropToSquare) size.height * (16f / 9f) else size.width
-                        val scale = baseWidth / 1920f
+                            val density = androidx.compose.ui.platform.LocalDensity.current.density
+                            Canvas(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clickable {
+                                        togglePlayButton()
+                                    }
+                                    .testTag("VideoPreviewAreaCanvas")
+                                    .semantics {
+                                        blurredRects = plateCache?.shouldBlurAt(currentRenderTimeMs, settings.blurLicensePlates) ?: emptyList()
+                                    }
+                            ) {
+                                val scale = size.width / 1920f
                         val currentSeconds = currentRenderTimeMs.toFloat() / 1000f
 
                         // License plate mask overlay
