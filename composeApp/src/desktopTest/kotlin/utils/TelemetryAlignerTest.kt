@@ -623,10 +623,14 @@ class TelemetryAlignerTest {
 
     @Test
     fun testRealGroundTruthDataset20260708() {
-        val fitFile = File("F:\\Insta360\\20260708\\Evening_Ride.fit")
-        val mp4File = File("F:\\Insta360\\20260708\\VID_20260708_184458_001.mp4")
+        var fitFile = File("F:\\Insta360\\20260708\\Evening_Ride.fit")
+        var mp4File = File("F:\\Insta360\\20260708\\VID_20260708_184458_001.mp4")
         if (!fitFile.exists() || !mp4File.exists()) {
-            println("Skipping real GT dataset 20260708 test (files not present on F drive)")
+            fitFile = File("H:\\マイドライブ\\Insta360\\20260708\\Evening_Ride.fit")
+            mp4File = File("H:\\マイドライブ\\Insta360\\20260708\\VID_20260708_184458_001.mp4")
+        }
+        if (!fitFile.exists() || !mp4File.exists()) {
+            println("Skipping real GT dataset 20260708 test (files not present on F or H drive)")
             return
         }
 
@@ -660,11 +664,86 @@ class TelemetryAlignerTest {
     }
 
     @Test
+    fun testNonSegmentedSingleVideoFirstFileOffset() {
+        val tempWorkDir = File("temp_work")
+        tempWorkDir.mkdirs()
+        val nonSegmentedMp4File = File(tempWorkDir, "VID_20260708_184458.mp4")
+        
+        try {
+            // 1. Restore sparse MP4 from resources (.imu package)
+            val imuStream = javaClass.getResourceAsStream("/VID_20260708_184458.imu")
+            assertNotNull(imuStream, "Test resource VID_20260708_184458.imu not found")
+            
+            // Write input stream to temporary file first so we can use RandomAccessFile on it
+            val tempImuFile = File.createTempFile("temp_imu_", ".imu").apply { deleteOnExit() }
+            imuStream.use { input ->
+                Files.copy(input, tempImuFile.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            }
+            
+            println("Restoring sparse mock MP4 from package...")
+            java.io.RandomAccessFile(tempImuFile, "r").use { src ->
+                val originalSize = src.readLong()
+                val tailSize = src.readLong()
+                val tailBytes = ByteArray(tailSize.toInt())
+                src.readFully(tailBytes)
+                
+                java.io.RandomAccessFile(nonSegmentedMp4File, "rw").use { dst ->
+                    dst.setLength(originalSize)
+                    dst.seek(originalSize - tailSize)
+                    dst.write(tailBytes)
+                }
+            }
+            
+            // Clean up temp IMU package file
+            tempImuFile.delete()
+
+            // 2. Load FIT file from resources
+            val fitStream = javaClass.getResourceAsStream("/Evening_Ride.fit")
+            assertNotNull(fitStream, "Test resource Evening_Ride.fit not found")
+            val fitBytes = fitStream.use { it.readBytes() }
+            
+            val parser = fit.FitParser(fitBytes)
+            parser.parse()
+            val telemetryPoints = parser.getTelemetry()
+
+            val approxStartUtc = "2026-07-08T09:44:58Z" // JST 18:44:58 => UTC 09:44:58
+            
+            val alignedUtc = kotlinx.coroutines.runBlocking {
+                TelemetryAligner.alignVideoWithTelemetry(
+                    videoPath = nonSegmentedMp4File.absolutePath,
+                    telemetryPoints = telemetryPoints,
+                    approxStartUtc = approxStartUtc,
+                    method = "binary",
+                    windowSeconds = 60.0
+                )
+            }
+
+            assertNotNull(alignedUtc, "Alignment should succeed for non-segmented file")
+            val alignedInstant = java.time.Instant.parse(alignedUtc)
+            val approxInstant = java.time.Instant.parse(approxStartUtc)
+            
+            val diffSeconds = Math.abs(alignedInstant.epochSecond - approxInstant.epochSecond)
+            println("NON-SEGMENTED SINGLE VIDEO TEST (SELF-CONTAINED): Aligned: $alignedUtc | Approx: $approxStartUtc | Diff: $diffSeconds seconds")
+            
+            // Should successfully synchronize within the same tolerance (<10.0s)
+            assertTrue(diffSeconds < 10.0, "IMU auto-sync on non-segmented single video showed unexpected drift of $diffSeconds seconds.")
+        } finally {
+            if (nonSegmentedMp4File.exists()) {
+                nonSegmentedMp4File.delete()
+            }
+        }
+    }
+
+    @Test
     fun testRealGroundTruthDataset20260707() {
-        val fitFile = File("F:\\Insta360\\20260707\\Afternoon_Ride.fit")
-        val mp4File = File("F:\\Insta360\\20260707\\VID_20260707_183614_005.mp4")
+        var fitFile = File("F:\\Insta360\\20260707\\Afternoon_Ride.fit")
+        var mp4File = File("F:\\Insta360\\20260707\\VID_20260707_183614_005.mp4")
         if (!fitFile.exists() || !mp4File.exists()) {
-            println("Skipping real GT dataset 20260707 test (files not present on F drive)")
+            fitFile = File("H:\\マイドライブ\\Insta360\\20260707\\Afternoon_Ride.fit")
+            mp4File = File("H:\\マイドライブ\\Insta360\\20260707\\VID_20260707_183614_005.mp4")
+        }
+        if (!fitFile.exists() || !mp4File.exists()) {
+            println("Skipping real GT dataset 20260707 test (files not present on F or H drive)")
             return
         }
 

@@ -184,6 +184,22 @@ object TelemetryAligner {
         var firstFileImuOffset = 2.664490
         try {
             val file = File(videoPath)
+            
+            // 1. Try self offset first
+            var selfFirstTime: Double? = null
+            if (file.exists()) {
+                val selfImu = try { extractImuOffsetsFast(file.absolutePath) } catch (_: Exception) { null }
+                if (selfImu != null && selfImu.times.isNotEmpty()) {
+                    selfFirstTime = selfImu.times[0]
+                }
+            }
+
+            // 2. If self offset is valid (normal, under 20s), use it directly
+            if (selfFirstTime != null && selfFirstTime < 20.0) {
+                return selfFirstTime
+            }
+
+            // 3. Otherwise, search for the first segment (_001) if it's a segmented part
             val videoDir = file.parentFile
             val videoName = file.name
             val regex = Regex("(.*_)(\\d+)(\\.mp4|\\.lrv)", RegexOption.IGNORE_CASE)
@@ -191,18 +207,29 @@ object TelemetryAligner {
             if (match != null) {
                 val prefix = match.groupValues[1]
                 val ext = match.groupValues[3]
-                val firstFileName = "${prefix}001${ext}"
-                val firstFilePath = File(videoDir, firstFileName)
-                if (firstFilePath.exists()) {
-                    val imuData = extractImuOffsetsFast(firstFilePath.absolutePath)
-                    if (imuData.times.isNotEmpty()) {
-                        val firstTime = imuData.times[0]
-                        if (firstTime < 20.0) {
-                            firstFileImuOffset = firstTime
-                        } else {
-                            println("DEBUG: first file IMU offset ($firstTime) is abnormally large (>20s), likely containing idle/accumulation time. Bypassing and using default offset.")
+                
+                val partNumStr = match.groupValues[2]
+                val partNum = partNumStr.toIntOrNull() ?: 1
+                if (partNum > 1) {
+                    val firstFileName = "${prefix}001${ext}"
+                    val firstFilePath = File(videoDir, firstFileName)
+                    if (firstFilePath.exists()) {
+                        val imuData = extractImuOffsetsFast(firstFilePath.absolutePath)
+                        if (imuData.times.isNotEmpty()) {
+                            val firstTime = imuData.times[0]
+                            if (firstTime < 20.0) {
+                                firstFileImuOffset = firstTime
+                            } else {
+                                println("DEBUG: first segment IMU offset ($firstTime) is abnormally large (>=20s). Bypassing to default.")
+                            }
                         }
                     }
+                } else {
+                    println("DEBUG: Self segment 1 IMU offset ($selfFirstTime) is abnormally large (>=20s), likely containing idle/accumulation time. Bypassing to default.")
+                }
+            } else {
+                if (selfFirstTime != null) {
+                    println("DEBUG: Non-segmented file IMU offset ($selfFirstTime) is abnormally large (>=20s), likely containing idle/accumulation time. Bypassing to default.")
                 }
             }
         } catch (e: Exception) {
