@@ -73,5 +73,6 @@ data class HudSettings(
     val textShadowAlpha: Float = 0.8f,
     val riskTimeSpans: List<RiskTimeSpan> = emptyList(),
     val detectPedestrians: Boolean = false,
-    val showCumulativeDistanceTime: Boolean = false
+    val showCumulativeDistanceTime: Boolean = false,
+    val showAnimatedIcons: Boolean = false
 )

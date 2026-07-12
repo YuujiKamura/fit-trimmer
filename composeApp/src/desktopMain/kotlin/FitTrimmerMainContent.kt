@@ -152,7 +152,8 @@ fun FitTrimmerMainContent(
             mapTextSizeScale = settings.mapTextSizeScale,
             mapRangeMode = settings.mapRangeMode,
             textShadowAlpha = settings.textShadowAlpha,
-            showCumulativeDistanceTime = settings.showCumulativeDistanceTime
+            showCumulativeDistanceTime = settings.showCumulativeDistanceTime,
+            showAnimatedIcons = settings.showAnimatedIcons
         )
     }
     var reloadTrigger by remember { mutableStateOf(0) }
@@ -2791,6 +2792,7 @@ fun FitTrimmerMainContent(
                                 Triple("show_elevation", settings.showElevation) { v: Boolean -> settings = settings.copy(showElevation = v) },
                                 Triple("show_distance_time", settings.showDistanceTime) { v: Boolean -> settings = settings.copy(showDistanceTime = v) },
                                 Triple("show_cumulative_distance_time", settings.showCumulativeDistanceTime) { v: Boolean -> settings = settings.copy(showCumulativeDistanceTime = v) },
+                                Triple("show_animated_icons", settings.showAnimatedIcons) { v: Boolean -> settings = settings.copy(showAnimatedIcons = v) },
                                 Triple("fix_map_north_up", settings.fixMapNorthUp) { v: Boolean -> settings = settings.copy(fixMapNorthUp = v) }
                             )
 

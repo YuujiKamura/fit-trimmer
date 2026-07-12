@@ -142,7 +142,8 @@ object HudEncodePipeline {
                 mapTextSizeScale = s.mapTextSizeScale,
                 mapRangeMode = s.mapRangeMode,
                 textShadowAlpha = s.textShadowAlpha,
-                showCumulativeDistanceTime = s.showCumulativeDistanceTime
+                showCumulativeDistanceTime = s.showCumulativeDistanceTime,
+                showAnimatedIcons = s.showAnimatedIcons
             )
             val proxy = DynamicRendererProxy(config)
             globalRendererProxy = proxy

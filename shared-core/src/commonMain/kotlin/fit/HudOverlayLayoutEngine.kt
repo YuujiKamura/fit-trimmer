@@ -98,7 +98,7 @@ class HudOverlayLayoutEngine {
         val itemSpacing = config.spacing
 
         // ヘルパー：一般的なセルのレイアウト座標決定ロジック
-        fun layoutCell(label: String, value: String, unit: String, color: String, isVisible: Boolean): MetricLayout {
+        fun layoutCell(label: String, value: String, unit: String, color: String, isVisible: Boolean, hasIcon: Boolean = false): MetricLayout {
             if (!isVisible) {
                 return MetricLayout("", value, unit, color, false, cx, cy, 0f, 0f, valSize, 0f, 0f)
             }
@@ -111,7 +111,8 @@ class HudOverlayLayoutEngine {
             val valW = getTextWidth(value, actualValSize, true)
             val unitW = if (unit.isNotEmpty()) getTextWidth(unit, unitSize, true) else 0f
             val contentW = valW + (if (unit.isNotEmpty()) 8f + unitW else 0f)
-            val cellW = maxOf(160f, contentW)
+            val iconOffset = if (hasIcon) 32f else 0f
+            val cellW = maxOf(160f, contentW + iconOffset)
             val hasLabel = label.isNotEmpty()
             val cellH = if (hasLabel) labelSize + tightness + actualValSize else actualValSize
 
@@ -163,13 +164,13 @@ class HudOverlayLayoutEngine {
             val speedVal = if (config.useImperialUnits) point.speed * 0.621371 else point.speed
             val speedUnit = if (config.useImperialUnits) "mph" else "km/h"
             val spdStr = if (isValid) formatOneDecimal(speedVal) else "-"
-            layoutCell(getLabel("SPEED"), spdStr, speedUnit, "#3b82f6", isVisible = true)
+            layoutCell(getLabel("SPEED"), spdStr, speedUnit, "#3b82f6", isVisible = true, hasIcon = config.showAnimatedIcons)
         } else null
 
         // 2. CADENCE
         val cadence = if (config.showCadence) {
             val cadStr = if (isValid) point.cadence.toInt().toString() else "-"
-            layoutCell(getLabel("CADENCE"), cadStr, "rpm", "#a78bfa", isVisible = true)
+            layoutCell(getLabel("CADENCE"), cadStr, "rpm", "#a78bfa", isVisible = true, hasIcon = config.showAnimatedIcons)
         } else null
 
         // 3. HEART RATE
@@ -183,7 +184,12 @@ class HudOverlayLayoutEngine {
             val calText = "$calLabel: $calValStr"
             val calTextW = getTextWidth(calText, labelSize, true)
             
-            val cellW = maxOf(160f, calTextW)
+            val cellW = run {
+                val iconOffset = if (config.showAnimatedIcons) 32f else 0f
+                val bpmW = getTextWidth("bpm", unitSize, true)
+                val contentW = valW + (if (isValid) 8f + bpmW else 0f) + iconOffset
+                maxOf(160f, calTextW, contentW)
+            }
             val cellH = labelSize + tightness + valSize + 50f * sf // ゾーンテキスト (28f) + カロリーテキスト (22f) の高さを含む
             
             val valY = cy + labelSize + tightness

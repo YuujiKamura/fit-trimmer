@@ -2,6 +2,9 @@ package fit
 
 import kotlin.math.roundToInt
 import kotlin.math.max
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.math.PI
 import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
@@ -44,7 +47,8 @@ data class HudConfig(
     val mapTextSizeScale: Float = 1.0f,
     val mapRangeMode: String = "full",
     val textShadowAlpha: Float = 0.8f,
-    val showCumulativeDistanceTime: Boolean = false
+    val showCumulativeDistanceTime: Boolean = false,
+    val showAnimatedIcons: Boolean = false
 )
 
 
@@ -188,7 +192,7 @@ class HudRenderer(val config: HudConfig) {
             getLabel = { getLabel(it) }
         )
 
-        fun drawMetric(m: MetricLayout?) {
+        fun drawMetric(m: MetricLayout?, metricType: String = "") {
             if (m == null || !m.isVisible) return
             
             if (config.hudBgAlpha > 0f) {
@@ -197,15 +201,54 @@ class HudRenderer(val config: HudConfig) {
                 canvas.drawRect(m.x - padX, m.y - padY, m.cellWidth + padX * 2f, m.cellHeight + padY * 2f, "#000000", alpha = config.hudBgAlpha, rx = 8f * sf, ry = 8f * sf)
             }
             
+            val hasIcon = config.showAnimatedIcons && (metricType == "SPEED" || metricType == "CADENCE")
+            val iconSize = 24f
+            val iconOffset = if (hasIcon) 32f else 0f
+            
             if (m.labelText.isNotEmpty()) {
                 drawShadowedText(canvas, m.labelText, m.x, m.y, labelSize, "#e5e7eb", bold = true, sf = sf)
             }
             
             val valY = if (m.labelText.isNotEmpty()) m.y + labelSize + tightness else m.y
-            drawShadowedText(canvas, m.valueText, m.x, valY, m.actualValSize, "#ffffff", bold = true, sf = sf)
+            
+            if (hasIcon) {
+                val iconX = m.x
+                val iconY = valY + (m.actualValSize - iconSize) / 2f
+                val cx = iconX + iconSize / 2f
+                val cy = iconY + iconSize / 2f
+                
+                if (metricType == "SPEED") {
+                    // 背景の円（半透明グレー・アウトライン）
+                    canvas.drawRect(iconX, iconY, iconSize, iconSize, "#80808080", alpha = 1.0f, outline = true, rx = iconSize / 2f, ry = iconSize / 2f)
+                    
+                    // 速度メーターの針（ホワイト）
+                    val speedVal = if (config.useImperialUnits) telemetry.speed * 0.621371 else telemetry.speed
+                    val vLimit = if (isValid) speedVal.coerceIn(0.0, 100.0) else 0.0
+                    val theta = -PI / 2.0 + (2.0 * PI * (vLimit / 100.0))
+                    val r = iconSize / 2f - 2f
+                    val xEnd = cx + r * cos(theta).toFloat()
+                    val yEnd = cy + r * sin(theta).toFloat()
+                    canvas.drawLine(listOf(cx to cy, xEnd to yEnd), "#ffffff", width = 2.0f, alpha = 1.0f)
+                } else if (metricType == "CADENCE") {
+                    // 背景の円（半透明グレー・アウトライン）
+                    canvas.drawRect(iconX, iconY, iconSize, iconSize, "#80808080", alpha = 1.0f, outline = true, rx = iconSize / 2f, ry = iconSize / 2f)
+                    
+                    // ペダルの丸（ホワイト）
+                    val cadenceVal = if (isValid) telemetry.cadence else 0.0
+                    val t = telemetry.timestamp
+                    val theta = -PI / 2.0 + (2.0 * PI * (t * (cadenceVal / 60.0)))
+                    val rOrbit = iconSize / 2f - 4f
+                    val xSmall = cx + rOrbit * cos(theta).toFloat()
+                    val ySmall = cy + rOrbit * sin(theta).toFloat()
+                    val rSmall = 3f
+                    canvas.drawRect(xSmall - rSmall, ySmall - rSmall, rSmall * 2f, rSmall * 2f, "#ffffff", alpha = 1.0f, rx = rSmall, ry = rSmall)
+                }
+            }
+            
+            drawShadowedText(canvas, m.valueText, m.x + iconOffset, valY, m.actualValSize, "#ffffff", bold = true, sf = sf)
             
             if (m.unitText.isNotEmpty()) {
-                val unitX = m.x + m.valWidth + 8f
+                val unitX = m.x + iconOffset + m.valWidth + 8f
                 val unitY = valY + (m.actualValSize - unitSize)
                 drawShadowedText(canvas, m.unitText, unitX, unitY, unitSize, "#ffffff", bold = true, sf = sf)
             }
@@ -215,10 +258,10 @@ class HudRenderer(val config: HudConfig) {
         drawMetric(layout.dateDisplay)
 
         // 1. SPEED
-        drawMetric(layout.speed)
+        drawMetric(layout.speed, "SPEED")
 
         // 2. CADENCE
-        drawMetric(layout.cadence)
+        drawMetric(layout.cadence, "CADENCE")
 
         // 3. HEART RATE
         val hr = layout.heartRate
@@ -230,11 +273,38 @@ class HudRenderer(val config: HudConfig) {
                 canvas.drawRect(m.x - padX, m.y - padY, m.cellWidth + padX * 2f, m.cellHeight + padY * 2f, "#000000", alpha = config.hudBgAlpha, rx = 8f * sf, ry = 8f * sf)
             }
             
+            val hasHrIcon = config.showAnimatedIcons
+            val iconSize = 24f
+            val iconOffset = if (hasHrIcon) 32f else 0f
+            
             drawShadowedText(canvas, m.labelText, m.x, m.y, labelSize, "#e5e7eb", bold = true, sf = sf)
             val valY = m.y + labelSize + tightness
-            drawShadowedText(canvas, m.valueText, m.x, valY, m.actualValSize, "#ffffff", bold = true, sf = sf)
             
-            val unitX = m.x + m.valWidth + 8f
+            if (hasHrIcon) {
+                val iconX = m.x
+                val iconY = valY + (m.actualValSize - iconSize) / 2f
+                val cx = iconX + iconSize / 2f
+                val cy = iconY + iconSize / 2f
+                
+                // 背景の円（半透明グレー・アウトライン）
+                canvas.drawRect(iconX, iconY, iconSize, iconSize, "#80808080", alpha = 1.0f, outline = true, rx = iconSize / 2f, ry = iconSize / 2f)
+                
+                // 拍動する円（ホワイト）
+                val hrVal = if (isValid) telemetry.heartRate else 0.0
+                val t = telemetry.timestamp
+                val phase = (t * (hrVal / 60.0)) % 1.0
+                val xWave = phase * 2.0 * PI
+                val wave = sin(xWave) + 0.5 * sin(2.0 * xWave)
+                val scalePulse = 1.0f + 0.2f * maxOf(0.0f, wave.toFloat())
+                
+                val rBase = 6f
+                val rPulse = rBase * scalePulse
+                canvas.drawRect(cx - rPulse, cy - rPulse, rPulse * 2f, rPulse * 2f, "#ffffff", alpha = 1.0f, rx = rPulse, ry = rPulse)
+            }
+            
+            drawShadowedText(canvas, m.valueText, m.x + iconOffset, valY, m.actualValSize, "#ffffff", bold = true, sf = sf)
+            
+            val unitX = m.x + iconOffset + m.valWidth + 8f
             val unitY = valY + (m.actualValSize - unitSize)
             drawShadowedText(canvas, m.unitText, unitX, unitY, unitSize, "#ffffff", bold = true, sf = sf)
             

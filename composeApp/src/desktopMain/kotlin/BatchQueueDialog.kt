@@ -1388,7 +1388,8 @@ fun BatchQueueDialog(
                                     mapTextSizeScale = s.mapTextSizeScale,
                                     mapRangeMode = s.mapRangeMode,
                                     textShadowAlpha = s.textShadowAlpha,
-                                    showCumulativeDistanceTime = s.showCumulativeDistanceTime
+                                    showCumulativeDistanceTime = s.showCumulativeDistanceTime,
+                                    showAnimatedIcons = s.showAnimatedIcons
                                 )
                             }
                             val rendererProxy = remember(hudConfig) { fit.DynamicRendererProxy(hudConfig) }
