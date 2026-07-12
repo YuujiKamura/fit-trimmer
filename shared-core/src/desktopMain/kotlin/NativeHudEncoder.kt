@@ -351,6 +351,12 @@ class NativeHudEncoder(
         override val width: Float get() = logicalWidth
         override val height: Float get() = logicalHeight
 
+        init {
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
+            g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
+            g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY)
+        }
+
         private fun parseColor(colorStr: String): Color {
             val clean = colorStr.replace("#", "")
             return try {
@@ -422,9 +428,9 @@ class NativeHudEncoder(
             val sry = (ry * scale).toInt()
             if (srx > 0 && sry > 0) {
                 if (outline) {
-                    g.drawRoundRect(sx, sy, sw, sh, srx, sry)
+                    g.drawRoundRect(sx, sy, sw, sh, srx * 2, sry * 2)
                 } else {
-                    g.fillRoundRect(sx, sy, sw, sh, srx, sry)
+                    g.fillRoundRect(sx, sy, sw, sh, srx * 2, sry * 2)
                 }
             } else {
                 if (outline) {
@@ -439,7 +445,7 @@ class NativeHudEncoder(
             if (points.isEmpty()) return
             val c = Color.decode(color)
             g.color = Color(c.red, c.green, c.blue, (alpha * 255).toInt())
-            g.stroke = BasicStroke(width * scale)
+            g.stroke = BasicStroke(width * scale, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND)
             if (points.size == 2) {
                 g.drawLine(
                     (points[0].first * scale).toInt(), (points[0].second * scale).toInt(),

@@ -15,7 +15,7 @@ class HudRendererTest {
         var drawTextCalled = false
         var lastDrawnText = ""
         
-        data class RectInfo(val x: Float, val y: Float, val w: Float, val h: Float, val color: String, val alpha: Float = 1.0f, val rx: Float = 0f, val ry: Float = 0f)
+        data class RectInfo(val x: Float, val y: Float, val w: Float, val h: Float, val color: String, val alpha: Float = 1.0f, val rx: Float = 0f, val ry: Float = 0f, val outline: Boolean = false)
         data class LineInfo(val points: List<Pair<Float, Float>>, val color: String, val width: Float)
         data class PolygonInfo(val points: List<Pair<Float, Float>>, val color: String)
         data class TextInfo(val text: String, val x: Float, val y: Float, val size: Float, val color: String, val bold: Boolean, val anchor: String)
@@ -40,7 +40,7 @@ class HudRendererTest {
         }
         
         override fun drawRect(x: Float, y: Float, w: Float, h: Float, color: String, alpha: Float, outline: Boolean, rx: Float, ry: Float) {
-            drawnRects.add(RectInfo(x, y, w, h, color, alpha, rx, ry))
+            drawnRects.add(RectInfo(x, y, w, h, color, alpha, rx, ry, outline))
         }
         
         override fun drawLine(points: List<Pair<Float, Float>>, color: String, width: Float, alpha: Float) {
@@ -1417,7 +1417,7 @@ class HudRendererTest {
 
         // ケイデンスアイコンのドット（軌跡3つ + 主ドット1つ = 合計4つ、背景円1つで計5つ）が描画されているはず
         // 軌跡描画が未実装、またはステートフル累積が未実装の場合、ドット数が一致しないか、期待通りに動かない。
-        val rects = canvas2.drawnRects.filter { it.color == "#ffffff" && it.rx > 0f }
+        val rects = canvas2.drawnRects.filter { it.color == "#ffffff" && it.rx > 0f && !it.outline }
         assertEquals(4, rects.size, "Should draw 1 main dot and 3 trail dots for cadence icon (got ${rects.size}, rects: ${rects})")
     }
 
@@ -1459,7 +1459,7 @@ class HudRendererTest {
             valSize = 40f, tightness = 1f, spacing = 20f,
             xOffset = 40f, yOffset = 100f, graphH = 60f, graphW = 300f,
             showSpeed = true, showCadence = false, showHeartRate = false,
-            showPower = false,
+            showPower = false, showElevation = false, showGrade = false,
             showAnimatedIcons = false
         )
         val configSpeedOn = configSpeedOff.copy(showAnimatedIcons = true)
@@ -1493,6 +1493,8 @@ class HudRendererTest {
         val speedLinesOff = c3Off.drawnLines.filter { it.color == "#ffffff" }.size
         val speedLinesOn = c3On.drawnLines.filter { it.color == "#ffffff" }.size
         val speedLinesDiff = speedLinesOn - speedLinesOff
+        println("DEBUG SPEED OFF: " + c3Off.drawnLines.filter { it.color == "#ffffff" }.map { it.points })
+        println("DEBUG SPEED ON: " + c3On.drawnLines.filter { it.color == "#ffffff" }.map { it.points })
         assertEquals(3, speedLinesDiff, "Should draw 1 main needle and 2 trail needles (got diff: $speedLinesDiff, On: $speedLinesOn, Off: $speedLinesOff)")
 
         // --- 2. パワー稲妻のパワーレベル比例スケールテスト ---
@@ -1564,6 +1566,65 @@ class HudRendererTest {
 
         // 高心拍の方がでかくなっているはず (ゾーン0からゾーン6で、サイズ比が 1.5倍程度以上異なること)
         assertTrue(sizeHigh > sizeLow * 1.3, "High heart rate pulse circle should be larger than low heart rate (high: $sizeHigh, low: $sizeLow)")
+    }
+
+    @Test
+    fun testGradeArrowIconAndDarkBackgroundCircles() {
+        val config = HudConfig(
+            valSize = 40f, tightness = 1f, spacing = 20f,
+            xOffset = 40f, yOffset = 100f, graphH = 60f, graphW = 300f,
+            showSpeed = false, showCadence = false, showHeartRate = false,
+            showPower = false, showGrade = true, showElevation = false,
+            showAnimatedIcons = true
+        )
+        val renderer = HudRenderer(config)
+
+        // 1. 背景円がHUDのBGグレーと同系色でなく暗い色（#1a1a1aまたは#111827など）であることを確認
+        val tp1 = TelemetryPoint(timestamp = 0.0, speed = 10.0, power = 100.0, cadence = 60.0, heartRate = 120.0, elevation = 100.0, grade = 0.0)
+        val canvas1 = TestHudCanvas()
+        renderer.renderFrame(canvas1, tp1, listOf(tp1), emptyList(), emptyList(), 0.0f, isValid = true)
+
+        val bgRects = canvas1.drawnRects.filter { it.w == 24f && it.h == 24f && !it.outline }
+        val outlineRects = canvas1.drawnRects.filter { it.w == 24f && it.h == 24f && it.outline }
+        
+        // 1つのアイコン（GRADE）の背景円と外枠円があること
+        assertEquals(1, bgRects.size, "Should draw 1 filled background circle for GRADE")
+        assertEquals(1, outlineRects.size, "Should draw 1 outline circle for GRADE")
+        
+        // 背景円が暗い色であることをアサート
+        for (rect in bgRects) {
+            assertTrue(rect.color == "#1a1a1a" || rect.color == "#111827" || rect.color == "#000000", "Circle background should be dark (got ${rect.color})")
+        }
+        
+        // 外枠円が白で半透明であることをアサート
+        for (rect in outlineRects) {
+            assertEquals("#ffffff", rect.color, "Outline color should be white")
+            assertTrue(rect.alpha > 0f && rect.alpha < 1f, "Outline should be semi-transparent")
+        }
+
+        // 2. 勾配 15% (上り) の時、矢印が上を向くこと (軸の終点 points[1] が始点 points[0] よりも上、つまりY座標が小さい)
+        val tpUp = TelemetryPoint(timestamp = 0.5, speed = 10.0, power = 100.0, cadence = 60.0, heartRate = 120.0, elevation = 100.0, grade = 15.0)
+        val canvasUp = TestHudCanvas()
+        renderer.renderFrame(canvasUp, tpUp, listOf(tp1, tpUp), emptyList(), emptyList(), 0.5f, isValid = true)
+        
+        val linesUp = canvasUp.drawnLines.filter { it.color == "#ffffff" && it.points.size == 3 }
+        assertTrue(linesUp.isNotEmpty(), "Should draw GRADE arrow lines")
+        val wedgeUp = linesUp.first()
+        val yTipUp = wedgeUp.points[1].second
+        val yStartUp = wedgeUp.points[0].second
+        assertTrue(yTipUp < yStartUp, "Grade arrow tip should point up for positive slope (tip: $yTipUp, start: $yStartUp)")
+
+        // 3. 勾配 -15% (下り) の時、矢印が下を向くこと (軸の終点 points[1] が始点 points[0] よりも下、つまりY座標が大きい)
+        val tpDown = TelemetryPoint(timestamp = 1.0, speed = 10.0, power = 100.0, cadence = 60.0, heartRate = 120.0, elevation = 100.0, grade = -15.0)
+        val canvasDown = TestHudCanvas()
+        renderer.renderFrame(canvasDown, tpDown, listOf(tp1, tpUp, tpDown), emptyList(), emptyList(), 1.0f, isValid = true)
+        
+        val linesDown = canvasDown.drawnLines.filter { it.color == "#ffffff" && it.points.size == 3 }
+        assertTrue(linesDown.isNotEmpty(), "Should draw GRADE arrow lines")
+        val wedgeDown = linesDown.first()
+        val yTipDown = wedgeDown.points[1].second
+        val yStartDown = wedgeDown.points[0].second
+        assertTrue(yTipDown > yStartDown, "Grade arrow tip should point down for negative slope (tip: $yTipDown, start: $yStartDown)")
     }
 }
 
