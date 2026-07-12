@@ -189,7 +189,7 @@ class HudRenderer(val config: HudConfig) {
             }
         }
         
-        var cx = config.xOffset
+        var cx = config.xOffset + if (config.cropToSquare) 28f else 0f
         var cy = config.yOffset
         
         val labelSize = 16f
@@ -1090,7 +1090,7 @@ class HudRenderer(val config: HudConfig) {
 
         // 1. Layout parameters (Scaled & Enlarged for high fidelity)
         val R = 110f * config.mapSizeScale * sf // 円の半径 (R) - スライダー可変対応
-        val marginX = 45f * sf
+        val marginX = (45f + if (config.cropToSquare) 28f else 0f) * sf
         val marginY = 40f * sf
         val mcx = canvas.width - marginX - R // 円の中心 X
         val mcy = if (config.mapPosition == "bottom_right") {
