@@ -74,5 +74,5 @@ data class HudSettings(
     val riskTimeSpans: List<RiskTimeSpan> = emptyList(),
     val detectPedestrians: Boolean = false,
     val showCumulativeDistanceTime: Boolean = false,
-    val showAnimatedIcons: Boolean = false
+    val showAnimatedIcons: Boolean = true
 )

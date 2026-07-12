@@ -294,7 +294,7 @@ class HudOverlayLayoutEngine {
         // 7. GRADE
         val grade = if (config.showGrade) {
             val grdStr = if (isValid) formatGrade(point.grade) else "-"
-            layoutCell(getLabel("GRADE"), grdStr, "%", "#fbbf24", isVisible = true)
+            layoutCell(getLabel("GRADE"), grdStr, "%", "#fbbf24", isVisible = true, hasIcon = config.showAnimatedIcons)
         } else null
 
         return HudOverlayLayout(

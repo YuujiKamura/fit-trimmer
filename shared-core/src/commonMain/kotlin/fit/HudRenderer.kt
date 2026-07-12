@@ -48,7 +48,7 @@ data class HudConfig(
     val mapRangeMode: String = "full",
     val textShadowAlpha: Float = 0.8f,
     val showCumulativeDistanceTime: Boolean = false,
-    val showAnimatedIcons: Boolean = false
+    val showAnimatedIcons: Boolean = true
 )
 
 
@@ -226,7 +226,7 @@ class HudRenderer(val config: HudConfig) {
                 canvas.drawRect(m.x - padX, m.y - padY, m.cellWidth + padX * 2f, m.cellHeight + padY * 2f, "#000000", alpha = config.hudBgAlpha, rx = 8f * sf, ry = 8f * sf)
             }
             
-            val hasIcon = config.showAnimatedIcons && (metricType == "SPEED" || metricType == "CADENCE" || metricType == "POWER")
+            val hasIcon = config.showAnimatedIcons && (metricType == "SPEED" || metricType == "CADENCE" || metricType == "POWER" || metricType == "GRADE")
             val iconSize = 24f
             val iconOffset = if (hasIcon) 32f else 0f
             
@@ -243,8 +243,10 @@ class HudRenderer(val config: HudConfig) {
                 val cy = iconY + iconSize / 2f
                 
                 if (metricType == "SPEED") {
-                    // 背景の円（半透明グレー・塗りつぶし）
-                    canvas.drawRect(iconX, iconY, iconSize, iconSize, "#808080", alpha = 0.4f, outline = false, rx = iconSize / 2f, ry = iconSize / 2f)
+                    // 背景の円（暗い半透明・塗りつぶし）
+                    canvas.drawRect(iconX, iconY, iconSize, iconSize, "#1a1a1a", alpha = 0.6f, outline = false, rx = iconSize / 2f, ry = iconSize / 2f)
+                    // 外枠（白の半透明・枠線のみ）
+                    canvas.drawRect(iconX, iconY, iconSize, iconSize, "#ffffff", alpha = 0.4f, outline = true, rx = iconSize / 2f, ry = iconSize / 2f)
                     
                     // 速度メーターの針（ホワイト）
                     val speedVal = if (config.useImperialUnits) telemetry.speed * 0.621371 else telemetry.speed
@@ -275,8 +277,10 @@ class HudRenderer(val config: HudConfig) {
                     val yEnd = cy + r * sin(theta).toFloat()
                     canvas.drawLine(listOf(cx to cy, xEnd to yEnd), "#ffffff", width = 2.0f, alpha = 1.0f)
                 } else if (metricType == "CADENCE") {
-                    // 背景の円（半透明グレー・塗りつぶし）
-                    canvas.drawRect(iconX, iconY, iconSize, iconSize, "#808080", alpha = 0.4f, outline = false, rx = iconSize / 2f, ry = iconSize / 2f)
+                    // 背景の円（暗い半透明・塗りつぶし）
+                    canvas.drawRect(iconX, iconY, iconSize, iconSize, "#1a1a1a", alpha = 0.6f, outline = false, rx = iconSize / 2f, ry = iconSize / 2f)
+                    // 外枠（白の半透明・枠線のみ）
+                    canvas.drawRect(iconX, iconY, iconSize, iconSize, "#ffffff", alpha = 0.4f, outline = true, rx = iconSize / 2f, ry = iconSize / 2f)
                     
                     // ペダルの丸と軌跡（ホワイト）
                     val theta = -PI / 2.0 + cadenceAccumRot
@@ -302,13 +306,15 @@ class HudRenderer(val config: HudConfig) {
                     val rSmall = 3f
                     canvas.drawRect(xSmall - rSmall, ySmall - rSmall, rSmall * 2f, rSmall * 2f, "#ffffff", alpha = 1.0f, rx = rSmall, ry = rSmall)
                 } else if (metricType == "POWER") {
-                    // 背景の円（半透明グレー・塗りつぶし）
-                    canvas.drawRect(iconX, iconY, iconSize, iconSize, "#808080", alpha = 0.4f, outline = false, rx = iconSize / 2f, ry = iconSize / 2f)
+                    // 背景の円（暗い半透明・塗りつぶし）
+                    canvas.drawRect(iconX, iconY, iconSize, iconSize, "#1a1a1a", alpha = 0.6f, outline = false, rx = iconSize / 2f, ry = iconSize / 2f)
+                    // 外枠（白の半透明・枠線のみ）
+                    canvas.drawRect(iconX, iconY, iconSize, iconSize, "#ffffff", alpha = 0.4f, outline = true, rx = iconSize / 2f, ry = iconSize / 2f)
                     
                     // 拍動する稲妻マーク（ホワイト）
                     val powerVal = if (isValid) telemetry.power else 0.0
                     val pRatio = (powerVal / 400.0).coerceIn(0.0, 1.0).toFloat()
-                    val baseScale = 0.5f + 0.8f * pRatio
+                    val baseScale = 0.8f + 1.2f * pRatio
 
                     val xWave = powerAccumPhase * 2.0 * PI
                     val wave = sin(xWave) + 0.5 * sin(2.0 * xWave)
@@ -319,6 +325,27 @@ class HudRenderer(val config: HudConfig) {
                     val p2 = cx + 3f * scalePulse to cy - 1f * scalePulse
                     val p3 = cx - 2f * scalePulse to cy + 6f * scalePulse
                     canvas.drawLine(listOf(p0, p1, p2, p3), "#ffffff", width = 2.0f, alpha = 1.0f)
+                } else if (metricType == "GRADE") {
+                    // 背景の円（暗い半透明・塗りつぶし）
+                    canvas.drawRect(iconX, iconY, iconSize, iconSize, "#1a1a1a", alpha = 0.6f, outline = false, rx = iconSize / 2f, ry = iconSize / 2f)
+                    // 外枠（白の半透明・枠線のみ）
+                    canvas.drawRect(iconX, iconY, iconSize, iconSize, "#ffffff", alpha = 0.4f, outline = true, rx = iconSize / 2f, ry = iconSize / 2f)
+                    
+                    // ティック矢印の描画（長い軸線＋先端の上側の羽のみ）
+                    val rad = (-telemetry.grade / 15.0 * (PI / 2.0)).coerceIn(-PI / 2.0, PI / 2.0)
+                    
+                    fun rotateX(x: Float, y: Float, r: Double): Float = (x * cos(r) - y * sin(r)).toFloat()
+                    fun rotateY(x: Float, y: Float, r: Double): Float = (x * sin(r) + y * cos(r)).toFloat()
+                    
+                    val x0 = cx + rotateX(-8f, 0f, rad)
+                    val y0 = cy + rotateY(-8f, 0f, rad)
+                    val x1 = cx + rotateX(8f, 0f, rad)
+                    val y1 = cy + rotateY(8f, 0f, rad)
+                    val x2 = cx + rotateX(2f, -4f, rad)
+                    val y2 = cy + rotateY(2f, -4f, rad)
+                    
+                    // 軸線の始点(x0,y0) -> 軸線の終点/羽の起点(x1,y1) -> 片羽の終点(x2,y2) を一筆書きで描画
+                    canvas.drawLine(listOf(x0 to y0, x1 to y1, x2 to y2), "#ffffff", width = 2.0f, alpha = 1.0f)
                 }
             }
             
@@ -363,8 +390,10 @@ class HudRenderer(val config: HudConfig) {
                 val cx = iconX + iconSize / 2f
                 val cy = iconY + iconSize / 2f
                 
-                // 背景の円（半透明グレー・塗りつぶし）
-                canvas.drawRect(iconX, iconY, iconSize, iconSize, "#808080", alpha = 0.4f, outline = false, rx = iconSize / 2f, ry = iconSize / 2f)
+                // 背景の円（暗い半透明・塗りつぶし）
+                canvas.drawRect(iconX, iconY, iconSize, iconSize, "#1a1a1a", alpha = 0.6f, outline = false, rx = iconSize / 2f, ry = iconSize / 2f)
+                // 外枠（白の半透明・枠線のみ）
+                canvas.drawRect(iconX, iconY, iconSize, iconSize, "#ffffff", alpha = 0.4f, outline = true, rx = iconSize / 2f, ry = iconSize / 2f)
                 
                 // 拍動する円（ホワイト）
                 val hrVal = if (isValid) telemetry.heartRate else 0.0
@@ -484,7 +513,7 @@ class HudRenderer(val config: HudConfig) {
         }
 
         // 7. GRADE
-        drawMetric(layout.grade)
+        drawMetric(layout.grade, "GRADE")
         cy = layout.finalCy
 
         // 8. ELEVATION (Line graph with terrain and pin)
