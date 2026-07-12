@@ -13,6 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.CornerRadius
@@ -1004,7 +1005,7 @@ fun VideoPreviewArea(
     @Composable
     fun VideoLayer(modifier: Modifier) {
         Box(modifier = modifier.background(Color.Black), contentAlignment = Alignment.Center) {
-            val videoAspect = (playerState as? WindowsVideoPlayerState)?.videoAspectRatio?.takeIf { it > 0f } ?: 16f / 9f
+            val videoAspect = if (settings.cropToSquare) 1f else ((playerState as? WindowsVideoPlayerState)?.videoAspectRatio?.takeIf { it > 0f } ?: 16f / 9f)
             BoxWithConstraints(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
@@ -1013,21 +1014,33 @@ fun VideoPreviewArea(
                 val containerHeight = maxHeight
                 val frameModifier = if (containerWidth > 0.dp && containerHeight > 0.dp) {
                     val constrainedAspect = containerWidth.value / containerHeight.value
-                    if (constrainedAspect > videoAspect) {
+                    val baseModifier = if (constrainedAspect > videoAspect) {
                         Modifier.height(containerHeight).width(containerHeight * videoAspect)
                     } else {
                         Modifier.width(containerWidth).height(containerWidth / videoAspect)
                     }
+                    baseModifier.clipToBounds()
                 } else {
-                    Modifier.fillMaxSize()
+                    Modifier.fillMaxSize().clipToBounds()
                 }
 
                 Box(modifier = frameModifier) {
                     if (videoPath.isNotEmpty() && renderVideoSurface) {
-                        VideoPlayerSurface(
-                            playerState = playerState,
-                            modifier = Modifier.fillMaxSize()
-                        )
+                        val originalAspect = (playerState as? WindowsVideoPlayerState)?.videoAspectRatio?.takeIf { it > 0f } ?: 16f / 9f
+                        val videoSurfaceModifier = if (settings.cropToSquare) {
+                            Modifier.fillMaxHeight().aspectRatio(originalAspect)
+                        } else {
+                            Modifier.fillMaxSize()
+                        }
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            VideoPlayerSurface(
+                                playerState = playerState,
+                                modifier = videoSurfaceModifier
+                            )
+                        }
                     } else {
                         Box(Modifier.fillMaxSize().background(Color.Black))
                     }
@@ -1069,7 +1082,8 @@ fun VideoPreviewArea(
                                     fallbackSourceWidth = fallbackSourceW,
                                     fallbackSourceHeight = fallbackSourceH,
                                     targetWidth = size.width,
-                                    targetHeight = size.height
+                                    targetHeight = size.height,
+                                    cropToSquare = settings.cropToSquare
                                 )
                                 val rx1 = mapped.x
                                 val ry1 = mapped.y

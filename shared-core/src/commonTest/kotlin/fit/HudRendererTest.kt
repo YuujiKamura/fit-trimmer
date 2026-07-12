@@ -1626,5 +1626,27 @@ class HudRendererTest {
         val yStartDown = wedgeDown.points[0].second
         assertTrue(yTipDown > yStartDown, "Grade arrow tip should point down for negative slope (tip: $yTipDown, start: $yStartDown)")
     }
+
+    @Test
+    fun testPlateCoordinateMapperCropToSquare() {
+        val box = PlateBox(x1 = 1920, y1 = 1080, x2 = 2160, y2 = 1200)
+        
+        // 16:9 (3840x2160) -> 1:1 (1080x1080)
+        val mapped = PlateCoordinateMapper.mapToTarget(
+            box = box,
+            cache = null,
+            fallbackSourceWidth = 3840,
+            fallbackSourceHeight = 2160,
+            targetWidth = 1080f,
+            targetHeight = 1080f,
+            cropToSquare = true
+        )
+        
+        // xOffset = (3840 - 2160) / 2 = 840
+        // scale = 1080 / 2160 = 0.5
+        // expectedX = (1920 - 840) * 0.5 = 1080 * 0.5 = 540
+        assertEquals(540f, mapped.x, "Mapped X coordinate should correct for square crop offset")
+        assertEquals(120f, mapped.width, "Mapped width should scale by 0.5")
+    }
 }
 

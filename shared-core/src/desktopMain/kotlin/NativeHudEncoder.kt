@@ -991,7 +991,7 @@ class NativeHudEncoder(
             e.printStackTrace()
         }
 
-        var exportWidth = videoWidth
+        var exportWidth = if (settings.cropToSquare) videoHeight else videoWidth
         var exportHeight = videoHeight
         val maxLongEdge = when (settings.exportResolution) {
             "1080p" -> 1920.0
@@ -1422,7 +1422,8 @@ class NativeHudEncoder(
                     targetHeight = exportHeight.toFloat(),
                     timeBufferMs = settings.plateMaskTimeBufferMs,
                     sourceStartTimeMs = (actualTrimStart * 1000.0).toLong(),
-                    speedSegments = settings.speedSegments
+                    speedSegments = settings.speedSegments,
+                    cropToSquare = settings.cropToSquare
                 ) ?: emptyList()
                 val maskedFrameCount = planned.count { it.isNotEmpty() }
                 println("DEBUG: Precomputed plate mask plan: $maskedFrameCount/$totalFrames frames contain masks.")
@@ -1502,18 +1503,19 @@ class NativeHudEncoder(
             
             pbArgs.add("-filter_complex")
             val hasSpeed = activeSegments.isNotEmpty()
+            val cropExpr = if (settings.cropToSquare) "crop=in_h:in_h," else ""
             if (hasSpeed) {
                 val setptsExpr = generateSetptsExpression(activeSegments)
                 
                 val videoFilter = if (runBlur) {
                     "[0:v]setpts=PTS-STARTPTS[hud];" +
                     "[2:v]scale=$exportWidth:$exportHeight,format=yuv420p,setpts=PTS-STARTPTS[mask];" +
-                    "[1:v]scale=$exportWidth:$exportHeight,setpts='$setptsExpr',split[vid_orig][vid_blur_src];" +
+                    "[1:v]${cropExpr}scale=$exportWidth:$exportHeight,setpts='$setptsExpr',split[vid_orig][vid_blur_src];" +
                     "[vid_blur_src]scale=w=${exportWidth}/20:h=${exportHeight}/20,scale=w=$exportWidth:h=$exportHeight:flags=neighbor[vid_blurred];" +
                     "[vid_orig][vid_blurred][mask]maskedmerge[vid_merged];" +
                     "[vid_merged][hud]overlay=0:0:shortest=1[outv]"
                 } else {
-                    "[1:v]scale=$exportWidth:$exportHeight,setpts='$setptsExpr'[vid];" +
+                    "[1:v]${cropExpr}scale=$exportWidth:$exportHeight,setpts='$setptsExpr'[vid];" +
                     "[vid][0:v]overlay=0:0:shortest=1[outv]"
                 }
                 
@@ -1550,14 +1552,14 @@ class NativeHudEncoder(
                     pbArgs.add(
                         "[0:v]setpts=PTS-STARTPTS[hud];" +
                         "[2:v]scale=$exportWidth:$exportHeight,format=yuv420p,setpts=PTS-STARTPTS[mask];" +
-                        "[1:v]scale=$exportWidth:$exportHeight,setpts=PTS-STARTPTS,split[vid_orig][vid_blur_src];" +
+                        "[1:v]${cropExpr}scale=$exportWidth:$exportHeight,setpts=PTS-STARTPTS,split[vid_orig][vid_blur_src];" +
                         "[vid_blur_src]scale=w=${exportWidth}/20:h=${exportHeight}/20,scale=w=$exportWidth:h=$exportHeight:flags=neighbor[vid_blurred];" +
                         "[vid_orig][vid_blurred][mask]maskedmerge[vid_merged];" +
                         "[vid_merged][hud]overlay=0:0:shortest=1"
                     )
                 } else {
                     pbArgs.add(
-                        "[1:v]scale=$exportWidth:$exportHeight,setpts=PTS-STARTPTS[vid];" +
+                        "[1:v]${cropExpr}scale=$exportWidth:$exportHeight,setpts=PTS-STARTPTS[vid];" +
                         "[vid][0:v]overlay=0:0:shortest=1"
                     )
                 }

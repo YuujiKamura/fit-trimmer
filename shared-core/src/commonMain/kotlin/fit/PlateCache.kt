@@ -235,7 +235,8 @@ fun VideoPlatesCache.buildMappedMaskFrames(
     targetHeight: Float,
     timeBufferMs: Long = 300L,
     sourceStartTimeMs: Long = 0L,
-    speedSegments: List<SpeedSegment> = emptyList()
+    speedSegments: List<SpeedSegment> = emptyList(),
+    cropToSquare: Boolean = false
 ): List<List<MappedPlateBox>> {
     if (!isBlurEnabled || records.isEmpty() || totalFrames <= 0 || fps <= 0.0) {
         return List(totalFrames.coerceAtLeast(0)) { emptyList() }
@@ -280,7 +281,8 @@ fun VideoPlatesCache.buildMappedMaskFrames(
                 fallbackSourceWidth = fallbackSourceWidth,
                 fallbackSourceHeight = fallbackSourceHeight,
                 targetWidth = targetWidth,
-                targetHeight = targetHeight
+                targetHeight = targetHeight,
+                cropToSquare = cropToSquare
             ).takeIf { it.width > 0f && it.height > 0f }
         }
     }
@@ -315,16 +317,33 @@ object PlateCoordinateMapper {
         fallbackSourceWidth: Int,
         fallbackSourceHeight: Int,
         targetWidth: Float,
-        targetHeight: Float
+        targetHeight: Float,
+        cropToSquare: Boolean = false
     ): MappedPlateBox {
         val sourceWidth = cache?.sourceWidth?.takeIf { it > 0 } ?: fallbackSourceWidth.coerceAtLeast(1)
         val sourceHeight = cache?.sourceHeight?.takeIf { it > 0 } ?: fallbackSourceHeight.coerceAtLeast(1)
-        val scaleX = targetWidth / sourceWidth.toFloat()
-        val scaleY = targetHeight / sourceHeight.toFloat()
-        val x1 = box.x1 * scaleX
-        val y1 = box.y1 * scaleY
-        val x2 = box.x2 * scaleX
-        val y2 = box.y2 * scaleY
+        
+        val x1: Float
+        val y1: Float
+        val x2: Float
+        val y2: Float
+        
+        if (cropToSquare) {
+            val scale = targetHeight / sourceHeight.toFloat()
+            val xOffset = (sourceWidth - sourceHeight) / 2f
+            x1 = (box.x1 - xOffset) * scale
+            y1 = box.y1 * scale
+            x2 = (box.x2 - xOffset) * scale
+            y2 = box.y2 * scale
+        } else {
+            val scaleX = targetWidth / sourceWidth.toFloat()
+            val scaleY = targetHeight / sourceHeight.toFloat()
+            x1 = box.x1 * scaleX
+            y1 = box.y1 * scaleY
+            x2 = box.x2 * scaleX
+            y2 = box.y2 * scaleY
+        }
+        
         return MappedPlateBox(
             x = x1,
             y = y1,
