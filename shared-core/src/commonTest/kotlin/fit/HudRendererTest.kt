@@ -1364,4 +1364,35 @@ class HudRendererTest {
         val totalDrawnPointsCount = routeLines.flatMap { it.points }.distinct().size
         assertTrue(totalDrawnPointsCount >= 3, "Drawn route points count should be at least 3, including p3 (got $totalDrawnPointsCount)")
     }
+
+    @Test
+    fun testAnimatedIconsRendering() {
+        val telemetry = TelemetryPoint(
+            timestamp = 1000.0, speed = 25.0, power = 150.0, cadence = 90.0, heartRate = 135.0, elevation = 50.0, grade = 2.0
+        )
+
+        // 1. showAnimatedIcons = false
+        val configOff = HudConfig(
+            valSize = 40f, tightness = 1f, spacing = 20f,
+            xOffset = 40f, yOffset = 100f, graphH = 60f, graphW = 300f,
+            showSpeed = true, showCadence = true, showHeartRate = true,
+            showAnimatedIcons = false
+        )
+        val rendererOff = HudRenderer(configOff)
+        val canvasOff = TestHudCanvas()
+        rendererOff.renderFrame(canvasOff, telemetry, listOf(telemetry), emptyList(), emptyList(), 0.0f, isValid = true)
+
+        // 2. showAnimatedIcons = true
+        val configOn = configOff.copy(showAnimatedIcons = true)
+        val rendererOn = HudRenderer(configOn)
+        val canvasOn = TestHudCanvas()
+        rendererOn.renderFrame(canvasOn, telemetry, listOf(telemetry), emptyList(), emptyList(), 0.0f, isValid = true)
+
+        // アニメーションアイコンが有効な場合、何らかの描画要素（RectやLine）の数が増えているはず
+        val rectDiff = canvasOn.drawnRects.size - canvasOff.drawnRects.size
+        val lineDiff = canvasOn.drawnLines.size - canvasOff.drawnLines.size
+        val totalDiff = rectDiff + lineDiff
+        assertTrue(totalDiff > 0, "Animated icons should increase drawn elements count (totalDiff: $totalDiff, On rects: ${canvasOn.drawnRects.size}, Off rects: ${canvasOff.drawnRects.size})")
+    }
 }
+
