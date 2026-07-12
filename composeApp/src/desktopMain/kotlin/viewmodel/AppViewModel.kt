@@ -205,13 +205,49 @@ class AppViewModel(
 
                 proxyVideoPath = null
 
-                
+
 
                 restorePlateCacheIfAvailable(value)
 
                 videoRotation = utils.getVideoRotation(value)
 
                 println("DEBUG: Loaded videoRotation: $videoRotation")
+
+                // Asynchronously extract and calculate IMU vibration for timeline visualization
+                videoImuVibration = null
+                if (value.isNotEmpty()) {
+                    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default).launch {
+                        try {
+                            val imuData = utils.TelemetryAligner.extractImuOffsetsFast(value)
+                            if (imuData.times.isNotEmpty()) {
+                                val times = imuData.times
+                                val accNorms = DoubleArray(times.size) { i ->
+                                    val x = imuData.accX[i]
+                                    val y = imuData.accY[i]
+                                    val z = imuData.accZ[i]
+                                    Math.sqrt(x * x + y * y + z * z)
+                                }
+                                val accDiffs = DoubleArray(accNorms.size)
+                                for (i in 0 until accNorms.size - 1) {
+                                    accDiffs[i] = Math.abs(accNorms[i + 1] - accNorms[i])
+                                }
+                                accDiffs[accNorms.size - 1] = 0.0
+
+                                val relTimes = DoubleArray(times.size) { times[it] - times[0] }
+                                val maxVTime = Math.ceil(relTimes.last()).toInt()
+                                val vGrid = DoubleArray(maxVTime + 1) { it.toDouble() }
+                                val vVib = utils.TelemetryAligner.interpolate(vGrid, relTimes, accDiffs)
+
+                                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                    videoImuVibration = vVib
+                                    println("DEBUG: Extracted video IMU vibration array (size: ${vVib.size})")
+                                }
+                            }
+                        } catch (e: Exception) {
+                            println("DEBUG: Failed to pre-extract video IMU vibration: ${e.message}")
+                        }
+                    }
+                }
 
             }
 
@@ -355,7 +391,7 @@ class AppViewModel(
 
         if (path.isEmpty()) return
 
-        
+
 
         // Synchronously cancel existing job before launching any new coroutines
 
@@ -367,7 +403,7 @@ class AppViewModel(
 
         }
 
-        
+
 
         isDetectingPlates = true
 
@@ -385,7 +421,7 @@ class AppViewModel(
 
         plateDetectionError = null
 
-        
+
 
         plateDetectionJob = coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
 
@@ -515,7 +551,7 @@ class AppViewModel(
         }
         return restored != null
     }
-    
+
     fun onDetectPedestriansChanged(enabled: Boolean, coroutineScope: kotlinx.coroutines.CoroutineScope) {
         val oldDetectPedestrians = settings.detectPedestrians
         settings = settings.copy(detectPedestrians = enabled)
@@ -594,7 +630,7 @@ class AppViewModel(
 
         salvageStatusText = "Initializing Salvage..."
 
-        
+
 
         coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
 
@@ -767,7 +803,7 @@ class AppViewModel(
 
     }
 
-    
+
 
     // Time Alignment State
 
@@ -823,6 +859,8 @@ class AppViewModel(
     var syncCandidates by mutableStateOf<List<utils.TelemetryAligner.AlignmentCandidate>>(emptyList())
 
     var imuTimeOffsetMs by mutableStateOf<Long?>(null)
+
+    var videoImuVibration by mutableStateOf<DoubleArray?>(null)
 
     var encodePhase by mutableStateOf(EncodePhase.Idle)
 
@@ -975,8 +1013,8 @@ class AppViewModel(
                 val detector = fit.OsmTrafficSignalDetector(requester, cache)
 
                 val result = detector.detectSegments(
-                    bbox = bbox, 
-                    telemetryPoints = telemetryPoints, 
+                    bbox = bbox,
+                    telemetryPoints = telemetryPoints,
                     minDistanceMeters = minSegmentDistanceMeters,
                     videoPath = videoPath,
                     autoPauseGapSeconds = autoPauseGapSeconds,
@@ -1008,18 +1046,18 @@ class AppViewModel(
             val fitEpoch = java.time.Instant.parse("1989-12-31T00:00:00Z").epochSecond
             val firstPoint = originalTelemetryPoints.firstOrNull() ?: return
             val fitStartUtcEpoch = firstPoint.timestamp + fitEpoch
-            
+
             val cutStartEpoch = fitStartUtcEpoch + trimStartSec
             val cutEndEpoch = fitStartUtcEpoch + trimEndSec
-            
+
             val filtered = originalTelemetryPoints.filter { pt ->
                 val ptEpoch = pt.timestamp + fitEpoch
                 ptEpoch in cutStartEpoch..cutEndEpoch
             }
-            
+
             telemetryPoints = filtered
             isTelemetryCut = true
-            
+
             if (videoStartUtcStr.isNotEmpty()) {
                 val videoInstant = java.time.Instant.parse(videoStartUtcStr)
                 val cutStartInstant = java.time.Instant.ofEpochSecond(cutStartEpoch.toLong())
@@ -1245,7 +1283,7 @@ class AppViewModel(
                 val restored = unfinished.map {
                     val statusEnum = try { BatchJobStatus.valueOf(it.status) } catch(_: Exception) { BatchJobStatus.WAITING }
                     val finalStatus = if (statusEnum == BatchJobStatus.RUNNING) BatchJobStatus.WAITING else statusEnum
-                    
+
                     val phases = it.phases?.map { p ->
                         val phaseType = try { BatchJobPhaseType.valueOf(p.type) } catch(_: Exception) { BatchJobPhaseType.HUD_ENCODE }
                         val phaseStatus = try { BatchJobPhaseStatus.valueOf(p.status) } catch(_: Exception) { BatchJobPhaseStatus.WAITING }
@@ -1267,7 +1305,7 @@ class AppViewModel(
                             )
                         }
                     }
-                    
+
                     BatchJob(
                         id = it.id,
                         videoPath = it.videoPath,
@@ -1672,8 +1710,3 @@ class AppViewModel(
     var isSidebarVisible by mutableStateOf(true)
 
 }
-
-
-
-
-

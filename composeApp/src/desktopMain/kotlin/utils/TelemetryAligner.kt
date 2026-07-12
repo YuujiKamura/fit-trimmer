@@ -48,7 +48,7 @@ object TelemetryAligner {
             println("⚠️ Failed to load alignment config: ${e.message}, using defaults.")
         }
     }
-    
+
     data class ImuData(
         val times: DoubleArray,
         val accX: DoubleArray,
@@ -70,21 +70,21 @@ object TelemetryAligner {
     internal fun extractImuOffsetsFast(filepath: String): ImuData {
         val file = File(filepath)
         val size = file.length()
-        
+
         RandomAccessFile(file, "r").use { raf ->
             raf.seek(size - 200)
             val endBuf = ByteArray(200)
             raf.readFully(endBuf)
-            
+
             val buffer = ByteBuffer.wrap(endBuf).order(ByteOrder.LITTLE_ENDIAN)
             val extraSize = buffer.getInt(160).toLong() and 0xFFFFFFFFL
             val extraStart = size - extraSize
-            
+
             var pos = 150
             var foundOffsets = false
             var offsetsSize = 0
             var offsetsPos = 0
-            
+
             while (true) {
                 var foundPos = -1
                 for (i in pos downTo 0) {
@@ -94,7 +94,7 @@ object TelemetryAligner {
                     }
                 }
                 if (foundPos == -1) break
-                
+
                 if (foundPos + 6 <= endBuf.size) {
                     val sizeVal = ByteBuffer.wrap(endBuf, foundPos + 2, 4).order(ByteOrder.LITTLE_ENDIAN).getInt().toLong() and 0xFFFFFFFFL
                     if (sizeVal in 20..500 && sizeVal % 10 == 0L) {
@@ -106,16 +106,16 @@ object TelemetryAligner {
                 }
                 pos = foundPos - 1
             }
-            
+
             if (!foundOffsets) {
                 throw IllegalArgumentException("Failed to locate Offsets header in end buffer")
             }
-            
+
             val offsetFromEnd = 200 - offsetsPos
             raf.seek(size - offsetFromEnd - offsetsSize)
             val offsetsBuf = ByteArray(offsetsSize)
             raf.readFully(offsetsBuf)
-            
+
             var gyroOffset = -1L
             var gyroSize = -1
             val offsetsWrapper = ByteBuffer.wrap(offsetsBuf).order(ByteOrder.LITTLE_ENDIAN)
@@ -129,16 +129,16 @@ object TelemetryAligner {
                     gyroSize = recSize.toInt()
                 }
             }
-            
+
             if (gyroOffset == -1L || gyroSize == -1) {
                 throw IllegalArgumentException("Gyro record (ID=3) not found in offsets")
             }
-            
+
             val targetPos = extraStart + gyroOffset
             raf.seek(targetPos)
             val block = ByteArray(gyroSize)
             raf.readFully(block)
-            
+
             val sampleSize = 20
             val sampleCount = gyroSize / sampleSize
             val times = DoubleArray(sampleCount)
@@ -148,12 +148,12 @@ object TelemetryAligner {
             val gyroX = DoubleArray(sampleCount)
             val gyroY = DoubleArray(sampleCount)
             val gyroZ = DoubleArray(sampleCount)
-            
+
             val blockWrapper = ByteBuffer.wrap(block).order(ByteOrder.LITTLE_ENDIAN)
             for (i in 0 until sampleCount) {
                 val offset = i * sampleSize
                 val timecode = blockWrapper.getLong(offset)
-                
+
                 times[i] = timecode.toDouble() / 1_000_000.0
                 accX[i] = blockWrapper.getShort(offset + 8).toDouble()
                 accY[i] = blockWrapper.getShort(offset + 10).toDouble()
@@ -162,7 +162,7 @@ object TelemetryAligner {
                 gyroY[i] = blockWrapper.getShort(offset + 16).toDouble()
                 gyroZ[i] = blockWrapper.getShort(offset + 18).toDouble()
             }
-            
+
             val indices = times.indices.sortedBy { times[it] }
             val sortedTimes = DoubleArray(sampleCount) { times[indices[it]] }
             val sortedAccX = DoubleArray(sampleCount) { accX[indices[it]] }
@@ -171,7 +171,7 @@ object TelemetryAligner {
             val sortedGyroX = DoubleArray(sampleCount) { gyroX[indices[it]] }
             val sortedGyroY = DoubleArray(sampleCount) { gyroY[indices[it]] }
             val sortedGyroZ = DoubleArray(sampleCount) { gyroZ[indices[it]] }
-            
+
             return ImuData(
                 sortedTimes,
                 sortedAccX, sortedAccY, sortedAccZ,
@@ -184,7 +184,7 @@ object TelemetryAligner {
         var firstFileImuOffset = 2.664490
         try {
             val file = File(videoPath)
-            
+
             // 1. Try self offset first
             var selfFirstTime: Double? = null
             if (file.exists()) {
@@ -207,7 +207,7 @@ object TelemetryAligner {
             if (match != null) {
                 val prefix = match.groupValues[1]
                 val ext = match.groupValues[3]
-                
+
                 val partNumStr = match.groupValues[2]
                 val partNum = partNumStr.toIntOrNull() ?: 1
                 if (partNum > 1) {
@@ -236,6 +236,34 @@ object TelemetryAligner {
             println("DEBUG: Failed to extract first file IMU offset: ${e.message}")
         }
         return firstFileImuOffset
+    }
+
+    private fun deduplicateAndSortCandidates(
+        candidates: List<AlignmentCandidate>,
+        minSeparationSeconds: Int,
+        maxCandidates: Int
+    ): List<AlignmentCandidate> {
+        val sorted = candidates.sortedByDescending { it.correlation }
+        val result = mutableListOf<AlignmentCandidate>()
+
+        for (cand in sorted) {
+            if (result.size >= maxCandidates) break
+
+            val candEpoch = try { java.time.Instant.parse(cand.alignedUtc).epochSecond } catch (_: Exception) { 0L }
+
+            val isDuplicate = result.any { existing ->
+                val existingEpoch = try { java.time.Instant.parse(existing.alignedUtc).epochSecond } catch (_: Exception) { 0L }
+                Math.abs(candEpoch - existingEpoch) < minSeparationSeconds
+            }
+
+            if (!isDuplicate) {
+                result.add(cand)
+            }
+        }
+
+        return result.mapIndexed { idx, cand ->
+            cand.copy(rank = idx + 1)
+        }
     }
 
     private fun gaussianFilter1D(input: DoubleArray, sigma: Double): DoubleArray {
@@ -299,7 +327,7 @@ object TelemetryAligner {
         return output
     }
 
-    private fun interpolate(x: DoubleArray, xp: DoubleArray, fp: DoubleArray): DoubleArray {
+    fun interpolate(x: DoubleArray, xp: DoubleArray, fp: DoubleArray): DoubleArray {
         val output = DoubleArray(x.size)
         for (i in x.indices) {
             val target = x[i]
@@ -361,7 +389,7 @@ object TelemetryAligner {
             println("DEBUG: Auto alignment skipped (empty inputs)")
             return@withContext emptyList()
         }
-        
+
         try {
             // 1. Extract video IMU data and calculate vibration
             val imuData = extractImuOffsetsFast(videoPath)
@@ -370,42 +398,92 @@ object TelemetryAligner {
                 println("ERROR: No IMU samples extracted from video")
                 return@withContext emptyList()
             }
-            
+
             val accNorms = DoubleArray(times.size) { i ->
                 val x = imuData.accX[i]
                 val y = imuData.accY[i]
                 val z = imuData.accZ[i]
                 Math.sqrt(x * x + y * y + z * z)
             }
-            
+
             val accDiffs = DoubleArray(accNorms.size)
             for (i in 0 until accNorms.size - 1) {
                 accDiffs[i] = Math.abs(accNorms[i + 1] - accNorms[i])
             }
             accDiffs[accNorms.size - 1] = 0.0
-            
+
             val relTimes = DoubleArray(times.size) { times[it] - times[0] }
             val maxVTime = Math.ceil(relTimes.last()).toInt()
-            
+
             val vGrid = DoubleArray(maxVTime + 1) { it.toDouble() }
             val vVib = interpolate(vGrid, relTimes, accDiffs)
-            
+
             val firstFileImuOffset = getFirstFileImuOffset(videoPath)
-            return@withContext alignVibWithTelemetryCandidatesCore(
-                vVib = vVib,
-                telemetryPoints = telemetryPoints,
-                approxStartUtc = approxStartUtc,
-                method = method,
-                windowSeconds = windowSeconds,
-                firstFileImuOffset = firstFileImuOffset,
-                maxCandidates = maxCandidates,
-                minSeparationSeconds = minSeparationSeconds
-            )
+
+            // Sliding Window Multi-Mapping:
+            // Scan the entire video range by sliding a 5-minute (300s) window.
+            // This prevents auto-pause gaps from invalidating the entire correlation,
+            // while still utilizing all parts of the video to find valid alignment points.
+            val windowSize = 300 // 5 minutes
+            val stepSize = 180   // 3 minutes overlap
+            val accumulated = mutableListOf<AlignmentCandidate>()
+
+            var startIdx = 0
+            while (startIdx < vVib.size) {
+                val endIdx = minOf(startIdx + windowSize, vVib.size)
+                if (endIdx - startIdx < 60) break // Skip windows shorter than 1 minute
+
+                // Adjust approxStartUtc for this sub-window by adding startIdx seconds
+                val adjustedApproxStartUtc = if (approxStartUtc.isNotEmpty()) {
+                    try {
+                        java.time.Instant.parse(approxStartUtc).plusSeconds(startIdx.toLong()).toString()
+                    } catch (_: Exception) {
+                        approxStartUtc
+                    }
+                } else {
+                    approxStartUtc
+                }
+
+                val vSub = vVib.copyOfRange(startIdx, endIdx)
+                val subCandidates = alignVibWithTelemetryCandidatesCore(
+                    vVib = vSub,
+                    telemetryPoints = telemetryPoints,
+                    approxStartUtc = adjustedApproxStartUtc,
+                    method = method,
+                    windowSeconds = windowSeconds,
+                    firstFileImuOffset = firstFileImuOffset,
+                    maxCandidates = 3,
+                    minSeparationSeconds = minSeparationSeconds
+                )
+
+                for (cand in subCandidates) {
+                    try {
+                        // Shift the aligned timestamp back by startIdx to get the start of the entire video
+                        val alignedInstant = java.time.Instant.parse(cand.alignedUtc).minusSeconds(startIdx.toLong())
+                        val adjustedOffset = cand.offsetSeconds?.let { it - startIdx }
+                        accumulated.add(
+                            cand.copy(
+                                alignedUtc = alignedInstant.toString(),
+                                offsetSeconds = adjustedOffset
+                            )
+                        )
+                    } catch (e: Exception) {
+                        println("DEBUG: Failed to parse sub-candidate: ${e.message}")
+                    }
+                }
+
+                if (endIdx == vVib.size) break
+                startIdx += stepSize
+            }
+
+            // Deduplicate and sort all accumulated candidates
+            val finalCandidates = deduplicateAndSortCandidates(accumulated, minSeparationSeconds, maxCandidates)
+            return@withContext finalCandidates
         } catch (e: Exception) {
             println("ERROR: Exception during native auto alignment: ${e.message}")
             e.printStackTrace()
         }
-        
+
         return@withContext emptyList()
     }
 
@@ -455,13 +533,17 @@ object TelemetryAligner {
         val fitTs = DoubleArray(telemetryPoints.size) { telemetryPoints[it].timestamp.toDouble() }
         val fitSpeed = DoubleArray(telemetryPoints.size) { telemetryPoints[it].speed.toDouble() }
         val fitPower = DoubleArray(telemetryPoints.size) { telemetryPoints[it].power.toDouble() }
-        
+        val fitCadence = DoubleArray(telemetryPoints.size) { telemetryPoints[it].cadence.toDouble() }
+        val fitGrade = DoubleArray(telemetryPoints.size) { telemetryPoints[it].grade.toDouble() }
+
         val startTs = fitTs.first()
         val endTs = fitTs.last()
         val fitGridSize = (endTs - startTs).toInt() + 1
         val fitGrid = DoubleArray(fitGridSize) { startTs + it }
         val fitSpeedGrid = interpolate(fitGrid, fitTs, fitSpeed)
         val fitPowerGrid = interpolate(fitGrid, fitTs, fitPower)
+        val fitCadenceGrid = interpolate(fitGrid, fitTs, fitCadence)
+        val fitGradeGrid = interpolate(fitGrid, fitTs, fitGrade)
 
         // Auto-pause gap correction: set interpolated telemetry signals to 0.0 during gaps > 2.0 seconds
         for (i in 0 until fitTs.size - 1) {
@@ -479,61 +561,132 @@ object TelemetryAligner {
             }
         }
 
-        val corr: DoubleArray
-        val fitSigSmooth: DoubleArray
-        val vSigSmooth: DoubleArray
+        var corr = DoubleArray(0)
+        var fitSigSmooth = DoubleArray(0)
+        var vSigSmooth = DoubleArray(0)
 
         if (method == "binary") {
+            // Sensor Fusion: Blend speed/acceleration, power, cadence, and slope rate of change
+            // 1. Accel Event (Speed rate of change)
+            val speedDelta = DoubleArray(fitSpeedGrid.size)
+            for (i in 1 until fitSpeedGrid.size) {
+                speedDelta[i] = Math.abs(fitSpeedGrid[i] - fitSpeedGrid[i - 1])
+            }
+            val maxSpeedDelta = speedDelta.maxOrNull()?.takeIf { it > 1e-6 } ?: 1.0
+            val speedThresh = config.speed_threshold
+            val accelEvent = DoubleArray(fitSpeedGrid.size) { i ->
+                val active = if (fitSpeedGrid[i] > speedThresh) 0.5 else 0.0
+                val deltaRatio = speedDelta[i] / maxSpeedDelta
+                active + 0.5 * deltaRatio
+            }
+
+            // 2. Power Event
             val maxPower = fitPowerGrid.maxOrNull() ?: 0.0
             val usablePowerSamples = fitPowerGrid.count { it > 10.0 }
-            if (maxPower < config.power_min_threshold || usablePowerSamples < 5) {
-                println("WARNING: Power data insufficient (maxPower=$maxPower, usableSamples=$usablePowerSamples). Falling back to speed-based sync signal.")
-                
-                // Speed-based logic (old binary method logic)
-                val vSig = gaussianFilter1D(vVib, config.gaussian_sigma_speed)
-                
-                // 10th percentile
-                val sortedVSig = vSig.sorted()
-                val pct10Idx = (sortedVSig.size * 0.10).toInt()
-                val pct10 = sortedVSig[Math.max(0, Math.min(sortedVSig.size - 1, pct10Idx))]
-                val vThresh = Math.max(config.min_vib_threshold, pct10 * config.vib_threshold_factor)
-                
-                val vMov = DoubleArray(vSig.size) { if (vSig[it] > vThresh) 1.0 else 0.0 }
-                val fitMov = DoubleArray(fitSpeedGrid.size) { if (fitSpeedGrid[it] > config.speed_threshold) 1.0 else 0.0 }
-
-                fitSigSmooth = gaussianFilter1D(fitMov, config.gaussian_sigma_speed)
-                vSigSmooth = gaussianFilter1D(vMov, config.gaussian_sigma_speed)
-            } else {
+            val hasPower = maxPower >= config.power_min_threshold && usablePowerSamples >= 5
+            val powerEvent = if (hasPower) {
                 val powerThreshold = Math.max(config.power_min_threshold, Math.min(config.power_max_threshold, maxPower * config.power_threshold_ratio))
-                val fitPowerSmooth = gaussianFilter1D(fitPowerGrid, config.gaussian_sigma_power)
-                val fitPowerDelta = DoubleArray(fitPowerSmooth.size)
-                for (i in 1 until fitPowerSmooth.size) {
-                    fitPowerDelta[i] = Math.abs(fitPowerSmooth[i] - fitPowerSmooth[i - 1])
+                val fitPowerDelta = DoubleArray(fitPowerGrid.size)
+                for (i in 1 until fitPowerGrid.size) {
+                    fitPowerDelta[i] = Math.abs(fitPowerGrid[i] - fitPowerGrid[i - 1])
                 }
                 val maxPowerDelta = fitPowerDelta.maxOrNull()?.takeIf { it > 1e-6 } ?: 1.0
-                val fitPowerEvent = DoubleArray(fitPowerSmooth.size) { i ->
-                    val active = if (fitPowerSmooth[i] > powerThreshold) 1.0 else 0.0
+                DoubleArray(fitPowerGrid.size) { i ->
+                    val active = if (fitPowerGrid[i] > powerThreshold) 1.0 else 0.0
                     val edge = fitPowerDelta[i] / maxPowerDelta
                     config.power_active_weight * active + config.power_edge_weight * edge
                 }
+            } else null
 
-                val vSig = gaussianFilter1D(vVib, config.gaussian_sigma_vib)
-                val vDelta = DoubleArray(vSig.size)
-                for (i in 1 until vSig.size) {
-                    vDelta[i] = Math.abs(vSig[i] - vSig[i - 1])
+            // 3. Cadence Event
+            val maxCadence = fitCadenceGrid.maxOrNull() ?: 0.0
+            val usableCadenceSamples = fitCadenceGrid.count { it > 5.0 }
+            val hasCadence = maxCadence > 10.0 && usableCadenceSamples >= 5
+            val cadenceEvent = if (hasCadence) {
+                val cadenceDelta = DoubleArray(fitCadenceGrid.size)
+                for (i in 1 until fitCadenceGrid.size) {
+                    cadenceDelta[i] = Math.abs(fitCadenceGrid[i] - fitCadenceGrid[i - 1])
                 }
-                val maxVDelta = vDelta.maxOrNull()?.takeIf { it > 1e-6 } ?: 1.0
-                val vEvent = DoubleArray(vSig.size) { i -> vDelta[i] / maxVDelta }
+                val maxCadenceDelta = cadenceDelta.maxOrNull()?.takeIf { it > 1e-6 } ?: 1.0
+                DoubleArray(fitCadenceGrid.size) { i -> cadenceDelta[i] / maxCadenceDelta }
+            } else null
 
-                fitSigSmooth = gaussianFilter1D(fitPowerEvent, config.gaussian_sigma_vib)
-                vSigSmooth = gaussianFilter1D(vEvent, config.gaussian_sigma_vib)
-                println(
-                    "DEBUG: Using power-event sync signal. " +
-                        "maxPower=$maxPower threshold=$powerThreshold usableSamples=$usablePowerSamples"
-                )
+            // 4. Slope Event (Grade rate of change)
+            val gradeDelta = DoubleArray(fitGradeGrid.size)
+            for (i in 1 until fitGradeGrid.size) {
+                gradeDelta[i] = Math.abs(fitGradeGrid[i] - fitGradeGrid[i - 1])
+            }
+            val maxGradeDelta = gradeDelta.maxOrNull()?.takeIf { it > 1e-6 } ?: 1.0
+            val slopeEvent = DoubleArray(fitGradeGrid.size) { i -> gradeDelta[i] / maxGradeDelta }
+
+            // 5. Fuse expected signals
+            val fitFusion = DoubleArray(fitGridSize) { i ->
+                var signal = 0.0
+                var denom = 0.0
+
+                // Speed accel: 40% weight
+                signal += accelEvent[i] * 0.40
+                denom += 0.40
+
+                // Power: 35% weight
+                if (powerEvent != null) {
+                    signal += powerEvent[i] * 0.35
+                    denom += 0.35
+                }
+
+                // Cadence: 15% weight
+                if (cadenceEvent != null) {
+                    signal += cadenceEvent[i] * 0.15
+                    denom += 0.15
+                }
+
+                // Slope: 10% weight
+                signal += slopeEvent[i] * 0.10
+                denom += 0.10
+
+                if (denom > 0.0) signal / denom else 0.0
             }
 
-            // Calculate Pearson's Local Normalized Cross-Correlation (NCC)
+            // 6. Video IMU Vibration preparation
+            val vSig = gaussianFilter1D(vVib, config.gaussian_sigma_vib)
+            val vDelta = DoubleArray(vSig.size)
+            for (i in 1 until vSig.size) {
+                vDelta[i] = Math.abs(vSig[i] - vSig[i - 1])
+            }
+            val maxVDelta = vDelta.maxOrNull()?.takeIf { it > 1e-6 } ?: 1.0
+            val vEvent = DoubleArray(vSig.size) { i -> vDelta[i] / maxVDelta }
+
+            fitSigSmooth = gaussianFilter1D(fitFusion, config.gaussian_sigma_vib)
+            vSigSmooth = gaussianFilter1D(vEvent, config.gaussian_sigma_vib)
+
+            println(
+                "DEBUG: Using multi-signal Sensor Fusion (Speed/Acc=true, Power=$hasPower, Cadence=$hasCadence, Slope=true) for alignment."
+            )
+        } else {
+            // Acceleration Method
+            val fitAcc = DoubleArray(fitSpeedGrid.size)
+            for (i in 0 until fitSpeedGrid.size - 1) {
+                fitAcc[i] = Math.abs(fitSpeedGrid[i + 1] - fitSpeedGrid[i])
+            }
+            fitAcc[fitSpeedGrid.size - 1] = 0.0
+
+            val vSig = gaussianFilter1D(vVib, 3.0)
+            val vAcc = DoubleArray(vSig.size)
+            for (i in 0 until vSig.size - 1) {
+                vAcc[i] = Math.abs(vSig[i + 1] - vSig[i])
+            }
+            vAcc[vSig.size - 1] = 0.0
+
+            val fitSigSmooth = gaussianFilter1D(fitAcc, 3.0)
+            val vSigSmooth = gaussianFilter1D(vAcc, 3.0)
+
+            val fitSigNorm = normalize(fitSigSmooth)
+            val vSigNorm = normalize(vSigSmooth)
+            corr = correlateValid(fitSigNorm, vSigNorm)
+        }
+
+        // Calculate Pearson's Local Normalized Cross-Correlation (NCC)
+        if (method == "binary") {
             val outSize = fitSigSmooth.size - vSigSmooth.size + 1
             if (outSize <= 0) {
                 corr = DoubleArray(0)
@@ -678,10 +831,10 @@ object TelemetryAligner {
         try {
             val videoInstant = java.time.Instant.parse(videoStartUtc)
             val fitInstant = java.time.Instant.parse(fitStartUtc)
-            
+
             val videoStartMs = videoInstant.toEpochMilli()
             val fitStartMs = fitInstant.toEpochMilli()
-            
+
             val adjustedStartMs = fitStartMs - (targetSec * 1000.0).toLong()
             return adjustedStartMs - videoStartMs
         } catch (e: Exception) {
