@@ -1005,7 +1005,7 @@ fun VideoPreviewArea(
     }
 
     @Composable
-    fun VideoLayer(modifier: Modifier) {
+    fun VideoLayer(modifier: Modifier, settings: fit.HudSettings) {
         Box(modifier = modifier.background(Color.Black), contentAlignment = Alignment.Center) {
             val videoAspect = (playerState as? WindowsVideoPlayerState)?.videoAspectRatio?.takeIf { it > 0f } ?: 16f / 9f
             BoxWithConstraints(
@@ -1163,7 +1163,7 @@ fun VideoPreviewArea(
 
         if (isFullscreen) {
             Box(modifier = frameModifier) {
-                VideoLayer(Modifier.fillMaxSize())
+                VideoLayer(Modifier.fillMaxSize(), settings)
                 if (videoPath.isNotEmpty() && File(videoPath).exists()) {
                     Box(
                         modifier = Modifier
@@ -1179,9 +1179,10 @@ fun VideoPreviewArea(
         } else {
             Column(modifier = frameModifier) {
                 VideoLayer(
-                    Modifier
+                    modifier = Modifier
                         .weight(1f)
-                        .fillMaxWidth()
+                        .fillMaxWidth(),
+                    settings = settings
                 )
                 if (videoPath.isNotEmpty() && File(videoPath).exists()) {
                     Box(
