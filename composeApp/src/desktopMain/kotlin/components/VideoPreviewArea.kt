@@ -438,6 +438,7 @@ fun VideoPreviewArea(
     isDetectingPlates: Boolean = false,
     previewQualityMode: String = "original",
     onPreviewQualityModeChange: (String) -> Unit = {},
+    onCropToSquareChange: ((Boolean) -> Unit)? = null,
     isFullscreen: Boolean = false,
     onFullscreenToggle: (() -> Unit)? = null,
     plateCache: fit.VideoPlatesCache? = null,
@@ -928,8 +929,9 @@ fun VideoPreviewArea(
                 horizontalArrangement = Arrangement.spacedBy(5.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                val isJa = settings.language.lowercase().startsWith("ja")
                 Text(
-                    text = activePreviewSourceLabel,
+                    text = if (isJa) "アスペクト比" else "Aspect Ratio",
                     color = foreground,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
@@ -937,14 +939,14 @@ fun VideoPreviewArea(
                     modifier = Modifier.width(if (floating) 90.dp else 82.dp)
                 )
                 val modes = listOf(
-                    "original" to "Original",
-                    "auto" to "Auto",
-                    "proxy" to "Proxy"
+                    false to if (isJa) "16:9 標準" else "16:9 Standard",
+                    true to if (isJa) "1:1 正方形" else "1:1 Strava"
                 )
+                val activeMode = settings.cropToSquare
                 for ((mode, label) in modes) {
-                    val selected = previewQualityMode.equals(mode, ignoreCase = true)
+                    val selected = (activeMode == mode)
                     Button(
-                        onClick = { onPreviewQualityModeChange(mode) },
+                        onClick = { onCropToSquareChange?.invoke(mode) },
                         enabled = !isEncoding && !isDetectingPlates,
                         modifier = Modifier.height(24.dp),
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
@@ -1005,7 +1007,7 @@ fun VideoPreviewArea(
     @Composable
     fun VideoLayer(modifier: Modifier) {
         Box(modifier = modifier.background(Color.Black), contentAlignment = Alignment.Center) {
-            val videoAspect = if (settings.cropToSquare) 1f else ((playerState as? WindowsVideoPlayerState)?.videoAspectRatio?.takeIf { it > 0f } ?: 16f / 9f)
+            val videoAspect = (playerState as? WindowsVideoPlayerState)?.videoAspectRatio?.takeIf { it > 0f } ?: 16f / 9f
             BoxWithConstraints(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
@@ -1026,20 +1028,30 @@ fun VideoPreviewArea(
 
                 Box(modifier = frameModifier) {
                     if (videoPath.isNotEmpty() && renderVideoSurface) {
-                        val originalAspect = (playerState as? WindowsVideoPlayerState)?.videoAspectRatio?.takeIf { it > 0f } ?: 16f / 9f
-                        val videoSurfaceModifier = if (settings.cropToSquare) {
-                            Modifier.fillMaxHeight().aspectRatio(originalAspect)
-                        } else {
-                            Modifier.fillMaxSize()
-                        }
                         Box(
                             modifier = Modifier.fillMaxSize(),
                             contentAlignment = Alignment.Center
                         ) {
                             VideoPlayerSurface(
                                 playerState = playerState,
-                                modifier = videoSurfaceModifier
+                                modifier = Modifier.fillMaxSize()
                             )
+                            if (settings.cropToSquare) {
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.CenterStart)
+                                        .fillMaxHeight()
+                                        .fillMaxWidth(0.21875f)
+                                        .background(Color.Black)
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.CenterEnd)
+                                        .fillMaxHeight()
+                                        .fillMaxWidth(0.21875f)
+                                        .background(Color.Black)
+                                )
+                            }
                         }
                     } else {
                         Box(Modifier.fillMaxSize().background(Color.Black))
@@ -1057,8 +1069,7 @@ fun VideoPreviewArea(
                                 blurredRects = plateCache?.shouldBlurAt(currentRenderTimeMs, settings.blurLicensePlates) ?: emptyList()
                             }
                     ) {
-                        val baseWidth = if (settings.cropToSquare) size.height * (16f / 9f) else size.width
-                        val scale = baseWidth / 1920f
+                        val scale = size.width / 1920f
                         val currentSeconds = currentRenderTimeMs.toFloat() / 1000f
 
                         // License plate mask overlay
@@ -1134,24 +1145,6 @@ fun VideoPreviewArea(
                             isValid
                         )
                     }
-                }
-
-                if (settings.cropToSquare && containerWidth > 0.dp && containerHeight > 0.dp && containerWidth > containerHeight) {
-                    val maskWidth = (containerWidth - containerHeight) / 2
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.CenterStart)
-                            .width(maskWidth)
-                            .fillMaxHeight()
-                            .background(Color.Black)
-                    )
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.CenterEnd)
-                            .width(maskWidth)
-                            .fillMaxHeight()
-                            .background(Color.Black)
-                    )
                 }
             }
         }

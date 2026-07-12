@@ -189,7 +189,12 @@ class HudRenderer(val config: HudConfig) {
             }
         }
         
-        var cx = config.xOffset + if (config.cropToSquare) 28f else 0f
+        val cropOffset = if (config.cropToSquare && canvas.width > canvas.height) {
+            (canvas.width - canvas.height) / 2f
+        } else {
+            0f
+        }
+        var cx = config.xOffset + cropOffset
         var cy = config.yOffset
         
         val labelSize = 16f
@@ -211,6 +216,7 @@ class HudRenderer(val config: HudConfig) {
             zonesCurrent = zonesCurrent,
             cachedZonesTotal = cachedZonesTotal,
             totalCalories = totalCalories,
+            cropOffset = cropOffset,
             getTextWidth = { text, size, bold -> canvas.getTextWidth(text, size, bold) },
             formatDateTime = { formatDateTime(it) },
             formatOneDecimal = { formatOneDecimal(it) },
@@ -1089,10 +1095,15 @@ class HudRenderer(val config: HudConfig) {
         }
 
         // 1. Layout parameters (Scaled & Enlarged for high fidelity)
+        val cropOffset = if (config.cropToSquare && canvas.width > canvas.height) {
+            (canvas.width - canvas.height) / 2f
+        } else {
+            0f
+        }
         val R = 110f * config.mapSizeScale * sf // 円の半径 (R) - スライダー可変対応
         val marginX = (45f + if (config.cropToSquare) 28f else 0f) * sf
         val marginY = 40f * sf
-        val mcx = canvas.width - marginX - R // 円の中心 X
+        val mcx = canvas.width - marginX - R - cropOffset // 円の中心 X
         val mcy = if (config.mapPosition == "bottom_right") {
             canvas.height - marginY - R
         } else {
