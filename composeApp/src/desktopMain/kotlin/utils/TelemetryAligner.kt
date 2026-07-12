@@ -196,7 +196,12 @@ object TelemetryAligner {
                 if (firstFilePath.exists()) {
                     val imuData = extractImuOffsetsFast(firstFilePath.absolutePath)
                     if (imuData.times.isNotEmpty()) {
-                        firstFileImuOffset = imuData.times[0]
+                        val firstTime = imuData.times[0]
+                        if (firstTime < 20.0) {
+                            firstFileImuOffset = firstTime
+                        } else {
+                            println("DEBUG: first file IMU offset ($firstTime) is abnormally large (>20s), likely containing idle/accumulation time. Bypassing and using default offset.")
+                        }
                     }
                 }
             }
@@ -412,6 +417,13 @@ object TelemetryAligner {
     ): List<AlignmentCandidate> {
         if (telemetryPoints.isEmpty() || vVib.isEmpty()) return emptyList()
 
+        val effectiveImuOffset = if (firstFileImuOffset >= 20.0) {
+            println("DEBUG: Provided IMU offset ($firstFileImuOffset) is abnormally large (>=20s), likely containing idle/accumulation time. Bypassing and using default offset.")
+            2.664490
+        } else {
+            firstFileImuOffset
+        }
+
         // 2. Prepare telemetry points
         val fitTs = DoubleArray(telemetryPoints.size) { telemetryPoints[it].timestamp.toDouble() }
         val fitSpeed = DoubleArray(telemetryPoints.size) { telemetryPoints[it].speed.toDouble() }
@@ -605,7 +617,7 @@ object TelemetryAligner {
         }
         val candidates = selected.mapIndexed { rankIndex, idx ->
             val videoStartTs = fitGrid[idx]
-            val trueFileStartTs = videoStartTs - firstFileImuOffset
+            val trueFileStartTs = videoStartTs - effectiveImuOffset
             val unixSecondsDouble = trueFileStartTs + 631065600.0
             val unixSec = Math.floor(unixSecondsDouble).toLong()
             val unixNano = ((unixSecondsDouble - unixSec) * 1_000_000_000).toLong()
@@ -622,7 +634,7 @@ object TelemetryAligner {
         }
 
         lastMaxCorr = candidates.first().correlation
-        lastAnchorSec = firstFileImuOffset
+        lastAnchorSec = effectiveImuOffset
 
         val mode = if (useStrictWindowOnly) "window" else "global"
         println("DEBUG: $mode alignment candidates: " + candidates.joinToString { "#${it.rank}@${it.alignedUtc}(r=${it.correlation})" })

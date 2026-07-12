@@ -581,6 +581,47 @@ class TelemetryAlignerTest {
     }
 
     @Test
+    fun testIMUAlignmentWithHugeFirstFileImuOffset() {
+        val telemetryStream = javaClass.getResourceAsStream("/fit_telemetry.json")
+        assertNotNull(telemetryStream)
+        val telemetryJsonText = telemetryStream.bufferedReader().use { it.readText() }
+        
+        val vibStream = javaClass.getResourceAsStream("/video_vibration_1hz.json")
+        assertNotNull(vibStream)
+        val vibJsonText = vibStream.bufferedReader().use { it.readText() }
+
+        val telemetryArray = Json.parseToJsonElement(telemetryJsonText).jsonArray
+        val telemetryPoints = List(telemetryArray.size) { i ->
+            val obj = telemetryArray[i].jsonObject
+            fit.TelemetryPoint(
+                timestamp = obj["ts"]!!.jsonPrimitive.double,
+                speed = obj["speedKmh"]!!.jsonPrimitive.double,
+                power = 0.0, cadence = 0.0, heartRate = 0.0, elevation = 0.0, grade = 0.0
+            )
+        }
+
+        val originalVib = Json.parseToJsonElement(vibJsonText).jsonArray.map { it.jsonPrimitive.double }.toDoubleArray()
+        
+        val trueStartInstant = java.time.Instant.parse("2026-06-25T08:19:55.335Z")
+        val hugeFirstFileImuOffset = 1802.664490 // 30 mins offset
+
+        val alignedUtc = TelemetryAligner.alignVibWithTelemetryCore(
+            vVib = originalVib,
+            telemetryPoints = telemetryPoints,
+            approxStartUtc = trueStartInstant.toString(),
+            method = "binary",
+            windowSeconds = 90.0,
+            firstFileImuOffset = hugeFirstFileImuOffset
+        )
+
+        assertNotNull(alignedUtc)
+        val alignedInstant = java.time.Instant.parse(alignedUtc)
+        val diffSeconds = Math.abs(alignedInstant.epochSecond - trueStartInstant.epochSecond)
+        
+        assertTrue(diffSeconds < 2.0, "Should use default offset instead of huge offset, diff was $diffSeconds s")
+    }
+
+    @Test
     fun testRealGroundTruthDataset20260708() {
         val fitFile = File("F:\\Insta360\\20260708\\Evening_Ride.fit")
         val mp4File = File("F:\\Insta360\\20260708\\VID_20260708_184458_001.mp4")
