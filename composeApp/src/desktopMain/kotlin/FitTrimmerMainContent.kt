@@ -226,7 +226,7 @@ fun FitTrimmerMainContent(
                     utcStr
                 }
             }
-            
+
             val firstPoint = telemetryPoints.firstOrNull()
             val fitStartJst = if (firstPoint != null) {
                 val unix = firstPoint.timestamp.toLong() + 631065600L
@@ -235,7 +235,7 @@ fun FitTrimmerMainContent(
             } else {
                 "不明"
             }
-            
+
             val originalInstant = try { java.time.Instant.parse(utc) } catch(e: Exception) { null }
             val simpleDiffStr = if (firstPoint != null && originalInstant != null) {
                 try {
@@ -251,43 +251,43 @@ fun FitTrimmerMainContent(
             } else {
                 "-"
             }
-            
+
             val panel = javax.swing.JPanel()
             panel.layout = javax.swing.BoxLayout(panel, javax.swing.BoxLayout.Y_AXIS)
-            
+
             val descLabel = javax.swing.JLabel("動画とGPSログ（FIT）のロードが完了しました。現在のアライメント状態を表示しています。")
             descLabel.alignmentX = java.awt.Component.LEFT_ALIGNMENT
             panel.add(descLabel)
             panel.add(javax.swing.Box.createVerticalStrut(10))
-            
+
             // 1. Observed time details
             val infoPanel = javax.swing.JPanel(java.awt.GridLayout(3, 2, 5, 5))
             infoPanel.border = javax.swing.BorderFactory.createTitledBorder("【時間情報の観測】")
             infoPanel.alignmentX = java.awt.Component.LEFT_ALIGNMENT
-            
+
             infoPanel.add(javax.swing.JLabel("動画メタデータ基準時刻 (JST):"))
             infoPanel.add(javax.swing.JLabel(formatUtcToJstString(utc)))
             infoPanel.add(javax.swing.JLabel("FITデータ記録開始時刻 (JST):"))
             infoPanel.add(javax.swing.JLabel(fitStartJst))
             infoPanel.add(javax.swing.JLabel("見かけの開始時間乖離:"))
             infoPanel.add(javax.swing.JLabel(simpleDiffStr))
-            
+
             panel.add(infoPanel)
             panel.add(javax.swing.Box.createVerticalStrut(10))
-            
+
             // 2. Control adjustment inputs
             val controlPanel = javax.swing.JPanel()
             controlPanel.layout = javax.swing.BoxLayout(controlPanel, javax.swing.BoxLayout.Y_AXIS)
             controlPanel.border = javax.swing.BorderFactory.createTitledBorder("【同期・アライメント補正の一元管理】")
             controlPanel.alignmentX = java.awt.Component.LEFT_ALIGNMENT
-            
+
             val offsetField = javax.swing.JTextField(String.format(java.util.Locale.US, "%.3f", timeOffsetState.seconds), 12)
             val targetJstField = javax.swing.JTextField(formatUtcToJstString(timeOffsetState.adjust(utc)), 19)
-            
+
             // Auto alignment execution controls
             val runAutoButton = javax.swing.JButton("IMU自動同期を実行する")
             val autoStatusLabel = javax.swing.JLabel("自動解析は未実行です。")
-            
+
             runAutoButton.addActionListener {
                 runAutoButton.isEnabled = false
                 autoStatusLabel.text = "IMU同期解析を実行中..."
@@ -303,10 +303,10 @@ fun FitTrimmerMainContent(
                                     val diffMs = alignedInstant.toEpochMilli() - originalInstant.toEpochMilli()
                                     val diffSec = diffMs / 1000.0
                                     offsetField.text = "%.3f".format(java.util.Locale.US, diffSec)
-                                    
+
                                     val jst = java.time.ZonedDateTime.ofInstant(alignedInstant, java.time.ZoneId.of("Asia/Tokyo"))
                                     targetJstField.text = jst.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
-                                    
+
                                     autoStatusLabel.text = "自動同期完了。補正値 %.3f 秒をセットしました。".format(java.util.Locale.US, diffSec)
                                 } else {
                                     autoStatusLabel.text = "解析結果のパースに失敗しました。"
@@ -324,7 +324,7 @@ fun FitTrimmerMainContent(
                     }
                 }
             }
-            
+
             val autoRow = javax.swing.JPanel(java.awt.FlowLayout(java.awt.FlowLayout.LEFT))
             autoRow.add(runAutoButton)
             autoRow.add(autoStatusLabel)
@@ -347,21 +347,21 @@ fun FitTrimmerMainContent(
             guideLabel3.foreground = java.awt.Color.RED
             controlPanel.add(guideLabel3)
             controlPanel.add(javax.swing.Box.createVerticalStrut(10))
-            
+
             // Manual offset input
             val offsetRow = javax.swing.JPanel(java.awt.FlowLayout(java.awt.FlowLayout.LEFT))
             offsetRow.add(javax.swing.JLabel("補正オフセット秒数 (秒):"))
             offsetRow.add(offsetField)
             offsetRow.add(javax.swing.JLabel(" (進める場合はプラス、遅らせる場合はマイナス)"))
             controlPanel.add(offsetRow)
-            
+
             // Manual JST Target Time input
             val targetJstRow = javax.swing.JPanel(java.awt.FlowLayout(java.awt.FlowLayout.LEFT))
             targetJstRow.add(javax.swing.JLabel("同期後の動画開始時刻 (JST):"))
             targetJstRow.add(targetJstField)
             targetJstRow.add(javax.swing.JLabel(" (フォーマット: YYYY-MM-DD HH:MM:SS)"))
             controlPanel.add(targetJstRow)
-            
+
             // Bidirectional linking: Offset -> JST
             offsetField.document.addDocumentListener(object : javax.swing.event.DocumentListener {
                 override fun insertUpdate(e: javax.swing.event.DocumentEvent) { update() }
@@ -382,7 +382,7 @@ fun FitTrimmerMainContent(
                     }
                 }
             })
-            
+
             // Bidirectional linking: JST -> Offset
             targetJstField.document.addDocumentListener(object : javax.swing.event.DocumentListener {
                 override fun insertUpdate(e: javax.swing.event.DocumentEvent) { update() }
@@ -405,9 +405,9 @@ fun FitTrimmerMainContent(
                     }
                 }
             })
-            
+
             panel.add(controlPanel)
-            
+
             val options = arrayOf("この設定で同期を適用する", "適用しない（初期位置のまま）")
             val choice = javax.swing.JOptionPane.showOptionDialog(
                 composeWindow ?: viewModel.composeWindow,
@@ -419,7 +419,7 @@ fun FitTrimmerMainContent(
                 options,
                 options[0]
             )
-            
+
             if (choice == javax.swing.JOptionPane.YES_OPTION) {
                 try {
                     val finalOffsetSec = offsetField.text.toDouble()
@@ -925,10 +925,10 @@ fun FitTrimmerMainContent(
                                         println("DEBUG: Skipped IMU sync confirmation dialog on startup restore")
                                     } else {
                                         isInitialLoadOfRestoredVideo = false
-                                        
+
                                         // Always set 0 offset (metadata time directly) initially
                                         timeOffsetState.update(0)
-                                        
+
                                         showSyncDialog()
                                     }
                                 }
@@ -1224,7 +1224,7 @@ fun FitTrimmerMainContent(
                                                 videoPath = videoPath,
                                                 telemetryPoints = telemetryPoints,
                                                 approxStartUtc = videoStartUtc,
-                                                windowSeconds = 1800.0,
+                                                windowSeconds = 120.0,
                                                 maxCandidates = 5
                                             )
                                             viewModel.syncCandidates = candidates
@@ -2315,7 +2315,7 @@ fun FitTrimmerMainContent(
                                         videoPath = videoPath,
                                         telemetryPoints = telemetryPoints,
                                         approxStartUtc = videoStartUtc,
-                                        windowSeconds = 1800.0,
+                                        windowSeconds = 120.0,
                                         maxCandidates = 5
                                     )
                                     viewModel.syncCandidates = candidates
@@ -2360,7 +2360,7 @@ fun FitTrimmerMainContent(
                         ) {
                             Text("部分倍速（タイムラプス）設定", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 0.5.sp)
                             Text("特定の区間を早送り（倍速化）します。倍速区間の音声は自動的に無音化されます。", color = Color(0xFF636366), fontSize = 10.sp, lineHeight = 13.sp)
-                            
+
                             val segments = settings.speedSegments
                             if (segments.isEmpty()) {
                                 Text("設定されている倍速区間はありません。", color = Color.Gray, fontSize = 11.sp, modifier = Modifier.padding(vertical = 4.dp))
@@ -2390,14 +2390,14 @@ fun FitTrimmerMainContent(
                                     }
                                 }
                             }
-                            
+
                             Divider(color = Color(0xFFE5E5EA), modifier = Modifier.padding(vertical = 4.dp))
-                            
+
                             // 新規追加フォーム
                             var newStartText by remember { mutableStateOf("") }
                             var newEndText by remember { mutableStateOf("") }
                             var newSpeedText by remember { mutableStateOf("2.0") }
-                            
+
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -2677,7 +2677,7 @@ fun FitTrimmerMainContent(
                             Spacer(Modifier.height(8.dp))
                             Divider(color = Color(0xFFE5E5EA), thickness = 1.dp)
                             Spacer(Modifier.height(8.dp))
-                            
+
                             // Data Scope Settings Section
                             Text(
                                 text = utils.Localizer.get("data_scopes_section", settings.language),
@@ -2740,7 +2740,7 @@ fun FitTrimmerMainContent(
                             Spacer(Modifier.height(8.dp))
                             Divider(color = Color(0xFFE5E5EA), thickness = 1.dp)
                             Spacer(Modifier.height(8.dp))
-                            
+
                             // Body Weight Input
                             Text(
                                 text = utils.Localizer.get("body_weight_kg", settings.language),
@@ -2770,7 +2770,7 @@ fun FitTrimmerMainContent(
                                 ),
                                 singleLine = true
                             )
-                            
+
                             Spacer(Modifier.height(12.dp))
                             Text(
                                 text = utils.Localizer.get("visible_hud_items", settings.language),
@@ -2779,7 +2779,7 @@ fun FitTrimmerMainContent(
                                 fontWeight = FontWeight.SemiBold
                             )
                             Spacer(Modifier.height(4.dp))
-                            
+
                             val toggles = listOf(
                                 Triple("show_speed", settings.showSpeed) { v: Boolean -> settings = settings.copy(showSpeed = v) },
                                 Triple("show_cadence", settings.showCadence) { v: Boolean -> settings = settings.copy(showCadence = v) },
@@ -2793,7 +2793,7 @@ fun FitTrimmerMainContent(
                                 Triple("show_cumulative_distance_time", settings.showCumulativeDistanceTime) { v: Boolean -> settings = settings.copy(showCumulativeDistanceTime = v) },
                                 Triple("fix_map_north_up", settings.fixMapNorthUp) { v: Boolean -> settings = settings.copy(fixMapNorthUp = v) }
                             )
-                            
+
                             toggles.forEach { (labelKey, isChecked, onToggle) ->
                                 Row(
                                     modifier = Modifier.fillMaxWidth().clickable(enabled = !isEncoding) {
@@ -3596,7 +3596,7 @@ fun FitTrimmerMainContent(
                                             ) {
                                                 Text("手動カスタムテロップ設定", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 0.5.sp)
                                                 Text("動画上の任意の時間帯に文字テロップを表示します。", color = Color(0xFF636366), fontSize = 10.sp, lineHeight = 13.sp)
-                                                
+
                                                 // 新規追加・編集フォームの状態管理
                                                 var editingCaptionId by remember { mutableStateOf<String?>(null) }
                                                 var capStartText by remember { mutableStateOf("") }
@@ -3688,9 +3688,9 @@ fun FitTrimmerMainContent(
                                                         }
                                                     }
                                                 }
-                                                
+
                                                 Divider(color = Color(0xFFE5E5EA), modifier = Modifier.padding(vertical = 4.dp))
-                                                
+
                                                 // 編集中のインジケータ表示
                                                 if (editingCaptionId != null) {
                                                     Row(
@@ -3727,7 +3727,7 @@ fun FitTrimmerMainContent(
                                                     maxLines = 3,
                                                     enabled = !isEncoding
                                                 )
-                                                
+
                                                 Row(
                                                     modifier = Modifier.fillMaxWidth(),
                                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -3742,7 +3742,7 @@ fun FitTrimmerMainContent(
                                                         singleLine = true,
                                                         enabled = !isEncoding
                                                     )
-                                                    
+
                                                     // 10秒刻み表示時間スライダー
                                                     Column(
                                                         modifier = Modifier.weight(1.5f).padding(horizontal = 4.dp),
@@ -3762,7 +3762,7 @@ fun FitTrimmerMainContent(
                                                         )
                                                     }
                                                 }
-                                                
+
                                                 Row(
                                                     modifier = Modifier.fillMaxWidth(),
                                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -3786,7 +3786,7 @@ fun FitTrimmerMainContent(
                                                         singleLine = true,
                                                         enabled = !isEncoding
                                                     )
-                                                    
+
                                                     Box(modifier = Modifier.weight(1f)) {
                                                         OutlinedButton(
                                                             onClick = { if (!isEncoding) capPosDropdownExpanded = true },
@@ -3812,7 +3812,7 @@ fun FitTrimmerMainContent(
                                                         }
                                                     }
                                                 }
-                                                
+
                                                 Row(
                                                     modifier = Modifier.fillMaxWidth(),
                                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -3838,7 +3838,7 @@ fun FitTrimmerMainContent(
                                                                     "right_center" -> "right"
                                                                     else -> "center"
                                                                 }
-                                                                
+
                                                                 if (editingCaptionId != null) {
                                                                     val updated = captions.map {
                                                                         if (it.id == editingCaptionId) {
@@ -3889,7 +3889,7 @@ fun FitTrimmerMainContent(
                                                     ) {
                                                         Text(if (editingCaptionId != null) "テロップを保存" else "テロップを追加", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                                     }
-                                                    
+
                                                     if (editingCaptionId != null) {
                                                         OutlinedButton(
                                                             onClick = {
@@ -4008,7 +4008,7 @@ fun FitTrimmerMainContent(
                                                         Spacer(modifier = Modifier.height(2.dp))
                                                         Slider(
                                                             value = viewModel.minSearchGrade.toFloat(),
-                                                            onValueChange = { 
+                                                            onValueChange = {
                                                                 val newVal = it.toDouble()
                                                                 viewModel.minSearchGrade = newVal
                                                                 if (viewModel.maxSearchGrade < newVal) {
@@ -4038,7 +4038,7 @@ fun FitTrimmerMainContent(
                                                         Spacer(modifier = Modifier.height(2.dp))
                                                         Slider(
                                                             value = viewModel.maxSearchGrade.toFloat(),
-                                                            onValueChange = { 
+                                                            onValueChange = {
                                                                 val newVal = it.toDouble()
                                                                 viewModel.maxSearchGrade = newVal
                                                                 if (viewModel.minSearchGrade > newVal) {
@@ -4126,7 +4126,7 @@ fun FitTrimmerMainContent(
                                                                             if (startPt != null && endPt != null && viewModel.timeSynchronizer.isReady) {
                                                                                 val startSec = viewModel.timeSynchronizer.fitToVideoSeconds(startPt.timestamp)
                                                                                 val endSec = viewModel.timeSynchronizer.fitToVideoSeconds(endPt.timestamp)
-                                                                                
+
                                                                                 viewModel.trimStartSeconds = startSec.coerceAtLeast(0.0)
                                                                                 viewModel.trimEndSeconds = endSec.coerceAtLeast(0.0)
                                                                                 videoCurrentTimeMs = (startSec * 1000).toLong()
@@ -4145,7 +4145,7 @@ fun FitTrimmerMainContent(
                                                                             val sec = (seg.durationSeconds % 60).toInt()
                                                                             Text("タイム: ${min}分${sec}秒", fontSize = 9.sp, color = Color(0xFF8E8E93))
                                                                         }
-                                                                        
+
                                                                         val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
                                                                         Row(
                                                                             modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
@@ -4160,14 +4160,14 @@ fun FitTrimmerMainContent(
                                                                                     .clickable {
                                                                                         val startSec = viewModel.timeSynchronizer.fitToVideoSeconds(seg.startFitTimestamp)
                                                                                         val endSec = viewModel.timeSynchronizer.fitToVideoSeconds(seg.endFitTimestamp)
-                                                                                        
+
                                                                                         val formatTime = { sec: Double ->
                                                                                             val s = sec.coerceAtLeast(0.0)
                                                                                             val m = (s / 60).toInt()
                                                                                             val r = (s % 60).toInt()
                                                                                             "%02d:%02d".format(java.util.Locale.US, m, r)
                                                                                         }
-                                                                                        
+
                                                                                         val debugText = """
                                                                                             === FIT-Trimmer Segment Debug Information ===
                                                                                             Segment ID: ${seg.id}
@@ -4447,6 +4447,7 @@ fun FitTrimmerMainContent(
                                 isFolded = isTimelineFolded,
                                 onFoldToggle = { isTimelineFolded = it }
                             ,
+                                videoImuVibration = viewModel.videoImuVibration,
                                 videoStartUtc = videoStartUtc,
                                 timeOffsetMillis = timeOffsetState.millis.toLong(),
                                 onTimeOffsetChange = { offset -> timeOffsetState.update(offset.toInt()) },
@@ -4752,7 +4753,7 @@ fun FitTrimmerMainContent(
                         }
                     }
                 }
-                
+
                 }
                 BatchQueueDialog(
                     viewModel = viewModel,
@@ -4760,7 +4761,7 @@ fun FitTrimmerMainContent(
                     moveOutputToSource = moveOutputToSource,
                     scope = scope
                 )
-                
+
                 if (viewModel.showBatchRestoreDialog) {
                     Box(
                         modifier = Modifier
@@ -4826,4 +4827,3 @@ fun FitTrimmerMainContent(
             }
         }
 }
-

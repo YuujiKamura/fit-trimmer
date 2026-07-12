@@ -72,7 +72,8 @@ fun TelemetryTimelineGraph(
     syncCorrelation: Double? = null,
     isTelemetryCut: Boolean = false,
     onConfirmTelemetry: (() -> Unit)? = null,
-    onResetTelemetry: (() -> Unit)? = null
+    onResetTelemetry: (() -> Unit)? = null,
+    videoImuVibration: DoubleArray? = null
 ) {
     val textMeasurer = rememberTextMeasurer()
     val videoDurationSec = videoLengthMs / 1000.0
@@ -136,9 +137,9 @@ fun TelemetryTimelineGraph(
                 val startTime = java.time.Instant.parse(adjustedStartUtc)
                 val fitEpoch = java.time.Instant.parse("1989-12-31T00:00:00Z").epochSecond
                 val startFitTs = startTime.toEpochMilli() / 1000.0 - fitEpoch
-                
+
                 val events = mutableListOf<TimelineEvent>()
-                
+
                 // Max Power Point
                 val maxPowerPt = telemetryPoints.maxByOrNull { it.power }
                 if (maxPowerPt != null && maxPowerPt.power > 50.0) {
@@ -172,7 +173,7 @@ fun TelemetryTimelineGraph(
     val currentTrimStartSeconds by rememberUpdatedState(trimStartSeconds)
     val currentTrimEndSeconds by rememberUpdatedState(trimEndSeconds)
     val currentVideoCurrentTimeMs by rememberUpdatedState(videoCurrentTimeMs)
-    
+
     val currentOnTrimStartChange by rememberUpdatedState(onTrimStartChange)
     val currentOnTrimEndChange by rememberUpdatedState(onTrimEndChange)
     val currentOnSeekStart by rememberUpdatedState(onSeekStart)
@@ -203,7 +204,7 @@ fun TelemetryTimelineGraph(
                 val sampleDuration = if (isTelemetryCut) videoDurationSec else timelineDurationSec
                 val firstPoint = telemetryPoints.firstOrNull()
                 val fitBaseTimestamp = firstPoint?.timestamp ?: 0.0
-                
+
                 List(numSamples) { i ->
                     val sec = (i.toFloat() / (numSamples - 1).toFloat()) * sampleDuration.toFloat()
                     val fitTs = if (isTelemetryCut) {
@@ -211,7 +212,7 @@ fun TelemetryTimelineGraph(
                     } else {
                         fitBaseTimestamp + sec
                     }
-                    
+
                     // Binary search for the closest telemetry point
                     var low = 0
                     var high = telemetryPoints.size - 1
@@ -230,10 +231,10 @@ fun TelemetryTimelineGraph(
                             high = mid - 1
                         }
                     }
-                    
+
                     val closest = telemetryPoints[bestIdx]
                     val isValid = minDiff < 5.0
-                    
+
                     SampledPoint(
                         seconds = sec,
                         power = if (isValid) closest.power else 0.0,
@@ -262,7 +263,7 @@ fun TelemetryTimelineGraph(
             val diffE = maxE - minE
             val finalMinE = if (diffE < 10.0) minE - 5.0 else minE
             val finalMaxE = if (diffE < 10.0) maxE + 5.0 else maxE
-            
+
             GraphLimits(
                 maxPower = maxP,
                 maxSpeed = maxS,
@@ -372,8 +373,8 @@ fun TelemetryTimelineGraph(
                                 )
                             }
                             Text(
-                                text = if (language == "ja") 
-                                    "※確定後、このGPS区間の範囲内で動画のトリミングが可能になります" 
+                                text = if (language == "ja")
+                                    "※確定後、このGPS区間の範囲内で動画のトリミングが可能になります"
                                     else "*After cutting, you can trim the video within this GPS range.",
                                 color = Color(0xFF8E8E93),
                                 fontSize = 9.sp,
@@ -408,7 +409,7 @@ fun TelemetryTimelineGraph(
                         )
                     }
                 }
-                
+
                 if (!isFolded) {
                     // Color legend
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -436,6 +437,13 @@ fun TelemetryTimelineGraph(
                             Box(Modifier.size(8.dp).background(Color(0xFF5856D6), RoundedCornerShape(2.dp)))
                             Spacer(Modifier.width(4.dp))
                             Text(utils.Localizer.get("plate_legend", language), color = Color(0xFF636366), fontSize = 9.sp)
+                        }
+                        if (videoImuVibration != null) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(Modifier.size(8.dp).background(Color(0xFFFF2D55), RoundedCornerShape(2.dp)))
+                                Spacer(Modifier.width(4.dp))
+                                Text("IMU Vibration (ピンク)", color = Color(0xFFFF2D55), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }
@@ -494,7 +502,7 @@ fun TelemetryTimelineGraph(
                                             !c.isTelemetryCut && c.containsVideoRangePixel(offset.x, w) -> DragHandle.VIDEO_RANGE
                                             else -> null
                                         }
-                                        
+
                                         if (activeDragHandle == DragHandle.PLAYHEAD) {
                                             currentOnSeekStart()
                                         }
@@ -502,7 +510,7 @@ fun TelemetryTimelineGraph(
                                             dragStartStartDiffSec = c.startDiffSec
                                             dragStartX = offset.x
                                         }
-                                        
+
                                         // If no handle is grabbed, perform a seek click
                                         if (activeDragHandle == null) {
                                             val videoSec = c.pixelXToVideoSec(offset.x, w)
@@ -520,7 +528,7 @@ fun TelemetryTimelineGraph(
                                 if (c.timelineDurationSec > 0 && w > 0f && activeDragHandle != null) {
                                     val videoSec = c.pixelXToVideoSec(change.position.x.coerceIn(0f, w), w)
                                     val absoluteSec = c.pixelXToAbsoluteSec(change.position.x.coerceIn(0f, w), w)
-                                    
+
                                     when (activeDragHandle) {
                                         DragHandle.TRIM_START -> {
                                             currentOnTrimStartChange(videoSec.coerceIn(0.0, currentTrimEndSeconds - 1.0))
@@ -550,7 +558,7 @@ fun TelemetryTimelineGraph(
                                                     currentX = change.position.x.coerceIn(0f, w),
                                                     w = w
                                                 )
-                                                
+
                                                 val newOffsetMs = utils.TelemetryAligner.calculateOffsetForVideoStartAtFitSec(
                                                     videoStartUtc = currentVideoStartUtc,
                                                     fitStartUtc = currentFitStartUtc,
@@ -582,7 +590,7 @@ fun TelemetryTimelineGraph(
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     val w = size.width
                     val h = size.height
-                    
+
                     val startDiffSec = coords.startDiffSec
 
                     if (videoDurationSec <= 0 || videoDurationSec.isNaN() || sampledPoints.isEmpty()) {
@@ -607,7 +615,7 @@ fun TelemetryTimelineGraph(
                                 strokeWidth = 1f
                             )
                         }
-                        
+
                         // Draw Time Grid Ticks (every 10% of duration)
                         val ticks = 10
                         for (i in 0..ticks) {
@@ -625,7 +633,7 @@ fun TelemetryTimelineGraph(
                         if (!isTelemetryCut && timelineDurationSec > 0.0) {
                             val xVideoStart = coords.videoStartPixelX(w).coerceIn(0f, w)
                             val xVideoEnd = coords.videoEndPixelX(w).coerceIn(0f, w)
-                            
+
                             // Left exclusion
                             if (xVideoStart > 0f) {
                                 drawRect(
@@ -696,7 +704,7 @@ fun TelemetryTimelineGraph(
                         val maxE = limits.maxElev
                         val minE = limits.minElev
                         val diffE = maxOf(0.1, maxE - minE)
-                        
+
                         for (i in sampledPoints.indices) {
                             val pt = sampledPoints[i]
                             val x = (i.toFloat() / (sampledPoints.size - 1).toFloat()) * w
@@ -784,6 +792,40 @@ fun TelemetryTimelineGraph(
                             )
                         }
 
+                        // 5.5. Draw IMU Vibration Line (Pink/Magenta, overlaying elevation/speed/power)
+                        if (videoImuVibration != null && videoImuVibration.isNotEmpty()) {
+                            val imuPath = Path()
+                            var startedImu = false
+                            var pathCreatedImu = false
+                            val maxV = videoImuVibration.maxOrNull()?.takeIf { it > 1e-6 } ?: 1.0
+
+                            val step = maxOf(1, videoImuVibration.size / 1000)
+                            for (i in 0 until videoImuVibration.size step step) {
+                                val sec = i.toDouble()
+                                val x = coords.videoSecToPixelX(sec, w)
+                                if (x.isFinite() && x in 0f..w) {
+                                    val ratio = videoImuVibration[i] / maxV
+                                    val y = h - (ratio.toFloat() * (h * 0.5f))
+                                    if (!startedImu) {
+                                        imuPath.moveTo(x, y)
+                                        startedImu = true
+                                        pathCreatedImu = true
+                                    } else {
+                                        imuPath.lineTo(x, y)
+                                    }
+                                } else {
+                                    startedImu = false
+                                }
+                            }
+                            if (pathCreatedImu) {
+                                drawPath(
+                                    path = imuPath,
+                                    color = Color(0xFFFF2D55),
+                                    style = Stroke(width = 1.5.dp.toPx())
+                                )
+                            }
+                        }
+
                        // 6. Draw Trim Boundary Excluded Overlays
                      val safeTrimStart = if (trimStartSeconds.isNaN() || trimStartSeconds.isInfinite()) 0.0 else trimStartSeconds
                      val safeTrimEnd = if (trimEndSeconds.isNaN() || trimEndSeconds.isInfinite()) videoDurationSec else trimEndSeconds
@@ -868,7 +910,7 @@ fun TelemetryTimelineGraph(
                             val corrLabel = if (syncCorrelation != null) {
                                 "IMU Anchor (r=${String.format(java.util.Locale.US, "%.2f", syncCorrelation)})"
                             } else "IMU Sync Anchor"
-                            
+
                             val labelLayout = textMeasurer.measure(
                                 text = corrLabel,
                                 style = TextStyle(color = anchorColor, fontSize = 8.sp, fontWeight = FontWeight.ExtraBold)
@@ -901,7 +943,7 @@ fun TelemetryTimelineGraph(
                         radius = 4.dp.toPx(),
                         center = Offset(xStart, h / 2f)
                     )
-                    
+
                     // Trim End (Red)
                     drawLine(
                         color = Color(0xFFFF3B30),
@@ -942,7 +984,7 @@ fun TelemetryTimelineGraph(
                     val h = size.height
                     if (videoDurationSec > 0 && !sampledPoints.isEmpty()) {
                         val xPlayhead = coords.videoSecToPixelX(videoCurrentTimeMs / 1000.0, w)
-                        
+
                         // Draw Playhead (Blue)
                         drawLine(
                             color = Color(0xFF007AFF),
@@ -1025,7 +1067,7 @@ fun TelemetryTimelineGraph(
                     val w = size.width.toFloat()
                     val h = size.height.toFloat()
                     val ticks = 5
-                    
+
                     val startDiffSec = coords.startDiffSec
 
                     val xVideoStart = coords.videoStartPixelX(w)
@@ -1061,7 +1103,7 @@ fun TelemetryTimelineGraph(
                         val ratio = i.toFloat() / ticks.toFloat()
                         val tickX = ratio * w
                         val tickSec = calculateTickSeconds(ratio, timelineDurationSec, startDiffSec)
-                        
+
                         // Draw a tiny Ruler Tick mark (メモリ線)
                         drawLine(
                             color = Color(0xFFC7C7CC),
@@ -1069,7 +1111,7 @@ fun TelemetryTimelineGraph(
                             end = Offset(tickX, tickLengthPx),
                             strokeWidth = tickWidthPx
                         )
-                        
+
                         val labelStr = if (tickSec < 0.0) {
                             "-" + formatTime((-tickSec * 1000).toLong())
                         } else {
@@ -1078,8 +1120,8 @@ fun TelemetryTimelineGraph(
                         val labelLayout = textMeasurer.measure(
                             text = labelStr,
                             style = TextStyle(
-                                color = Color(0xFF3A3A3C), 
-                                fontSize = 10.sp, 
+                                color = Color(0xFF3A3A3C),
+                                fontSize = 10.sp,
                                 fontWeight = FontWeight.Medium
                             )
                         )
