@@ -93,6 +93,7 @@ class HudRenderer(val config: HudConfig) {
     private var cadenceAccumRot: Double = 0.0
     private var hrAccumPhase: Double = 0.0
     private var powerAccumPhase: Double = 0.0
+    private val speedThetaHistory = mutableListOf<Double>()
 
 
 
@@ -132,7 +133,11 @@ class HudRenderer(val config: HudConfig) {
                     hrAccumPhase = (hrAccumPhase + dt * (telemetry.heartRate / 60.0)) % 1.0
                     powerAccumPhase = (powerAccumPhase + dt * (telemetry.power / 150.0)) % 1.0
                 }
+            } else {
+                speedThetaHistory.clear()
             }
+        } else {
+            speedThetaHistory.clear()
         }
         lastAnimTimestamp = t
 
@@ -249,6 +254,23 @@ class HudRenderer(val config: HudConfig) {
                     val sweepAngle = 270.0 * PI / 180.0
                     val theta = startAngle + (ratio * sweepAngle)
                     val r = iconSize / 2f - 2f
+
+                    // 履歴の更新
+                    speedThetaHistory.add(theta)
+                    if (speedThetaHistory.size > 4) {
+                        speedThetaHistory.removeAt(0)
+                    }
+
+                    // 軌跡の描画
+                    for (i in 0 until speedThetaHistory.size - 1) {
+                        val histTheta = speedThetaHistory[i]
+                        val xEndHist = cx + r * cos(histTheta).toFloat()
+                        val yEndHist = cy + r * sin(histTheta).toFloat()
+                        val alphaHist = 0.2f + 0.25f * i
+                        canvas.drawLine(listOf(cx to cy, xEndHist to yEndHist), "#ffffff", width = 1.5f, alpha = alphaHist)
+                    }
+
+                    // 最新の主針
                     val xEnd = cx + r * cos(theta).toFloat()
                     val yEnd = cy + r * sin(theta).toFloat()
                     canvas.drawLine(listOf(cx to cy, xEnd to yEnd), "#ffffff", width = 2.0f, alpha = 1.0f)
@@ -284,9 +306,13 @@ class HudRenderer(val config: HudConfig) {
                     canvas.drawRect(iconX, iconY, iconSize, iconSize, "#808080", alpha = 0.4f, outline = false, rx = iconSize / 2f, ry = iconSize / 2f)
                     
                     // 拍動する稲妻マーク（ホワイト）
+                    val powerVal = if (isValid) telemetry.power else 0.0
+                    val pRatio = (powerVal / 400.0).coerceIn(0.0, 1.0).toFloat()
+                    val baseScale = 0.5f + 0.8f * pRatio
+
                     val xWave = powerAccumPhase * 2.0 * PI
                     val wave = sin(xWave) + 0.5 * sin(2.0 * xWave)
-                    val scalePulse = 1.0f + 0.2f * maxOf(0.0f, wave.toFloat())
+                    val scalePulse = baseScale * (1.0f + 0.2f * maxOf(0.0f, wave.toFloat()))
                     
                     val p0 = cx + 2f * scalePulse to cy - 6f * scalePulse
                     val p1 = cx - 3f * scalePulse to cy + 1f * scalePulse
@@ -341,9 +367,13 @@ class HudRenderer(val config: HudConfig) {
                 canvas.drawRect(iconX, iconY, iconSize, iconSize, "#808080", alpha = 0.4f, outline = false, rx = iconSize / 2f, ry = iconSize / 2f)
                 
                 // 拍動する円（ホワイト）
+                val hrVal = if (isValid) telemetry.heartRate else 0.0
+                val zIdx = getHrZoneIndex(hrVal)
+                val baseScale = 0.6f + 0.15f * zIdx
+
                 val xWave = hrAccumPhase * 2.0 * PI
                 val wave = sin(xWave) + 0.5 * sin(2.0 * xWave)
-                val scalePulse = 1.0f + 0.2f * maxOf(0.0f, wave.toFloat())
+                val scalePulse = baseScale * (1.0f + 0.2f * maxOf(0.0f, wave.toFloat()))
                 
                 val rBase = 6f
                 val rPulse = rBase * scalePulse
