@@ -566,101 +566,32 @@ object TelemetryAligner {
         var vSigSmooth = DoubleArray(0)
 
         if (method == "binary") {
-            // Sensor Fusion: Blend speed/acceleration, power, cadence, and slope rate of change
-            // 1. Accel Event (Speed rate of change)
-            val speedDelta = DoubleArray(fitSpeedGrid.size)
-            for (i in 1 until fitSpeedGrid.size) {
-                speedDelta[i] = Math.abs(fitSpeedGrid[i] - fitSpeedGrid[i - 1])
-            }
-            val maxSpeedDelta = speedDelta.maxOrNull()?.takeIf { it > 1e-6 } ?: 1.0
-            val speedThresh = config.speed_threshold
-            val accelEvent = DoubleArray(fitSpeedGrid.size) { i ->
-                val active = if (fitSpeedGrid[i] > speedThresh) 0.5 else 0.0
-                val deltaRatio = speedDelta[i] / maxSpeedDelta
-                active + 0.5 * deltaRatio
-            }
-
-            // 2. Power Event
-            val maxPower = fitPowerGrid.maxOrNull() ?: 0.0
-            val usablePowerSamples = fitPowerGrid.count { it > 10.0 }
-            val hasPower = maxPower >= config.power_min_threshold && usablePowerSamples >= 5
-            val powerEvent = if (hasPower) {
-                val powerThreshold = Math.max(config.power_min_threshold, Math.min(config.power_max_threshold, maxPower * config.power_threshold_ratio))
-                val fitPowerDelta = DoubleArray(fitPowerGrid.size)
-                for (i in 1 until fitPowerGrid.size) {
-                    fitPowerDelta[i] = Math.abs(fitPowerGrid[i] - fitPowerGrid[i - 1])
-                }
-                val maxPowerDelta = fitPowerDelta.maxOrNull()?.takeIf { it > 1e-6 } ?: 1.0
-                DoubleArray(fitPowerGrid.size) { i ->
-                    val active = if (fitPowerGrid[i] > powerThreshold) 1.0 else 0.0
-                    val edge = fitPowerDelta[i] / maxPowerDelta
-                    config.power_active_weight * active + config.power_edge_weight * edge
-                }
-            } else null
-
-            // 3. Cadence Event
-            val maxCadence = fitCadenceGrid.maxOrNull() ?: 0.0
-            val usableCadenceSamples = fitCadenceGrid.count { it > 5.0 }
-            val hasCadence = maxCadence > 10.0 && usableCadenceSamples >= 5
-            val cadenceEvent = if (hasCadence) {
-                val cadenceDelta = DoubleArray(fitCadenceGrid.size)
-                for (i in 1 until fitCadenceGrid.size) {
-                    cadenceDelta[i] = Math.abs(fitCadenceGrid[i] - fitCadenceGrid[i - 1])
-                }
-                val maxCadenceDelta = cadenceDelta.maxOrNull()?.takeIf { it > 1e-6 } ?: 1.0
-                DoubleArray(fitCadenceGrid.size) { i -> cadenceDelta[i] / maxCadenceDelta }
-            } else null
-
-            // 4. Slope Event (Grade rate of change)
-            val gradeDelta = DoubleArray(fitGradeGrid.size)
-            for (i in 1 until fitGradeGrid.size) {
-                gradeDelta[i] = Math.abs(fitGradeGrid[i] - fitGradeGrid[i - 1])
-            }
-            val maxGradeDelta = gradeDelta.maxOrNull()?.takeIf { it > 1e-6 } ?: 1.0
-            val slopeEvent = DoubleArray(fitGradeGrid.size) { i -> gradeDelta[i] / maxGradeDelta }
-
-            // 5. Fuse expected signals
-            val fitFusion = DoubleArray(fitGridSize) { i ->
-                var signal = 0.0
-                var denom = 0.0
-
-                // Speed accel: 40% weight
-                signal += accelEvent[i] * 0.40
-                denom += 0.40
-
-                // Power: 35% weight
-                if (powerEvent != null) {
-                    signal += powerEvent[i] * 0.35
-                    denom += 0.35
-                }
-
-                // Cadence: 15% weight
-                if (cadenceEvent != null) {
-                    signal += cadenceEvent[i] * 0.15
-                    denom += 0.15
-                }
-
-                // Slope: 10% weight
-                signal += slopeEvent[i] * 0.10
-                denom += 0.10
-
-                if (denom > 0.0) signal / denom else 0.0
-            }
-
-            // 6. Video IMU Vibration preparation
+            // Binary State-Based Correlation
             val vSig = gaussianFilter1D(vVib, config.gaussian_sigma_vib)
-            val vDelta = DoubleArray(vSig.size)
-            for (i in 1 until vSig.size) {
-                vDelta[i] = Math.abs(vSig[i] - vSig[i - 1])
-            }
-            val maxVDelta = vDelta.maxOrNull()?.takeIf { it > 1e-6 } ?: 1.0
-            val vEvent = DoubleArray(vSig.size) { i -> vDelta[i] / maxVDelta }
+            
+            // Calculate dynamic vibration threshold using percentile
+            val sortedVSig = vSig.sorted()
+            val pct10Idx = (sortedVSig.size * 0.10).toInt()
+            val pct10 = sortedVSig[Math.max(0, Math.min(sortedVSig.size - 1, pct10Idx))]
+            val vThresh = Math.max(config.min_vib_threshold, pct10 * config.vib_threshold_factor)
+            
+            val vMov = DoubleArray(vSig.size) { if (vSig[it] > vThresh) 1.0 else 0.0 }
+            val fitMov = DoubleArray(fitSpeedGrid.size) { if (fitSpeedGrid[it] > config.speed_threshold) 1.0 else 0.0 }
 
-            fitSigSmooth = gaussianFilter1D(fitFusion, config.gaussian_sigma_vib)
-            vSigSmooth = gaussianFilter1D(vEvent, config.gaussian_sigma_vib)
+            // Guard: Check if telemetry has sufficient stopped events to build a reliable anchor.
+            // If stopped events are extremely rare (e.g. less than 1.5% of total time),
+            // binary correlation will have no anchor to match and will yield high false-positives.
+            val fitStoppedRatio = fitMov.count { it == 0.0 }.toDouble() / fitMov.size
+            if (fitStoppedRatio < 0.015) { // less than 1.5% stopped time
+                println("DEBUG: Insufficient stopped events in telemetry (stopped ratio: ${String.format("%.4f", fitStoppedRatio)}). Auto-alignment aborted to prevent false synchronization.")
+                return emptyList()
+            }
+
+            fitSigSmooth = gaussianFilter1D(fitMov, config.gaussian_sigma_vib)
+            vSigSmooth = gaussianFilter1D(vMov, config.gaussian_sigma_vib)
 
             println(
-                "DEBUG: Using multi-signal Sensor Fusion (Speed/Acc=true, Power=$hasPower, Cadence=$hasCadence, Slope=true) for alignment."
+                "DEBUG: Using Binary State-Based Correlation (Stopped/Moving) with dynamic vibration threshold: ${String.format("%.2f", vThresh)}"
             )
         } else {
             // Acceleration Method
@@ -785,6 +716,10 @@ object TelemetryAligner {
         val selected = mutableListOf<Int>()
         for (idx in peakIndices.sortedByDescending { corr[it] }) {
             if (selected.size >= maxCandidates.coerceAtLeast(1)) break
+            if (corr[idx] < 0.6) {
+                println("DEBUG: Candidate peak at index $idx skipped due to low correlation: ${corr[idx]} (threshold: 0.6)")
+                continue
+            }
             if (selected.none { Math.abs(it - idx) < minSeparationSeconds }) {
                 selected.add(idx)
             }
