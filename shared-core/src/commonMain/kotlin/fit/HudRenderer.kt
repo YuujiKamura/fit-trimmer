@@ -48,7 +48,8 @@ data class HudConfig(
     val mapRangeMode: String = "full",
     val textShadowAlpha: Float = 0.8f,
     val showCumulativeDistanceTime: Boolean = false,
-    val showAnimatedIcons: Boolean = true
+    val showAnimatedIcons: Boolean = true,
+    val cropToSquare: Boolean = false
 )
 
 
