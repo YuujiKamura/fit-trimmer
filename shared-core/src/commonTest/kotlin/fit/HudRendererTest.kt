@@ -1394,5 +1394,62 @@ class HudRendererTest {
         val totalDiff = rectDiff + lineDiff
         assertTrue(totalDiff > 0, "Animated icons should increase drawn elements count (totalDiff: $totalDiff, On rects: ${canvasOn.drawnRects.size}, Off rects: ${canvasOff.drawnRects.size})")
     }
+
+    @Test
+    fun testCadenceAnimationStatefulAccumulationAndTrail() {
+        val config = HudConfig(
+            valSize = 40f, tightness = 1f, spacing = 20f,
+            xOffset = 40f, yOffset = 100f, graphH = 60f, graphW = 300f,
+            showSpeed = false, showCadence = true, showHeartRate = false,
+            showAnimatedIcons = true
+        )
+        val renderer = HudRenderer(config)
+        
+        // 1フレーム目 (t = 0.0)
+        val t1 = TelemetryPoint(timestamp = 0.0, speed = 0.0, power = 0.0, cadence = 60.0, heartRate = 0.0, elevation = 0.0, grade = 0.0)
+        val canvas1 = TestHudCanvas()
+        renderer.renderFrame(canvas1, t1, listOf(t1), emptyList(), emptyList(), 0.0f, isValid = true)
+        
+        // 2フレーム目 (t = 0.5) -> dt = 0.5秒。60rpmなら0.5秒で0.5回転（180度 = PIラジアン）進む。
+        val t2 = TelemetryPoint(timestamp = 0.5, speed = 0.0, power = 0.0, cadence = 60.0, heartRate = 0.0, elevation = 0.0, grade = 0.0)
+        val canvas2 = TestHudCanvas()
+        renderer.renderFrame(canvas2, t2, listOf(t1, t2), emptyList(), emptyList(), 0.5f, isValid = true)
+
+        // ケイデンスアイコンのドット（軌跡3つ + 主ドット1つ = 合計4つ、背景円1つで計5つ）が描画されているはず
+        // 軌跡描画が未実装、またはステートフル累積が未実装の場合、ドット数が一致しないか、期待通りに動かない。
+        val rects = canvas2.drawnRects.filter { it.color == "#ffffff" && it.rx > 0f }
+        assertEquals(4, rects.size, "Should draw 1 main dot and 3 trail dots for cadence icon (got ${rects.size}, rects: ${rects})")
+    }
+
+    @Test
+    fun testPowerAnimationStatefulAccumulationAndTrail() {
+        val telemetry = TelemetryPoint(
+            timestamp = 1000.0, speed = 0.0, power = 150.0, cadence = 0.0, heartRate = 0.0, elevation = 0.0, grade = 0.0
+        )
+
+        // 1. showAnimatedIcons = false
+        val configOff = HudConfig(
+            valSize = 40f, tightness = 1f, spacing = 20f,
+            xOffset = 40f, yOffset = 100f, graphH = 60f, graphW = 300f,
+            showSpeed = false, showCadence = false, showHeartRate = false,
+            showPower = true,
+            showAnimatedIcons = false
+        )
+        val rendererOff = HudRenderer(configOff)
+        val canvasOff = TestHudCanvas()
+        rendererOff.renderFrame(canvasOff, telemetry, listOf(telemetry), emptyList(), emptyList(), 0.0f, isValid = true)
+
+        // 2. showAnimatedIcons = true
+        val configOn = configOff.copy(showAnimatedIcons = true)
+        val rendererOn = HudRenderer(configOn)
+        val canvasOn = TestHudCanvas()
+        rendererOn.renderFrame(canvasOn, telemetry, listOf(telemetry), emptyList(), emptyList(), 0.0f, isValid = true)
+
+        // パワーアイコンの稲妻マーク（drawLine）が追加で描画されているはず
+        val linesOff = canvasOff.drawnLines.filter { it.color == "#ffffff" }.size
+        val linesOn = canvasOn.drawnLines.filter { it.color == "#ffffff" }.size
+        val diff = linesOn - linesOff
+        assertTrue(diff > 0, "Should draw lightning bolt lines for power icon when showAnimatedIcons is true (got diff: $diff, On: $linesOn, Off: $linesOff)")
+    }
 }
 
