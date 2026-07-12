@@ -1058,7 +1058,8 @@ fun VideoPreviewArea(
                                     blurredRects = plateCache?.shouldBlurAt(currentRenderTimeMs, settings.blurLicensePlates) ?: emptyList()
                                 }
                         ) {
-                        val scale = size.width / 1920f
+                        val baseWidth = if (settings.cropToSquare) size.height * (16f / 9f) else size.width
+                        val scale = baseWidth / 1920f
                         val currentSeconds = currentRenderTimeMs.toFloat() / 1000f
 
                         // License plate mask overlay
