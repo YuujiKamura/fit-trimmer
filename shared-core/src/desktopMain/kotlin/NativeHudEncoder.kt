@@ -1503,7 +1503,7 @@ class NativeHudEncoder(
             
             pbArgs.add("-filter_complex")
             val hasSpeed = activeSegments.isNotEmpty()
-            val cropExpr = if (settings.cropToSquare) "crop=in_h:in_h," else ""
+            val cropExpr = if (settings.cropToSquare) "crop=min(in_w\\,in_h):min(in_w\\,in_h)," else ""
             if (hasSpeed) {
                 val setptsExpr = generateSetptsExpression(activeSegments)
                 

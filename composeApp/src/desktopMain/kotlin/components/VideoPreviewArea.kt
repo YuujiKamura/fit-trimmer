@@ -1040,7 +1040,8 @@ fun VideoPreviewArea(
                                     val offset = (w - h) / 2f
                                     androidx.compose.ui.geometry.Rect(offset, 0f, offset + h, h)
                                 } else {
-                                    androidx.compose.ui.geometry.Rect(0f, 0f, w, h)
+                                    val offset = (h - w) / 2f
+                                    androidx.compose.ui.geometry.Rect(0f, offset, w, offset + w)
                                 }
                                 return androidx.compose.ui.graphics.Outline.Rectangle(rect)
                             }
