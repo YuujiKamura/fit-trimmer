@@ -1026,49 +1026,38 @@ fun VideoPreviewArea(
                     Modifier.fillMaxSize().clipToBounds()
                 }
 
-                Box(modifier = frameModifier) {
-                    if (videoPath.isNotEmpty() && renderVideoSurface) {
-                        Box(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center
-                        ) {
+                Box(
+                    modifier = frameModifier,
+                    contentAlignment = Alignment.Center
+                ) {
+                    val containerModifier = if (settings.cropToSquare) {
+                        Modifier.fillMaxHeight().aspectRatio(1f)
+                    } else {
+                        Modifier.fillMaxSize()
+                    }
+                    androidx.compose.runtime.key(settings.cropToSquare) {
+                        Box(modifier = containerModifier) {
+                        if (videoPath.isNotEmpty() && renderVideoSurface) {
                             VideoPlayerSurface(
                                 playerState = playerState,
                                 modifier = Modifier.fillMaxSize()
                             )
-                            if (settings.cropToSquare) {
-                                Box(
-                                    modifier = Modifier
-                                        .align(Alignment.CenterStart)
-                                        .fillMaxHeight()
-                                        .fillMaxWidth(0.21875f)
-                                        .background(Color.Black)
-                                )
-                                Box(
-                                    modifier = Modifier
-                                        .align(Alignment.CenterEnd)
-                                        .fillMaxHeight()
-                                        .fillMaxWidth(0.21875f)
-                                        .background(Color.Black)
-                                )
-                            }
+                        } else {
+                            Box(Modifier.fillMaxSize().background(Color.Black))
                         }
-                    } else {
-                        Box(Modifier.fillMaxSize().background(Color.Black))
-                    }
 
-                    val density = androidx.compose.ui.platform.LocalDensity.current.density
-                    Canvas(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clickable {
-                                togglePlayButton()
-                            }
-                            .testTag("VideoPreviewAreaCanvas")
-                            .semantics {
-                                blurredRects = plateCache?.shouldBlurAt(currentRenderTimeMs, settings.blurLicensePlates) ?: emptyList()
-                            }
-                    ) {
+                        val density = androidx.compose.ui.platform.LocalDensity.current.density
+                        Canvas(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clickable {
+                                    togglePlayButton()
+                                }
+                                .testTag("VideoPreviewAreaCanvas")
+                                .semantics {
+                                    blurredRects = plateCache?.shouldBlurAt(currentRenderTimeMs, settings.blurLicensePlates) ?: emptyList()
+                                }
+                        ) {
                         val scale = size.width / 1920f
                         val currentSeconds = currentRenderTimeMs.toFloat() / 1000f
 
@@ -1148,6 +1137,8 @@ fun VideoPreviewArea(
                 }
             }
         }
+    }
+    }
     }
 
     @Composable
