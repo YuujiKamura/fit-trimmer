@@ -406,9 +406,22 @@ object TelemetryAligner {
                 Math.sqrt(x * x + y * y + z * z)
             }
 
+            val gyroDiff = DoubleArray(times.size)
+            for (i in 0 until times.size - 1) {
+                val dx = Math.abs(imuData.gyroX[i + 1] - imuData.gyroX[i])
+                val dy = Math.abs(imuData.gyroY[i + 1] - imuData.gyroY[i])
+                val dz = Math.abs(imuData.gyroZ[i + 1] - imuData.gyroZ[i])
+                gyroDiff[i] = dx + dy + dz
+            }
+            gyroDiff[times.size - 1] = 0.0
+
             val accDiffs = DoubleArray(accNorms.size)
             for (i in 0 until accNorms.size - 1) {
-                accDiffs[i] = Math.abs(accNorms[i + 1] - accNorms[i])
+                if (gyroDiff[i] > 1500.0) {
+                    accDiffs[i] = 0.0
+                } else {
+                    accDiffs[i] = Math.abs(accNorms[i + 1] - accNorms[i])
+                }
             }
             accDiffs[accNorms.size - 1] = 0.0
 
