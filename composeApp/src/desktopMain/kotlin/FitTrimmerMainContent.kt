@@ -219,6 +219,29 @@ fun FitTrimmerMainContent(
 
     var showManualJstSyncDialog by remember { mutableStateOf(false) }
 
+    androidx.compose.runtime.LaunchedEffect(
+        viewModel.isEncoding, viewModel.progress, viewModel.fitPath, viewModel.videoPath, viewModel.videoStartUtc,
+        viewModel.isAligningTelemetry, viewModel.isDetectingPlates,
+        viewModel.plateDetectionProgress, viewModel.plateDetectionError,
+        viewModel.plateRecordCount, videoCurrentTimeMs, viewModel.settings
+    ) {
+        val status = ControlPlaneStatus
+        status.isEncoding = viewModel.isEncoding
+        status.progress = viewModel.progress
+        status.fitPath = viewModel.fitPath
+        status.videoPath = viewModel.videoPath
+        status.videoStartUtc = viewModel.videoStartUtc
+        status.isAligningTelemetry = viewModel.isAligningTelemetry
+        status.isDetectingPlates = viewModel.isDetectingPlates
+        status.plateDetectionProgress = viewModel.plateDetectionProgress
+        status.plateDetectionError = viewModel.plateDetectionError
+        status.plateRecordCount = viewModel.plateRecordCount
+        status.videoCurrentTimeMs = videoCurrentTimeMs
+        try {
+            status.settingsJson = kotlinx.serialization.json.Json.encodeToString(viewModel.settings)
+        } catch (e: Exception) {}
+    }
+
     val showSyncDialog = {
         if (videoPath.isNotEmpty() && telemetryPoints.isNotEmpty() && videoStartUtc.isNotEmpty()) {
             val utc = videoStartUtc
@@ -1029,11 +1052,20 @@ fun FitTrimmerMainContent(
                 var exception: java.lang.reflect.InvocationTargetException? = null
                 var interruptedException: InterruptedException? = null
                 try {
-                    javax.swing.SwingUtilities.invokeAndWait {
+                    javax.swing.SwingUtilities.invokeLater {
                         try {
                             when (cmd) {
-                                is CpCommand.SetLayout -> settings = cmd.settings
+                                is CpCommand.SetLayout -> {
+                                    try {
+                                        ControlPlaneStatus.settingsJson = kotlinx.serialization.json.Json.encodeToString(cmd.settings)
+                                    } catch (e: Exception) {}
+                                    settings = cmd.settings
+                                }
                                 is CpCommand.SetFiles -> {
+                                    val status = ControlPlaneStatus
+                                    status.fitPath = cmd.fit
+                                    status.videoPath = cmd.video
+                                    cmd.startUtc?.let { status.videoStartUtc = it }
                                     fitPath = cmd.fit
                                     if (videoPath != cmd.video) {
                                         if (cmd.startUtc != null) {
@@ -1126,6 +1158,7 @@ fun FitTrimmerMainContent(
                                                 moveOutputToSource = moveOutputToSource,
                                                 plateTelemetryPoints = viewModel.trimmedTelemetryPoints,
                                                 onProgress = { prog, status ->
+                                                    ControlPlaneStatus.progress = prog
                                                     val now = System.currentTimeMillis()
                                                     if (prog >= 1.0f || now - lastProgressTime >= 100) {
                                                         lastProgressTime = now
@@ -1172,6 +1205,8 @@ fun FitTrimmerMainContent(
                                                 )
                                             }
                                         } finally {
+                                            ControlPlaneStatus.isEncoding = false
+                                            ControlPlaneStatus.progress = 0f
                                             isEncoding = false
                                             viewModel.isEarlyFinish = false
                                             viewModel.encodingSegmentStart = null
@@ -1314,6 +1349,11 @@ fun FitTrimmerMainContent(
                                 CpCommand.ShowBatchConfirm -> {
                                     viewModel.requestBatchConfirmDialog("control-plane")
                                 }
+                                 CpCommand.EarlyFinish -> {
+                                     viewModel.isEarlyFinish = true
+                                     viewModel.batchStatusText = if (settings.language == "ja") "\u4e2d\u9593\u30a8\u30af\u30b9\u30dd\u30fc\u30c8\u4e2d..." else "Exporting progress..."
+                                 }
+                                 else -> {}
                             }
                         } catch (e: Exception) {
                             e.printStackTrace()
@@ -1344,7 +1384,7 @@ fun FitTrimmerMainContent(
                     settings = settings,
                     fitPath = fitPath,
                     videoPath = videoPath,
-                    isEncoding = isEncoding,
+                    isEncoding = AppViewModel.activeInstance?.isEncoding ?: false,
                     progress = progress,
                     videoStartUtc = videoStartUtc,
                     isAligningTelemetry = viewModel.isAligningTelemetry,
@@ -2301,7 +2341,7 @@ fun FitTrimmerMainContent(
                         videoPath = videoPath,
                         telemetryPoints = telemetryPoints,
                         isAligning = viewModel.isAligningTelemetry,
-                        isEncoding = isEncoding,
+                        isEncoding = AppViewModel.activeInstance?.isEncoding ?: false,
                         videoStartUtc = videoStartUtc,
                         syncCandidates = viewModel.syncCandidates,
                         onApplySyncCandidate = { candidate ->
@@ -4464,7 +4504,7 @@ fun FitTrimmerMainContent(
                                 plateCache = viewModel.plateCache,
                                 blurLicensePlates = settings.blurLicensePlates,
                                 modifier = Modifier.fillMaxWidth().requiredHeight(if (isTimelineFolded) 50.dp else 220.dp),
-                                isEncoding = isEncoding,
+                                isEncoding = AppViewModel.activeInstance?.isEncoding ?: false,
                                 isDetectingPlates = viewModel.isDetectingPlates,
                                 language = settings.language,
                                 isFolded = isTimelineFolded,
@@ -4520,7 +4560,7 @@ fun FitTrimmerMainContent(
                     videoStartUtc = videoStartUtc,
                     videoStartInstant = videoStartInstant,
                     timeOffsetState = timeOffsetState,
-                    isEncoding = isEncoding,
+                    isEncoding = AppViewModel.activeInstance?.isEncoding ?: false,
                     onClose = { showManualJstSyncDialog = false }
                 )
             }

@@ -238,6 +238,18 @@ object HudEncodePipeline {
                 } catch (e: Exception) {
                     if (earlyFinishSupplier()) {
                         println("DEBUG: Encoding interrupted by early finish request. Proceeding to merge completed segments.")
+                        if (finalDestFile != null) {
+                            val outFile = File(partOutPath)
+                            if (outFile.exists() && outFile.length() > 0L) {
+                                println("SALVAGE: Moving incomplete early finish part from ${outFile.absolutePath} to ${finalDestFile.absolutePath} (size: ${outFile.length()} bytes)")
+                                try {
+                                    java.nio.file.Files.copy(outFile.toPath(), finalDestFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                                    outFile.delete()
+                                } catch(ex: Exception) {
+                                    println("SALVAGE ERROR: ${ex.message}")
+                                }
+                            }
+                        }
                         break
                     } else {
                         throw e
@@ -271,6 +283,29 @@ object HudEncodePipeline {
 
             if (cancelSupplier()) {
                 throw Exception("Encoding Canceled")
+            }
+
+            if (earlyFinishSupplier()) {
+                for (segment in encodePlan.segments) {
+                    val idx = segment.index
+                    val outputFileName = buildEncodeOutputFileName(
+                        settings = s,
+                        videoPath = videoPath,
+                        partIndex = idx,
+                        numParts = encodePlan.segments.size
+                    )
+                    val partOutFile = File(outputDir, outputFileName)
+                    val finalDestFile = destFiles.getOrNull(idx)
+                    if (partOutFile.exists() && partOutFile.length() > 0L && finalDestFile != null && (!finalDestFile.exists() || finalDestFile.length() == 0L)) {
+                        println("SALVAGE-LOOP: Rescuing segment $idx from ${partOutFile.absolutePath} to ${finalDestFile.absolutePath}")
+                        try {
+                            java.nio.file.Files.copy(partOutFile.toPath(), finalDestFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                            partOutFile.delete()
+                        } catch (e: Exception) {
+                            println("SALVAGE-LOOP ERROR: ${e.message}")
+                        }
+                    }
+                }
             }
 
             val isEarlyFinish = earlyFinishSupplier()
