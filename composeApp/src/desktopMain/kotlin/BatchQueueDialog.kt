@@ -690,11 +690,13 @@ fun BatchQueueDialog(
 
                                         
 
-                                        if (job.autoDetectRoadCaptionsOnEncode && job.fitPath.isNotEmpty()) {
+                                         val roadScanEnabled = job.phases.find { it.type == BatchJobPhaseType.ROAD_SCAN }?.enabled == true
 
-                                            DialogBadge(text = "路線名検出", backgroundColor = Color(0xFFFFF7E6), textColor = Color(0xFFFF9500))
+                                         if (job.autoDetectRoadCaptionsOnEncode && roadScanEnabled && job.fitPath.isNotEmpty()) {
 
-                                        }
+                                             DialogBadge(text = "路線名検出", backgroundColor = Color(0xFFFFF7E6), textColor = Color(0xFFFF9500))
+
+                                         }
 
                                         
 

@@ -1712,9 +1712,10 @@ object BatchJobRunner {
 
         
 
+        val roadScanPhase = job.phases.find { it.type == BatchJobPhaseType.ROAD_SCAN }
         val runRoadDetection = job.autoDetectRoadCaptionsOnEncode &&
-
-                job.phases.none { it.type == BatchJobPhaseType.ROAD_SCAN && it.enabled && it.status == BatchJobPhaseStatus.COMPLETED }
+                (roadScanPhase?.enabled == true) &&
+                (roadScanPhase.status != BatchJobPhaseStatus.COMPLETED)
 
         
 
