@@ -50,7 +50,7 @@ class PlateTracker(
 
             // Search neighborhood around predicted position
             // Steps of 4 pixels to maintain performance
-            val searchRange = -12..12 step 4
+            val searchRange = -8..8 step 4
             for (dy in searchRange) {
                 for (dx in searchRange) {
                     val nx = (predX1 + dx).coerceIn(0, (image.width - tw).coerceAtLeast(0))
@@ -67,6 +67,12 @@ class PlateTracker(
                 }
             }
 
+            // Discard tracking for this frame if color similarity is poor (Bhattacharyya distance >= 0.55)
+            if (bestDist > 0.55f) {
+                track.consecutiveMissedFrames++
+                continue
+            }
+
             // Update track position and reference hist (slow blend)
             track.lastBox = bestBox
             track.lastUpdatedFrame = frameIndex
@@ -76,7 +82,7 @@ class PlateTracker(
             }
         }
 
-        return activeTracks.map { it.lastBox }
+        return activeTracks.filter { it.lastUpdatedFrame == frameIndex }.map { it.lastBox }
     }
 
     /**
@@ -230,11 +236,12 @@ class PlateTracker(
             else -> PlateBox(tcx - sw / 2, videoHeight - sh, tcx + sw / 2, videoHeight)
         }
 
+        val startFrame = (fromFrameIndex - inferenceInterval).coerceAtLeast(0L)
         val interpolationMap = mutableMapOf<Long, PlateBox>()
-        val steps = fromFrameIndex.toFloat()
+        val steps = (fromFrameIndex - startFrame).toFloat().coerceAtLeast(1f)
 
-        for (f in 0 until fromFrameIndex) {
-            val ratio = f.toFloat() / steps
+        for (f in startFrame until fromFrameIndex) {
+            val ratio = (f - startFrame).toFloat() / steps
             val x1 = (startBox.x1 + ratio * (targetBox.x1 - startBox.x1)).toInt()
             val y1 = (startBox.y1 + ratio * (targetBox.y1 - startBox.y1)).toInt()
             val x2 = (startBox.x2 + ratio * (targetBox.x2 - startBox.x2)).toInt()

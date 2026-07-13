@@ -6,6 +6,7 @@ import java.awt.image.BufferedImage
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 
 class PlateTrackerTest {
@@ -129,5 +130,27 @@ class PlateTrackerTest {
         // This should not throw IllegalArgumentException: Cannot coerce value to an empty range
         val tracked = tracker.trackIntermediateFrame(1L, 33L, frame)
         assertEquals(1, tracked.size)
+    }
+
+    @Test
+    fun testBacktrackingIsLimitedToMaxFrames() {
+        val tracker = PlateTracker(histogramBinCount = 8)
+        val newTrack = TrackedObject(
+            id = 1,
+            lastBox = PlateBox(40, 40, 60, 60),
+            lastUpdatedFrame = 100L
+        )
+        
+        val interpolatedMap = tracker.performBacktracking(
+            newTrack = newTrack,
+            fromFrameIndex = 100L,
+            videoWidth = 100,
+            videoHeight = 100
+        )
+        
+        // We expect it to be limited to max 10 frames (from 90 to 99)
+        assertEquals(10, interpolatedMap.size, "Backtracking should be limited to 10 frames")
+        assertTrue(interpolatedMap.containsKey(90L), "Should contain frame 90")
+        assertFalse(interpolatedMap.containsKey(0L), "Should not contain frame 0 (too far back)")
     }
 }
