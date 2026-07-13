@@ -479,10 +479,10 @@ object PlateDetectionManager : fit.PlateDetector {
             val idx = records.indexOfFirst { it.timeMs == timeMs }
             if (idx != -1) {
                 val record = records[idx]
-                val merged = (record.boxes + scaled).distinct()
+                val merged = mergeOverlappingBoxes((record.boxes + scaled).distinct())
                 records[idx] = PlateRecord(record.timeMs, merged)
             } else {
-                records.add(PlateRecord(timeMs, scaled))
+                records.add(PlateRecord(timeMs, mergeOverlappingBoxes(scaled)))
             }
         }
 
@@ -730,5 +730,44 @@ object PlateDetectionManager : fit.PlateDetector {
         return boxes.filter { box ->
             (box.y2 - box.y1).coerceAtLeast(0) >= minHeight
         }
+    }
+
+    fun mergeOverlappingBoxes(boxes: List<fit.PlateBox>): List<fit.PlateBox> {
+        if (boxes.size <= 1) return boxes
+        
+        fun intersects(a: fit.PlateBox, b: fit.PlateBox): Boolean {
+            return !(a.x2 < b.x1 || a.x1 > b.x2 || a.y2 < b.y1 || a.y1 > b.y2)
+        }
+
+        fun merge(a: fit.PlateBox, b: fit.PlateBox): fit.PlateBox {
+            return fit.PlateBox(
+                x1 = kotlin.math.min(a.x1, b.x1),
+                y1 = kotlin.math.min(a.y1, b.y1),
+                x2 = kotlin.math.max(a.x2, b.x2),
+                y2 = kotlin.math.max(a.y2, b.y2)
+            )
+        }
+
+        val result = boxes.toMutableList()
+        var merged = true
+        while (merged) {
+            merged = false
+            var i = 0
+            while (i < result.size) {
+                var j = i + 1
+                while (j < result.size) {
+                    if (intersects(result[i], result[j])) {
+                        val mergedBox = merge(result[i], result[j])
+                        result[i] = mergedBox
+                        result.removeAt(j)
+                        merged = true
+                    } else {
+                        j++
+                    }
+                }
+                i++
+            }
+        }
+        return result
     }
 }

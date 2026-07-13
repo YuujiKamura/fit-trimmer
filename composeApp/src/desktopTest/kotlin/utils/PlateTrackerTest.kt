@@ -153,4 +153,20 @@ class PlateTrackerTest {
         assertTrue(interpolatedMap.containsKey(90L), "Should contain frame 90")
         assertFalse(interpolatedMap.containsKey(0L), "Should not contain frame 0 (too far back)")
     }
+
+    @Test
+    fun testMergeOverlappingBoxes() {
+        val boxes = listOf(
+            PlateBox(10, 10, 30, 30),
+            PlateBox(20, 20, 40, 40), // Overlaps with first box
+            PlateBox(50, 50, 60, 60)  // Separate box
+        )
+
+        val merged = PlateDetectionManager.mergeOverlappingBoxes(boxes)
+        assertEquals(2, merged.size)
+        
+        // One box should be the merged one (10, 10, 40, 40)
+        assertTrue(merged.contains(PlateBox(10, 10, 40, 40)), "Should contain merged box")
+        assertTrue(merged.contains(PlateBox(50, 50, 60, 60)), "Should contain separate box")
+    }
 }
