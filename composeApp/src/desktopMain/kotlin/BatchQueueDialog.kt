@@ -1221,27 +1221,28 @@ fun BatchQueueDialog(
                     ) {
 
                         if (viewModel.isBatchRunning) {
-
+                            val isJa = viewModel.settings.language == "ja"
                             Button(
-
                                 onClick = {
-
-                                    viewModel.isCanceled = true
-
-                                    viewModel.batchStatusText = "キャンセル中..."
-
+                                    viewModel.isEarlyFinish = true
+                                    viewModel.batchStatusText = if (isJa) "中間エクスポート中..." else "Exporting progress..."
                                 },
-
-                                modifier = Modifier.weight(1f).height(44.dp),
-
-                                colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFFF3B30), contentColor = Color.White)
-
+                                modifier = Modifier.weight(1.3f).height(44.dp),
+                                colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFFF9500), contentColor = Color.White)
                             ) {
-
-                                Text("処理を停止", fontSize = 14.sp, fontWeight = FontWeight.Bold)
-
+                                Text(if (isJa) "⏸ 中間エクスポートして停止" else "⏸ Save & Stop (Export)", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                             }
 
+                            Button(
+                                onClick = {
+                                    viewModel.isCanceled = true
+                                    viewModel.batchStatusText = if (isJa) "キャンセル中..." else "Canceling..."
+                                },
+                                modifier = Modifier.weight(1f).height(44.dp),
+                                colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFFF3B30), contentColor = Color.White)
+                            ) {
+                                Text(if (isJa) "⏹ 処理をキャンセル" else "⏹ Cancel", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            }
                         } else {
 
                             val hasCompletedJobs = viewModel.batchQueue.any { it.status == BatchJobStatus.COMPLETED }
