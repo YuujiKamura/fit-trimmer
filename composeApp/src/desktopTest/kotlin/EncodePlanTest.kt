@@ -2,6 +2,7 @@ import fit.HudSettings
 import fit.PlateBox
 import fit.PlateRecord
 import fit.VideoPlatesCache
+import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -231,5 +232,49 @@ class EncodePlanTest {
         val status2 = "プレートスキャンを実行中..."
         val parsed2 = parseBatchStatusText(status2)
         kotlin.test.assertFalse(parsed2.isParsed)
+    }
+
+    @Test
+    fun testMergeEncodedSegmentsTimelineRepairArgs() {
+        val os = System.getProperty("os.name").lowercase()
+        val isWindows = os.contains("win")
+
+        val tempDir = java.nio.file.Files.createTempDirectory("ft_mock_ffmpeg").toFile()
+        val argOutputFile = File(tempDir, "args_output.txt")
+        val mockFfmpeg = File(tempDir, if (isWindows) "mock_ffmpeg.bat" else "mock_ffmpeg.sh")
+
+        if (isWindows) {
+            mockFfmpeg.writeText("@echo off\necho %* > \"${argOutputFile.absolutePath}\"\n")
+        } else {
+            mockFfmpeg.writeText("#!/bin/sh\necho \"$@\" > \"${argOutputFile.absolutePath}\"\n")
+            mockFfmpeg.setExecutable(true)
+        }
+
+        System.setProperty("fit-trimmer.ffmpeg.path", mockFfmpeg.absolutePath)
+
+        try {
+            val segment1 = File(tempDir, "part1.ts").apply { writeText("dummy1") }
+            val segment2 = File(tempDir, "part2.ts").apply { writeText("dummy2") }
+            val mergedFile = File(tempDir, "merged.mp4")
+
+            val method = HudEncodePipeline::class.java.getDeclaredMethod(
+                "mergeEncodedSegments",
+                List::class.java,
+                File::class.java
+            )
+            method.isAccessible = true
+            method.invoke(HudEncodePipeline, listOf(segment1, segment2), mergedFile)
+
+            kotlin.test.assertTrue(argOutputFile.exists(), "Mock FFmpeg should be invoked and write arguments")
+            val argsText = argOutputFile.readText().trim()
+            println("DEBUG: Mock FFmpeg arguments: $argsText")
+
+            kotlin.test.assertTrue(argsText.contains("-fflags +genpts"), "Arguments must contain -fflags +genpts")
+            kotlin.test.assertTrue(argsText.contains("-avoid_negative_ts make_zero"), "Arguments must contain -avoid_negative_ts make_zero")
+
+        } finally {
+            System.clearProperty("fit-trimmer.ffmpeg.path")
+            tempDir.deleteRecursively()
+        }
     }
 }
