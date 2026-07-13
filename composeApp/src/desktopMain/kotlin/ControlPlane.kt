@@ -11,6 +11,22 @@ import kotlin.concurrent.thread
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
+
+object ControlPlaneStatus {
+    @Volatile var isEncoding: Boolean = false
+    @Volatile var progress: Float = 0.0f
+    @Volatile var fitPath: String = ""
+    @Volatile var videoPath: String = ""
+    @Volatile var videoStartUtc: String = ""
+    @Volatile var isAligningTelemetry: Boolean = false
+    @Volatile var isDetectingPlates: Boolean = false
+    @Volatile var plateDetectionProgress: String = ""
+    @Volatile var plateDetectionError: String? = null
+    @Volatile var plateRecordCount: Int = 0
+    @Volatile var videoCurrentTimeMs: Long = 0L
+    @Volatile var settingsJson: String = ""
+}
+
 class ControlPlane(
     private val onCommand: (CpCommand) -> String?,
     private val getState: () -> CpState
@@ -61,7 +77,32 @@ class ControlPlane(
                 
                 val cmd = json.decodeFromString<CpCommand>(line)
                 if (cmd is CpCommand.GetState) {
-                    writer.println(json.encodeToString(getState()))
+                    val status = ControlPlaneStatus
+                    val currentSettings = if (status.settingsJson.isNotEmpty()) {
+                        try {
+                            json.decodeFromString<fit.HudSettings>(status.settingsJson)
+                        } catch (e: Exception) {
+                            fit.HudSettings()
+                        }
+                    } else {
+                        fit.HudSettings()
+                    }
+                    val state = CpState(
+                        settings = currentSettings,
+                        fitPath = status.fitPath,
+                        videoPath = status.videoPath,
+                        isEncoding = status.isEncoding,
+                        progress = status.progress,
+                        videoStartUtc = status.videoStartUtc,
+                        isAligningTelemetry = status.isAligningTelemetry,
+                        isDetectingPlates = status.isDetectingPlates,
+                        plateDetectionProgress = status.plateDetectionProgress,
+                        plateDetectionError = status.plateDetectionError,
+                        plateRecordCount = status.plateRecordCount,
+                        activePlateBoxes = emptyList(),
+                        videoCurrentTimeMs = status.videoCurrentTimeMs
+                    )
+                    writer.println(json.encodeToString(state))
                 } else {
                     val response = onCommand(cmd)
                     if (response != null) {

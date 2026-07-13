@@ -75,6 +75,9 @@ sealed class CpCommand {
 
     @Serializable @kotlinx.serialization.SerialName("show_batch_confirm")
     object ShowBatchConfirm : CpCommand()
+
+    @Serializable @kotlinx.serialization.SerialName("early_finish")
+    object EarlyFinish : CpCommand()
 }
 
 @Serializable

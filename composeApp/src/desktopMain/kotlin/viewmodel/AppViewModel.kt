@@ -862,16 +862,34 @@ class AppViewModel(
 
     var videoImuVibration by mutableStateOf<DoubleArray?>(null)
 
-    var encodePhase by mutableStateOf(EncodePhase.Idle)
+    @Volatile
+    private var _isEncodingVolatile = false
+
+    private var _encodePhaseState by mutableStateOf(EncodePhase.Idle)
+    var encodePhase: EncodePhase
+        get() = _encodePhaseState
+        set(value) {
+            println("DEBUG: encodePhase changed from $_encodePhaseState to $value (thread: ${Thread.currentThread().name})")
+            _encodePhaseState = value
+            _isEncodingVolatile = value.isActive
+        }
 
     var isEncoding: Boolean
-        get() = encodePhase.isActive
+        get() = _isEncodingVolatile
         set(value) {
             encodePhase = if (value) EncodePhase.Encoding else EncodePhase.Idle
         }
 
     var isCanceled by mutableStateOf(false)
-    var isEarlyFinish by mutableStateOf(false)
+    @Volatile
+    private var _isEarlyFinishInternal = false
+    private val _isEarlyFinishState = mutableStateOf(false)
+    var isEarlyFinish: Boolean
+        get() = _isEarlyFinishInternal
+        set(value) {
+            _isEarlyFinishInternal = value
+            _isEarlyFinishState.value = value
+        }
 
     var encodingSegmentStart by mutableStateOf<Double?>(null)
 
@@ -1273,6 +1291,7 @@ class AppViewModel(
 
 
     init {
+        activeInstance = this
         refreshAvailableCacheJobs()
         try {
             val savedJobs = utils.BatchQueueCache.load()
@@ -1710,4 +1729,7 @@ class AppViewModel(
 
     var isSidebarVisible by mutableStateOf(true)
 
+    companion object {
+        @Volatile var activeInstance: AppViewModel? = null
+    }
 }
