@@ -871,6 +871,7 @@ class AppViewModel(
         }
 
     var isCanceled by mutableStateOf(false)
+    var isEarlyFinish by mutableStateOf(false)
 
     var encodingSegmentStart by mutableStateOf<Double?>(null)
 

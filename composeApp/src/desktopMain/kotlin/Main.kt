@@ -1942,7 +1942,7 @@ object BatchJobRunner {
             },
 
             cancelSupplier = { viewModel.isCanceled },
-
+            earlyFinishSupplier = { viewModel.isEarlyFinish },
             showLivePreviewSupplier = { viewModel.showLivePreview },
 
             onSegmentStart = { pStart, pEnd ->
