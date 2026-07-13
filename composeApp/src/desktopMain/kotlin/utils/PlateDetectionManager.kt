@@ -457,7 +457,8 @@ object PlateDetectionManager : fit.PlateDetector {
         var skippedSpeedTrimFrames = 0L
         var skippedTrackingFrames = 0L
         
-        val tracker = PlateTracker(inferenceInterval = 10, histogramBinCount = 8)
+        val inferenceInterval = settings.plateInferenceInterval.coerceAtLeast(1)
+        val tracker = PlateTracker(inferenceInterval = inferenceInterval, histogramBinCount = 8)
         var lastInferenceFrameIndex = -100L
 
         fun scaleToVideo(box: fit.PlateBox): fit.PlateBox {
@@ -493,7 +494,8 @@ object PlateDetectionManager : fit.PlateDetector {
                 var inferencePerformed = false
                 val skipReason: String
                 
-                val isONNXFrame = tracker.activeTracks.isEmpty() || 
+                val isONNXFrame = (inferenceInterval <= 1) ||
+                                  tracker.activeTracks.isEmpty() || 
                                   (frame.frameIndex - lastInferenceFrameIndex >= tracker.inferenceInterval)
 
                 val boxes = if (frame.skipDetection) {

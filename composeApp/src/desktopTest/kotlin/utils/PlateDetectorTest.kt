@@ -1018,6 +1018,103 @@ class PlateDetectorTest {
         }
     }
 
+    @Test
+    fun testComparePlateDetectionPerformanceWithAndWithoutDecimation() = runBlocking {
+        val cropTestMp4 = File("C:\\Users\\yuuji\\fit-trimmer\\composeApp\\scratch\\crop_test.mp4")
+        if (!cropTestMp4.exists()) {
+            println("Skipping profile comparison test: crop_test.mp4 not found")
+            return@runBlocking
+        }
+
+        // 1. Run Decimation Tracking (plateInferenceInterval = 10)
+        val cacheFile = fit.PlateCacheManager.getPlatesFile(cropTestMp4.absolutePath)
+        if (cacheFile != null && cacheFile.exists()) {
+            cacheFile.delete()
+        }
+
+        val settingsDecimation = fit.HudSettings(
+            plateInferenceInterval = 10,
+            plateDetectionFps = 4.0,
+            plateMaxSpeedKmh = 100.0
+        )
+
+        val detector = PlateDetector.getInstance()
+        detector.resetPerfStats()
+        
+        val tDecimationStart = System.currentTimeMillis()
+        val decimationCache = PlateDetectionManager.detect(
+            videoPath = cropTestMp4.absolutePath,
+            telemetryPoints = emptyList(),
+            adjustedStartUtc = "2026-06-14T08:02:06Z",
+            onProgress = { _, _ -> },
+            onCancel = { false },
+            settings = settingsDecimation,
+            saveCache = false,
+            scanRanges = listOf(0.0 to 10.0) // Scan 10 seconds of video (approx 40 frames)
+        )
+        val tDecimationEnd = System.currentTimeMillis()
+        val decimationTotalMs = tDecimationEnd - tDecimationStart
+        val decimationInferences = detector.totalFramesProcessed
+
+        // 2. Run Full YOLO Inference (plateInferenceInterval = 1)
+        if (cacheFile != null && cacheFile.exists()) {
+            cacheFile.delete()
+        }
+
+        val settingsFull = fit.HudSettings(
+            plateInferenceInterval = 1,
+            plateDetectionFps = 4.0,
+            plateMaxSpeedKmh = 100.0
+        )
+
+        detector.resetPerfStats()
+
+        val tFullStart = System.currentTimeMillis()
+        val fullCache = PlateDetectionManager.detect(
+            videoPath = cropTestMp4.absolutePath,
+            telemetryPoints = emptyList(),
+            adjustedStartUtc = "2026-06-14T08:02:06Z",
+            onProgress = { _, _ -> },
+            onCancel = { false },
+            settings = settingsFull,
+            saveCache = false,
+            scanRanges = listOf(0.0 to 10.0)
+        )
+        val tFullEnd = System.currentTimeMillis()
+        val fullTotalMs = tFullEnd - tFullStart
+        val fullInferences = detector.totalFramesProcessed
+
+        println("======================================================================")
+        println("=== PLATE DETECTION PERFORMANCE COMPARISON REPORT ===")
+        println("Video: crop_test.mp4 (10.0s scan range @ 4.0 fps)")
+        println("----------------------------------------------------------------------")
+        println("1. Decimated Tracking Mode (interval = 10):")
+        println("   - Total Time:        $decimationTotalMs ms")
+        println("   - ONNX Inferences:   $decimationInferences frames")
+        println("   - Avg Time/Frame:    ${"%.2f".format(decimationTotalMs.toDouble() / 40.0)} ms")
+        println("2. Full Frame ONNX Mode (interval = 1):")
+        println("   - Total Time:        $fullTotalMs ms")
+        println("   - ONNX Inferences:   $fullInferences frames")
+        println("   - Avg Time/Frame:    ${"%.2f".format(fullTotalMs.toDouble() / 40.0)} ms")
+        println("----------------------------------------------------------------------")
+        val speedup = fullTotalMs.toDouble() / decimationTotalMs.toDouble()
+        println("Speedup Factor: ${"%.2f".format(speedup)}x (Higher is better)")
+        println("======================================================================")
+
+        // Write to history CSV
+        val csvFile = File("composeApp/scratch/encode_profile_history.csv")
+        if (csvFile.exists()) {
+            val nowStr = java.time.LocalDateTime.now().toString()
+            csvFile.appendText("$nowStr,plate_decimation_10,$decimationTotalMs,0.0,0.0,0.0,40,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0\n")
+            csvFile.appendText("$nowStr,plate_full_yolo_1,$fullTotalMs,0.0,0.0,0.0,40,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0\n")
+        }
+
+        // Cleanup
+        if (cacheFile != null && cacheFile.exists()) {
+            cacheFile.delete()
+        }
+    }
+
     private class SGObserver : java.awt.image.ImageObserver {
         override fun imageUpdate(img: java.awt.Image?, infoflags: Int, x: Int, y: Int, width: Int, height: Int): Boolean {
             return false
