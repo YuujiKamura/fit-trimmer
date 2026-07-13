@@ -265,24 +265,52 @@ object HudEncodePipeline {
             }
 
             val isEarlyFinish = earlyFinishSupplier()
+            val finalMergeFile = if (isEarlyFinish && mergeOutputFile != null) {
+                val baseDir = mergeOutputFile.parentFile
+                val baseName = mergeOutputFile.nameWithoutExtension
+                val ext = mergeOutputFile.extension
+                File(baseDir, "${baseName}_part.${ext}")
+            } else {
+                mergeOutputFile
+            }
 
-            if (mergeOutputFile != null && destFiles.size > 1) {
-                onProgress(1.0f, "Merging cut segments...")
-                mergeEncodedSegments(destFiles, mergeOutputFile)
-                finalOutPath = mergeOutputFile.absolutePath
+            if (finalMergeFile != null) {
+                val completedParts = destFiles.filter { it.exists() && it.length() > 0L }
+                if (completedParts.isNotEmpty()) {
+                    onProgress(1.0f, if (isEarlyFinish) "Exporting current progress..." else "Merging cut segments...")
+                    if (completedParts.size == 1) {
+                        try {
+                            java.nio.file.Files.copy(
+                                completedParts.first().toPath(),
+                                finalMergeFile.toPath(),
+                                java.nio.file.StandardCopyOption.REPLACE_EXISTING
+                            )
+                        } catch (e: Exception) {
+                            println("ERROR copying single segment: ${e.message}")
+                            throw e
+                        }
+                    } else {
+                        mergeEncodedSegments(completedParts, finalMergeFile)
+                    }
+                    finalOutPath = finalMergeFile.absolutePath
+                }
+
                 if (!isEarlyFinish) {
                     destFiles
-                        .filter { it.absolutePath != mergeOutputFile.absolutePath }
+                        .filter { it.absolutePath != finalMergeFile.absolutePath }
                         .forEach { it.delete() }
                 } else {
                     println("DEBUG: Preserving segment files for future resume since early finish was requested.")
                 }
             }
 
-            if (hasCloudSyncMsg) {
-                "✨ Copied to Cloud. Drive Desktop is syncing in background (Check system tray)."
+            if (isEarlyFinish) {
+                val exportedName = finalMergeFile?.name ?: "video"
+                "\u23F8 Intermediate progress exported as '$exportedName'. You can resume later."
+            } else if (hasCloudSyncMsg) {
+                "\u2728 Copied to Cloud. Drive Desktop is syncing in background (Check system tray)."
             } else {
-                "✨ Finished Successfully!"
+                "\u2728 Finished Successfully!"
             }
             } finally {
                 try {
