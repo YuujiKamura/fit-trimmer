@@ -271,18 +271,35 @@ class HudRenderer(val config: HudConfig) {
                     }
 
                     // 軌跡の描画
+                    val wMid = 0.8f
                     for (i in 0 until speedThetaHistory.size - 1) {
                         val histTheta = speedThetaHistory[i]
-                        val xEndHist = cx + r * cos(histTheta).toFloat()
-                        val yEndHist = cy + r * sin(histTheta).toFloat()
+                        val hDx = cos(histTheta).toFloat()
+                        val hDy = sin(histTheta).toFloat()
+                        val hNx = -hDy
+                        val hNy = hDx
                         val alphaHist = 0.2f + 0.25f * i
-                        canvas.drawLine(listOf(cx to cy, xEndHist to yEndHist), "#ffffff", width = 1.5f, alpha = alphaHist)
+                        
+                        val hpBase = cx to cy
+                        val hpLeft = (cx + (r * 0.5f) * hDx - wMid * hNx) to (cy + (r * 0.5f) * hDy - wMid * hNy)
+                        val hpTip = (cx + r * hDx) to (cy + r * hDy)
+                        val hpRight = (cx + (r * 0.5f) * hDx + wMid * hNx) to (cy + (r * 0.5f) * hDy + wMid * hNy)
+                        
+                        canvas.drawPolygon(listOf(hpBase, hpLeft, hpTip, hpRight), "#ffffff", alpha = alphaHist)
                     }
 
                     // 最新の主針
-                    val xEnd = cx + r * cos(theta).toFloat()
-                    val yEnd = cy + r * sin(theta).toFloat()
-                    canvas.drawLine(listOf(cx to cy, xEnd to yEnd), "#ffffff", width = 2.0f, alpha = 1.0f)
+                    val dx = cos(theta).toFloat()
+                    val dy = sin(theta).toFloat()
+                    val nx = -dy
+                    val ny = dx
+                    
+                    val pBase = cx to cy
+                    val pLeft = (cx + (r * 0.5f) * dx - wMid * nx) to (cy + (r * 0.5f) * dy - wMid * ny)
+                    val pTip = (cx + r * dx) to (cy + r * dy)
+                    val pRight = (cx + (r * 0.5f) * dx + wMid * nx) to (cy + (r * 0.5f) * dy + wMid * ny)
+                    
+                    canvas.drawPolygon(listOf(pBase, pLeft, pTip, pRight), "#ffffff", alpha = 1.0f)
                 } else if (metricType == "CADENCE") {
                     // 背景の円（暗い半透明・塗りつぶし）
                     canvas.drawRect(iconX, iconY, iconSize, iconSize, "#1a1a1a", alpha = 0.6f, outline = false, rx = iconSize / 2f, ry = iconSize / 2f)
@@ -327,11 +344,18 @@ class HudRenderer(val config: HudConfig) {
                     val wave = sin(xWave) + 0.5 * sin(2.0 * xWave)
                     val scalePulse = baseScale * (1.0f + 0.2f * maxOf(0.0f, wave.toFloat()))
                     
-                    val p0 = cx + 2f * scalePulse to cy - 6f * scalePulse
-                    val p1 = cx - 3f * scalePulse to cy + 1f * scalePulse
-                    val p2 = cx + 3f * scalePulse to cy - 1f * scalePulse
-                    val p3 = cx - 2f * scalePulse to cy + 6f * scalePulse
-                    canvas.drawLine(listOf(p0, p1, p2, p3), "#ffffff", width = 2.0f, alpha = 1.0f)
+                    val p0 = (cx + 2f * scalePulse) to (cy - 6f * scalePulse)
+                    val p2Inner = (cx + 0.5f * scalePulse) to (cy - 0.5f * scalePulse)
+                    val p2Outer = (cx + 3.0f * scalePulse) to (cy - 1.2f * scalePulse)
+                    val p3 = (cx - 2f * scalePulse) to (cy + 6f * scalePulse)
+                    val p1Inner = (cx - 0.5f * scalePulse) to (cy + 0.5f * scalePulse)
+                    val p1Outer = (cx - 3.0f * scalePulse) to (cy + 1.2f * scalePulse)
+                    
+                    canvas.drawPolygon(
+                        listOf(p0, p2Inner, p2Outer, p3, p1Inner, p1Outer),
+                        "#ffffff",
+                        alpha = 1.0f
+                    )
                 } else if (metricType == "GRADE") {
                     // 背景の円（暗い半透明・塗りつぶし）
                     canvas.drawRect(iconX, iconY, iconSize, iconSize, "#1a1a1a", alpha = 0.6f, outline = false, rx = iconSize / 2f, ry = iconSize / 2f)
@@ -339,7 +363,7 @@ class HudRenderer(val config: HudConfig) {
                     canvas.drawRect(iconX, iconY, iconSize, iconSize, "#ffffff", alpha = 0.4f, outline = true, rx = iconSize / 2f, ry = iconSize / 2f)
                     
                     // ティック矢印の描画（長い軸線＋先端の上側の羽のみ）
-                    val rad = (-telemetry.grade / 15.0 * (PI / 2.0)).coerceIn(-PI / 2.0, PI / 2.0)
+                    val rad = -kotlin.math.atan(telemetry.grade / 100.0)
                     
                     fun rotateX(x: Float, y: Float, r: Double): Float = (x * cos(r) - y * sin(r)).toFloat()
                     fun rotateY(x: Float, y: Float, r: Double): Float = (x * sin(r) + y * cos(r)).toFloat()

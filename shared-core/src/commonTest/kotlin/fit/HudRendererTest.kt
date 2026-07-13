@@ -1490,11 +1490,11 @@ class HudRendererTest {
         
         // 速度アイコンの針（drawLine）が軌跡分と主針で複数本描画されているはず
         // 軌跡が未実装なら 1本のみ、実装されれば 3本（最新1本 + 過去2本の軌跡）描画される
-        val speedLinesOff = c3Off.drawnLines.filter { it.color == "#ffffff" }.size
-        val speedLinesOn = c3On.drawnLines.filter { it.color == "#ffffff" }.size
+        val speedLinesOff = c3Off.drawnPolygons.filter { it.color == "#ffffff" }.size
+        val speedLinesOn = c3On.drawnPolygons.filter { it.color == "#ffffff" }.size
         val speedLinesDiff = speedLinesOn - speedLinesOff
-        println("DEBUG SPEED OFF: " + c3Off.drawnLines.filter { it.color == "#ffffff" }.map { it.points })
-        println("DEBUG SPEED ON: " + c3On.drawnLines.filter { it.color == "#ffffff" }.map { it.points })
+        println("DEBUG SPEED OFF: " + c3Off.drawnPolygons.filter { it.color == "#ffffff" }.map { it.points })
+        println("DEBUG SPEED ON: " + c3On.drawnPolygons.filter { it.color == "#ffffff" }.map { it.points })
         assertEquals(3, speedLinesDiff, "Should draw 1 main needle and 2 trail needles (got diff: $speedLinesDiff, On: $speedLinesOn, Off: $speedLinesOff)")
 
         // --- 2. パワー稲妻のパワーレベル比例スケールテスト ---
@@ -1517,18 +1517,18 @@ class HudRendererTest {
         val cHigh = TestHudCanvas()
         rendererPower.renderFrame(cHigh, tpHigh, listOf(tpLow, tpHigh), emptyList(), emptyList(), 2.5f, isValid = true)
         
-        val linesLow = cLow.drawnLines.filter { it.color == "#ffffff" }
-        val linesHigh = cHigh.drawnLines.filter { it.color == "#ffffff" }
+        val linesLow = cLow.drawnPolygons.filter { it.color == "#ffffff" }
+        val linesHigh = cHigh.drawnPolygons.filter { it.color == "#ffffff" }
         
         assertTrue(linesLow.isNotEmpty() && linesHigh.isNotEmpty())
         
-        // 低パワーの稲妻の長さ（始点と終点の距離）
-        val lineL = linesLow.first()
-        val distLow = kotlin.math.hypot(lineL.points.last().first - lineL.points.first().first, lineL.points.last().second - lineL.points.first().second)
+        // 低パワーの稲妻の長さ（始点と終点の距離。points[0] と points[3] を結ぶ距離）
+        val polyL = linesLow.first()
+        val distLow = kotlin.math.hypot(polyL.points[3].first - polyL.points[0].first, polyL.points[3].second - polyL.points[0].second)
         
         // 高パワーの稲妻の長さ
-        val lineH = linesHigh.first()
-        val distHigh = kotlin.math.hypot(lineH.points.last().first - lineH.points.first().first, lineH.points.last().second - lineH.points.first().second)
+        val polyH = linesHigh.first()
+        val distHigh = kotlin.math.hypot(polyH.points[3].first - polyH.points[0].first, polyH.points[3].second - polyH.points[0].second)
         
         // 高パワーの方が明らかに大きいはず
         assertTrue(distHigh > distLow * 1.5, "High power lightning bolt should be at least 1.5x larger than low power (distHigh: $distHigh, distLow: $distLow)")
