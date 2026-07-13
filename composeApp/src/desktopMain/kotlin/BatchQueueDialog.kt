@@ -1222,13 +1222,21 @@ fun BatchQueueDialog(
 
                         if (viewModel.isBatchRunning) {
                             val isJa = viewModel.settings.language == "ja"
+                            val runningJob = viewModel.batchQueue.find { it.status == BatchJobStatus.RUNNING }
+                            val isEncodingActive = runningJob?.phases?.find { it.type == BatchJobPhaseType.HUD_ENCODE }?.status == BatchJobPhaseStatus.RUNNING
+
                             Button(
                                 onClick = {
                                     viewModel.isEarlyFinish = true
                                     viewModel.batchStatusText = if (isJa) "中間エクスポート中..." else "Exporting progress..."
                                 },
+                                enabled = isEncodingActive,
                                 modifier = Modifier.weight(1.3f).height(44.dp),
-                                colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFFF9500), contentColor = Color.White)
+                                colors = ButtonDefaults.buttonColors(
+                                    backgroundColor = Color(0xFFFF9500),
+                                    contentColor = Color.White,
+                                    disabledBackgroundColor = Color(0xFFE5E5EA)
+                                )
                             ) {
                                 Text(if (isJa) "⏸ 中間エクスポートして停止" else "⏸ Save & Stop (Export)", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                             }
