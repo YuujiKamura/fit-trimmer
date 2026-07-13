@@ -392,10 +392,12 @@ object HudEncodePipeline {
         try {
             val pb = ProcessBuilder(
                 ffmpegPath, "-y",
+                "-fflags", "+genpts",
                 "-f", "concat",
                 "-safe", "0",
                 "-i", listFile.absolutePath,
                 "-c", "copy",
+                "-avoid_negative_ts", "make_zero",
                 outputFile.absolutePath
             )
             pb.redirectErrorStream(true)

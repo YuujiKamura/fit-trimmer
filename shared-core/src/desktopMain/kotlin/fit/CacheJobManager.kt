@@ -158,6 +158,7 @@ internal class DefaultCacheJob(
             "-safe", "0",
             "-i", partsListFile.absolutePath,
             "-c", "copy",
+            "-avoid_negative_ts", "make_zero",
             "-movflags", "+faststart"
         ) + metadataArgs + outputFile.absolutePath
 
