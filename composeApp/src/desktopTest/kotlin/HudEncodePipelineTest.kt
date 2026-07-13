@@ -784,4 +784,75 @@ class HudEncodePipelineTest {
             if (destFile.exists()) destFile.delete()
         }
     }
+
+    @Test
+    fun testHudEncodePipelineEarlyFinishSavesIntermediatePartVideo() = runBlocking {
+        val originalFactory = HudEncodePipeline.hudEncoderFactory
+        val tempDir = java.io.File("temp_work/test_early_finish")
+        tempDir.mkdirs()
+        
+        val videoPath = "temp_work/test_early_finish/input.mp4"
+        val outputDir = "temp_work/test_early_finish/out"
+        val mergeOutputFile = java.io.File("temp_work/test_early_finish/out/output.mp4")
+        val partOutputFile = java.io.File("temp_work/test_early_finish/out/output_part.mp4")
+        
+        java.io.File(videoPath).delete()
+        mergeOutputFile.delete()
+        partOutputFile.delete()
+        tempDir.deleteRecursively()
+        tempDir.mkdirs()
+        java.io.File(outputDir).mkdirs()
+
+        java.io.File(videoPath).writeText("fake video data")
+
+        var encodeCount = 0
+        var earlyFinishRequested = false
+        val earlyFinishSupplier = { earlyFinishRequested }
+
+        val pipelineSettings = fit.HudSettings()
+        val ranges = listOf(0.0 to 10.0, 10.0 to 20.0, 20.0 to 30.0)
+        val destFiles = ranges.indices.map { java.io.File(outputDir, "part_$it.mp4") }
+        destFiles.forEach { it.delete() }
+
+        try {
+            val fakeEncoder = utils.FakeHudEncoder()
+            fakeEncoder.onEncodeCalled = {
+                encodeCount++
+                val tempPartFile = java.io.File(outputDir, "input_part${encodeCount}_KMP_HUD_2.7k.mp4")
+                tempPartFile.writeText("fake encoded segment data $encodeCount")
+                if (encodeCount == 1) {
+                    earlyFinishRequested = true
+                }
+            }
+
+            HudEncodePipeline.hudEncoderFactory = utils.FakeHudEncoderFactory(fakeEncoder)
+
+            val resultMsg = HudEncodePipeline.execute(
+                s = pipelineSettings,
+                fitPath = "",
+                videoPath = videoPath,
+                outputDir = outputDir,
+                videoStartUtc = "2026-06-30T08:44:58Z",
+                ranges = ranges,
+                destFiles = destFiles,
+                shouldResume = false,
+                moveOutputToSource = false,
+                onProgress = { _, _ -> },
+                onFrame = { _ -> },
+                cancelSupplier = { false },
+                showLivePreviewSupplier = { false },
+                earlyFinishSupplier = earlyFinishSupplier,
+                mergeOutputFile = mergeOutputFile
+            )
+
+            assertTrue(earlyFinishRequested, "Early finish should have been requested")
+            assertTrue(partOutputFile.exists(), "Intermediate part file must exist: ${partOutputFile.absolutePath}")
+            assertFalse(mergeOutputFile.exists(), "Original merge output file must not be created yet")
+            assertTrue(resultMsg.contains("Intermediate progress exported"), "Result message should confirm intermediate export: $resultMsg")
+
+        } finally {
+            HudEncodePipeline.hudEncoderFactory = originalFactory
+            tempDir.deleteRecursively()
+        }
+    }
 }
