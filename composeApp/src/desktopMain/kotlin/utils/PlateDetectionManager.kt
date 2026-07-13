@@ -460,6 +460,7 @@ object PlateDetectionManager : fit.PlateDetector {
         val inferenceInterval = settings.plateInferenceInterval.coerceAtLeast(1)
         val tracker = PlateTracker(inferenceInterval = inferenceInterval, histogramBinCount = 8)
         var lastInferenceFrameIndex = -100L
+        var forceNextFrameONNX = true
 
         fun scaleToVideo(box: fit.PlateBox): fit.PlateBox {
             val scaleX = videoWidth.toFloat() / 640f
@@ -495,13 +496,14 @@ object PlateDetectionManager : fit.PlateDetector {
                 val skipReason: String
                 
                 val isONNXFrame = (inferenceInterval <= 1) ||
-                                  tracker.activeTracks.isEmpty() || 
+                                  forceNextFrameONNX || 
                                   (frame.frameIndex - lastInferenceFrameIndex >= tracker.inferenceInterval)
 
                 val boxes = if (frame.skipDetection) {
                     skippedFrames++
                     skippedSpeedTrimFrames++
                     skipReason = "Skip (Speed/Trim)"
+                    forceNextFrameONNX = true
                     emptyList()
                 } else if (!isONNXFrame) {
                     skippedFrames++
@@ -514,6 +516,7 @@ object PlateDetectionManager : fit.PlateDetector {
                 } else {
                     inferencePerformed = true
                     lastInferenceFrameIndex = frame.frameIndex
+                    forceNextFrameONNX = false
                     skipReason = "Scan (ONNX)"
                     System.arraycopy(frame.buffer, 0, imgData, 0, frameBytes)
                     val rawBoxes = detector.detect(img, confThreshold = 0.20f, detectPedestrians = settings.detectPedestrians)

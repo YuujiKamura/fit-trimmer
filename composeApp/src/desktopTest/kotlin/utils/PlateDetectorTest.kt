@@ -1020,14 +1020,14 @@ class PlateDetectorTest {
 
     @Test
     fun testComparePlateDetectionPerformanceWithAndWithoutDecimation() = runBlocking {
-        val cropTestMp4 = File("C:\\Users\\yuuji\\fit-trimmer\\composeApp\\scratch\\crop_test.mp4")
-        if (!cropTestMp4.exists()) {
-            println("Skipping profile comparison test: crop_test.mp4 not found")
+        val testMp4 = File("C:\\Users\\yuuji\\fit-trimmer\\temp_work\\smoke\\playback_smoke.mp4")
+        if (!testMp4.exists()) {
+            println("Skipping profile comparison test: playback_smoke.mp4 not found")
             return@runBlocking
         }
 
         // 1. Run Decimation Tracking (plateInferenceInterval = 10)
-        val cacheFile = fit.PlateCacheManager.getPlatesFile(cropTestMp4.absolutePath)
+        val cacheFile = fit.PlateCacheManager.getPlatesFile(testMp4.absolutePath)
         if (cacheFile != null && cacheFile.exists()) {
             cacheFile.delete()
         }
@@ -1043,14 +1043,14 @@ class PlateDetectorTest {
         
         val tDecimationStart = System.currentTimeMillis()
         val decimationCache = PlateDetectionManager.detect(
-            videoPath = cropTestMp4.absolutePath,
+            videoPath = testMp4.absolutePath,
             telemetryPoints = emptyList(),
             adjustedStartUtc = "2026-06-14T08:02:06Z",
             onProgress = { _, _ -> },
             onCancel = { false },
             settings = settingsDecimation,
             saveCache = false,
-            scanRanges = listOf(0.0 to 10.0) // Scan 10 seconds of video (approx 40 frames)
+            scanRanges = listOf(0.0 to 30.0) // Scan 30 seconds of video (approx 120 frames)
         )
         val tDecimationEnd = System.currentTimeMillis()
         val decimationTotalMs = tDecimationEnd - tDecimationStart
@@ -1071,14 +1071,14 @@ class PlateDetectorTest {
 
         val tFullStart = System.currentTimeMillis()
         val fullCache = PlateDetectionManager.detect(
-            videoPath = cropTestMp4.absolutePath,
+            videoPath = testMp4.absolutePath,
             telemetryPoints = emptyList(),
             adjustedStartUtc = "2026-06-14T08:02:06Z",
             onProgress = { _, _ -> },
             onCancel = { false },
             settings = settingsFull,
             saveCache = false,
-            scanRanges = listOf(0.0 to 10.0)
+            scanRanges = listOf(0.0 to 30.0)
         )
         val tFullEnd = System.currentTimeMillis()
         val fullTotalMs = tFullEnd - tFullStart
@@ -1086,16 +1086,16 @@ class PlateDetectorTest {
 
         println("======================================================================")
         println("=== PLATE DETECTION PERFORMANCE COMPARISON REPORT ===")
-        println("Video: crop_test.mp4 (10.0s scan range @ 4.0 fps)")
+        println("Video: playback_smoke.mp4 (30.0s scan range @ 4.0 fps)")
         println("----------------------------------------------------------------------")
         println("1. Decimated Tracking Mode (interval = 10):")
         println("   - Total Time:        $decimationTotalMs ms")
         println("   - ONNX Inferences:   $decimationInferences frames")
-        println("   - Avg Time/Frame:    ${"%.2f".format(decimationTotalMs.toDouble() / 40.0)} ms")
+        println("   - Avg Time/Frame:    ${"%.2f".format(decimationTotalMs.toDouble() / 120.0)} ms")
         println("2. Full Frame ONNX Mode (interval = 1):")
         println("   - Total Time:        $fullTotalMs ms")
         println("   - ONNX Inferences:   $fullInferences frames")
-        println("   - Avg Time/Frame:    ${"%.2f".format(fullTotalMs.toDouble() / 40.0)} ms")
+        println("   - Avg Time/Frame:    ${"%.2f".format(fullTotalMs.toDouble() / 120.0)} ms")
         println("----------------------------------------------------------------------")
         val speedup = fullTotalMs.toDouble() / decimationTotalMs.toDouble()
         println("Speedup Factor: ${"%.2f".format(speedup)}x (Higher is better)")
@@ -1105,8 +1105,8 @@ class PlateDetectorTest {
         val csvFile = File("composeApp/scratch/encode_profile_history.csv")
         if (csvFile.exists()) {
             val nowStr = java.time.LocalDateTime.now().toString()
-            csvFile.appendText("$nowStr,plate_decimation_10,$decimationTotalMs,0.0,0.0,0.0,40,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0\n")
-            csvFile.appendText("$nowStr,plate_full_yolo_1,$fullTotalMs,0.0,0.0,0.0,40,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0\n")
+            csvFile.appendText("$nowStr,plate_decimation_10,$decimationTotalMs,0.0,0.0,0.0,120,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0\n")
+            csvFile.appendText("$nowStr,plate_full_yolo_1,$fullTotalMs,0.0,0.0,0.0,120,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0\n")
         }
 
         // Cleanup
