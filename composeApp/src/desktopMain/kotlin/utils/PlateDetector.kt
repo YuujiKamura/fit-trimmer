@@ -59,7 +59,7 @@ class PlateDetector private constructor() : AutoCloseable {
     }
 
     init {
-        val modelStream = PlateDetector::class.java.getResourceAsStream("/yolov8n.onnx")
+        val modelStream = PlateDetector::class.java.getResourceAsStream("/yolov8n_plate.onnx")
             ?: throw IllegalStateException("Model yolov8n.onnx not found in resources")
         val modelBytes = modelStream.use { it.readBytes() }
         
@@ -171,35 +171,18 @@ class PlateDetector private constructor() : AutoCloseable {
                 val outputTensor = outputs[0] as OnnxTensor
                 val tInference = System.nanoTime()
                 
-                // Standard YOLOv8 output is [1, 84, 8400] for 80 classes.
+                // Plate detection YOLOv8 model output is [1, 5, 8400] for 1 class (license-plate).
                 // Bulk copy the output data into a JVM heap array in a single operation
                 // to eliminate DirectBuffer.get(index) JNI boundary checking overhead inside the loop.
                 val buffer = outputTensor.floatBuffer
-                val outputData = FloatArray(84 * 8400)
+                val outputData = FloatArray(5 * 8400)
                 buffer.get(outputData)
                 
                 val boxes = mutableListOf<DetectedBox>()
-                // Target COCO classes: 2 (car), 3 (motorcycle), 5 (bus), 7 (truck).
-                // If detectPedestrians is enabled, also include 0 (person) represented by offset 4.
-                val targetOffsets = if (detectPedestrians) {
-                    intArrayOf(4, 6, 7, 9, 11)
-                } else {
-                    intArrayOf(6, 7, 9, 11)
-                }
 
                 for (i in 0 until 8400) {
-                    var maxScore = 0f
-                    var bestClassId = -1
-                    for (offset in targetOffsets) {
-                        val score = outputData[offset * 8400 + i]
-                        if (score > maxScore) {
-                            maxScore = score
-                            bestClassId = offset - 4
-                        }
-                    }
-
-                    val classThreshold = if (bestClassId == 0) maxOf(confThreshold, 0.35f) else confThreshold
-                    if (maxScore >= classThreshold) {
+                    val score = outputData[4 * 8400 + i]
+                    if (score >= confThreshold) {
                         val cx = outputData[0 * 8400 + i]
                         val cy = outputData[1 * 8400 + i]
                         val w = outputData[2 * 8400 + i]
@@ -210,36 +193,13 @@ class PlateDetector private constructor() : AutoCloseable {
                         val x2 = cx + w / 2f
                         val y2 = cy + h / 2f
                         
-                        boxes.add(DetectedBox(x1, y1, x2, y2, maxScore, bestClassId))
+                        // classId is 0 for license-plate
+                        boxes.add(DetectedBox(x1, y1, x2, y2, score, 0))
                     }
                 }
                 
                 val nmsBoxes = nms(boxes, iouThreshold)
-                val mapped = nmsBoxes.map { box ->
-                    val scaleX = width.toFloat() / 640f
-                    val scaleY = height.toFloat() / 640f
-                    val bx1 = (box.x1 * scaleX).coerceIn(0f, width.toFloat())
-                    val by1 = (box.y1 * scaleY).coerceIn(0f, height.toFloat())
-                    val bx2 = (box.x2 * scaleX).coerceIn(0f, width.toFloat())
-                    val by2 = (box.y2 * scaleY).coerceIn(0f, height.toFloat())
-
-                    // Crop to vehicle bottom 50% for standard cars, 75% for motorcycles to handle rider height,
-                    // or 100% (cropRatio = 0.0f) for pedestrians to mask their entire body safely.
-                    val boxHeight = by2 - by1
-                    val cropRatio = when (box.classId) {
-                        0 -> 0.0f  // Pedestrian (full body)
-                        3 -> 0.25f // Motorcycle
-                        else -> 0.50f // Standard vehicle (car, truck, bus)
-                    }
-                    val finalY1 = by1 + (boxHeight * cropRatio)
-
-                    PlateBox(
-                        x1 = bx1.toInt(),
-                        y1 = finalY1.toInt(),
-                        x2 = bx2.toInt(),
-                        y2 = by2.toInt()
-                    )
-                }
+                val mapped = mapAndFilterBoxes(nmsBoxes, width, height)
                 val tPostprocess = System.nanoTime()
 
                 val dResize = (tResize - t0) / 1_000_000.0
@@ -296,6 +256,36 @@ class PlateDetector private constructor() : AutoCloseable {
         g.drawImage(currentImg, 0, 0, targetWidth, targetHeight, null)
         g.dispose()
         return resultingImage
+    }
+
+    internal fun mapAndFilterBoxes(
+        boxes: List<DetectedBox>,
+        videoWidth: Int,
+        videoHeight: Int
+    ): List<PlateBox> {
+        return boxes.mapNotNull { box ->
+            val scaleX = videoWidth.toFloat() / 640f
+            val scaleY = videoHeight.toFloat() / 640f
+            val bx1 = (box.x1 * scaleX).coerceIn(0f, videoWidth.toFloat())
+            val by1 = (box.y1 * scaleY).coerceIn(0f, videoHeight.toFloat())
+            val bx2 = (box.x2 * scaleX).coerceIn(0f, videoWidth.toFloat())
+            val by2 = (box.y2 * scaleY).coerceIn(0f, videoHeight.toFloat())
+
+            val plateWidth = bx2 - bx1
+            val plateHeight = by2 - by1
+
+            // Legibility threshold: width >= 30 pixels or height >= 15 pixels in original resolution.
+            if (plateWidth < 30f && plateHeight < 15f) {
+                null
+            } else {
+                PlateBox(
+                    x1 = bx1.toInt(),
+                    y1 = by1.toInt(),
+                    x2 = bx2.toInt(),
+                    y2 = by2.toInt()
+                )
+            }
+        }
     }
 
     internal fun nms(boxes: List<DetectedBox>, iouThreshold: Float): List<DetectedBox> {
