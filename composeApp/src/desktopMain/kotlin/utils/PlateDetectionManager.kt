@@ -452,15 +452,25 @@ object PlateDetectionManager : fit.PlateDetector {
 
         // Consumer Loop: Processes frames as they arrive from the background decoder
         var frameIndex = 0L
-        var skipInferenceFramesLeft = 0
-        var cachedBoxes = emptyList<fit.PlateBox>()
         
         // Keep track of granular skip statistics for diagnostic logging
         var skippedSpeedTrimFrames = 0L
         var skippedTrackingFrames = 0L
         
-        var trackingActive = false
-        var consecutiveNoneFrames = 0
+        val tracker = PlateTracker(inferenceInterval = 10, histogramBinCount = 8)
+        var lastInferenceFrameIndex = -100L
+
+        fun mergeBoxesIntoRecords(timeMs: Long, boxesToMerge: List<fit.PlateBox>) {
+            if (boxesToMerge.isEmpty()) return
+            val idx = records.indexOfFirst { it.timeMs == timeMs }
+            if (idx != -1) {
+                val record = records[idx]
+                val merged = (record.boxes + boxesToMerge).distinct()
+                records[idx] = PlateRecord(record.timeMs, merged)
+            } else {
+                records.add(PlateRecord(timeMs, boxesToMerge))
+            }
+        }
 
         try {
             for (frame in frameChannel) {
@@ -471,28 +481,25 @@ object PlateDetectionManager : fit.PlateDetector {
                 var inferencePerformed = false
                 val skipReason: String
                 
-                // If not tracking, scan only 1 out of 3 frames (base detection frequency).
-                // If tracking is active, scan every frame to ensure high-precision coordinate alignment.
-                val skipPeriodic = !trackingActive && (frame.frameIndex % 3 != 0L)
+                val isONNXFrame = tracker.activeTracks.isEmpty() || 
+                                  (frame.frameIndex - lastInferenceFrameIndex >= tracker.inferenceInterval)
 
                 val boxes = if (frame.skipDetection) {
                     skippedFrames++
                     skippedSpeedTrimFrames++
                     skipReason = "Skip (Speed/Trim)"
                     emptyList()
-                } else if (skipPeriodic) {
+                } else if (!isONNXFrame) {
                     skippedFrames++
                     skippedTrackingFrames++
-                    skipReason = "Skip (Periodic Idle)"
-                    cachedBoxes
-                } else if (skipInferenceFramesLeft > 0 && cachedBoxes.isNotEmpty()) {
-                    skipInferenceFramesLeft--
-                    skippedFrames++
-                    skippedTrackingFrames++
-                    skipReason = "Skip (Active Tracking)"
-                    cachedBoxes
+                    skipReason = "Scan (Tracking)"
+                    System.arraycopy(frame.buffer, 0, imgData, 0, frameBytes)
+                    val tracked = tracker.trackIntermediateFrame(frame.frameIndex, frame.timeMs, img)
+                    mergeBoxesIntoRecords(frame.timeMs, tracked)
+                    tracked
                 } else {
                     inferencePerformed = true
+                    lastInferenceFrameIndex = frame.frameIndex
                     skipReason = "Scan (ONNX)"
                     System.arraycopy(frame.buffer, 0, imgData, 0, frameBytes)
                     val rawBoxes = detector.detect(img, confThreshold = 0.20f, detectPedestrians = settings.detectPedestrians)
@@ -508,23 +515,21 @@ object PlateDetectionManager : fit.PlateDetector {
                     }
                     val maskBoxes = filterBoxesForMaskSize(scaledBoxes, videoHeight, settings)
 
-                    if (maskBoxes.isNotEmpty()) {
-                        trackingActive = true
-                        consecutiveNoneFrames = 0
-                        // Scan every single frame (0 skip) during active tracking to ensure seamless path follow
-                        skipInferenceFramesLeft = 0
-                        cachedBoxes = maskBoxes
-                    } else {
-                        if (trackingActive) {
-                            consecutiveNoneFrames++
-                            if (consecutiveNoneFrames >= 6) { // No detection for 2.0 seconds (6 frames at 3fps) before dropping back to idle scan
-                                trackingActive = false
+                    val beforeTrackIds = tracker.activeTracks.map { it.id }.toSet()
+                    val matched = tracker.updateWithDetections(frame.frameIndex, frame.timeMs, maskBoxes, img)
+                    mergeBoxesIntoRecords(frame.timeMs, matched)
+
+                    // Retroactive backtracking for newly appeared objects to avoid frame-in leakage
+                    for (track in tracker.activeTracks) {
+                        if (track.id !in beforeTrackIds) {
+                            val backtrackMap = tracker.performBacktracking(track, frame.frameIndex, videoWidth, videoHeight)
+                            for ((backtrackFrame, backtrackBox) in backtrackMap) {
+                                val backtrackTimeMs = (backtrackFrame * 1000.0 / effectiveDetectionFps).toLong()
+                                mergeBoxesIntoRecords(backtrackTimeMs, listOf(backtrackBox))
                             }
                         }
-                        skipInferenceFramesLeft = 0
-                        cachedBoxes = emptyList()
                     }
-                    maskBoxes
+                    matched
                 }
                 val tDetectEnd = System.nanoTime()
                 val dDetect = (tDetectEnd - tConsumeStart) / 1_000_000.0
@@ -534,7 +539,7 @@ object PlateDetectionManager : fit.PlateDetector {
                 }
 
                 if (boxes.isNotEmpty()) {
-                    records.add(PlateRecord(frame.timeMs, boxes))
+                    records.sortBy { it.timeMs }
                     val partialCache = VideoPlatesCache(
                         videoPath = videoPath,
                         records = records.toList(),
