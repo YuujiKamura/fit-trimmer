@@ -1977,10 +1977,12 @@ class NativeHudEncoder(
 
             val concatArgs = listOf(
                 ffmpegPath, "-y",
+                "-fflags", "+genpts",
                 "-f", "concat",
                 "-safe", "0",
                 "-i", partsListFile.absolutePath,
                 "-c", "copy",
+                "-avoid_negative_ts", "make_zero"
             ) + metadataArgs + finalDest.absolutePath
             
             val pb = ProcessBuilder(concatArgs)
