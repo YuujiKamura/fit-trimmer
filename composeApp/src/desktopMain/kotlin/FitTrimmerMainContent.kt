@@ -1209,7 +1209,7 @@ fun FitTrimmerMainContent(
                                             ControlPlaneStatus.progress = 0f
                                             isEncoding = false
                                             viewModel.isEarlyFinish = false
-                                             fit.EncodeStatusBridge.isEarlyFinish = false
+                                             System.setProperty("fit-trimmer.is-early-finish", "false")
                                             viewModel.encodingSegmentStart = null
                                             viewModel.encodingSegmentEnd = null
                                         }
@@ -1352,7 +1352,7 @@ fun FitTrimmerMainContent(
                                 }
                                  CpCommand.EarlyFinish -> {
                                      viewModel.isEarlyFinish = true
-                                     fit.EncodeStatusBridge.isEarlyFinish = true
+                                     System.setProperty("fit-trimmer.is-early-finish", "true")
                                      viewModel.batchStatusText = if (settings.language == "ja") "\u4e2d\u9593\u30a8\u30af\u30b9\u30dd\u30fc\u30c8\u4e2d..." else "Exporting progress..."
                                  }
                                  else -> {}
