@@ -74,7 +74,7 @@ class EncodePlanTest {
         )
 
         assertEquals(1, plan.segments.size)
-        assertEquals("VID_20260630_174458_001_03m17s-05m39s_KMP_HUD_2.7k.mp4", plan.segments[0].finalOutputFile.name)
+        assertEquals("VID_20260630_174458_001_03m17s-05m39s_Cut_KMP_HUD_2.7k.mp4", plan.segments[0].finalOutputFile.name)
     }
 
     @Test
@@ -94,7 +94,7 @@ class EncodePlanTest {
             dateTag = "20260630"
         )
 
-        assertEquals("ride_20260630_03m17s-05m39s_KMP_HUD_2.7k.mp4", plan.segments[0].finalOutputFile.name)
+        assertEquals("ride_20260630_03m17s-05m39s_Cut_KMP_HUD_2.7k.mp4", plan.segments[0].finalOutputFile.name)
     }
 
     @Test

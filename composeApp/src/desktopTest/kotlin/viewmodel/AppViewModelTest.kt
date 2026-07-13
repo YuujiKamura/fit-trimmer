@@ -706,11 +706,11 @@ class AppViewModelTest {
         assertEquals(listOf(30.0), job.splitPoints)
         assertEquals("720p", job.settings.exportResolution)
         assertTrue(job.autoDetectRoadCaptionsOnEncode)
-        assertEquals("video1_20260629_00m10s-00m30s_part1_KMP_HUD_orig.mp4 (+1)", job.entryName)
+        assertEquals("video1_20260629_00m10s-00m30s_part1_Cut_KMP_HUD_orig.mp4 (+1)", job.entryName)
         assertEquals(
             listOf(
-                "video1_20260629_00m10s-00m30s_part1_KMP_HUD_orig.mp4",
-                "video1_20260629_00m30s-00m50s_part2_KMP_HUD_orig.mp4"
+                "video1_20260629_00m10s-00m30s_part1_Cut_KMP_HUD_orig.mp4",
+                "video1_20260629_00m30s-00m50s_part2_Cut_KMP_HUD_orig.mp4"
             ),
             job.outputFileNames
         )
@@ -945,7 +945,7 @@ class AppViewModelTest {
         viewModel.addToBatchQueue()
 
         assertEquals(
-            "VID_20260630_174458_001_03m17s-05m39s_KMP_HUD_2.7k.mp4",
+            "VID_20260630_174458_001_03m17s-05m39s_Cut_KMP_HUD_2.7k.mp4",
             viewModel.batchQueue[0].entryName
         )
     }

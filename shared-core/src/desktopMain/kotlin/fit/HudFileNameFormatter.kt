@@ -22,7 +22,9 @@ object HudFileNameFormatter {
             "strava" -> "_strava"
             else -> "_orig"
         }
-        val suffix = "${trimSuffix}${partSuffix}_KMP_HUD${resSuffix}.mp4"
+        val blurSuffix = if (settings.blurLicensePlates) "_Blur" else ""
+        val cutSuffix = if (trimStartSeconds != null && trimEndSeconds != null) "_Cut" else ""
+        val suffix = "${trimSuffix}${partSuffix}${cutSuffix}${blurSuffix}_KMP_HUD${resSuffix}.mp4"
         return baseName + suffix
     }
 
