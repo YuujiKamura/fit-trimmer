@@ -711,6 +711,8 @@ class NativeHudEncoder(
             "-an",
             "-c:v", "ffv1",
             "-level", "3",
+            "-threads", "0",
+            "-slices", "16",
             outputFile.absolutePath
         )
 
