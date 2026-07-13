@@ -1154,7 +1154,8 @@ fun BatchQueueDialog(
 
                                                 val speedStr = parsedDetails.speedInfo?.let { " (速度: $it)" } ?: ""
 
-                                                val displayText = "$partStr$etaStr$speedStr"
+                                                val encoderStr = parsedDetails.encoderInfo?.let { " • [GPU: $it]" } ?: ""
+                                                 val displayText = "$partStr$etaStr$speedStr$encoderStr"
 
                                                 if (displayText.isNotEmpty()) {
 
@@ -1499,7 +1500,9 @@ data class EncodingProgressDetails(
 
     val etaInfo: String?,
 
-    val isParsed: Boolean
+    val isParsed: Boolean,
+
+    val encoderInfo: String? = null
 
 )
 

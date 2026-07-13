@@ -1849,7 +1849,7 @@ class NativeHudEncoder(
                     val fpsStr = "%.1f fps".format(currentFps)
                     val speedStr = "%.1fx".format(currentFps / fpsDouble)
                     
-                    val statusText = "Encoding: $progressPercent% | $processedStr / $totalStr | Speed: $fpsStr ($speedStr) | ETA: $remainingStr"
+                    val statusText = "Encoding: $progressPercent% | $processedStr / $totalStr | Speed: $fpsStr ($speedStr) | ETA: $remainingStr | Encoder: $encoderName ($hwaccel)"
                     val progressStartNs = System.nanoTime()
                     onProgress(progressRatio, statusText)
                     profiler.addProgress(System.nanoTime() - progressStartNs)
