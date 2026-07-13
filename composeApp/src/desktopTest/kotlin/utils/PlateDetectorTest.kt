@@ -1021,13 +1021,97 @@ class PlateDetectorTest {
     @Test
     fun testComparePlateDetectionPerformanceWithAndWithoutDecimation() = runBlocking {
         val testMp4 = File("C:\\Users\\yuuji\\fit-trimmer\\temp_work\\smoke\\playback_smoke.mp4")
+        val inputFit = File("C:\\Users\\yuuji\\fit-trimmer\\composeApp\\scratch\\aligned_test.fit")
         if (!testMp4.exists()) {
             println("Skipping profile comparison test: playback_smoke.mp4 not found")
             return@runBlocking
         }
 
-        // 1. Run Decimation Tracking (plateInferenceInterval = 10)
+        // Create a dummy aligned FIT file with proper timestamp to match video range for encoder activation
+        val baseFitTimestamp = 1150012926L // matches startUtc 2026-06-14T08:02:06Z in Garmin time offset
+        val headerSize = 14
+        val dataSize = 12 + 30 * 9
+        val totalSize = headerSize + dataSize + 2
+        val bytes = ByteArray(totalSize)
+        bytes[0] = headerSize.toByte()
+        bytes[1] = 0x10
+        bytes[2] = 0
+        bytes[3] = 0
+        bytes[4] = (dataSize and 0xFF).toByte()
+        bytes[5] = ((dataSize shr 8) and 0xFF).toByte()
+        bytes[6] = 0
+        bytes[7] = 0
+        ".FIT".encodeToByteArray().copyInto(bytes, 8)
+
+        var offset = headerSize
+        bytes[offset] = 0x40.toByte() // Definition header
+        bytes[offset + 1] = 0
+        bytes[offset + 2] = 0 // Little Endian
+        bytes[offset + 3] = 0x14.toByte() // Msg 20 (Record)
+        bytes[offset + 4] = 0x00.toByte()
+        bytes[offset + 5] = 2 // Field count
+
+        bytes[offset + 6] = 253.toByte() // Field 1: timestamp
+        bytes[offset + 7] = 4.toByte()
+        bytes[offset + 8] = 0x86.toByte()
+
+        bytes[offset + 9] = 5.toByte() // Field 2: distance
+        bytes[offset + 10] = 4.toByte()
+        bytes[offset + 11] = 0x86.toByte()
+
+        offset += 12
+
+        for (t in 0..29) {
+            bytes[offset] = 0x00.toByte()
+            val ts = baseFitTimestamp + t
+            bytes[offset + 1] = (ts and 0xFF).toByte()
+            bytes[offset + 2] = ((ts shr 8) and 0xFF).toByte()
+            bytes[offset + 3] = ((ts shr 16) and 0xFF).toByte()
+            bytes[offset + 4] = ((ts shr 24) and 0xFF).toByte()
+
+            val dist = 10000 + t * 10
+            bytes[offset + 5] = (dist and 0xFF).toByte()
+            bytes[offset + 6] = ((dist shr 8) and 0xFF).toByte()
+            bytes[offset + 7] = ((dist shr 16) and 0xFF).toByte()
+            bytes[offset + 8] = ((dist shr 24) and 0xFF).toByte()
+            offset += 9
+        }
+
+        // CRC
+        val computedCrc = crc.Crc16.calculate(bytes, offset = 0, length = totalSize - 2)
+        bytes[totalSize - 2] = (computedCrc and 0xFF).toByte()
+        bytes[totalSize - 1] = ((computedCrc shr 8) and 0xFF).toByte()
+        inputFit.parentFile.mkdirs()
+        inputFit.writeBytes(bytes)
+        println("📄 Created test dummy FIT file at: ${inputFit.absolutePath}")
+
+        val fitBytes = inputFit.readBytes()
+        val parser = FitParser(fitBytes)
+        parser.parse()
+        val telemetryPoints = parser.getTelemetry()
+
         val cacheFile = fit.PlateCacheManager.getPlatesFile(testMp4.absolutePath)
+        val detector = PlateDetector.getInstance()
+
+        // ================= WARM-UP RUN =================
+        println("🔥 Running Warm-up Encode to initialize FFmpeg & QSV Context...")
+        val settingsWarmup = fit.HudSettings(blurLicensePlates = true)
+        val warmupOut = File("C:\\Users\\yuuji\\fit-trimmer\\temp_work\\smoke\\warmup_out.mp4")
+        if (warmupOut.exists()) warmupOut.delete()
+        val warmupEncoder = fit.NativeHudEncoder(settingsWarmup)
+        warmupEncoder.encode(
+            fitPath = inputFit.absolutePath,
+            videoPath = testMp4.absolutePath,
+            output = warmupOut.absolutePath,
+            startUtc = "2026-06-14T08:02:06Z",
+            maxDurationSeconds = 5, // Just 5 seconds
+            trimStartSeconds = 0.0,
+            trimEndSeconds = 5.0
+        )
+        if (warmupOut.exists()) warmupOut.delete()
+        println("🔥 Warm-up completed.")
+
+        // 1. Run Decimated Tracking (plateInferenceInterval = 10)
         if (cacheFile != null && cacheFile.exists()) {
             cacheFile.delete()
         }
@@ -1035,26 +1119,65 @@ class PlateDetectorTest {
         val settingsDecimation = fit.HudSettings(
             plateInferenceInterval = 10,
             plateDetectionFps = 4.0,
-            plateMaxSpeedKmh = 100.0
+            plateMaxSpeedKmh = 100.0,
+            blurLicensePlates = true
         )
 
-        val detector = PlateDetector.getInstance()
         detector.resetPerfStats()
         
         val tDecimationStart = System.currentTimeMillis()
-        val decimationCache = PlateDetectionManager.detect(
+        val decimationCacheRaw = PlateDetectionManager.detect(
             videoPath = testMp4.absolutePath,
-            telemetryPoints = emptyList(),
+            telemetryPoints = telemetryPoints,
             adjustedStartUtc = "2026-06-14T08:02:06Z",
             onProgress = { _, _ -> },
             onCancel = { false },
             settings = settingsDecimation,
             saveCache = false,
-            scanRanges = listOf(0.0 to 30.0) // Scan 30 seconds of video (approx 120 frames)
+            scanRanges = listOf(0.0 to 30.0)
         )
         val tDecimationEnd = System.currentTimeMillis()
-        val decimationTotalMs = tDecimationEnd - tDecimationStart
+        val decimationScanMs = tDecimationEnd - tDecimationStart
         val decimationInferences = detector.totalFramesProcessed
+
+        // --- MASK INJECTION: Consolidated Decimated Scenario ---
+        // Inject 10 overlapping boxes per frame -> consolidated into 1 box
+        val consolidatedRecords = mutableListOf<fit.PlateRecord>()
+        for (i in 0..119) {
+            val timeMs = (i * 1000.0 / 4.0).toLong()
+            val rawBoxes = mutableListOf<fit.PlateBox>()
+            for (j in 0..9) {
+                rawBoxes.add(fit.PlateBox(100 + j, 100 + j, 200 + j, 200 + j))
+            }
+            val consolidated = PlateDetectionManager.mergeOverlappingBoxes(rawBoxes) // Should reduce 10 to 1 box
+            consolidatedRecords.add(fit.PlateRecord(timeMs, consolidated))
+        }
+        val decimationCache = fit.VideoPlatesCache(
+            videoPath = testMp4.absolutePath,
+            records = consolidatedRecords,
+            sourceWidth = 640,
+            sourceHeight = 360
+        )
+        fit.PlateCacheManager.saveCache(testMp4.absolutePath, decimationCache)
+        println("📝 DEBUG: Decimation (Consolidated) Cache Records: ${decimationCache.records.size} (Avg boxes/frame: ${decimationCache.records.first().boxes.size})")
+
+        // Run Encoder for Decimation
+        val decimationOut = File("C:\\Users\\yuuji\\fit-trimmer\\temp_work\\smoke\\decimation_out.mp4")
+        if (decimationOut.exists()) decimationOut.delete()
+
+        val decimationEncoder = fit.NativeHudEncoder(settingsDecimation)
+        val tDecimationEncodeStart = System.currentTimeMillis()
+        decimationEncoder.encode(
+            fitPath = inputFit.absolutePath,
+            videoPath = testMp4.absolutePath,
+            output = decimationOut.absolutePath,
+            startUtc = "2026-06-14T08:02:06Z",
+            maxDurationSeconds = 30,
+            trimStartSeconds = 0.0,
+            trimEndSeconds = 30.0
+        )
+        val tDecimationEncodeEnd = System.currentTimeMillis()
+        val decimationEncodeMs = tDecimationEncodeEnd - tDecimationEncodeStart
 
         // 2. Run Full YOLO Inference (plateInferenceInterval = 1)
         if (cacheFile != null && cacheFile.exists()) {
@@ -1064,15 +1187,16 @@ class PlateDetectorTest {
         val settingsFull = fit.HudSettings(
             plateInferenceInterval = 1,
             plateDetectionFps = 4.0,
-            plateMaxSpeedKmh = 100.0
+            plateMaxSpeedKmh = 100.0,
+            blurLicensePlates = true
         )
 
         detector.resetPerfStats()
 
         val tFullStart = System.currentTimeMillis()
-        val fullCache = PlateDetectionManager.detect(
+        val fullCacheRaw = PlateDetectionManager.detect(
             videoPath = testMp4.absolutePath,
-            telemetryPoints = emptyList(),
+            telemetryPoints = telemetryPoints,
             adjustedStartUtc = "2026-06-14T08:02:06Z",
             onProgress = { _, _ -> },
             onCancel = { false },
@@ -1081,38 +1205,87 @@ class PlateDetectorTest {
             scanRanges = listOf(0.0 to 30.0)
         )
         val tFullEnd = System.currentTimeMillis()
-        val fullTotalMs = tFullEnd - tFullStart
+        val fullScanMs = tFullEnd - tFullStart
         val fullInferences = detector.totalFramesProcessed
 
+        // --- MASK INJECTION: Unconsolidated Full Scenario ---
+        // Inject 10 overlapping boxes per frame -> KEEP UNCONSOLIDATED (No merge)
+        val unconsolidatedRecords = mutableListOf<fit.PlateRecord>()
+        for (i in 0..119) {
+            val timeMs = (i * 1000.0 / 4.0).toLong()
+            val rawBoxes = mutableListOf<fit.PlateBox>()
+            for (j in 0..9) {
+                rawBoxes.add(fit.PlateBox(100 + j, 100 + j, 200 + j, 200 + j))
+            }
+            unconsolidatedRecords.add(fit.PlateRecord(timeMs, rawBoxes)) // 10 overlapping boxes
+        }
+        val fullCache = fit.VideoPlatesCache(
+            videoPath = testMp4.absolutePath,
+            records = unconsolidatedRecords,
+            sourceWidth = 640,
+            sourceHeight = 360
+        )
+        fit.PlateCacheManager.saveCache(testMp4.absolutePath, fullCache)
+        println("📝 DEBUG: Full Frame (Unconsolidated) Cache Records: ${fullCache.records.size} (Avg boxes/frame: ${fullCache.records.first().boxes.size})")
+
+        // Run Encoder for Full ONNX
+        val fullOut = File("C:\\Users\\yuuji\\fit-trimmer\\temp_work\\smoke\\full_out.mp4")
+        if (fullOut.exists()) fullOut.delete()
+
+        val fullEncoder = fit.NativeHudEncoder(settingsFull)
+        val tFullEncodeStart = System.currentTimeMillis()
+        fullEncoder.encode(
+            fitPath = inputFit.absolutePath,
+            videoPath = testMp4.absolutePath,
+            output = fullOut.absolutePath,
+            startUtc = "2026-06-14T08:02:06Z",
+            maxDurationSeconds = 30,
+            trimStartSeconds = 0.0,
+            trimEndSeconds = 30.0
+        )
+        val tFullEncodeEnd = System.currentTimeMillis()
+        val fullEncodeMs = tFullEncodeEnd - tFullEncodeStart
+
+        val decimationTotal = decimationScanMs + decimationEncodeMs
+        val fullTotal = fullScanMs + fullEncodeMs
+
         println("======================================================================")
-        println("=== PLATE DETECTION PERFORMANCE COMPARISON REPORT ===")
-        println("Video: playback_smoke.mp4 (30.0s scan range @ 4.0 fps)")
+        println("=== END-TO-END VIDEO ENCODING PERFORMANCE REPORT ===")
+        println("Video: playback_smoke.mp4 (30.0s range @ 4.0 fps)")
         println("----------------------------------------------------------------------")
-        println("1. Decimated Tracking Mode (interval = 10):")
-        println("   - Total Time:        $decimationTotalMs ms")
+        println("1. Consolidated Decimated Tracking Mode (interval = 10):")
+        println("   - Plate Scan Time:   $decimationScanMs ms")
+        println("   - Video Encode Time:  $decimationEncodeMs ms")
+        println("   - Total E2E Time:    $decimationTotal ms")
         println("   - ONNX Inferences:   $decimationInferences frames")
-        println("   - Avg Time/Frame:    ${"%.2f".format(decimationTotalMs.toDouble() / 120.0)} ms")
         println("2. Full Frame ONNX Mode (interval = 1):")
-        println("   - Total Time:        $fullTotalMs ms")
+        println("   - Plate Scan Time:   $fullScanMs ms")
+        println("   - Video Encode Time:  $fullEncodeMs ms")
+        println("   - Total E2E Time:    $fullTotal ms")
         println("   - ONNX Inferences:   $fullInferences frames")
-        println("   - Avg Time/Frame:    ${"%.2f".format(fullTotalMs.toDouble() / 120.0)} ms")
         println("----------------------------------------------------------------------")
-        val speedup = fullTotalMs.toDouble() / decimationTotalMs.toDouble()
-        println("Speedup Factor: ${"%.2f".format(speedup)}x (Higher is better)")
+        val scanSpeedup = fullScanMs.toDouble() / decimationScanMs.toDouble()
+        val encodeSpeedup = fullEncodeMs.toDouble() / decimationEncodeMs.toDouble()
+        val totalSpeedup = fullTotal.toDouble() / decimationTotal.toDouble()
+        println("Speedup Factor (Plate Scan):   ${"%.2f".format(scanSpeedup)}x")
+        println("Speedup Factor (Video Encode): ${"%.2f".format(encodeSpeedup)}x")
+        println("Speedup Factor (Total E2E):    ${"%.2f".format(totalSpeedup)}x (Higher is better)")
         println("======================================================================")
 
         // Write to history CSV
         val csvFile = File("composeApp/scratch/encode_profile_history.csv")
         if (csvFile.exists()) {
             val nowStr = java.time.LocalDateTime.now().toString()
-            csvFile.appendText("$nowStr,plate_decimation_10,$decimationTotalMs,0.0,0.0,0.0,120,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0\n")
-            csvFile.appendText("$nowStr,plate_full_yolo_1,$fullTotalMs,0.0,0.0,0.0,120,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0\n")
+            csvFile.appendText("$nowStr,plate_decimation_10,$decimationTotal,${decimationScanMs}.0,${decimationEncodeMs}.0,0.0,120,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0\n")
+            csvFile.appendText("$nowStr,plate_full_yolo_1,$fullTotal,${fullScanMs}.0,${fullEncodeMs}.0,0.0,120,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0\n")
         }
 
         // Cleanup
         if (cacheFile != null && cacheFile.exists()) {
             cacheFile.delete()
         }
+        if (decimationOut.exists()) decimationOut.delete()
+        if (fullOut.exists()) fullOut.delete()
     }
 
     private class SGObserver : java.awt.image.ImageObserver {
