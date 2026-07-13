@@ -889,6 +889,8 @@ class AppViewModel(
         set(value) {
             _isEarlyFinishInternal = value
             _isEarlyFinishState.value = value
+            System.setProperty("fit-trimmer.is-early-finish", value.toString())
+            println("DEBUG: isEarlyFinish changed to $value (System property synced)")
         }
 
     var encodingSegmentStart by mutableStateOf<Double?>(null)
