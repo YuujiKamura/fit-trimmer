@@ -2037,7 +2037,7 @@ class NativeHudEncoder(
                     val usableSpace = try { it.usableSpace } catch (e: Exception) { Long.MAX_VALUE }
                     val isDiskFull = usableSpace < 100 * 1024 * 1024 // Less than 100MB free space
                     
-                    val isEarlyFinish = fit.EncodeStatusBridge.isEarlyFinish
+                    val isEarlyFinish = System.getProperty("fit-trimmer.is-early-finish") == "true"
                     if (((cancelSupplier() && !isEarlyFinish) || isDiskFull) && it.exists()) {
                         if (isDiskFull) {
                             println("⚠️ Critical: Low disk space detected (<100MB). Forcibly cleaning up job folder to free space: ${it.absolutePath}")
