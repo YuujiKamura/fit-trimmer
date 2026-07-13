@@ -169,4 +169,57 @@ class PlateTrackerTest {
         assertTrue(merged.contains(PlateBox(10, 10, 40, 40)), "Should contain merged box")
         assertTrue(merged.contains(PlateBox(50, 50, 60, 60)), "Should contain separate box")
     }
+
+    @Test
+    fun testRetroactiveGapInterpolation() {
+        val tracker = PlateTracker(inferenceInterval = 10, histogramBinCount = 8)
+        val dummyImage = BufferedImage(640, 640, BufferedImage.TYPE_3BYTE_BGR)
+
+        // 1. Initial detection at frame 0
+        val boxAt0 = PlateBox(10, 10, 20, 20)
+        tracker.updateWithDetections(
+            frameIndex = 0L,
+            timeMs = 0L,
+            detections = listOf(boxAt0),
+            image = dummyImage
+        )
+        assertEquals(1, tracker.activeTracks.size)
+        val track = tracker.activeTracks.first()
+        assertEquals(0L, track.lastUpdatedFrame)
+
+        // 2. Mock a gap where intermediate tracking is skipped, and a new detection occurs at frame 10
+        val trackLastInfo = tracker.activeTracks.associate { it.id to (it.lastUpdatedFrame to it.lastBox) }
+
+        val boxAt10 = PlateBox(110, 110, 120, 120)
+        tracker.updateWithDetections(
+            frameIndex = 10L,
+            timeMs = 2500L,
+            detections = listOf(boxAt10),
+            image = dummyImage
+        )
+
+        // The track should be associated
+        assertEquals(10L, track.lastUpdatedFrame)
+        assertEquals(boxAt10, track.lastBox)
+
+        // Verify we can retroactively interpolate frame 5 (ratio = 0.5)
+        val prevInfo = trackLastInfo[track.id]
+        assertNotNull(prevInfo)
+        val (prevFrame, prevBox) = prevInfo
+        val gap = 10L - prevFrame
+        assertEquals(10L, gap)
+
+        // At frame 5, box should be linear interpolated between (10, 10, 20, 20) and (110, 110, 120, 120) -> (60, 60, 70, 70)
+        val ratio = (5L - prevFrame).toFloat() / gap.toFloat()
+        val interpBox = PlateBox(
+            x1 = (prevBox.x1 + ratio * (track.lastBox.x1 - prevBox.x1)).toInt(),
+            y1 = (prevBox.y1 + ratio * (track.lastBox.y1 - prevBox.y1)).toInt(),
+            x2 = (prevBox.x2 + ratio * (track.lastBox.x2 - prevBox.x2)).toInt(),
+            y2 = (prevBox.y2 + ratio * (track.lastBox.y2 - prevBox.y2)).toInt()
+        )
+        assertEquals(60, interpBox.x1)
+        assertEquals(60, interpBox.y1)
+        assertEquals(70, interpBox.x2)
+        assertEquals(70, interpBox.y2)
+    }
 }

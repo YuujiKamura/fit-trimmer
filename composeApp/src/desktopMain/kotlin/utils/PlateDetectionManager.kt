@@ -522,6 +522,9 @@ object PlateDetectionManager : fit.PlateDetector {
                     val rawBoxes = detector.detect(img, confThreshold = 0.20f, detectPedestrians = settings.detectPedestrians)
                     val maskBoxes = filterBoxesForMaskSize(rawBoxes, 640, settings)
 
+                    // Track previous positions for gap interpolation before association
+                    val trackLastInfo = tracker.activeTracks.associate { it.id to (it.lastUpdatedFrame to it.lastBox) }
+
                     val beforeTrackIds = tracker.activeTracks.map { it.id }.toSet()
                     val matched = tracker.updateWithDetections(frame.frameIndex, frame.timeMs, maskBoxes, img)
                     mergeBoxesIntoRecords(frame.timeMs, matched)
@@ -536,6 +539,29 @@ object PlateDetectionManager : fit.PlateDetector {
                             }
                         }
                     }
+
+                    // Retroactive gap interpolation for existing associated tracks to prevent blur leakage
+                    for (track in tracker.activeTracks) {
+                        val prevInfo = trackLastInfo[track.id]
+                        if (prevInfo != null) {
+                            val (prevFrame, prevBox) = prevInfo
+                            val gap = frame.frameIndex - prevFrame
+                            if (gap > 1) {
+                                for (f in (prevFrame + 1) until frame.frameIndex) {
+                                    val ratio = (f - prevFrame).toFloat() / gap.toFloat()
+                                    val interpBox = fit.PlateBox(
+                                        x1 = (prevBox.x1 + ratio * (track.lastBox.x1 - prevBox.x1)).toInt(),
+                                        y1 = (prevBox.y1 + ratio * (track.lastBox.y1 - prevBox.y1)).toInt(),
+                                        x2 = (prevBox.x2 + ratio * (track.lastBox.x2 - prevBox.x2)).toInt(),
+                                        y2 = (prevBox.y2 + ratio * (track.lastBox.y2 - prevBox.y2)).toInt()
+                                    )
+                                    val interpTimeMs = (f * 1000.0 / effectiveDetectionFps).toLong()
+                                    mergeBoxesIntoRecords(interpTimeMs, listOf(interpBox))
+                                }
+                            }
+                        }
+                    }
+
                     matched
                 }
                 val tDetectEnd = System.nanoTime()

@@ -136,8 +136,9 @@ class PlateTracker(
                 
                 val histDist = compareHistograms(refHist, detHist)
 
-                // Hybrid score: combine distance and histogram (mostly color similarity inside gate)
-                if (histDist < 0.45f && histDist < bestDist) {
+                // Robust matching: associate if physically close (within 60 pixels) or color matches reasonably (histDist < 0.65f)
+                val isPhysicallyClose = distPx < 60f
+                if ((histDist < 0.65f || isPhysicallyClose) && histDist < bestDist) {
                     bestDist = histDist
                     bestTrackIdx = tIdx
                 }
