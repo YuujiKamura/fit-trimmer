@@ -103,6 +103,10 @@ private class EncodeProfiler {
 }
 
 fun findFfmpegPath(): String {
+    val overridePath = System.getProperty("fit-trimmer.ffmpeg.path")
+    if (!overridePath.isNullOrEmpty()) {
+        return overridePath
+    }
     val os = System.getProperty("os.name").lowercase()
     val isWindows = os.contains("win")
     val isMac = os.contains("mac")
