@@ -34,8 +34,8 @@ class PlateTracker(
             // 1. Motion prediction
             val tw = track.lastBox.x2 - track.lastBox.x1
             val th = track.lastBox.y2 - track.lastBox.y1
-            val predX1 = (track.lastBox.x1 + track.velocityX).toInt().coerceIn(0, image.width - tw)
-            val predY1 = (track.lastBox.y1 + track.velocityY).toInt().coerceIn(0, image.height - th)
+            val predX1 = (track.lastBox.x1 + track.velocityX).toInt().coerceIn(0, (image.width - tw).coerceAtLeast(0))
+            val predY1 = (track.lastBox.y1 + track.velocityY).toInt().coerceIn(0, (image.height - th).coerceAtLeast(0))
 
             val refHist = track.referenceHistogram
             if (refHist == null) {
@@ -53,8 +53,8 @@ class PlateTracker(
             val searchRange = -12..12 step 4
             for (dy in searchRange) {
                 for (dx in searchRange) {
-                    val nx = (predX1 + dx).coerceIn(0, image.width - tw)
-                    val ny = (predY1 + dy).coerceIn(0, image.height - th)
+                    val nx = (predX1 + dx).coerceIn(0, (image.width - tw).coerceAtLeast(0))
+                    val ny = (predY1 + dy).coerceIn(0, (image.height - th).coerceAtLeast(0))
                     val candidateBox = PlateBox(nx, ny, nx + tw, ny + th)
 
                     val candHist = computeHsvHistogram(image, candidateBox)

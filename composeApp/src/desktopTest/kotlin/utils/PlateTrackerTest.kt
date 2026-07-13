@@ -111,4 +111,23 @@ class PlateTrackerTest {
         assertNotNull(frame0Box)
         assertTrue(frame0Box.y1 <= 5, "Frame 0 box should be close to screen boundary, got Y1=${frame0Box.y1}")
     }
+
+    @Test
+    fun testTrackingWithOversizedBoxDoesNotCrash() {
+        val tracker = PlateTracker(histogramBinCount = 8)
+        
+        // Track initialized with an oversized box (width 150 > image width 100)
+        val oversizedTrack = TrackedObject(
+            id = 9,
+            lastBox = PlateBox(0, 0, 150, 50),
+            lastUpdatedFrame = 0L
+        )
+        tracker.activeTracks.add(oversizedTrack)
+        
+        val frame = BufferedImage(100, 100, BufferedImage.TYPE_3BYTE_BGR)
+        
+        // This should not throw IllegalArgumentException: Cannot coerce value to an empty range
+        val tracked = tracker.trackIntermediateFrame(1L, 33L, frame)
+        assertEquals(1, tracked.size)
+    }
 }

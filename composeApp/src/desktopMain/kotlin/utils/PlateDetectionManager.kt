@@ -460,15 +460,27 @@ object PlateDetectionManager : fit.PlateDetector {
         val tracker = PlateTracker(inferenceInterval = 10, histogramBinCount = 8)
         var lastInferenceFrameIndex = -100L
 
+        fun scaleToVideo(box: fit.PlateBox): fit.PlateBox {
+            val scaleX = videoWidth.toFloat() / 640f
+            val scaleY = videoHeight.toFloat() / 640f
+            return fit.PlateBox(
+                x1 = (box.x1 * scaleX).toInt().coerceAtLeast(0),
+                y1 = (box.y1 * scaleY).toInt().coerceAtLeast(0),
+                x2 = (box.x2 * scaleX).toInt().coerceAtMost(videoWidth),
+                y2 = (box.y2 * scaleY).toInt().coerceAtMost(videoHeight)
+            )
+        }
+
         fun mergeBoxesIntoRecords(timeMs: Long, boxesToMerge: List<fit.PlateBox>) {
             if (boxesToMerge.isEmpty()) return
+            val scaled = boxesToMerge.map { scaleToVideo(it) }
             val idx = records.indexOfFirst { it.timeMs == timeMs }
             if (idx != -1) {
                 val record = records[idx]
-                val merged = (record.boxes + boxesToMerge).distinct()
+                val merged = (record.boxes + scaled).distinct()
                 records[idx] = PlateRecord(record.timeMs, merged)
             } else {
-                records.add(PlateRecord(timeMs, boxesToMerge))
+                records.add(PlateRecord(timeMs, scaled))
             }
         }
 
@@ -503,17 +515,7 @@ object PlateDetectionManager : fit.PlateDetector {
                     skipReason = "Scan (ONNX)"
                     System.arraycopy(frame.buffer, 0, imgData, 0, frameBytes)
                     val rawBoxes = detector.detect(img, confThreshold = 0.20f, detectPedestrians = settings.detectPedestrians)
-                    val scaledBoxes = rawBoxes.map { box ->
-                        val scaleX = videoWidth.toFloat() / 640f
-                        val scaleY = videoHeight.toFloat() / 640f
-                        fit.PlateBox(
-                            x1 = (box.x1 * scaleX).toInt().coerceAtLeast(0),
-                            y1 = (box.y1 * scaleY).toInt().coerceAtLeast(0),
-                            x2 = (box.x2 * scaleX).toInt().coerceAtMost(videoWidth),
-                            y2 = (box.y2 * scaleY).toInt().coerceAtMost(videoHeight)
-                        )
-                    }
-                    val maskBoxes = filterBoxesForMaskSize(scaledBoxes, videoHeight, settings)
+                    val maskBoxes = filterBoxesForMaskSize(rawBoxes, 640, settings)
 
                     val beforeTrackIds = tracker.activeTracks.map { it.id }.toSet()
                     val matched = tracker.updateWithDetections(frame.frameIndex, frame.timeMs, maskBoxes, img)
@@ -522,7 +524,7 @@ object PlateDetectionManager : fit.PlateDetector {
                     // Retroactive backtracking for newly appeared objects to avoid frame-in leakage
                     for (track in tracker.activeTracks) {
                         if (track.id !in beforeTrackIds) {
-                            val backtrackMap = tracker.performBacktracking(track, frame.frameIndex, videoWidth, videoHeight)
+                            val backtrackMap = tracker.performBacktracking(track, frame.frameIndex, 640, 640)
                             for ((backtrackFrame, backtrackBox) in backtrackMap) {
                                 val backtrackTimeMs = (backtrackFrame * 1000.0 / effectiveDetectionFps).toLong()
                                 mergeBoxesIntoRecords(backtrackTimeMs, listOf(backtrackBox))
