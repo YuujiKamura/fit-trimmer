@@ -28,6 +28,7 @@ fun EncodingProgressArea(
     controlsEnabled: Boolean,
     videoLengthMs: Long,
     onCancel: () -> Unit,
+    onEarlyFinish: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val progress = progressProvider()
@@ -120,6 +121,20 @@ fun EncodingProgressArea(
             )
 
             Spacer(Modifier.width(8.dp))
+
+            if (onEarlyFinish != null) {
+                Button(
+                    onClick = onEarlyFinish,
+                    enabled = controlsEnabled,
+                    colors = ButtonDefaults.buttonColors(
+                        backgroundColor = Color(0xFFFF9500),
+                        disabledBackgroundColor = Color(0xFFE5E5EA)
+                    )
+                ) {
+                    Text("⏸ SAVE & STOP", color = if (controlsEnabled) Color.White else Color(0xFF8E8E93), fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                }
+                Spacer(Modifier.width(8.dp))
+            }
 
             Button(
                 onClick = onCancel,

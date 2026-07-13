@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.*
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.IntOffset
@@ -113,6 +114,8 @@ fun FitTrimmerMainContent(
     var ignoreNextStartUtcClear by remember { mutableStateOf(false) }
     var setupStep by remember { mutableStateOf(if (settings.language.isEmpty()) 1 else 0) }
     var tempSelectedLanguage by remember { mutableStateOf("en") }
+    var shouldResumeNextEncode by remember { mutableStateOf(false) }
+    var showResumeDialog by remember { mutableStateOf(false) }
     // Dynamic Hud Proxy & Hot Reload State
     val hudConfig = remember(settings) {
         fit.HudConfig(
@@ -1118,7 +1121,8 @@ fun FitTrimmerMainContent(
                                                 imuTimeOffsetMillis = viewModel.imuTimeOffsetMs,
                                                 ranges = ranges,
                                                 destFiles = destFiles,
-                                                shouldResume = false,
+                                                shouldResume = shouldResumeNextEncode,
+                                                earlyFinishSupplier = { viewModel.isEarlyFinish },
                                                 moveOutputToSource = moveOutputToSource,
                                                 plateTelemetryPoints = viewModel.trimmedTelemetryPoints,
                                                 onProgress = { prog, status ->
@@ -1169,6 +1173,7 @@ fun FitTrimmerMainContent(
                                             }
                                         } finally {
                                             isEncoding = false
+                                            viewModel.isEarlyFinish = false
                                             viewModel.encodingSegmentStart = null
                                             viewModel.encodingSegmentEnd = null
                                         }
@@ -1420,9 +1425,15 @@ fun FitTrimmerMainContent(
                     val onNativeEncodeClick = remember(settings, fitPath, videoPath, videoStartUtc, adjustedStartUtc, isVideoInFitRange, outputDir, moveOutputToSource, showLivePreview, autoDetectRoadCaptionsOnEncode, telemetryPoints, videoLengthMs, timeOffsetState.millis, viewModel.splitPoints) {
                         {
                             if (videoPath.isNotEmpty()) {
-                                scope.launch {
-                                    viewModel.addToBatchQueue()
-                                    viewModel.requestBatchConfirmDialog("encode-button")
+                                val hasCache = fit.CacheJobManager.getInstance().scanJobs(videoPath).isNotEmpty()
+                                if (hasCache) {
+                                    showResumeDialog = true
+                                } else {
+                                    scope.launch {
+                                        shouldResumeNextEncode = false
+                                        viewModel.addToBatchQueue()
+                                        viewModel.requestBatchConfirmDialog("encode-button")
+                                    }
                                 }
                             }
                             Unit
@@ -4384,6 +4395,13 @@ fun FitTrimmerMainContent(
                                         isCanceled = true
                                     }
                                 },
+                                onEarlyFinish = {
+                                    if (viewModel.isBatchRunning) {
+                                        viewModel.isEarlyFinish = true
+                                    } else {
+                                        viewModel.isEarlyFinish = true
+                                    }
+                                },
                                 modifier = Modifier.weight(1f).fillMaxWidth()
                             )
                             Spacer(Modifier.height(8.dp))
@@ -4505,6 +4523,91 @@ fun FitTrimmerMainContent(
                     isEncoding = isEncoding,
                     onClose = { showManualJstSyncDialog = false }
                 )
+            }
+
+            if (showResumeDialog) {
+                val isJa = settings.language == "ja"
+                Box(
+                    modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Card(
+                        modifier = Modifier.width(420.dp).padding(16.dp),
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                        elevation = 8.dp
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(20.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            Text(
+                                text = if (isJa) "エンコードの再開確認" else "Resume Encode Confirmation",
+                                style = MaterialTheme.typography.h6,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF007AFF)
+                            )
+                            Text(
+                                text = if (isJa) {
+                                    "前回のエンコードの一時ファイルが存在します。\n続きからエンコードを再開してマージしますか？\n(「最初から」を選択すると、前回のキャッシュは削除されます)"
+                                } else {
+                                    "Previous temporary encode files exist.\nWould you like to resume from the last progress or start fresh?\n(Starting fresh will clear the previous cache)"
+                                },
+                                fontSize = 13.sp,
+                                color = Color.Gray,
+                                textAlign = TextAlign.Center
+                            )
+                            
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Button(
+                                    onClick = {
+                                        showResumeDialog = false
+                                        shouldResumeNextEncode = true
+                                        scope.launch {
+                                            viewModel.addToBatchQueue()
+                                            viewModel.batchQueue.lastOrNull()?.let { job ->
+                                                job.phases.find { it.type == BatchJobPhaseType.HUD_ENCODE }?.let { phase ->
+                                                    phase.progress = 0.01f
+                                                }
+                                            }
+                                            viewModel.requestBatchConfirmDialog("encode-button")
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF34C759)),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text(if (isJa) "つづきから" else "Resume", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+
+                                Button(
+                                    onClick = {
+                                        showResumeDialog = false
+                                        shouldResumeNextEncode = false
+                                        scope.launch {
+                                            fit.CacheJobManager.getInstance().clearAll(videoPath)
+                                            viewModel.addToBatchQueue()
+                                            viewModel.requestBatchConfirmDialog("encode-button")
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFFF9500)),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text(if (isJa) "最初から" else "Start Fresh", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            
+                            TextButton(
+                                onClick = { showResumeDialog = false },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(if (isJa) "キャンセル" else "Cancel", color = Color.Gray, fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
             }
 
             if (setupStep > 0) {

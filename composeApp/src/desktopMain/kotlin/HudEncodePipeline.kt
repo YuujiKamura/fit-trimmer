@@ -105,6 +105,7 @@ object HudEncodePipeline {
         onFrame: (BufferedImage) -> Unit,
         cancelSupplier: () -> Boolean,
         showLivePreviewSupplier: () -> Boolean,
+        earlyFinishSupplier: () -> Boolean = { false },
         onSegmentStart: (start: Double, end: Double) -> Unit = { _, _ -> },
         skipConcat: Boolean = false,
         mergeOutputFile: File? = null,
@@ -173,6 +174,10 @@ object HudEncodePipeline {
 
             for (segment in encodePlan.segments) {
                 if (cancelSupplier()) break
+                if (earlyFinishSupplier()) {
+                    println("DEBUG: Early finish requested. Breaking encoding loop to merge current progress.")
+                    break
+                }
                 val idx = segment.index
                 val pStart = segment.startSeconds
                 val pEnd = segment.endSeconds
@@ -259,13 +264,19 @@ object HudEncodePipeline {
                 throw Exception("Encoding Canceled")
             }
 
+            val isEarlyFinish = earlyFinishSupplier()
+
             if (mergeOutputFile != null && destFiles.size > 1) {
                 onProgress(1.0f, "Merging cut segments...")
                 mergeEncodedSegments(destFiles, mergeOutputFile)
                 finalOutPath = mergeOutputFile.absolutePath
-                destFiles
-                    .filter { it.absolutePath != mergeOutputFile.absolutePath }
-                    .forEach { it.delete() }
+                if (!isEarlyFinish) {
+                    destFiles
+                        .filter { it.absolutePath != mergeOutputFile.absolutePath }
+                        .forEach { it.delete() }
+                } else {
+                    println("DEBUG: Preserving segment files for future resume since early finish was requested.")
+                }
             }
 
             if (hasCloudSyncMsg) {
