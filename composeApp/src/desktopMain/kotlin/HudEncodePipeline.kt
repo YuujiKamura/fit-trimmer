@@ -211,29 +211,38 @@ object HudEncodePipeline {
                         onProgress(overallProg.toFloat(), "[Part ${idx + 1}/${ranges.size}] $status")
                     },
                     onFrameRendered = { img -> if (img is java.awt.image.BufferedImage) onFrame(img) },
-                    cancelSupplier = cancelSupplier,
+                    cancelSupplier = { cancelSupplier() || earlyFinishSupplier() },
                     customRenderer = { canvas, point, allPoints, trimmedPoints, pBuf, progressRatio ->
                         proxy.renderFrame(canvas, point, allPoints, trimmedPoints, pBuf, progressRatio)
                     },
                     showLivePreviewSupplier = showLivePreviewSupplier
                 )
 
-                encoder.encode(fitPath, videoPath, partOutPath, videoStartUtc,
-                    maxDurationSeconds = -1,
-                    trimStartSeconds = pStart,
-                    trimEndSeconds = pEnd,
-                    shouldResume = shouldResume,
-                    skipConcat = skipConcat,
-                    groundTruthMetadata = EncodeGroundTruthMetadata(
-                        sourceVideoPath = videoPath,
-                        sourceVideoStartUtc = sourceVideoStartUtc,
-                        alignedVideoStartUtc = videoStartUtc,
-                        timeOffsetMillis = timeOffsetMillis,
-                        imuTimeOffsetMillis = imuTimeOffsetMillis
-                    ),
-                    hudTelemetryStartSeconds = hudTelemetryRange?.first,
-                    hudTelemetryEndSeconds = hudTelemetryRange?.second
-                )
+                try {
+                    encoder.encode(fitPath, videoPath, partOutPath, videoStartUtc,
+                        maxDurationSeconds = -1,
+                        trimStartSeconds = pStart,
+                        trimEndSeconds = pEnd,
+                        shouldResume = shouldResume,
+                        skipConcat = skipConcat,
+                        groundTruthMetadata = EncodeGroundTruthMetadata(
+                            sourceVideoPath = videoPath,
+                            sourceVideoStartUtc = sourceVideoStartUtc,
+                            alignedVideoStartUtc = videoStartUtc,
+                            timeOffsetMillis = timeOffsetMillis,
+                            imuTimeOffsetMillis = imuTimeOffsetMillis
+                        ),
+                        hudTelemetryStartSeconds = hudTelemetryRange?.first,
+                        hudTelemetryEndSeconds = hudTelemetryRange?.second
+                    )
+                } catch (e: Exception) {
+                    if (earlyFinishSupplier()) {
+                        println("DEBUG: Encoding interrupted by early finish request. Proceeding to merge completed segments.")
+                        break
+                    } else {
+                        throw e
+                    }
+                }
 
                 if (!skipConcat && destFiles.isNotEmpty() && !cancelSupplier()) {
                     if (finalDestFile != null) {
