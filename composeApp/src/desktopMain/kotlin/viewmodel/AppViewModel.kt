@@ -1251,7 +1251,10 @@ class AppViewModel(
                 minGrade = seg.minGrade,
                 maxGrade = seg.maxGrade,
                 startFitTimestamp = seg.startFitTimestamp,
-                endFitTimestamp = seg.endFitTimestamp
+                endFitTimestamp = seg.endFitTimestamp,
+                prTimeSeconds = seg.prTimeSeconds,
+                komTimeSeconds = seg.komTimeSeconds,
+                recentTimeSeconds = DatabaseManager.getRecentSegmentTime(seg.name, act.startDateLocal)
             )
         })
 
@@ -1326,7 +1329,9 @@ class AppViewModel(
                 minGrade = seg.minGrade,
                 maxGrade = seg.maxGrade,
                 startFitTimestamp = seg.startFitTimestamp,
-                endFitTimestamp = seg.endFitTimestamp
+                endFitTimestamp = seg.endFitTimestamp,
+                prTimeSeconds = seg.prTimeSeconds,
+                komTimeSeconds = seg.komTimeSeconds
             )
         }
 

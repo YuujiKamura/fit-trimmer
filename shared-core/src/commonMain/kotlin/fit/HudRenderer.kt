@@ -5,6 +5,7 @@ import kotlin.math.max
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.PI
+import kotlin.math.pow
 import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
@@ -1044,6 +1045,166 @@ class HudRenderer(val config: HudConfig) {
                 val prText = "自己ベスト: ${prMin}:${prSec.toString().padStart(2, '0')}"
                 drawShadowedText(canvas, prText, segX + segW - 12f * sf, segY + 58f * sf, 10f * sf, "#eab308", bold = true, anchor = "top-right", sf = sf)
             }
+
+            // 10.1 Milestone Checkpoints (25%, 50%, 75%) Pop-up inside Segment
+            val milestonePercent = when {
+                progressRatio >= 0.24f && progressRatio <= 0.26f -> 25
+                progressRatio >= 0.49f && progressRatio <= 0.51f -> 50
+                progressRatio >= 0.74f && progressRatio <= 0.76f -> 75
+                else -> 0
+            }
+            if (milestonePercent > 0) {
+                val subW = 260f * sf
+                val subH = 58f * sf
+                val subX = canvas.width / 2f - subW / 2f
+                val subY = segY + segH + 8f * sf
+                
+                canvas.drawRect(subX, subY, subW, subH, "#1c1c1e", alpha = 0.85f, rx = 6f * sf, ry = 6f * sf)
+                canvas.drawRect(subX, subY, subW, subH, "#eab308", alpha = 0.4f, outline = true, rx = 6f * sf, ry = 6f * sf)
+                
+                drawShadowedText(canvas, "⏱️ CHECKPOINT $milestonePercent%", subX + 10f * sf, subY + 6f * sf, 11f * sf, "#eab308", bold = true, sf = sf)
+                
+                val expectedRatio = milestonePercent / 100.0
+                var offsetX = 10f * sf
+                
+                // 1. Recent self time delta
+                val recentTime = activeSeg.recentTimeSeconds
+                if (recentTime != null && recentTime > 0.0) {
+                    val recentDelta = elapsedSegSec - (recentTime * expectedRatio)
+                    val rCol = if (recentDelta < 0.0) "#34C759" else "#FF3B30"
+                    drawShadowedText(canvas, "直近: ${formatDeltaTime(recentDelta)}", subX + offsetX, subY + 22f * sf, 10f * sf, rCol, bold = true, sf = sf)
+                    offsetX += 80f * sf
+                }
+                
+                // 2. Personal Record (PR) delta
+                val prTime = activeSeg.prTimeSeconds
+                if (prTime != null && prTime > 0.0) {
+                    val prDelta = elapsedSegSec - (prTime * expectedRatio)
+                    val pCol = if (prDelta < 0.0) "#34C759" else "#FF3B30"
+                    drawShadowedText(canvas, "PR: ${formatDeltaTime(prDelta)}", subX + offsetX, subY + 22f * sf, 10f * sf, pCol, bold = true, sf = sf)
+                    offsetX += 80f * sf
+                }
+                
+                // 3. KOM time delta
+                val komTime = activeSeg.komTimeSeconds
+                if (komTime != null && komTime > 0.0) {
+                    val komDelta = elapsedSegSec - (komTime * expectedRatio)
+                    val kCol = if (komDelta < 0.0) "#34C759" else "#FF3B30"
+                    drawShadowedText(canvas, "KOM: ${formatDeltaTime(komDelta)}", subX + offsetX, subY + 22f * sf, 10f * sf, kCol, bold = true, sf = sf)
+                }
+                
+                val msg = if (recentTime != null && elapsedSegSec < recentTime * expectedRatio) "Pace: Ahead ✓" else "Pace: Behind"
+                val msgCol = if (msg.contains("Ahead")) "#34C759" else "#a1a1aa"
+                drawShadowedText(canvas, msg, subX + 10f * sf, subY + 38f * sf, 9f * sf, msgCol, bold = true, sf = sf)
+            }
+        }
+
+        // 11. Segment Finish Result Pop-up (Displayed for 5 seconds after segment exit)
+        if (isValid) {
+            val finishedSeg = config.detectedSegments.find {
+                currentFitSec > it.endFitTimestamp && currentFitSec <= it.endFitTimestamp + 5.0
+            }
+            if (finishedSeg != null) {
+                val resW = 300f * sf
+                val resH = 110f * sf
+                val resX = canvas.width / 2f - resW / 2f
+                val resY = 120f * sf
+                
+                canvas.drawRect(resX, resY, resW, resH, "#1c1c1e", alpha = 0.9f, rx = 8f * sf, ry = 8f * sf)
+                canvas.drawRect(resX, resY, resW, resH, "#eab308", alpha = 0.6f, outline = true, rx = 8f * sf, ry = 8f * sf)
+                
+                drawShadowedText(canvas, "⛰️ SEGMENT RESULT", resX + 12f * sf, resY + 8f * sf, 12f * sf, "#eab308", bold = true, sf = sf)
+                drawShadowedText(canvas, finishedSeg.name, resX + 12f * sf, resY + 24f * sf, 10f * sf, "#ffffff", bold = true, sf = sf)
+                
+                val segDuration = finishedSeg.durationSeconds
+                val durMin = (segDuration / 60).toInt()
+                val durSec = (segDuration % 60).toInt()
+                drawShadowedText(canvas, "Time: ${durMin}:${durSec.toString().padStart(2, '0')}", resX + 12f * sf, resY + 42f * sf, 11f * sf, "#ffffff", bold = true, sf = sf)
+                
+                val segPoints = allPoints.filter { it.timestamp >= finishedSeg.startFitTimestamp && it.timestamp <= finishedSeg.endFitTimestamp }
+                val avgPower = if (segPoints.isNotEmpty()) segPoints.map { it.power }.average() else 0.0
+                val npValue = calculateNP(segPoints)
+                val viValue = if (avgPower > 0) npValue / avgPower else 1.0
+                drawShadowedText(canvas, "NP: ${npValue.roundToInt()}W  (Avg: ${avgPower.roundToInt()}W  VI: ${formatOneDecimal(viValue)})", resX + 12f * sf, resY + 58f * sf, 10f * sf, "#a1a1aa", bold = true, sf = sf)
+                
+                var cmpY = resY + 76f * sf
+                val prTime = finishedSeg.prTimeSeconds
+                if (prTime != null && prTime > 0.0) {
+                    val prDiff = segDuration - prTime
+                    val prCol = if (prDiff < 0.0) "#34C759" else "#FF3B30"
+                    drawShadowedText(canvas, "PR比: ${formatDeltaTime(prDiff)}", resX + 12f * sf, cmpY, 10f * sf, prCol, bold = true, sf = sf)
+                }
+                
+                val recentTime = finishedSeg.recentTimeSeconds
+                if (recentTime != null && recentTime > 0.0) {
+                    val recDiff = segDuration - recentTime
+                    val recCol = if (recDiff < 0.0) "#34C759" else "#FF3B30"
+                    drawShadowedText(canvas, "直近比: ${formatDeltaTime(recDiff)}", resX + 110f * sf, cmpY, 10f * sf, recCol, bold = true, sf = sf)
+                }
+                
+                val komTime = finishedSeg.komTimeSeconds
+                if (komTime != null && komTime > 0.0) {
+                    val komDiff = segDuration - komTime
+                    val komCol = if (komDiff < 0.0) "#34C759" else "#FF3B30"
+                    drawShadowedText(canvas, "KOM比: ${formatDeltaTime(komDiff)}", resX + 200f * sf, cmpY, 10f * sf, komCol, bold = true, sf = sf)
+                }
+            }
+        }
+
+        // 12. 10-Minute Rolling Summary Pop-up (NP/AP/VI rollup summary displayed for 5s)
+        if (isValid && telemetry.elapsedSeconds > 0 && telemetry.elapsedSeconds % 600 in 0..4) {
+            val blockNum = telemetry.elapsedSeconds / 600
+            if (blockNum > 0) {
+                val sumW = 200f * sf
+                val sumH = 50f * sf
+                val sumX = canvas.width - sumW - 20f * sf
+                val sumY = canvas.height - sumH - 120f * sf
+                
+                canvas.drawRect(sumX, sumY, sumW, sumH, "#1c1c1e", alpha = 0.9f, rx = 6f * sf, ry = 6f * sf)
+                canvas.drawRect(sumX, sumY, sumW, sumH, "#007AFF", alpha = 0.5f, outline = true, rx = 6f * sf, ry = 6f * sf)
+                
+                drawShadowedText(canvas, "⏱️ ${blockNum * 10} MIN SUMMARY", sumX + 8f * sf, sumY + 6f * sf, 10f * sf, "#007AFF", bold = true, sf = sf)
+                
+                val last10mPoints = allPoints.filter { 
+                    it.elapsedSeconds >= (blockNum - 1) * 600 && it.elapsedSeconds <= blockNum * 600 
+                }
+                val avgPower = if (last10mPoints.isNotEmpty()) last10mPoints.map { it.power }.average() else 0.0
+                val npValue = calculateNP(last10mPoints)
+                val viValue = if (avgPower > 0) npValue / avgPower else 1.0
+                
+                drawShadowedText(canvas, "NP: ${npValue.roundToInt()}W  VI: ${formatOneDecimal(viValue)}", sumX + 8f * sf, sumY + 20f * sf, 11f * sf, "#ffffff", bold = true, sf = sf)
+                drawShadowedText(canvas, "Avg Power: ${avgPower.roundToInt()}W", sumX + 8f * sf, sumY + 34f * sf, 10f * sf, "#a1a1aa", bold = true, sf = sf)
+            }
+        }
+    }
+
+    private fun calculateNP(points: List<TelemetryPoint>): Double {
+        if (points.isEmpty()) return 0.0
+        if (points.size < 30) {
+            return points.map { it.power }.average()
+        }
+        val roll30 = mutableListOf<Double>()
+        for (i in 29 until points.size) {
+            var sum = 0.0
+            for (j in 0 until 30) {
+                sum += points[i - j].power
+            }
+            roll30.add(sum / 30.0)
+        }
+        val p4Sum = roll30.map { it.pow(4.0) }.sum()
+        val np = (p4Sum / roll30.size).pow(0.25)
+        return if (np.isNaN()) 0.0 else np
+    }
+
+    private fun formatDeltaTime(deltaSeconds: Double): String {
+        val sign = if (deltaSeconds >= 0.0) "+" else "-"
+        val absolute = kotlin.math.abs(deltaSeconds).roundToInt()
+        val min = absolute / 60
+        val sec = absolute % 60
+        return if (min > 0) {
+            "$sign$min:${sec.toString().padStart(2, '0')}"
+        } else {
+            "$sign${sec}s"
         }
     }
 

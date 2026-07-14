@@ -29,7 +29,10 @@ data class AutoDetectedSegment(
     val minGrade: Double = 0.0,
     val maxGrade: Double = 0.0,
     val startFitTimestamp: Double = 0.0,
-    val endFitTimestamp: Double = 0.0
+    val endFitTimestamp: Double = 0.0,
+    val prTimeSeconds: Double? = null,
+    val komTimeSeconds: Double? = null,
+    val recentTimeSeconds: Double? = null
 )
 
 class OsmTrafficSignalDetector(

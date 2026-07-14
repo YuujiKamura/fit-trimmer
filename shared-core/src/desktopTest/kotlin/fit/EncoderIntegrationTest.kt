@@ -312,7 +312,10 @@ class EncoderIntegrationTest {
                 durationSeconds = 1200.0,
                 averageGrade = 6.0,
                 startFitTimestamp = 0.0,
-                endFitTimestamp = 10.0
+                endFitTimestamp = 10.0,
+                prTimeSeconds = 420.0,
+                komTimeSeconds = 360.0,
+                recentTimeSeconds = 400.0
             )
             HudEncoderSegmentRegistry.activeSegments = listOf(testSegment)
 
@@ -330,9 +333,48 @@ class EncoderIntegrationTest {
                     }
                 },
                 customRenderer = { canvas, point, allPoints, trimmedPoints, pBuf, progressRatio ->
+                    // Mutate point properties to force CTL and active segment status
                     point.ctl = 65.0
                     point.atl = 85.0
                     point.tsb = -20.0
+                    
+                    // Create a mock point and points list to simultaneously trigger both 
+                    // 50% CHECKPOINT and 10 MIN SUMMARY popups in the same verification frame
+                    val mockPoint = TelemetryPoint(
+                        timestamp = 5.0, // Exactly 50% of the segment (0.0 to 10.0)
+                        speed = point.speed,
+                        power = 240.0,
+                        cadence = point.cadence,
+                        heartRate = point.heartRate,
+                        elevation = point.elevation,
+                        grade = point.grade,
+                        lat = point.lat,
+                        lon = point.lon,
+                        distance = 2500.0, // 50% of 5000m
+                        elapsedSeconds = 600, // Trigger 10 MIN SUMMARY (600 % 600 == 0)
+                        temperature = point.temperature,
+                        ctl = 65.0,
+                        atl = 85.0,
+                        tsb = -20.0
+                    )
+                    
+                    val mockAllPoints = (0..59).map { idx ->
+                        TelemetryPoint(
+                            timestamp = 5.0 - (60 - idx),
+                            speed = point.speed,
+                            power = 240.0,
+                            cadence = point.cadence,
+                            heartRate = point.heartRate,
+                            elevation = point.elevation,
+                            grade = point.grade,
+                            lat = point.lat,
+                            lon = point.lon,
+                            distance = 2500.0,
+                            elapsedSeconds = 600 - (60 - idx),
+                            temperature = point.temperature
+                        )
+                    } + mockPoint
+
                     val renderer = HudRenderer(HudConfig(
                         valSize = settings.valSize, tightness = settings.tightness, spacing = settings.spacing,
                         xOffset = settings.xOffset, yOffset = settings.yOffset, graphH = settings.graphH, graphW = settings.graphW,
@@ -367,7 +409,7 @@ class EncoderIntegrationTest {
                         textShadowAlpha = settings.textShadowAlpha,
                         detectedSegments = HudEncoderSegmentRegistry.activeSegments
                     ))
-                    renderer.renderFrame(canvas, point, allPoints, trimmedPoints, pBuf, progressRatio)
+                    renderer.renderFrame(canvas, mockPoint, mockAllPoints, mockAllPoints, pBuf, progressRatio)
                 }
             )
 
