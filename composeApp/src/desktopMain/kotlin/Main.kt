@@ -2050,18 +2050,25 @@ object BatchJobRunner {
         )
 
         
-        val availableJobs = fit.CacheJobManager.getInstance().scanJobs(job.videoPath)
-
-        val targetJob = availableJobs.firstOrNull() ?: throw Exception("結合する一時エンコードデータ（キャッシュ）が見つかりません。")
-
-        
-
         val finalDestFile = encodePlan.segments.first().finalOutputFile
 
-        
+        val availableJobs = fit.CacheJobManager.getInstance().scanJobs(job.videoPath)
+
+        val targetJob = if (availableJobs.isEmpty()) {
+            if (finalDestFile.exists() && finalDestFile.length() > 0L) {
+                println("✨ Output file already exists and no cache jobs found. Bypassing merge phase.")
+                phase.status = BatchJobPhaseStatus.COMPLETED
+                phase.progress = 1.0f
+                viewModel.saveBatchQueue()
+                onProgressUpdate()
+                return
+            }
+            throw Exception("結合する一時エンコードデータ（キャッシュ）が見つかりません。")
+        } else {
+            availableJobs.first()
+        }
 
         targetJob.salvageAndMerge(
-
             outputFile = finalDestFile,
 
             onProgress = { prog, status ->
