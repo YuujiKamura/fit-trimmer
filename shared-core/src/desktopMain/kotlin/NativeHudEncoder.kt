@@ -1825,6 +1825,59 @@ class NativeHudEncoder(
                     }
                     profiler.addHudRender(System.nanoTime() - hudStartNs)
                     gHud.dispose()
+
+                    // Debug rendering: Draw green bounding boxes for detected license plates
+                    if (plateCache != null) {
+                        val currentRenderTimeMs = (currentSecInSource * 1000.0).toLong()
+                        val activeBoxes = plateCache.shouldBlurAt(currentRenderTimeMs, true)
+                        if (activeBoxes.isNotEmpty()) {
+                            val gDebug = img.createGraphics()
+                            gDebug.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON)
+                            
+                            val is90Or270 = videoRotation == 90 || videoRotation == -270 || videoRotation == 270 || videoRotation == -90
+                            val fallbackSourceW = if (is90Or270) videoHeight else videoWidth
+                            val fallbackSourceH = if (is90Or270) videoWidth else videoHeight
+                            
+                            for (box in activeBoxes) {
+                                val maskBox = fit.PlateMaskExpander.expand(
+                                    box = box,
+                                    expandRatio = settings.plateMaskExpandRatio,
+                                    sourceWidth = plateCache.sourceWidth.takeIf { it > 0 } ?: fallbackSourceW,
+                                    sourceHeight = plateCache.sourceHeight.takeIf { it > 0 } ?: fallbackSourceH
+                                )
+                                val mapped = fit.PlateCoordinateMapper.mapToTarget(
+                                    box = maskBox,
+                                    cache = plateCache,
+                                    fallbackSourceWidth = fallbackSourceW,
+                                    fallbackSourceHeight = fallbackSourceH,
+                                    targetWidth = exportWidth.toFloat(),
+                                    targetHeight = exportHeight.toFloat(),
+                                    cropToSquare = settings.cropToSquare
+                                )
+                                
+                                val rx = mapped.x.toInt()
+                                val ry = mapped.y.toInt()
+                                val rw = mapped.width.toInt()
+                                val rh = mapped.height.toInt()
+                                
+                                if (rw > 0 && rh > 0) {
+                                    gDebug.stroke = java.awt.BasicStroke(4.0f)
+                                    gDebug.color = java.awt.Color(0, 255, 0, 220) // Green line
+                                    gDebug.drawRect(rx, ry, rw, rh)
+                                    
+                                    // Text label "PLATE" header background
+                                    gDebug.color = java.awt.Color(0, 255, 0, 180)
+                                    gDebug.fillRect(rx, (ry - 18).coerceAtLeast(0), rw.coerceAtMost(80), 18)
+                                    
+                                    gDebug.color = java.awt.Color.BLACK
+                                    gDebug.font = java.awt.Font("Arial", java.awt.Font.BOLD, 12)
+                                    gDebug.drawString("PLATE", rx + 6, (ry - 4).coerceAtLeast(13))
+                                }
+                            }
+                            gDebug.dispose()
+                        }
+                    }
+
                     g.dispose()
 
                     val rawBytes = (img.raster.dataBuffer as java.awt.image.DataBufferByte).data

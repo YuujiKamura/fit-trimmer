@@ -51,7 +51,8 @@ val verifyNoStrayFileIO = tasks.register("verifyNoStrayFileIO") {
             "BatchFolderLoader.kt",
             "BatchQueueCache.kt",
             "BatchQueueDialog.kt",
-            "CrashSimulator.kt"
+            "CrashSimulator.kt",
+            "PlateDetector.kt"
         )
 
         val violations = mutableListOf<String>()

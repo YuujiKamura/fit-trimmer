@@ -94,6 +94,8 @@ class PlateDetector private constructor() : AutoCloseable {
 
         session = env.createSession(modelBytes, opts)
         activeProviderName = selectedProvider
+        println("DEBUG-META: Input Metadata = ${session.inputInfo.map { "${it.key} => ${it.value.toString()}" }}")
+        println("DEBUG-META: Output Metadata = ${session.outputInfo.map { "${it.key} => ${it.value.toString()}" }}")
         println("DEBUG: ONNX session initialized successfully with provider: $activeProviderName")
     }
 
@@ -126,14 +128,14 @@ class PlateDetector private constructor() : AutoCloseable {
         val tResize = System.nanoTime()
 
         val inputData = threadLocalInputData.get()
-        val rOffset = 0
+        val rOffset = 2 * 1088 * 1088
         val gOffset = 1088 * 1088
-        val bOffset = 2 * 1088 * 1088
+        val bOffset = 0
         val inv255 = 1.0f / 255.0f
 
         val raster = resized.raster
         val dataBuffer = raster.dataBuffer
-        if (resized.type == BufferedImage.TYPE_3BYTE_BGR && dataBuffer is java.awt.image.DataBufferByte) {
+        if (false && resized.type == BufferedImage.TYPE_3BYTE_BGR && dataBuffer is java.awt.image.DataBufferByte) {
             val bytes = dataBuffer.data
             for (i in 0 until 1088 * 1088) {
                 val base = i * 3
@@ -161,6 +163,18 @@ class PlateDetector private constructor() : AutoCloseable {
             }
             lastGetRgbBypassed = false
         }
+        // Debug: Save the preprocessed resized image to temp_work to visually audit what is fed to YOLO
+        val debugOutFile = java.io.File(fit.PathResolver.getTempWorkDir(), "yolo_input_debug.jpg")
+        if (!debugOutFile.exists()) {
+            try {
+                debugOutFile.parentFile?.mkdirs()
+                javax.imageio.ImageIO.write(resized, "jpg", debugOutFile)
+                println("📸 Wrote YOLO input debug frame to: ${debugOutFile.absolutePath}")
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+
         val tPreprocess = System.nanoTime()
 
         val inputBuffer = FloatBuffer.wrap(inputData)
@@ -170,8 +184,9 @@ class PlateDetector private constructor() : AutoCloseable {
             session.run(mapOf("images" to t)).use { outputs ->
                 val outputTensor = outputs[0] as OnnxTensor
                 val tInference = System.nanoTime()
+                println("DEBUG-SHAPE: outputTensor shape = ${outputTensor.info.shape.joinToString()}")
                 
-                // Plate detection YOLOv8 model output is [1, 5, 8400] for 1 class (license-plate).
+                // Plate detection YOLOv8 model output is [1, 5, 24276] for 1 class (license-plate).
                 // Bulk copy the output data into a JVM heap array in a single operation
                 // to eliminate DirectBuffer.get(index) JNI boundary checking overhead inside the loop.
                 val buffer = outputTensor.floatBuffer
@@ -179,6 +194,7 @@ class PlateDetector private constructor() : AutoCloseable {
                 buffer.get(outputData)
                 
                 val boxes = mutableListOf<DetectedBox>()
+                var printed = 0
 
                 for (i in 0 until 24276) {
                     val score = outputData[4 * 24276 + i]
@@ -193,8 +209,15 @@ class PlateDetector private constructor() : AutoCloseable {
                         val x2 = cx + w / 2f
                         val y2 = cy + h / 2f
                         
+                        if (printed < 5) {
+                            println("DEBUG-BOX: raw index $i, score=$score, cx=$cx, cy=$cy, w=$w, h=$h -> [$x1, $y1, $x2, $y2]")
+                            printed++
+                        }
                         boxes.add(DetectedBox(x1, y1, x2, y2, score, 0))
                     }
+                }
+                if (printed > 0) {
+                    println("DEBUG-BOX: Total detected raw boxes before NMS = ${boxes.size}")
                 }
                 
                 val nmsBoxes = nms(boxes, iouThreshold)
@@ -218,12 +241,11 @@ class PlateDetector private constructor() : AutoCloseable {
                     val avgInf = totalInferenceMs / totalFramesProcessed
                     val avgPost = totalPostprocessMs / totalFramesProcessed
                     val avgTotal = avgResize + avgPre + avgInf + avgPost
-                    
-                    println(String.format(
-                        java.util.Locale.US,
-                        "DEBUG: YOLO Scan [Frame %d] - Avg: resize=%.2fms, preprocess=%.2fms, inference=%.2fms, postprocess=%.2fms | Avg total: %.2fms",
-                        totalFramesProcessed, avgResize, avgPre, avgInf, avgPost, avgTotal
-                    ))
+                    println(
+                        "DEBUG: YOLO Scan Stats [Frame $totalFramesProcessed] - " +
+                        "Avg: resize=%.2fms, preprocess=%.2fms, inference=%.2fms, postprocess=%.2fms | " +
+                        "Avg total=%.2fms (%.1f fps)".format(avgResize, avgPre, avgInf, avgPost, avgTotal, 1000.0 / avgTotal)
+                    )
                 }
                 mapped
             }
@@ -232,27 +254,10 @@ class PlateDetector private constructor() : AutoCloseable {
     }
 
     private fun resizeImage(originalImage: BufferedImage, targetWidth: Int, targetHeight: Int): BufferedImage {
-        var currentImg = originalImage
-        var w = originalImage.width
-        var h = originalImage.height
-        
-        // Stepwise half-downscaling (mimicking mipmaps) to prevent aliasing artifacts
-        while (w > targetWidth * 2 || h > targetHeight * 2) {
-            w = (w / 2).coerceAtLeast(targetWidth)
-            h = (h / 2).coerceAtLeast(targetHeight)
-            val nextImg = BufferedImage(w, h, BufferedImage.TYPE_3BYTE_BGR)
-            val g = nextImg.createGraphics()
-            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
-            g.drawImage(currentImg, 0, 0, w, h, null)
-            g.dispose()
-            currentImg = nextImg
-        }
-        
-        // Final resize to target size
         val resultingImage = BufferedImage(targetWidth, targetHeight, BufferedImage.TYPE_3BYTE_BGR)
         val g: Graphics2D = resultingImage.createGraphics()
         g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC)
-        g.drawImage(currentImg, 0, 0, targetWidth, targetHeight, null)
+        g.drawImage(originalImage, 0, 0, targetWidth, targetHeight, null)
         g.dispose()
         return resultingImage
     }

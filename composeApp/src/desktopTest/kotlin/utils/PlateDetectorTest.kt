@@ -1481,6 +1481,24 @@ class PlateDetectorTest {
             )
         }
         println("📹 100s Continuity demo video generated at: ${outputMp4.absolutePath}")
+        
+        val sampleTimes = listOf(5.0, 15.0)
+        for (st in sampleTimes) {
+            val sampleImgFile = File(tempWorkDir, "user_sample_${st.toInt()}s.jpg")
+            val pbSample = ProcessBuilder(
+                fit.findFfmpegPath(), "-y",
+                "-i", outputMp4.absolutePath,
+                "-ss", st.toString(),
+                "-vframes", "1",
+                "-update", "1",
+                sampleImgFile.absolutePath
+            )
+            pbSample.inheritIO()
+            val pSample = pbSample.start()
+            pSample.waitFor()
+            println("📸 Wrote user sample frame at ${st}s to: ${sampleImgFile.absolutePath}")
+        }
+        
         kotlin.test.assertTrue(outputMp4.exists() && outputMp4.length() > 0L)
     }
 

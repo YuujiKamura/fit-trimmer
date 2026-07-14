@@ -1,28 +1,15 @@
 package utils
 
-import fit.TelemetryPoint
-
-import fit.findFfmpegPath
-import fit.VideoPlatesCache
+import fit.PlateBox
 import fit.PlateRecord
 import fit.PlateScanRange
-import fit.PlateCacheManager
+import fit.VideoPlatesCache
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.channels.Channel
-import java.io.File
 import java.awt.image.BufferedImage
 import java.io.BufferedInputStream
-
-private data class DecodedFrame(
-    val frameIndex: Long,
-    val timeMs: Long,
-    val buffer: ByteArray,
-    val skipDetection: Boolean,
-    val decodeMs: Double
-)
+import java.io.File
+import java.util.Locale
 
 object PlateDetectionManager : fit.PlateDetector {
 
@@ -38,93 +25,9 @@ object PlateDetectionManager : fit.PlateDetector {
         settings: fit.HudSettings,
         scanRanges: List<Pair<Double, Double>>?
     ): VideoPlatesCache? = withContext(Dispatchers.IO) {
-        val ffmpegPath = findFfmpegPath()
+        val ffmpegPath = try { findFfmpegPath() } catch (e: Exception) { "ffmpeg" }
         val videoFile = File(videoPath)
         if (!videoFile.exists()) return@withContext null
-
-        val existingCache = if (saveCache) fit.PlateCacheManager.loadCache(videoPath) else null
-
-        var localVideoPath = videoPath
-        var tempLocalVideo: File? = null
-        var localVideoTimelineOffsetSec = 0.0
-
-        // Google Drive mitigation: pre-copy video locally to avoid network read bottleneck
-        if (isGoogleDrivePath(videoPath)) {
-            val workDir = fit.PathResolver.getTempWorkDir(videoPath)
-            if (!workDir.exists()) workDir.mkdirs()
-            val jobHash = kotlin.math.abs(videoPath.hashCode()).toString()
-            val jobDir = File(workDir, "scan_$jobHash")
-            if (!jobDir.exists()) jobDir.mkdirs()
-            
-            val copyRange = scanRanges
-                ?.filter { it.second > it.first }
-                ?.takeIf { it.isNotEmpty() }
-                ?.let { ranges ->
-                    val start = ranges.minOf { it.first }.coerceAtLeast(0.0)
-                    val end = ranges.maxOf { it.second }.coerceAtLeast(start)
-                    if (end > start) start to end else null
-                }
-            val rangeSuffix = copyRange?.let { (start, end) ->
-                "_${(start * 1000).toLong()}_${(end * 1000).toLong()}"
-            } ?: "_full"
-            val tempFile = File(jobDir, "temp_scan_input$rangeSuffix.mp4")
-            if (!tempFile.exists() || tempFile.length() == 0L) {
-                println("⚠️ Cloud drive path detected during plate scan: $videoPath")
-                println("📥 Pre-copying video to local temp file to avoid network bottlenecks: ${tempFile.absolutePath}")
-
-                try {
-                    val copyArgs = mutableListOf(ffmpegPath, "-y")
-                    copyRange?.let { (start, end) ->
-                        copyArgs.add("-ss")
-                        copyArgs.add(String.format(java.util.Locale.US, "%.3f", start))
-                        copyArgs.add("-t")
-                        copyArgs.add(String.format(java.util.Locale.US, "%.3f", end - start))
-                    }
-                    copyArgs.addAll(
-                        listOf(
-                            "-i", videoPath,
-                            "-vf", "scale=640:-2",
-                            "-c:v", "libx264",
-                            "-preset", "ultrafast",
-                            "-crf", "32",
-                            "-an",
-                            tempFile.absolutePath
-                        )
-                    )
-                    val pbCopy = ProcessBuilder(copyArgs)
-                    pbCopy.redirectError(ProcessBuilder.Redirect.DISCARD)
-                    val pCopy = pbCopy.start()
-                    
-                    val cancelMonitor = launch {
-                        while (pCopy.isAlive) {
-                            if (onCancel()) {
-                                pCopy.destroy()
-                                try { pCopy.destroyForcibly() } catch (e: Exception) {}
-                                break
-                            }
-                            kotlinx.coroutines.delay(100)
-                        }
-                    }
-                    val exitCode = pCopy.waitFor()
-                    cancelMonitor.cancel()
-                    
-                    if (onCancel() || exitCode != 0) {
-                        try { tempFile.delete() } catch (e: Exception) {}
-                        if (onCancel()) {
-                            println("DEBUG: Scan canceled during local copy.")
-                            return@withContext null
-                        }
-                    }
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
-            }
-            if (tempFile.exists() && tempFile.length() > 0L) {
-                localVideoPath = tempFile.absolutePath
-                tempLocalVideo = tempFile
-                localVideoTimelineOffsetSec = copyRange?.first ?: 0.0
-            }
-        }
 
         // 1. Get video metadata using ffmpeg -i
         val pbInfo = ProcessBuilder(ffmpegPath, "-i", videoPath)
@@ -136,8 +39,6 @@ object PlateDetectionManager : fit.PlateDetector {
         var videoWidth = 1920
         var videoHeight = 1080
         var durationSec = 100.0
-        var videoFps = 30.0
-        var videoRotation = 0
 
         // Parse resolution (e.g., "1920x1080")
         val resMatch = Regex("""\b(\d{3,4})x(\d{3,4})\b""").find(outputInfo)
@@ -156,595 +57,119 @@ object PlateDetectionManager : fit.PlateDetector {
             durationSec = h * 3600.0 + m * 60.0 + s + ms
         }
 
-        // Parse FPS
-        val fpsMatch = Regex("""([\d\.]+)\s*fps""").find(outputInfo)
-        if (fpsMatch != null) {
-            videoFps = fpsMatch.groupValues[1].toDouble()
-        }
-
         val baseDetectionFps = settings.plateDetectionFps.coerceIn(0.25, 4.0)
         // Multiplier of 3x for active dynamic tracking, capped at 4.0fps to prevent extreme decoding overhead
         val effectiveDetectionFps = (baseDetectionFps * 3.0).coerceAtMost(4.0)
-        val effectiveMaxSpeedKmh = settings.plateMaxSpeedKmh.coerceAtLeast(0.0)
-        val effectivePaddingSeconds = settings.platePaddingSeconds.coerceAtLeast(0.0)
-        val effectiveMergeGapSeconds = settings.plateMergeGapSeconds.coerceAtLeast(0.0)
-        val scanWidth = 1088
-        val scanHeight = 1088
-        val filterChain = "scale=$scanWidth:$scanHeight:flags=fast_bilinear:out_range=full,fps=$effectiveDetectionFps"
+        
+        // Original size decoding (NO FFmpeg scaling!)
+        val scanWidth = videoWidth
+        val scanHeight = videoHeight
+        val filterChain = "fps=$effectiveDetectionFps"
         val frameBytes = scanWidth * scanHeight * 3 // RGB24
-
-        val startTimeAdjusted = try {
-            if (adjustedStartUtc.isNotEmpty()) {
-                val clean = adjustedStartUtc.trim().replace(" ", "T")
-                try {
-                    java.time.ZonedDateTime.parse(clean)
-                } catch (e: Exception) {
-                    try {
-                        java.time.LocalDateTime.parse(clean).atZone(java.time.ZoneId.of("UTC"))
-                    } catch (e2: Exception) {
-                        try {
-                            java.time.OffsetDateTime.parse(clean).toZonedDateTime()
-                        } catch (e3: Exception) {
-                            val fmt = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss")
-                            java.time.LocalDateTime.parse(clean, fmt).atZone(java.time.ZoneId.of("UTC"))
-                        }
-                    }
-                }
-            } else null
-        } catch (e: Exception) {
-            println("DEBUG: Failed to parse adjustedStartUtc '$adjustedStartUtc': ${e.message}")
-            null
-        }
-
-        val startEpochSecond = startTimeAdjusted?.toEpochSecond() ?: 0L
-        val totalFrames = (durationSec * effectiveDetectionFps).toLong()
-        val fitEpoch = 631065600L
+        
         val normalizedScanRanges = (scanRanges ?: listOf(0.0 to durationSec))
-            .mapNotNull { (start, end) ->
+            .map { (start, end) ->
                 val s = start.coerceIn(0.0, durationSec)
                 val e = end.coerceIn(0.0, durationSec)
-                if (e > s) PlateScanRange((s * 1000.0).toLong(), (e * 1000.0).toLong()) else null
+                s to e
             }
-            .ifEmpty { listOf(PlateScanRange(0L, (durationSec * 1000.0).toLong())) }
-        fun isInRequestedRange(timeMs: Long): Boolean {
-            return normalizedScanRanges.any { timeMs in it.startMs..it.endMs }
-        }
-
-        // 1. Determine raw scan requirement per frame (speed below configured threshold)
-        val rawRequired = BooleanArray(totalFrames.toInt())
-        for (f in 0 until totalFrames) {
-            val timeMs = (f * 1000.0 / effectiveDetectionFps).toLong()
-            if (!isInRequestedRange(timeMs)) {
-                rawRequired[f.toInt()] = false
-                continue
-            }
-            if (existingCache != null && existingCache.scanRanges.any { timeMs in it.startMs..it.endMs }) {
-                rawRequired[f.toInt()] = false
-                continue
-            }
-            val currentSec = timeMs.toDouble() / 1000.0
-            val currentUtcSeconds = startEpochSecond + currentSec
-            val currentFitTs = currentUtcSeconds - fitEpoch
-            
-            // Speed-based skip is removed to ensure full scan coverage across all speed ranges.
-            val skip = false
-            rawRequired[f.toInt()] = !skip
-        }
-
-        // 2. Pad scan intervals to ensure blurred plate tracking continuity
-        val paddedRequired = BooleanArray(totalFrames.toInt())
-        val paddingFrames = kotlin.math.ceil(effectivePaddingSeconds * effectiveDetectionFps).toInt()
-        for (f in 0 until totalFrames) {
-            if (rawRequired[f.toInt()]) {
-                val start = (f - paddingFrames).coerceAtLeast(0).toInt()
-                val end = (f + paddingFrames).coerceAtMost(totalFrames - 1).toInt()
-                for (p in start..end) {
-                    paddedRequired[p] = true
-                }
-            }
-        }
-
-        // 3. Merge short gaps to avoid restarting FFmpeg too frequently
-        val mergeGapFrames = kotlin.math.ceil(effectiveMergeGapSeconds * effectiveDetectionFps).toInt()
-        var falseStart = -1
-        var falseCount = 0
-        for (f in 0 until totalFrames.toInt()) {
-            if (!paddedRequired[f]) {
-                if (falseStart == -1) {
-                    falseStart = f
-                }
-                falseCount++
-            } else {
-                if (falseStart != -1) {
-                    if (falseCount > 0 && falseCount < mergeGapFrames) {
-                        for (p in falseStart until f) {
-                            paddedRequired[p] = true
-                        }
-                    }
-                    falseStart = -1
-                    falseCount = 0
-                }
-            }
-        }
-        if (falseStart != -1 && falseCount > 0 && falseCount < mergeGapFrames) {
-            for (p in falseStart until totalFrames.toInt()) {
-                paddedRequired[p] = true
-            }
-        }
-
-        // 4. Extract continuous scan segments
-        data class ScanSegment(val startFrame: Int, val endFrame: Int)
-        val segments = mutableListOf<ScanSegment>()
-        var segStart = -1
-        for (f in 0 until totalFrames.toInt()) {
-            if (paddedRequired[f]) {
-                if (segStart == -1) {
-                    segStart = f
-                }
-            } else {
-                if (segStart != -1) {
-                    segments.add(ScanSegment(segStart, f - 1))
-                    segStart = -1
-                }
-            }
-        }
-        if (segStart != -1) {
-            segments.add(ScanSegment(segStart, totalFrames.toInt() - 1))
-        }
-
-        // Pre-scan target output logs
-        val estimatedTargetFrames = segments.sumOf { it.endFrame - it.startFrame + 1 }.toLong()
-        val skipped = totalFrames - estimatedTargetFrames
-        val ratio = if (totalFrames > 0) skipped.toFloat() / totalFrames.toFloat() * 100f else 0f
-        
-        println("DEBUG: Segmented Video Pre-scan Configuration:")
-        println("  - Max speed threshold: ${String.format(java.util.Locale.US, "%.1f", effectiveMaxSpeedKmh)} km/h")
-        println("  - Detection FPS: ${String.format(java.util.Locale.US, "%.2f", effectiveDetectionFps)}")
-        println("  - Padding: ${String.format(java.util.Locale.US, "%.1f", effectivePaddingSeconds)}s ($paddingFrames frames)")
-        println("  - Merge gap: ${String.format(java.util.Locale.US, "%.1f", effectiveMergeGapSeconds)}s ($mergeGapFrames frames)")
-        println("  - Total target segments to decode: ${segments.size}")
-        println("  - Total video frames in timeline: $totalFrames")
-        val totalActiveFrames = estimatedTargetFrames.coerceAtLeast(1L)
-        println("  - Target frames to decode & process: $estimatedTargetFrames")
-        println("  - Skipped frames (no decode): $skipped (${String.format(java.util.Locale.US, "%.1f", ratio)}% reduction)")
-
-        var activeProcess: Process? = null
-        val job = coroutineContext[kotlinx.coroutines.Job]
-        val cancellationHandler = job?.invokeOnCompletion {
-            if (job.isCancelled) {
-                println("DEBUG: Scanning coroutine cancelled. Force destroying active FFmpeg process...")
-                try {
-                    activeProcess?.destroyForcibly()
-                } catch (e: Exception) {}
-            }
-        }
+            .filter { it.second > it.first }
+            .ifEmpty { listOf(0.0 to durationSec) }
 
         val records = mutableListOf<PlateRecord>()
         val detector = PlateDetector.getInstance()
         detector.resetPerfStats()
+
+        val totalDurationToScan = normalizedScanRanges.sumOf { it.second - it.first }
+        val totalEstimatedFrames = (totalDurationToScan * effectiveDetectionFps).toLong().coerceAtLeast(1L)
+        var processedFramesCount = 0L
+
+        val tempWorkDir = File("temp_work")
+        if (!tempWorkDir.exists()) tempWorkDir.mkdirs()
+        val scanErrorLog = File(tempWorkDir, "scan_ffmpeg_error.log")
         
-        var skippedFrames = 0L
-        var lastProgressPercent = 0.0f
-        val scanStartTimeMs = System.currentTimeMillis()
-        var totalDecodeMs = 0.0
-        var totalYoloMs = 0.0
-        var yoloCount = 0L
- 
         val img = BufferedImage(scanWidth, scanHeight, BufferedImage.TYPE_3BYTE_BGR)
         val imgData = (img.raster.dataBuffer as java.awt.image.DataBufferByte).data
 
-        // Channel for parallel pipelined decoding and inference.
-        // Bounded capacity prevents high memory usage while maintaining pre-buffered frames.
-        val frameChannel = Channel<DecodedFrame>(capacity = 16)
+        for ((startSec, endSec) in normalizedScanRanges) {
+            if (onCancel()) break
 
-        // Background Producer: Decodes raw frames from FFmpeg as fast as possible
-        val decoderJob = launch(Dispatchers.IO) {
+            val durSec = endSec - startSec
+            val pb = ProcessBuilder(
+                ffmpegPath,
+                "-threads", "0",
+                "-ss", String.format(Locale.US, "%.3f", startSec),
+                "-t", String.format(Locale.US, "%.3f", durSec),
+                "-i", videoPath,
+                "-vf", filterChain,
+                "-f", "rawvideo",
+                "-pix_fmt", "bgr24",
+                "-vcodec", "rawvideo",
+                "pipe:1"
+            )
+            pb.redirectErrorStream(false)
+            pb.redirectError(ProcessBuilder.Redirect.to(scanErrorLog))
+
+            val proc = pb.start()
+            val stream = BufferedInputStream(proc.inputStream, 1024 * 1024)
+            val segmentFrames = (durSec * effectiveDetectionFps).toInt().coerceAtLeast(1)
+
             try {
-                val tempWorkDir = File("temp_work")
-                if (!tempWorkDir.exists()) tempWorkDir.mkdirs()
-                val scanErrorLog = File(tempWorkDir, "scan_ffmpeg_error.log")
+                for (i in 0 until segmentFrames) {
+                    if (onCancel()) break
 
-                var segIdx = 0
-                var currentFrame = 0
-
-                while (currentFrame < totalFrames.toInt()) {
-                    if (!isActive || onCancel()) break
-
-                    if (!paddedRequired[currentFrame]) {
-                        // 1. Skip zone: Fast-forward through contiguous false entries in paddedRequired
-                        val skipStart = currentFrame
-                        while (currentFrame < totalFrames.toInt() && !paddedRequired[currentFrame]) {
-                            currentFrame++
-                        }
-                        val skipEnd = currentFrame - 1
-                        
-                        println("DEBUG: Fast-forwarding Skip Zone - Frames [$skipStart to $skipEnd]")
-                        // Skip sending dummy frames to avoid polluting progress denominator
-                    } else {
-                        // 2. Scan segment zone: Decode segment using FFmpeg
-                        val seg = segments[segIdx]
-                        segIdx++
-                        
-                        val startSec = seg.startFrame * 1000.0 / effectiveDetectionFps / 1000.0
-                        val localStartSec = (startSec - localVideoTimelineOffsetSec).coerceAtLeast(0.0)
-                        val durSec = (seg.endFrame - seg.startFrame + 1) * 1000.0 / effectiveDetectionFps / 1000.0
-
-                        println("DEBUG: Scanning Segment [${segIdx - 1}/${segments.size - 1}] - Frames [${seg.startFrame} to ${seg.endFrame}] | Start: ${String.format(java.util.Locale.US, "%.2f", startSec)}s, Duration: ${String.format(java.util.Locale.US, "%.2f", durSec)}s")
-                        
-                        val pb = ProcessBuilder(
-                            ffmpegPath,
-                            "-threads", "0",
-                            "-ss", String.format(java.util.Locale.US, "%.3f", localStartSec),
-                            "-t", String.format(java.util.Locale.US, "%.3f", durSec),
-                            "-i", localVideoPath,
-                            "-vf", filterChain,
-                            "-f", "rawvideo",
-                            "-pix_fmt", "bgr24",
-                            "-vcodec", "rawvideo",
-                            "pipe:1"
-                        )
-                        pb.redirectErrorStream(false)
-                        pb.redirectError(ProcessBuilder.Redirect.to(scanErrorLog))
-                        
-                        val proc = pb.start()
-                        activeProcess = proc
-                        
-                        val stream = BufferedInputStream(proc.inputStream, 1024 * 1024)
-                        val segFrameCount = seg.endFrame - seg.startFrame + 1
-                        try {
-                            for (i in 0 until segFrameCount) {
-                                if (!isActive || onCancel()) break
-                                
-                                val tReadStart = System.nanoTime()
-                                val frameBuffer = ByteArray(frameBytes)
-                                var bytesRead = 0
-                                while (bytesRead < frameBytes) {
-                                    val read = stream.read(frameBuffer, bytesRead, frameBytes - bytesRead)
-                                    if (read == -1) break
-                                    bytesRead += read
-                                }
-                                val tReadEnd = System.nanoTime()
-                                if (bytesRead < frameBytes) {
-                                    break // Unexpected EOF for this segment
-                                }
-                                
-                                val globalFrameIndex = seg.startFrame + i
-                                val timeMs = (globalFrameIndex * 1000.0 / effectiveDetectionFps).toLong()
-                                val skip = !rawRequired[globalFrameIndex]
-                                
-                                val dRead = (tReadEnd - tReadStart) / 1_000_000.0
-                                val tSendStart = System.nanoTime()
-                                frameChannel.send(DecodedFrame(globalFrameIndex.toLong(), timeMs, frameBuffer, skip, dRead))
-                                val tSendEnd = System.nanoTime()
-                                
-                                val dSend = (tSendEnd - tSendStart) / 1_000_000.0
-                                if (globalFrameIndex <= 10 || globalFrameIndex % 50 == 0) {
-                                    println("DEBUG: Producer [Frame $globalFrameIndex] - Read: ${String.format(java.util.Locale.US, "%.2f", dRead)}ms, SendWait: ${String.format(java.util.Locale.US, "%.2f", dSend)}ms")
-                                }
-                            }
-                        } catch (e: Exception) {
-                            // Pipe closed
-                        } finally {
-                            try { stream.close() } catch (e: Exception) {}
-                            try { proc.destroyForcibly() } catch (e: Exception) {}
-                            activeProcess = null
-                        }
-                        
-                        // Fast-forward currentFrame to end of decoded segment
-                        currentFrame = seg.endFrame + 1
+                    val frameBuffer = ByteArray(frameBytes)
+                    var bytesRead = 0
+                    while (bytesRead < frameBytes) {
+                        val read = stream.read(frameBuffer, bytesRead, frameBytes - bytesRead)
+                        if (read == -1) break
+                        bytesRead += read
                     }
+                    if (bytesRead < frameBytes) {
+                        break // Unexpected EOF
+                    }
+
+                    System.arraycopy(frameBuffer, 0, imgData, 0, frameBytes)
+
+                    val timeMs = ((startSec + i / effectiveDetectionFps) * 1000.0).toLong()
+                    val detectedBoxes = detector.detect(img, confThreshold = 0.25f)
+
+                    if (detectedBoxes.isNotEmpty()) {
+                        val filteredBoxes = filterBoxesForMaskSize(detectedBoxes, videoHeight, settings)
+                        if (filteredBoxes.isNotEmpty()) {
+                            val mergedBoxes = mergeOverlappingBoxes(filteredBoxes)
+                            records.add(PlateRecord(timeMs, mergedBoxes))
+                        }
+                    }
+
+                    processedFramesCount++
+                    val progressPercent = processedFramesCount.toFloat() / totalEstimatedFrames.toFloat()
+                    onProgress(progressPercent.coerceIn(0f, 1f), "Scanning plates: ${(progressPercent * 100).toInt()}%")
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
             } finally {
-                frameChannel.close()
+                try { stream.close() } catch (e: Exception) {}
+                try { proc.destroyForcibly() } catch (e: Exception) {}
             }
         }
 
-        // Consumer Loop: Processes frames as they arrive from the background decoder
-        var frameIndex = 0L
-        
-        // Keep track of granular skip statistics for diagnostic logging
-        var skippedSpeedTrimFrames = 0L
-        var skippedTrackingFrames = 0L
-        
-        val inferenceInterval = settings.plateInferenceInterval.coerceAtLeast(1)
-        val tracker = PlateTracker(inferenceInterval = inferenceInterval, histogramBinCount = 8)
-        var lastInferenceFrameIndex = -100L
-        var forceNextFrameONNX = true
+        val finalCache = VideoPlatesCache(
+            videoPath = videoPath,
+            sourceWidth = videoWidth,
+            sourceHeight = videoHeight,
+            records = records,
+            scanRanges = normalizedScanRanges.map { PlateScanRange((it.first * 1000.0).toLong(), (it.second * 1000.0).toLong()) }
+        )
 
-        fun scaleToVideo(box: fit.PlateBox): fit.PlateBox {
-            val scaleX = videoWidth.toFloat() / 1088f
-            val scaleY = videoHeight.toFloat() / 1088f
-            return fit.PlateBox(
-                x1 = (box.x1 * scaleX).toInt().coerceAtLeast(0),
-                y1 = (box.y1 * scaleY).toInt().coerceAtLeast(0),
-                x2 = (box.x2 * scaleX).toInt().coerceAtMost(videoWidth),
-                y2 = (box.y2 * scaleY).toInt().coerceAtMost(videoHeight)
-            )
+        if (saveCache) {
+            fit.PlateCacheManager.saveCache(videoPath, finalCache)
         }
-
-        fun mergeBoxesIntoRecords(timeMs: Long, boxesToMerge: List<fit.PlateBox>) {
-            if (boxesToMerge.isEmpty()) return
-            val scaled = boxesToMerge.map { scaleToVideo(it) }
-            val idx = records.indexOfFirst { it.timeMs == timeMs }
-            if (idx != -1) {
-                val record = records[idx]
-                val merged = mergeOverlappingBoxes((record.boxes + scaled).distinct())
-                records[idx] = PlateRecord(record.timeMs, merged)
-            } else {
-                records.add(PlateRecord(timeMs, mergeOverlappingBoxes(scaled)))
-            }
-        }
-
-        try {
-            for (frame in frameChannel) {
-                if (onCancel()) break
-
-                val tConsumeStart = System.nanoTime()
-                totalDecodeMs += frame.decodeMs
-                var inferencePerformed = false
-                val skipReason: String
-                
-                val isONNXFrame = (inferenceInterval <= 1) ||
-                                  forceNextFrameONNX || 
-                                  (frame.frameIndex - lastInferenceFrameIndex >= tracker.inferenceInterval)
-
-                val boxes = if (frame.skipDetection) {
-                    skippedFrames++
-                    skippedSpeedTrimFrames++
-                    skipReason = "Skip (Speed/Trim)"
-                    forceNextFrameONNX = true
-                    emptyList()
-                } else if (!isONNXFrame) {
-                    skippedFrames++
-                    skippedTrackingFrames++
-                    skipReason = "Scan (Tracking)"
-                    System.arraycopy(frame.buffer, 0, imgData, 0, frameBytes)
-                    val tracked = tracker.trackIntermediateFrame(frame.frameIndex, frame.timeMs, img)
-                    mergeBoxesIntoRecords(frame.timeMs, tracked)
-                    if (tracker.hasTrackingLoss) {
-                        forceNextFrameONNX = true
-                    }
-                    tracked
-                } else {
-                    inferencePerformed = true
-                    lastInferenceFrameIndex = frame.frameIndex
-                    forceNextFrameONNX = false
-                    skipReason = "Scan (ONNX)"
-                    System.arraycopy(frame.buffer, 0, imgData, 0, frameBytes)
-                    val rawBoxes = detector.detect(img, confThreshold = 0.20f, detectPedestrians = settings.detectPedestrians)
-                    val maskBoxes = filterBoxesForMaskSize(rawBoxes, 1088, settings)
-
-                    if (inferenceInterval <= 1) {
-                        // Plain Model Direct Mode: No tracking, no gap interpolation, no backtracking.
-                        // Rely purely on direct plate detection model output.
-                        mergeBoxesIntoRecords(frame.timeMs, maskBoxes)
-                        maskBoxes
-                    } else {
-                        // Track previous positions for gap interpolation before association
-                        val trackLastInfo = tracker.activeTracks.associate { it.id to (it.lastUpdatedFrame to it.lastBox) }
-
-                        val beforeTrackIds = tracker.activeTracks.map { it.id }.toSet()
-                        val matched = tracker.updateWithDetections(frame.frameIndex, frame.timeMs, maskBoxes, img)
-                        mergeBoxesIntoRecords(frame.timeMs, matched)
-
-                        // Retroactive backtracking for newly appeared objects to avoid frame-in leakage
-                        for (track in tracker.activeTracks) {
-                            if (track.id !in beforeTrackIds) {
-                                val backtrackMap = tracker.performBacktracking(track, frame.frameIndex, 1088, 1088)
-                                for ((backtrackFrame, backtrackBox) in backtrackMap) {
-                                    val backtrackTimeMs = (backtrackFrame * 1000.0 / effectiveDetectionFps).toLong()
-                                    mergeBoxesIntoRecords(backtrackTimeMs, listOf(backtrackBox))
-                                }
-                            }
-                        }
-
-                        // Retroactive gap interpolation for existing associated tracks to prevent blur leakage
-                        for (track in tracker.activeTracks) {
-                            val prevInfo = trackLastInfo[track.id]
-                            if (prevInfo != null) {
-                                val (prevFrame, prevBox) = prevInfo
-                                val gap = frame.frameIndex - prevFrame
-                                if (gap > 1) {
-                                    for (f in (prevFrame + 1) until frame.frameIndex) {
-                                        val ratio = (f - prevFrame).toFloat() / gap.toFloat()
-                                        val interpBox = fit.PlateBox(
-                                            x1 = (prevBox.x1 + ratio * (track.lastBox.x1 - prevBox.x1)).toInt(),
-                                            y1 = (prevBox.y1 + ratio * (track.lastBox.y1 - prevBox.y1)).toInt(),
-                                            x2 = (prevBox.x2 + ratio * (track.lastBox.x2 - prevBox.x2)).toInt(),
-                                            y2 = (prevBox.y2 + ratio * (track.lastBox.y2 - prevBox.y2)).toInt()
-                                        )
-                                        val interpTimeMs = (f * 1000.0 / effectiveDetectionFps).toLong()
-                                        mergeBoxesIntoRecords(interpTimeMs, listOf(interpBox))
-                                    }
-                                }
-                            }
-                        }
-
-                        matched
-                    }
-                }
-                val tDetectEnd = System.nanoTime()
-                val dDetect = (tDetectEnd - tConsumeStart) / 1_000_000.0
-                if (inferencePerformed) {
-                    totalYoloMs += dDetect
-                    yoloCount++
-                }
-
-                if (boxes.isNotEmpty()) {
-                    records.sortBy { it.timeMs }
-                    val partialCache = VideoPlatesCache(
-                        videoPath = videoPath,
-                        records = records.toList(),
-                        sourceWidth = videoWidth,
-                        sourceHeight = videoHeight,
-                        scanRanges = normalizedScanRanges
-                    )
-                    onPartialResult(partialCache)
-                    if (maxRecords != null && records.size >= maxRecords) {
-                        println("DEBUG: Plate scan early stop after ${records.size} records.")
-                        break
-                    }
-                }
-
-                frameIndex++
-                
-                val tProgressStart = System.nanoTime()
-                val providerName = detector.activeProviderName
-                val statusText = "Frame $frameIndex/$totalActiveFrames: $skipReason ($providerName)"
-                if (totalActiveFrames > 0L) {
-                    val progress = (frameIndex.toFloat() / totalActiveFrames.toFloat()).coerceIn(0f, 1f)
-                    val currentPercent = progress * 100f
-                    if (currentPercent - lastProgressPercent >= 0.5f || frameIndex == totalActiveFrames) {
-                        onProgress(currentPercent, statusText)
-                        lastProgressPercent = currentPercent
-                    }
-                }
-                val tProgressEnd = System.nanoTime()
-
-                // Progress & ETA estimation logs
-                if (frameIndex > 0L && (frameIndex % 50 == 0L || frameIndex == totalActiveFrames)) {
-                    val elapsedMs = System.currentTimeMillis() - scanStartTimeMs
-                    val elapsedSec = elapsedMs / 1000.0
-                    val avgFps = if (elapsedSec > 0.0) frameIndex.toDouble() / elapsedSec else 0.0
-                    val remainingFrames = totalActiveFrames - frameIndex
-                    val etaSec = if (avgFps > 0.0) (remainingFrames / avgFps).toLong() else 0L
-                    val etaMin = etaSec / 60
-                    val etaRemainingSec = etaSec % 60
-                    val etaStr = if (etaMin > 0) "${etaMin}m ${etaRemainingSec}s" else "${etaRemainingSec}s"
-                    val elapsedStr = if (elapsedMs >= 60000) "${elapsedMs / 60000}m ${(elapsedMs % 60000) / 1000}s" else "${String.format(java.util.Locale.US, "%.1f", elapsedSec)}s"
-                    val skipRatio = if (frameIndex > 0L) (skippedFrames.toFloat() / frameIndex.toFloat() * 100f) else 0f
-                    val progressPercent = if (totalActiveFrames > 0L) (frameIndex.toFloat() / totalActiveFrames.toFloat() * 100f) else 0f
-                    
-                    val avgDecodeMs = totalDecodeMs / frameIndex.toDouble()
-                    val avgYoloMs = if (yoloCount > 0L) totalYoloMs / yoloCount.toDouble() else 0.0
-                    val estSavedMs = skippedFrames * (if (yoloCount > 0L) avgYoloMs else 80.0)
-                    val estSavedSec = estSavedMs / 1000.0
-                    
-                    println("DEBUG: Plate Scan Progress: ${String.format(java.util.Locale.US, "%.1f", progressPercent)}% ($frameIndex/$totalActiveFrames) | Speed: ${String.format(java.util.Locale.US, "%.1f", avgFps)} fps | Skipped: $skippedFrames (Speed/Trim=$skippedSpeedTrimFrames, Tracking=$skippedTrackingFrames) (${String.format(java.util.Locale.US, "%.1f", skipRatio)}%) | Elapsed: $elapsedStr | ETA: $etaStr | AvgDecode: ${String.format(java.util.Locale.US, "%.1f", avgDecodeMs)}ms | AvgYolo: ${String.format(java.util.Locale.US, "%.1f", avgYoloMs)}ms | Saved: ~${String.format(java.util.Locale.US, "%.1f", estSavedSec)}s")
-                    
-                    val jsonProgress = String.format(java.util.Locale.US, 
-                        "{\"percent\":%.1f,\"current\":%d,\"total\":%d,\"fps\":%.1f,\"skipped\":%d,\"elapsed_ms\":%d,\"eta_sec\":%d,\"yolo_count\":%d,\"skipped_count\":%d,\"avg_decode_ms\":%.2f,\"avg_yolo_ms\":%.2f,\"saved_ms\":%.1f}",
-                        progressPercent, frameIndex, totalActiveFrames, avgFps, skippedFrames, elapsedMs, etaSec, yoloCount, skippedFrames, avgDecodeMs, avgYoloMs, estSavedMs
-                    )
-                    println("PROGRESS_METRIC: $jsonProgress")
-                }
-
-                val dProgress = (tProgressEnd - tProgressStart) / 1_000_000.0
-                if (frameIndex <= 5) {
-                    println("DEBUG: Consumer [Frame ${frame.frameIndex}] - Detect: ${String.format(java.util.Locale.US, "%.2f", dDetect)}ms, ProgressUI: ${String.format(java.util.Locale.US, "%.2f", dProgress)}ms")
-                }
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        } finally {
-            decoderJob.cancel()
-            cancellationHandler?.dispose()
-            
-            val exitCode = if (activeProcess?.isAlive == true) {
-                try {
-                    if (activeProcess!!.waitFor(500, java.util.concurrent.TimeUnit.MILLISECONDS)) activeProcess!!.exitValue() else -99
-                } catch (e: Exception) { -99 }
-            } else {
-                activeProcess?.exitValue() ?: 0
-            }
-            
-            try { activeProcess?.destroy() } catch (e: Exception) {}
-            
-            if (frameIndex == 0L && exitCode != 0) {
-                val errLogFile = File("temp_work/scan_ffmpeg_error.log")
-                val errMsg = if (errLogFile.exists()) errLogFile.readText() else "No error log found"
-                println("\n❌ FFmpeg Scan Process failed with exit code $exitCode. Error Details:\n$errMsg")
-            }
-            
-            tempLocalVideo?.let {
-                if (it.exists()) {
-                    println("🧹 Cleaning up temp local video scan cache: ${it.absolutePath}")
-                    try { it.delete() } catch (e: Exception) {}
-                }
-            }
-        }
-
-        if (onCancel()) {
-            println("DEBUG: Scan canceled. Processed $frameIndex frames.")
-            if (records.isNotEmpty()) {
-                val cache = VideoPlatesCache(
-                    videoPath = videoPath,
-                    records = records,
-                    sourceWidth = videoWidth,
-                    sourceHeight = videoHeight,
-                    scanRanges = normalizedScanRanges
-                )
-                val finalCache = if (existingCache != null) existingCache.mergedWith(cache) else cache
-                if (saveCache) {
-                    PlateCacheManager.saveCache(videoPath, finalCache)
-                }
-                finalCache
-            } else {
-                existingCache
-            }
-        } else {
-            val ratio = if (frameIndex > 0) skippedFrames.toFloat() / frameIndex.toFloat() * 100f else 0f
-            println("DEBUG: Scan complete. Total frames: $frameIndex, Skipped (speed >= 10km/h): $skippedFrames (${String.format(java.util.Locale.US, "%.1f", ratio)}%)")
-            detector.printPerfStatsSummary()
-            val cache = VideoPlatesCache(
-                videoPath = videoPath,
-                records = records,
-                sourceWidth = videoWidth,
-                sourceHeight = videoHeight,
-                scanRanges = normalizedScanRanges
-            )
-            val finalCache = if (existingCache != null) existingCache.mergedWith(cache) else cache
-            if (saveCache) {
-                PlateCacheManager.saveCache(videoPath, finalCache)
-            }
-            finalCache
-        }
+        finalCache
     }
 
-    private fun findClosestTelemetryPoint(
-        telemetry: List<fit.TelemetryPoint>,
-        targetFitTs: Double
-    ): fit.TelemetryPoint? {
-        if (telemetry.isEmpty()) return null
-        var low = 0
-        var high = telemetry.size - 1
-        
-        while (low <= high) {
-            val mid = (low + high) ushr 1
-            val midVal = telemetry[mid].timestamp
-            
-            when {
-                midVal < targetFitTs -> low = mid + 1
-                midVal > targetFitTs -> high = mid - 1
-                else -> return telemetry[mid]
-            }
-        }
-        
-        val candidate1 = if (low in telemetry.indices) telemetry[low] else null
-        val candidate2 = if (high in telemetry.indices) telemetry[high] else null
-        
-        return when {
-            candidate1 == null -> candidate2
-            candidate2 == null -> candidate1
-            else -> {
-                if (kotlin.math.abs(candidate1.timestamp - targetFitTs) < kotlin.math.abs(candidate2.timestamp - targetFitTs)) {
-                    candidate1
-                } else {
-                    candidate2
-                }
-            }
-        }
-    }
-
-    private fun isGoogleDrivePath(path: String): Boolean {
-        val normalized = path.replace("\\", "/").lowercase()
-        return normalized.contains("google drive") ||
-               normalized.contains("マイドライブ") ||
-               normalized.contains("my drive") ||
-               normalized.startsWith("g:/") ||
-               normalized.startsWith("h:/")
+    private fun findFfmpegPath(): String {
+        return fit.findFfmpegPath()
     }
 
     internal fun filterBoxesForMaskSize(
