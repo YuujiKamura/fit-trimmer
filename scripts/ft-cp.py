@@ -6,7 +6,7 @@ def send_cmd(cmd):
     session_path = os.path.expanduser("~/.fittrimmer_cp.json")
     if not os.path.exists(session_path):
         print("❌ Session not found. App must be running.")
-        return
+        return None
 
     with open(session_path, 'r') as f:
         port = json.load(f)['port']
@@ -19,7 +19,7 @@ def send_cmd(cmd):
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python ft-cp.py <get_state|fire|run_plate_detection|stop_plate_detection|reset_plate_detection|seek_plate_detection|set_plate_cache_enabled|restore_plate_cache|discard_plate_cache|set_files|set_layout>")
+        print("Usage: python ft-cp.py <get_state|fire|run_plate_detection|stop_plate_detection|reset_plate_detection|seek_plate_detection|set_plate_cache_enabled|restore_plate_cache|discard_plate_cache|set_files|set_layout|capture>")
         sys.exit(1)
 
     action = sys.argv[1]
@@ -79,3 +79,16 @@ if __name__ == "__main__":
             "graphW": float(sys.argv[8])
         }
         print(send_cmd({"type": "set_layout", "settings": settings}))
+    elif action == "capture":
+        res = send_cmd({"type": "capture"})
+        if res and res.get("status") == "ok":
+            import shutil
+            src = res.get("path")
+            dst = os.path.join("temp_work", "fittrimmer_capture.png")
+            try:
+                shutil.copy(src, dst)
+                print(json.dumps({"status": "ok", "path": dst}))
+            except Exception as e:
+                print(json.dumps({"status": "error", "message": str(e)}))
+        else:
+            print(json.dumps(res))
