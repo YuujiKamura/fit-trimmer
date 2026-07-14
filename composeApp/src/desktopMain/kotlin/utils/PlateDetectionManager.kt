@@ -63,10 +63,15 @@ object PlateDetectionManager : fit.PlateDetector {
         // Multiplier of 3x for active dynamic tracking, capped at 4.0fps to prevent extreme decoding overhead
         val effectiveDetectionFps = (baseDetectionFps * 3.0).coerceAtMost(4.0)
         
-        // Original size decoding (NO FFmpeg scaling!)
-        val scanWidth = videoWidth
-        val scanHeight = videoHeight
-        val filterChain = "fps=$effectiveDetectionFps"
+        // Downscale to 1280x720 maximum to avoid memory bloat and pipe blocking
+        val maxScanDim = 1280
+        val (scanWidth, scanHeight) = if (videoWidth > maxScanDim || videoHeight > maxScanDim) {
+            val scaleFactor = maxScanDim.toFloat() / maxOf(videoWidth, videoHeight)
+            ((videoWidth * scaleFactor).toInt() and -2) to ((videoHeight * scaleFactor).toInt() and -2)
+        } else {
+            videoWidth to videoHeight
+        }
+        val filterChain = "scale=$scanWidth:$scanHeight,fps=$effectiveDetectionFps"
         val frameBytes = scanWidth * scanHeight * 3 // RGB24
         
         val normalizedScanRanges = (scanRanges ?: listOf(0.0 to durationSec))

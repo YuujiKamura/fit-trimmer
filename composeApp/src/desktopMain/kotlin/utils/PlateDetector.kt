@@ -82,9 +82,7 @@ class PlateDetector private constructor() : AutoCloseable {
         val availableProviders = OrtEnvironment.getAvailableProviders()
         
         val opts = OrtSession.SessionOptions()
-        val cores = Runtime.getRuntime().availableProcessors().coerceAtLeast(1)
-        val intraThreads = (cores / 2).coerceIn(1, 8)
-        opts.setIntraOpNumThreads(intraThreads)
+        opts.setIntraOpNumThreads(1)
         opts.setInterOpNumThreads(1)
         
         return env.createSession(modelBytes, opts)
