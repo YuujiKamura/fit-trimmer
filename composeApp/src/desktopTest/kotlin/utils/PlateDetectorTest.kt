@@ -1419,6 +1419,8 @@ class PlateDetectorTest {
         }
 
         val intervals = listOf(1, 3, 10)
+        var bestCache: VideoPlatesCache? = null
+        var bestSettings: fit.HudSettings? = null
         
         for (interval in intervals) {
             println("==================================================")
@@ -1452,6 +1454,100 @@ class PlateDetectorTest {
                 val sec = rec.timeMs / 1000.0
                 println(String.format(java.util.Locale.US, "  Time: %.3fs (timeMs: %d) -> %d boxes: %s", sec, rec.timeMs, rec.boxes.size, rec.boxes.map { "[${it.x1}, ${it.y1}, ${it.x2}, ${it.y2}]" }))
             }
+            
+            if (interval == 1) {
+                bestCache = cache
+                bestSettings = settings
+            }
+        }
+
+        if (bestCache != null && bestSettings != null) {
+            println("📹 Generating continuity demo video...")
+            val tempWorkDir = File("temp_work")
+            if (!tempWorkDir.exists()) tempWorkDir.mkdirs()
+            val outputMp4 = File(tempWorkDir, "mask_continuity_demo.mp4")
+            if (outputMp4.exists()) outputMp4.delete()
+            
+            // Create a dummy FIT file to bypass HUD-less fast trim-copy mode
+            val scratchDir = File("scratch")
+            if (!scratchDir.exists()) scratchDir.mkdirs()
+            val dummyFit = File(scratchDir, "continuity_dummy.fit")
+            val fitEpochSec = 631065600L
+            val videoStartUtcSeconds = java.time.Instant.parse("2026-06-14T08:02:06Z").epochSecond
+            val baseFitTimestamp = videoStartUtcSeconds - fitEpochSec
+
+            val headerSize = 14
+            val recordsSize = 12 + (9 * 11)
+            val totalSize = headerSize + recordsSize + 2
+            val bytes = ByteArray(totalSize)
+
+            bytes[0] = headerSize.toByte()
+            bytes[1] = 32
+            bytes[2] = 0xDC.toByte()
+            bytes[3] = 0x07.toByte()
+            bytes[4] = (recordsSize and 0xFF).toByte()
+            bytes[5] = ((recordsSize shr 8) and 0xFF).toByte()
+            bytes[6] = 0x00.toByte()
+            bytes[7] = 0x00.toByte()
+            ".FIT".encodeToByteArray().copyInto(bytes, 8)
+
+            var offset = headerSize
+            bytes[offset] = 0x40.toByte()
+            bytes[offset + 1] = 0
+            bytes[offset + 2] = 0
+            bytes[offset + 3] = 0x14.toByte()
+            bytes[offset + 4] = 0x00.toByte()
+            bytes[offset + 5] = 2
+
+            bytes[offset + 6] = 253.toByte()
+            bytes[offset + 7] = 4.toByte()
+            bytes[offset + 8] = 0x86.toByte()
+
+            bytes[offset + 9] = 5.toByte()
+            bytes[offset + 10] = 4.toByte()
+            bytes[offset + 11] = 0x86.toByte()
+
+            offset += 12
+
+            for (t in 0..10) {
+                bytes[offset] = 0x00.toByte()
+                val ts = baseFitTimestamp + t
+                bytes[offset + 1] = (ts and 0xFF).toByte()
+                bytes[offset + 2] = ((ts shr 8) and 0xFF).toByte()
+                bytes[offset + 3] = ((ts shr 16) and 0xFF).toByte()
+                bytes[offset + 4] = ((ts shr 24) and 0xFF).toByte()
+
+                val dist = 10000 + t * 10
+                bytes[offset + 5] = (dist and 0xFF).toByte()
+                bytes[offset + 6] = ((dist shr 8) and 0xFF).toByte()
+                bytes[offset + 7] = ((dist shr 16) and 0xFF).toByte()
+                bytes[offset + 8] = ((dist shr 24) and 0xFF).toByte()
+                offset += 9
+            }
+
+            val computedCrc = crc.Crc16.calculate(bytes, offset = 0, length = totalSize - 2)
+            bytes[totalSize - 2] = (computedCrc and 0xFF).toByte()
+            bytes[totalSize - 1] = ((computedCrc shr 8) and 0xFF).toByte()
+            dummyFit.writeBytes(bytes)
+            
+            fit.PlateCacheManager.saveCache(testVideo.absolutePath, bestCache)
+            
+            val encoder = fit.NativeHudEncoder(bestSettings)
+            runBlocking {
+                encoder.encode(
+                    fitPath = dummyFit.absolutePath,
+                    videoPath = testVideo.absolutePath,
+                    output = outputMp4.absolutePath,
+                    startUtc = "2026-06-14T08:02:06Z",
+                    maxDurationSeconds = 10,
+                    trimStartSeconds = 0.0,
+                    trimEndSeconds = 10.0
+                )
+            }
+            println("📹 Continuity demo video generated at: ${outputMp4.absolutePath}")
+            kotlin.test.assertTrue(outputMp4.exists() && outputMp4.length() > 0L)
+            
+            if (dummyFit.exists()) dummyFit.delete()
         }
     }
 
