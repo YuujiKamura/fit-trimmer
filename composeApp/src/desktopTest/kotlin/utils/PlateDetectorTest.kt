@@ -288,7 +288,7 @@ class PlateDetectorTest {
         detector.lastGetRgbBypassed = false
         
         // 640x640 3BYTE_BGR image (simulating FFmpeg output)
-        val img = BufferedImage(640, 640, BufferedImage.TYPE_3BYTE_BGR)
+        val img = BufferedImage(1088, 1088, BufferedImage.TYPE_3BYTE_BGR)
         
         detector.detect(img)
         
@@ -1294,9 +1294,9 @@ class PlateDetectorTest {
     fun testMapDetectedBoxes() {
         val detector = PlateDetector.getInstance()
 
-        // 640x640 scan grid mapping to 1920x1080 video resolution.
-        // scaleX = 1920 / 640 = 3.0
-        // scaleY = 1080 / 640 = 1.6875
+        // 1088x1088 scan grid mapping to 1920x1080 video resolution.
+        // scaleX = 1920 / 1088 = 1.7647
+        // scaleY = 1080 / 1088 = 0.9926
 
         val box1 = PlateDetector.DetectedBox(
             x1 = 100f, y1 = 100f, x2 = 115f, y2 = 110f, score = 0.8f, classId = 0
@@ -1314,12 +1314,12 @@ class PlateDetectorTest {
         kotlin.test.assertEquals(2, result.size, "Should map all boxes without size filtering")
         
         val mapped1 = result[0]
-        kotlin.test.assertEquals(300, mapped1.x1) // 100 * 3
-        kotlin.test.assertEquals(168, mapped1.y1) // 100 * 1.6875 = 168.75 -> 168
+        kotlin.test.assertEquals(176, mapped1.x1) // 100 * 1.7647 = 176
+        kotlin.test.assertEquals(99, mapped1.y1)  // 100 * 0.9926 = 99
         
         val mapped2 = result[1]
-        kotlin.test.assertEquals(600, mapped2.x1) // 200 * 3
-        kotlin.test.assertEquals(337, mapped2.y1) // 200 * 1.6875 = 337.5 -> 337
+        kotlin.test.assertEquals(352, mapped2.x1) // 200 * 1.7647 = 352
+        kotlin.test.assertEquals(198, mapped2.y1) // 200 * 0.9926 = 198
     }
 
     @Test

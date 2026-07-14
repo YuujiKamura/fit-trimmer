@@ -168,8 +168,8 @@ object PlateDetectionManager : fit.PlateDetector {
         val effectiveMaxSpeedKmh = settings.plateMaxSpeedKmh.coerceAtLeast(0.0)
         val effectivePaddingSeconds = settings.platePaddingSeconds.coerceAtLeast(0.0)
         val effectiveMergeGapSeconds = settings.plateMergeGapSeconds.coerceAtLeast(0.0)
-        val scanWidth = 640
-        val scanHeight = 640
+        val scanWidth = 1088
+        val scanHeight = 1088
         val filterChain = "scale=$scanWidth:$scanHeight:flags=fast_bilinear:out_range=full,fps=$effectiveDetectionFps"
         val frameBytes = scanWidth * scanHeight * 3 // RGB24
 
@@ -514,7 +514,7 @@ object PlateDetectionManager : fit.PlateDetector {
                     skipReason = "Scan (ONNX)"
                     System.arraycopy(frame.buffer, 0, imgData, 0, frameBytes)
                     val rawBoxes = detector.detect(img, confThreshold = 0.20f, detectPedestrians = settings.detectPedestrians)
-                    val maskBoxes = filterBoxesForMaskSize(rawBoxes, 640, settings)
+                    val maskBoxes = filterBoxesForMaskSize(rawBoxes, 1088, settings)
 
                     if (inferenceInterval <= 1) {
                         // Plain Model Direct Mode: No tracking, no gap interpolation, no backtracking.
@@ -532,7 +532,7 @@ object PlateDetectionManager : fit.PlateDetector {
                         // Retroactive backtracking for newly appeared objects to avoid frame-in leakage
                         for (track in tracker.activeTracks) {
                             if (track.id !in beforeTrackIds) {
-                                val backtrackMap = tracker.performBacktracking(track, frame.frameIndex, 640, 640)
+                                val backtrackMap = tracker.performBacktracking(track, frame.frameIndex, 1088, 1088)
                                 for ((backtrackFrame, backtrackBox) in backtrackMap) {
                                     val backtrackTimeMs = (backtrackFrame * 1000.0 / effectiveDetectionFps).toLong()
                                     mergeBoxesIntoRecords(backtrackTimeMs, listOf(backtrackBox))

@@ -15,7 +15,7 @@ class PlateDetector private constructor() : AutoCloseable {
     private val session: OrtSession
 
     // Thread-local buffer reuse to eliminate garbage collection pressure on large scans
-    private val threadLocalInputData = ThreadLocal.withInitial { FloatArray(1 * 3 * 640 * 640) }
+    private val threadLocalInputData = ThreadLocal.withInitial { FloatArray(1 * 3 * 1088 * 1088) }
 
     // TDD Verification Flags
     var lastResizeBypassed = false
@@ -116,26 +116,26 @@ class PlateDetector private constructor() : AutoCloseable {
         val height = image.height
 
         val resized: BufferedImage
-        if (width == 640 && height == 640) {
+        if (width == 1088 && height == 1088) {
             resized = image
             lastResizeBypassed = true
         } else {
-            resized = resizeImage(image, 640, 640)
+            resized = resizeImage(image, 1088, 1088)
             lastResizeBypassed = false
         }
         val tResize = System.nanoTime()
 
         val inputData = threadLocalInputData.get()
         val rOffset = 0
-        val gOffset = 640 * 640
-        val bOffset = 2 * 640 * 640
+        val gOffset = 1088 * 1088
+        val bOffset = 2 * 1088 * 1088
         val inv255 = 1.0f / 255.0f
 
         val raster = resized.raster
         val dataBuffer = raster.dataBuffer
         if (resized.type == BufferedImage.TYPE_3BYTE_BGR && dataBuffer is java.awt.image.DataBufferByte) {
             val bytes = dataBuffer.data
-            for (i in 0 until 640 * 640) {
+            for (i in 0 until 1088 * 1088) {
                 val base = i * 3
                 val b = (bytes[base].toInt() and 0xFF) * inv255
                 val g = (bytes[base + 1].toInt() and 0xFF) * inv255
@@ -147,9 +147,9 @@ class PlateDetector private constructor() : AutoCloseable {
             }
             lastGetRgbBypassed = true
         } else {
-            val rgbArray = IntArray(640 * 640)
-            resized.getRGB(0, 0, 640, 640, rgbArray, 0, 640)
-            for (i in 0 until 640 * 640) {
+            val rgbArray = IntArray(1088 * 1088)
+            resized.getRGB(0, 0, 1088, 1088, rgbArray, 0, 1088)
+            for (i in 0 until 1088 * 1088) {
                 val rgb = rgbArray[i]
                 val r = ((rgb shr 16) and 0xFF) * inv255
                 val g = ((rgb shr 8) and 0xFF) * inv255
@@ -164,7 +164,7 @@ class PlateDetector private constructor() : AutoCloseable {
         val tPreprocess = System.nanoTime()
 
         val inputBuffer = FloatBuffer.wrap(inputData)
-        val tensor = OnnxTensor.createTensor(env, inputBuffer, longArrayOf(1, 3, 640, 640))
+        val tensor = OnnxTensor.createTensor(env, inputBuffer, longArrayOf(1, 3, 1088, 1088))
         
         val result = tensor.use { t ->
             session.run(mapOf("images" to t)).use { outputs ->
@@ -175,25 +175,24 @@ class PlateDetector private constructor() : AutoCloseable {
                 // Bulk copy the output data into a JVM heap array in a single operation
                 // to eliminate DirectBuffer.get(index) JNI boundary checking overhead inside the loop.
                 val buffer = outputTensor.floatBuffer
-                val outputData = FloatArray(5 * 8400)
+                val outputData = FloatArray(6 * 24276)
                 buffer.get(outputData)
                 
                 val boxes = mutableListOf<DetectedBox>()
 
-                for (i in 0 until 8400) {
-                    val score = outputData[4 * 8400 + i]
+                for (i in 0 until 24276) {
+                    val score = outputData[4 * 24276 + i]
                     if (score >= confThreshold) {
-                        val cx = outputData[0 * 8400 + i]
-                        val cy = outputData[1 * 8400 + i]
-                        val w = outputData[2 * 8400 + i]
-                        val h = outputData[3 * 8400 + i]
+                        val cx = outputData[0 * 24276 + i]
+                        val cy = outputData[1 * 24276 + i]
+                        val w = outputData[2 * 24276 + i]
+                        val h = outputData[3 * 24276 + i]
                         
                         val x1 = cx - w / 2f
                         val y1 = cy - h / 2f
                         val x2 = cx + w / 2f
                         val y2 = cy + h / 2f
                         
-                        // classId is 0 for license-plate
                         boxes.add(DetectedBox(x1, y1, x2, y2, score, 0))
                     }
                 }
@@ -264,8 +263,8 @@ class PlateDetector private constructor() : AutoCloseable {
         videoHeight: Int
     ): List<PlateBox> {
         return boxes.map { box ->
-            val scaleX = videoWidth.toFloat() / 640f
-            val scaleY = videoHeight.toFloat() / 640f
+            val scaleX = videoWidth.toFloat() / 1088f
+            val scaleY = videoHeight.toFloat() / 1088f
             val bx1 = (box.x1 * scaleX).coerceIn(0f, videoWidth.toFloat())
             val by1 = (box.y1 * scaleY).coerceIn(0f, videoHeight.toFloat())
             val bx2 = (box.x2 * scaleX).coerceIn(0f, videoWidth.toFloat())

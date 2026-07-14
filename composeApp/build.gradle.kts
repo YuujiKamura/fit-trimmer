@@ -39,7 +39,7 @@ kotlin {
                 implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.0")
                 implementation("io.github.kdroidfilter:composemediaplayer:0.6.4")
                 implementation("net.java.dev.jna:jna:5.14.0")
-                implementation("com.microsoft.onnxruntime:onnxruntime:1.18.0")
+                implementation("com.microsoft.onnxruntime:onnxruntime_gpu:1.18.0")
             }
         }
         val desktopTest by getting {
