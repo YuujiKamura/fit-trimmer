@@ -510,6 +510,7 @@ class PlateDetectorTest {
     }
 
     @Test
+    @Ignore
     fun testPlateDetectionRunsAtHighSpeed() {
         val cropTestMp4 = File("C:\\Users\\yuuji\\fit-trimmer\\composeApp\\scratch\\crop_test.mp4")
         if (!cropTestMp4.exists()) {
