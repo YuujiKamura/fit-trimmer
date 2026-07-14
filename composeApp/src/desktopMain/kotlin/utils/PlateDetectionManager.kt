@@ -166,6 +166,19 @@ object PlateDetectionManager : fit.PlateDetector {
                     processedFramesCount++
                     val progressPercent = processedFramesCount.toFloat() / totalEstimatedFrames.toFloat()
                     onProgress(progressPercent.coerceIn(0f, 1f), "Scanning plates: ${(progressPercent * 100).toInt()}%")
+
+                    // Trigger periodic partial result updates to populate the telemetry timeline UI
+                    if (processedFramesCount % 3L == 0L) {
+                        onPartialResult(
+                            VideoPlatesCache(
+                                videoPath = videoPath,
+                                sourceWidth = videoWidth,
+                                sourceHeight = videoHeight,
+                                records = records.toList(),
+                                scanRanges = normalizedScanRanges.map { PlateScanRange((it.first * 1000.0).toLong(), (it.second * 1000.0).toLong()) }
+                            )
+                        )
+                    }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
