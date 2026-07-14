@@ -77,31 +77,7 @@ class ControlPlane(
                 
                 val cmd = json.decodeFromString<CpCommand>(line)
                 if (cmd is CpCommand.GetState) {
-                    val status = ControlPlaneStatus
-                    val currentSettings = if (status.settingsJson.isNotEmpty()) {
-                        try {
-                            json.decodeFromString<fit.HudSettings>(status.settingsJson)
-                        } catch (e: Exception) {
-                            fit.HudSettings()
-                        }
-                    } else {
-                        fit.HudSettings()
-                    }
-                    val state = CpState(
-                        settings = currentSettings,
-                        fitPath = status.fitPath,
-                        videoPath = status.videoPath,
-                        isEncoding = status.isEncoding,
-                        progress = status.progress,
-                        videoStartUtc = status.videoStartUtc,
-                        isAligningTelemetry = status.isAligningTelemetry,
-                        isDetectingPlates = status.isDetectingPlates,
-                        plateDetectionProgress = status.plateDetectionProgress,
-                        plateDetectionError = status.plateDetectionError,
-                        plateRecordCount = status.plateRecordCount,
-                        activePlateBoxes = emptyList(),
-                        videoCurrentTimeMs = status.videoCurrentTimeMs
-                    )
+                    val state = getState()
                     writer.println(json.encodeToString(state))
                 } else {
                     val response = onCommand(cmd)
