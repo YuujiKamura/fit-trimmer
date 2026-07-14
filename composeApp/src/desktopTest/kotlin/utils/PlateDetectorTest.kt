@@ -1410,6 +1410,51 @@ class PlateDetectorTest {
         if (outputTmp.exists()) outputTmp.delete()
     }
 
+    @Test
+    fun testMaskContinuityOnCropTest() {
+        val testVideo = File("H:\\マイドライブ\\Insta360\\20260614\\VID_20260614_163204_003.mp4")
+        if (!testVideo.exists()) {
+            println("SKIP: Original video not found")
+            return
+        }
+
+        val intervals = listOf(1, 3, 10)
+        
+        for (interval in intervals) {
+            println("==================================================")
+            println("🔍 Evaluating Continuity with inferenceInterval = $interval")
+            println("==================================================")
+            
+            val settings = fit.HudSettings(
+                blurLicensePlates = true,
+                plateInferenceInterval = interval,
+                plateDetectionFps = 1.0
+            )
+            
+            val cache = runBlocking {
+                PlateDetectionManager.detect(
+                    videoPath = testVideo.absolutePath,
+                    telemetryPoints = emptyList(),
+                    adjustedStartUtc = "",
+                    onProgress = { _, _ -> },
+                    onCancel = { false },
+                    saveCache = false,
+                    settings = settings,
+                    scanRanges = listOf(0.0 to 10.0)
+                )
+            }
+            
+            kotlin.test.assertNotNull(cache, "Returned Plate cache must not be null")
+            println("Found ${cache.records.size} frames containing plates in first 10s")
+            
+            val recordsSorted = cache.records.sortedBy { it.timeMs }
+            for (rec in recordsSorted) {
+                val sec = rec.timeMs / 1000.0
+                println(String.format(java.util.Locale.US, "  Time: %.3fs (timeMs: %d) -> %d boxes: %s", sec, rec.timeMs, rec.boxes.size, rec.boxes.map { "[${it.x1}, ${it.y1}, ${it.x2}, ${it.y2}]" }))
+            }
+        }
+    }
+
     private class SGObserver : java.awt.image.ImageObserver {
         override fun imageUpdate(img: java.awt.Image?, infoflags: Int, x: Int, y: Int, width: Int, height: Int): Boolean {
             return false
