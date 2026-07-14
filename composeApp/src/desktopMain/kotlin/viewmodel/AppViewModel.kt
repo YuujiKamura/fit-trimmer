@@ -442,7 +442,7 @@ class AppViewModel(
                     onProgress = { progress, status ->
                         val suffix = if (telemetryPoints.isNotEmpty() && videoStartUtc.isNotEmpty()) "" else " (No Telemetry)"
                         coroutineScope.launch(kotlinx.coroutines.Dispatchers.Main) {
-                            plateDetectionProgress = String.format(java.util.Locale.US, "%.1f%%", progress) + " ($status)" + suffix
+                            plateDetectionProgress = String.format(java.util.Locale.US, "%.1f%%", progress * 100f) + " ($status)" + suffix
                         }
                     },
                     onCancel = { plateDetectionStopRequested || !isActive },
