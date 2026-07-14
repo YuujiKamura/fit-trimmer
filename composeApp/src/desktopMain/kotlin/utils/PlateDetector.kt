@@ -113,7 +113,7 @@ class PlateDetector private constructor() : AutoCloseable {
         val height = image.height
 
         val isVehicleMode = !maskMode.equals("plate", ignoreCase = true)
-        val inputSize = 640
+        val inputSize = if (isVehicleMode) 640 else 1088
 
         // 1. Letterbox Preprocessing (preserving aspect ratio)
         val scale = kotlin.math.min(inputSize.toFloat() / width, inputSize.toFloat() / height)
@@ -133,7 +133,7 @@ class PlateDetector private constructor() : AutoCloseable {
         val tResize = System.nanoTime()
 
         // 2. Buffer extraction (optimized flat RGB format for ONNX)
-        val inputData = threadLocalInput640.get()
+        val inputData = if (inputSize == 640) threadLocalInput640.get() else threadLocalInput1088.get()
         val rOffset = 2 * inputSize * inputSize
         val gOffset = inputSize * inputSize
         val bOffset = 0
@@ -229,19 +229,16 @@ class PlateDetector private constructor() : AutoCloseable {
                     }
                 } else {
                     // Plate detection YOLOv8 model output is [1, 5, numAnchors]
-                    // The model is trained/exported with a 1088x1088 grid internally,
-                    // so we scale the coordinates from 1088 back to the 640 inputSize.
                     val outputData = FloatArray(5 * numAnchors)
                     buffer.get(outputData)
-                    val coordScale = 640f / 1088f
 
                     for (i in 0 until numAnchors) {
                         val score = outputData[4 * numAnchors + i]
                         if (score >= confThreshold) {
-                            val cx = outputData[0 * numAnchors + i] * coordScale
-                            val cy = outputData[1 * numAnchors + i] * coordScale
-                            val w = outputData[2 * numAnchors + i] * coordScale
-                            val h = outputData[3 * numAnchors + i] * coordScale
+                            val cx = outputData[0 * numAnchors + i]
+                            val cy = outputData[1 * numAnchors + i]
+                            val w = outputData[2 * numAnchors + i]
+                            val h = outputData[3 * numAnchors + i]
                             
                             val x1 = cx - w / 2f
                             val y1 = cy - h / 2f
