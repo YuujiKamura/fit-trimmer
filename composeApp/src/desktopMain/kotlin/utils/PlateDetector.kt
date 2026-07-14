@@ -263,7 +263,7 @@ class PlateDetector private constructor() : AutoCloseable {
         videoWidth: Int,
         videoHeight: Int
     ): List<PlateBox> {
-        return boxes.mapNotNull { box ->
+        return boxes.map { box ->
             val scaleX = videoWidth.toFloat() / 640f
             val scaleY = videoHeight.toFloat() / 640f
             val bx1 = (box.x1 * scaleX).coerceIn(0f, videoWidth.toFloat())
@@ -271,20 +271,12 @@ class PlateDetector private constructor() : AutoCloseable {
             val bx2 = (box.x2 * scaleX).coerceIn(0f, videoWidth.toFloat())
             val by2 = (box.y2 * scaleY).coerceIn(0f, videoHeight.toFloat())
 
-            val plateWidth = bx2 - bx1
-            val plateHeight = by2 - by1
-
-            // Legibility threshold: width >= 30 pixels or height >= 15 pixels in original resolution.
-            if (plateWidth < 30f && plateHeight < 15f) {
-                null
-            } else {
-                PlateBox(
-                    x1 = bx1.toInt(),
-                    y1 = by1.toInt(),
-                    x2 = bx2.toInt(),
-                    y2 = by2.toInt()
-                )
-            }
+            PlateBox(
+                x1 = bx1.toInt(),
+                y1 = by1.toInt(),
+                x2 = bx2.toInt(),
+                y2 = by2.toInt()
+            )
         }
     }
 
