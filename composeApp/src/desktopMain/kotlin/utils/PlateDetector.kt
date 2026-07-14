@@ -133,7 +133,7 @@ class PlateDetector private constructor() : AutoCloseable {
         val tResize = System.nanoTime()
 
         // 2. Buffer extraction (optimized flat RGB format for ONNX)
-        val inputData = if (isVehicleMode) threadLocalInput640.get() else threadLocalInput1088.get()
+        val inputData = threadLocalInput640.get()
         val rOffset = 2 * inputSize * inputSize
         val gOffset = inputSize * inputSize
         val bOffset = 0

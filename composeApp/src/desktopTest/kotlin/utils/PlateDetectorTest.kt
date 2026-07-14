@@ -302,12 +302,12 @@ class PlateDetectorTest {
         detector.lastResizeBypassed = false
         detector.lastGetRgbBypassed = false
         
-        // 1088x1088 3BYTE_BGR image (simulating FFmpeg output)
-        val img = BufferedImage(1088, 1088, BufferedImage.TYPE_3BYTE_BGR)
+        // 640x640 3BYTE_BGR image (simulating FFmpeg output)
+        val img = BufferedImage(640, 640, BufferedImage.TYPE_3BYTE_BGR)
         
         detector.detect(img, maskMode = "plate")
         
-        assertTrue(detector.lastResizeBypassed, "Resize should be bypassed for 1088x1088 images in plate mode")
+        assertTrue(detector.lastResizeBypassed, "Resize should be bypassed for 640x640 images in plate mode")
         assertTrue(detector.lastGetRgbBypassed, "getRGB should be bypassed for TYPE_3BYTE_BGR images")
     }
 
@@ -316,11 +316,11 @@ class PlateDetectorTest {
         val detector = PlateDetector.getInstance()
         detector.lastResizeBypassed = false
         
-        // 1920x1088 image (must be letterboxed to 1088x1088, so resize is NOT bypassed)
-        val img = BufferedImage(1920, 1088, BufferedImage.TYPE_3BYTE_BGR)
+        // 1920x640 image (must be letterboxed to 640x640, so resize is NOT bypassed)
+        val img = BufferedImage(1920, 640, BufferedImage.TYPE_3BYTE_BGR)
         detector.detect(img, maskMode = "plate")
         
-        assertTrue(!detector.lastResizeBypassed, "Resize should not be bypassed for 1920x1088 images as they must be letterboxed")
+        assertTrue(!detector.lastResizeBypassed, "Resize should not be bypassed for 1920x640 images as they must be letterboxed")
     }
 
 
