@@ -84,14 +84,13 @@ data class VideoPlatesCache(
         return boxesForTargetTime(targetTimeMs, prev, next, timeBufferMs).map { it.first }
     }
 
-    private fun expandBoxRatio(box: PlateBox, scale: Float): PlateBox {
-        if (scale <= 1.0f) return box
+    private fun scaleBoxRatio(box: PlateBox, scale: Float): PlateBox {
         val w = box.x2 - box.x1
         val h = box.y2 - box.y1
         val cx = (box.x1 + box.x2) / 2f
         val cy = (box.y1 + box.y2) / 2f
-        val newW = w * scale
-        val newH = h * scale
+        val newW = (w * scale).coerceAtLeast(1f)
+        val newH = (h * scale).coerceAtLeast(1f)
         return PlateBox(
             x1 = (cx - newW / 2).toInt(),
             y1 = (cy - newH / 2).toInt(),
@@ -130,8 +129,10 @@ data class VideoPlatesCache(
         }
         for (rec in bufferRecords) {
             val dist = kotlin.math.abs(rec.timeMs - targetTimeMs)
-            val intensity = (1.0f - (dist.toFloat() / timeBufferMs.toFloat())).coerceIn(0.0f, 1.0f)
-            result.addAll(rec.boxes.map { it to intensity })
+            // Shrink size gradually from 1.0f down to 0.4f
+            val scale = 1.0f - (dist.toFloat() / timeBufferMs.toFloat()) * 0.6f
+            // Absolute concealment: intensity is always 1.0f
+            result.addAll(rec.boxes.map { scaleBoxRatio(it, scale) to 1.0f })
         }
         
         // 3. Apply buffer scale to prev/next if they were not interpolated
@@ -139,15 +140,15 @@ data class VideoPlatesCache(
             if (prev != null) {
                 val dist = targetTimeMs - prev.timeMs
                 if (dist <= timeBufferMs) {
-                    val intensity = (1.0f - (dist.toFloat() / timeBufferMs.toFloat())).coerceIn(0.0f, 1.0f)
-                    result.addAll(prev.boxes.map { it to intensity })
+                    val scale = 1.0f - (dist.toFloat() / timeBufferMs.toFloat()) * 0.6f
+                    result.addAll(prev.boxes.map { scaleBoxRatio(it, scale) to 1.0f })
                 }
             }
             if (next != null) {
                 val dist = next.timeMs - targetTimeMs
                 if (dist <= timeBufferMs) {
-                    val intensity = (1.0f - (dist.toFloat() / timeBufferMs.toFloat())).coerceIn(0.0f, 1.0f)
-                    result.addAll(next.boxes.map { it to intensity })
+                    val scale = 1.0f - (dist.toFloat() / timeBufferMs.toFloat()) * 0.6f
+                    result.addAll(next.boxes.map { scaleBoxRatio(it, scale) to 1.0f })
                 }
             }
         }

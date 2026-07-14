@@ -1447,7 +1447,7 @@ class PlateDetectorTest {
                 onCancel = { false },
                 saveCache = false,
                 settings = settings,
-                scanRanges = listOf(0.0 to 100.0)
+                scanRanges = listOf(15.0 to 35.0)
             )
         }
         
@@ -1474,9 +1474,9 @@ class PlateDetectorTest {
                 videoPath = testVideo.absolutePath,
                 output = outputMp4.absolutePath,
                 startUtc = "2026-07-12T08:09:10Z",
-                maxDurationSeconds = 100,
-                trimStartSeconds = 0.0,
-                trimEndSeconds = 100.0
+                maxDurationSeconds = 25,
+                trimStartSeconds = 15.0,
+                trimEndSeconds = 35.0
             )
         }
         println("📹 100s Continuity demo video generated at: ${outputMp4.absolutePath}")
