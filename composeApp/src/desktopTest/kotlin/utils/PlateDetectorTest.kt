@@ -1439,6 +1439,7 @@ class PlateDetectorTest {
                 plateDetectionFps = 1.0,
                 plateMinMaskHeightRatio = 0.0,
                 plateMaskTimeBufferMs = 5000L,
+                plateMaskExpandRatio = 0.6,
                 detectPedestrians = true
             )
             
