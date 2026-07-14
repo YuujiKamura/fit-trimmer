@@ -1083,38 +1083,39 @@ fun VideoPreviewArea(
 
                         // License plate mask overlay
                         val blurBoxes = plateCache?.shouldBlurAt(currentRenderTimeMs, settings.blurLicensePlates) ?: emptyList()
-                        val wState = playerState as? WindowsVideoPlayerState
-                        val videoW = wState?.videoWidth?.takeIf { it > 0 } ?: 1920
-                        val videoH = wState?.videoHeight?.takeIf { it > 0 } ?: 1080
-                        val is90Or270 = videoRotation == 90 || videoRotation == -270 || videoRotation == 270 || videoRotation == -90
-                        val fallbackSourceW = if (is90Or270) videoH else videoW
-                        val fallbackSourceH = if (is90Or270) videoW else videoH
-                        
-                        val rawCacheW = plateCache?.sourceWidth ?: 0
-                        val rawCacheH = plateCache?.sourceHeight ?: 0
-                        val cacheSourceW = if (is90Or270 && rawCacheW > rawCacheH) rawCacheH else rawCacheW
-                        val cacheSourceH = if (is90Or270 && rawCacheW > rawCacheH) rawCacheW else rawCacheH
-                        
-                        for (box in blurBoxes) {
-                            val maskBox = fit.PlateMaskExpander.expand(
-                                box = box,
-                                expandRatio = settings.plateMaskExpandRatio,
-                                sourceWidth = if (cacheSourceW > 0) cacheSourceW else fallbackSourceW,
-                                sourceHeight = if (cacheSourceH > 0) cacheSourceH else fallbackSourceH
-                            )
-                            val mapped = fit.PlateCoordinateMapper.mapToTarget(
-                                box = maskBox,
-                                cache = null,
-                                fallbackSourceWidth = if (cacheSourceW > 0) cacheSourceW else fallbackSourceW,
-                                fallbackSourceHeight = if (cacheSourceH > 0) cacheSourceH else fallbackSourceH,
-                                targetWidth = size.width,
-                                targetHeight = size.height,
-                                cropToSquare = settings.cropToSquare
-                            )
-                            val rx1 = mapped.x
-                            val ry1 = mapped.y
-                            val w = mapped.width
-                            val h = mapped.height
+                        if (blurBoxes.isNotEmpty()) {
+                            val wState = playerState as? WindowsVideoPlayerState
+                            val videoW = wState?.videoWidth?.takeIf { it > 0 } ?: 1920
+                            val videoH = wState?.videoHeight?.takeIf { it > 0 } ?: 1080
+                            val is90Or270 = videoRotation == 90 || videoRotation == -270 || videoRotation == 270 || videoRotation == -90
+                            val fallbackSourceW = if (is90Or270) videoH else videoW
+                            val fallbackSourceH = if (is90Or270) videoW else videoH
+                            
+                            val rawCacheW = plateCache?.sourceWidth ?: 0
+                            val rawCacheH = plateCache?.sourceHeight ?: 0
+                            val cacheSourceW = if (is90Or270 && rawCacheW > rawCacheH) rawCacheH else rawCacheW
+                            val cacheSourceH = if (is90Or270 && rawCacheW > rawCacheH) rawCacheW else rawCacheH
+                            
+                            for (box in blurBoxes) {
+                                val maskBox = fit.PlateMaskExpander.expand(
+                                    box = box,
+                                    expandRatio = settings.plateMaskExpandRatio,
+                                    sourceWidth = if (cacheSourceW > 0) cacheSourceW else fallbackSourceW,
+                                    sourceHeight = if (cacheSourceH > 0) cacheSourceH else fallbackSourceH
+                                )
+                                val mapped = fit.PlateCoordinateMapper.mapToTarget(
+                                    box = maskBox,
+                                    cache = null,
+                                    fallbackSourceWidth = if (cacheSourceW > 0) cacheSourceW else fallbackSourceW,
+                                    fallbackSourceHeight = if (cacheSourceH > 0) cacheSourceH else fallbackSourceH,
+                                    targetWidth = size.width,
+                                    targetHeight = size.height,
+                                    cropToSquare = settings.cropToSquare
+                                )
+                                val rx1 = mapped.x
+                                val ry1 = mapped.y
+                                val w = mapped.width
+                                val h = mapped.height
                                 
                                 if (w > 0 && h > 0) {
                                     drawRect(
