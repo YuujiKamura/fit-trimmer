@@ -68,14 +68,19 @@ data class DbTelemetryPoint(
 object DatabaseManager {
     private val json = Json { ignoreUnknownKeys = true }
     
+    @kotlin.jvm.Volatile
+    var dbFilePath: String? = null
+
     private fun getConnection(): Connection {
-        val userHome = System.getProperty("user.home")
-        val dbDir = File(userHome, ".fit-trimmer")
-        if (!dbDir.exists()) {
-            dbDir.mkdirs()
+        val path = dbFilePath ?: run {
+            val userHome = System.getProperty("user.home")
+            val dbDir = File(userHome, ".fit-trimmer")
+            if (!dbDir.exists()) {
+                dbDir.mkdirs()
+            }
+            File(dbDir, "rider_profile.db").absolutePath
         }
-        val dbFile = File(dbDir, "rider_profile.db")
-        val url = "jdbc:sqlite:${dbFile.absolutePath.replace("\\", "/")}"
+        val url = "jdbc:sqlite:${path.replace("\\", "/")}"
         return DriverManager.getConnection(url)
     }
 
@@ -83,7 +88,7 @@ object DatabaseManager {
         setupDatabase()
     }
 
-    private fun setupDatabase() {
+    internal fun setupDatabase() {
         try {
             Class.forName("org.sqlite.JDBC")
             getConnection().use { conn ->

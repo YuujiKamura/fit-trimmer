@@ -303,6 +303,19 @@ class EncoderIntegrationTest {
 
             val renderedFrames = mutableListOf<java.awt.image.BufferedImage>()
 
+            val testSegment = AutoDetectedSegment(
+                id = "test-seg",
+                name = "Yabitsu Pass (ヤビツ峠)",
+                startIndex = 0,
+                endIndex = 250,
+                distanceMeters = 5000.0,
+                durationSeconds = 1200.0,
+                averageGrade = 6.0,
+                startFitTimestamp = 0.0,
+                endFitTimestamp = 10.0
+            )
+            HudEncoderSegmentRegistry.activeSegments = listOf(testSegment)
+
             val encoder = NativeHudEncoder(settings,
                 onProgress = { prog, status ->
                     println("Encoding Progress: ${(prog * 100).toInt()}% - $status")
@@ -315,6 +328,46 @@ class EncoderIntegrationTest {
                     synchronized(renderedFrames) {
                         renderedFrames.add(copy)
                     }
+                },
+                customRenderer = { canvas, point, allPoints, trimmedPoints, pBuf, progressRatio ->
+                    point.ctl = 65.0
+                    point.atl = 85.0
+                    point.tsb = -20.0
+                    val renderer = HudRenderer(HudConfig(
+                        valSize = settings.valSize, tightness = settings.tightness, spacing = settings.spacing,
+                        xOffset = settings.xOffset, yOffset = settings.yOffset, graphH = settings.graphH, graphW = settings.graphW,
+                        captionPosition = settings.captionPosition,
+                        roadCaptions = settings.roadCaptions,
+                        powerTrendSpanSeconds = settings.powerTrendSpanSeconds,
+                        useImperialUnits = settings.useImperialUnits,
+                        language = settings.language,
+                        elevationGraphScope = settings.elevationGraphScope,
+                        heartRateAccumulationScope = settings.heartRateAccumulationScope,
+                        showSpeed = settings.showSpeed,
+                        showCadence = settings.showCadence,
+                        showHeartRate = settings.showHeartRate,
+                        showPower = settings.showPower,
+                        showWkg = settings.showWkg,
+                        showPowerTrend = settings.showPowerTrend,
+                        showGrade = settings.showGrade,
+                        showElevation = settings.showElevation,
+                        showDistanceTime = settings.showDistanceTime,
+                        bodyWeightKg = settings.bodyWeightKg,
+                        customCaptions = settings.customCaptions,
+                        mapSizeScale = settings.mapSizeScale,
+                        mapType = settings.mapType,
+                        mapPosition = settings.mapPosition,
+                        hudBgAlpha = settings.hudBgAlpha,
+                        mapZoomScale = settings.mapZoomScale,
+                        mapZoomOffset = settings.mapZoomOffset,
+                        fixMapNorthUp = settings.fixMapNorthUp,
+                        mapMarkerSizeScale = settings.mapMarkerSizeScale,
+                        mapTextSizeScale = settings.mapTextSizeScale,
+                        mapRangeMode = settings.mapRangeMode,
+                        textShadowAlpha = settings.textShadowAlpha,
+                        detectedSegments = HudEncoderSegmentRegistry.activeSegments
+                    ))
+                    renderer.renderFrame(canvas, point, allPoints, trimmedPoints, pBuf, progressRatio)
                 }
             )
 
@@ -352,12 +405,18 @@ class EncoderIntegrationTest {
             println("📸 Saved rendered verification frame to: ${actualFrameFile.absolutePath}")
             
             // Save to workspace artifact directory for user direct inspection
-            val artifactDest = File("C:\\Users\\yuuji\\.gemini\\antigravity-cli\\brain\\ffc6a737-4d8c-49be-bb01-5585b611f73a\\actual_hud_frame.png")
+            val artifactDest = File("C:\\Users\\yuuji\\.gemini\\antigravity-cli\\brain\\5ce67e2f-0e29-4828-aa28-4bd61a45238d\\actual_hud_frame.png")
+            val tempWorkDest = File("temp_work/preview_hud.png")
             try {
+                artifactDest.parentFile?.mkdirs()
                 actualFrameFile.copyTo(artifactDest, overwrite = true)
                 println("📸 Copied visual VRT artifact to: ${artifactDest.absolutePath}")
+                
+                tempWorkDest.parentFile?.mkdirs()
+                actualFrameFile.copyTo(tempWorkDest, overwrite = true)
+                println("📸 Copied preview frame to: ${tempWorkDest.absolutePath}")
             } catch (e: Exception) {
-                println("⚠️ Failed to copy artifact to workspace: ${e.message}")
+                println("⚠️ Failed to copy artifact: ${e.message}")
             }
 
             // Scan the top_center area where the caption is expected to be drawn.
