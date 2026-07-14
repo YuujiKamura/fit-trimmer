@@ -73,16 +73,27 @@ object PlateDetectionManager : fit.PlateDetector {
         // Multiplier of 3x for active dynamic tracking, capped at 4.0fps to prevent extreme decoding overhead
         val effectiveDetectionFps = (baseDetectionFps * 3.0).coerceAtMost(4.0)
         
-        // Downscale limit depending on mask mode: 1280 for vehicle (640 model), 1920 for plate (1088 model)
+        // Downscale limit depending on mask mode: 1280 for vehicle (640 model) to maintain processing efficiency.
+        // For plate mask mode, bypass intermediate downscaling and decode at the original video resolution
+        // (e.g. 4K) to preserve high-fidelity plate details for direct 1088px model preprocessing.
         val isVehicleMode = !settings.plateMaskMode.equals("plate", ignoreCase = true)
-        val maxScanDim = if (isVehicleMode) 1280 else 1920
-        val (scanWidth, scanHeight) = if (videoWidth > maxScanDim || videoHeight > maxScanDim) {
-            val scaleFactor = maxScanDim.toFloat() / maxOf(videoWidth, videoHeight)
-            ((videoWidth * scaleFactor).toInt() and -2) to ((videoHeight * scaleFactor).toInt() and -2)
+        val (scanWidth, scanHeight) = if (isVehicleMode) {
+            val maxScanDim = 1280
+            if (videoWidth > maxScanDim || videoHeight > maxScanDim) {
+                val scaleFactor = maxScanDim.toFloat() / maxOf(videoWidth, videoHeight)
+                ((videoWidth * scaleFactor).toInt() and -2) to ((videoHeight * scaleFactor).toInt() and -2)
+            } else {
+                videoWidth to videoHeight
+            }
         } else {
             videoWidth to videoHeight
         }
-        val filterChain = "scale=$scanWidth:$scanHeight,fps=$effectiveDetectionFps"
+        
+        val filterChain = if (scanWidth == videoWidth && scanHeight == videoHeight) {
+            "fps=$effectiveDetectionFps"
+        } else {
+            "scale=$scanWidth:$scanHeight,fps=$effectiveDetectionFps"
+        }
         val frameBytes = scanWidth * scanHeight * 3 // RGB24
         
         val normalizedScanRanges = (scanRanges ?: listOf(0.0 to durationSec))

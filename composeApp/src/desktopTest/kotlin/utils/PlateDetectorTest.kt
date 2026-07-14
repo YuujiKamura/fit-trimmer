@@ -1357,6 +1357,68 @@ class PlateDetectorTest {
     }
 
     @Test
+    fun testIsAcceptableBoxWithWideAspectRatio() {
+        val detector = PlateDetector.getInstance()
+        val acceptable = detector.isAcceptableBox(
+            boxW = 91,
+            boxH = 31,
+            aspect = 2.935484f,
+            videoWidth = 2704,
+            videoHeight = 1520
+        )
+        kotlin.test.assertTrue(acceptable, "Plate box with aspect ratio 2.935 should be acceptable")
+    }
+
+    @Test
+    fun testMultipleStaticFramesPlateDetection() {
+        val detector = PlateDetector.getInstance()
+        val tempWorkDir = File("C:\\Users\\yuuji\\fit-trimmer\\composeApp\\temp_work")
+        
+        val framesToTest = listOf(
+            "sample_frame_15250.jpg",
+            "sample_frame_0.jpg",
+            "sample_frame_30000.jpg",
+            "sample_frame_120000.jpg"
+        )
+        
+        for (frameName in framesToTest) {
+            val file = File(tempWorkDir, frameName)
+            if (!file.exists()) {
+                println("Skipping frame test: ${file.absolutePath} not found")
+                continue
+            }
+            
+            val img = javax.imageio.ImageIO.read(file)
+            val boxes = detector.detect(
+                image = img,
+                confThreshold = 0.45f,
+                maskMode = "plate",
+                detectPedestrians = false
+            )
+            
+            println("REPORT: Frame $frameName - Detected ${boxes.size} plates.")
+            for ((idx, box) in boxes.withIndex()) {
+                println("  Plate #$idx: x1=${box.x1}, y1=${box.y1}, x2=${box.x2}, y2=${box.y2} (w=${box.x2 - box.x1}, h=${box.y2 - box.y1}, aspect=${(box.x2 - box.x1).toFloat() / (box.y2 - box.y1).toFloat()})")
+            }
+            
+            val outImg = BufferedImage(img.width, img.height, BufferedImage.TYPE_3BYTE_BGR)
+            val g = outImg.createGraphics()
+            g.drawImage(img, 0, 0, null)
+            g.color = java.awt.Color.RED
+            g.stroke = java.awt.BasicStroke(4f)
+            
+            for (box in boxes) {
+                g.drawRect(box.x1, box.y1, box.x2 - box.x1, box.y2 - box.y1)
+            }
+            g.dispose()
+            
+            val outFile = File(tempWorkDir, "detected_plate_${frameName}")
+            javax.imageio.ImageIO.write(outImg, "jpg", outFile)
+            println("  Saved detection output image to: ${outFile.absolutePath}")
+        }
+    }
+
+    @Test
     fun testPlainModelDirectModeBypassesTrackingAndInterpolation() {
         val testVideo = File("C:\\Users\\yuuji\\fit-trimmer\\composeApp\\scratch\\crop_test.mp4")
         if (!testVideo.exists()) {

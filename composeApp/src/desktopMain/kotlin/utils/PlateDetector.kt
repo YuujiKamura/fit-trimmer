@@ -113,6 +113,20 @@ class PlateDetector private constructor() : AutoCloseable {
         val height = image.height
 
         val isVehicleMode = !maskMode.equals("plate", ignoreCase = true)
+        
+        // Cascaded check: Run vehicle detection first if we are in plate detection mode
+        if (!isVehicleMode) {
+            val vehicleBoxes = detect(
+                image = image,
+                confThreshold = 0.35f,
+                maskMode = "wide", // Trigger vehicle mode internally
+                detectPedestrians = detectPedestrians
+            )
+            if (vehicleBoxes.isEmpty()) {
+                return emptyList()
+            }
+        }
+
         val inputSize = if (isVehicleMode) 640 else 1088
 
         // 1. Letterbox Preprocessing (preserving aspect ratio)
@@ -298,14 +312,9 @@ class PlateDetector private constructor() : AutoCloseable {
                         val boxH = (origY2 - origY1).toInt()
                         val aspect = if (boxH > 0) boxW.toFloat() / boxH.toFloat() else 0f
                         
-                        // Filter based on standard Japanese plate aspect ratio (typically 1.3 to 2.7)
-                        // and physically reasonable size limits to eliminate HUD/sky wire misdetections.
-                        // Filter based on standard Japanese plate aspect ratio (typically 1.5 to 2.5)
+                        // Filter based on standard Japanese plate aspect ratio (typically 1.3 to 3.3)
                         // and physically reasonable size limits to eliminate HUD/sky wire/vehicle body misdetections.
-                        val maxW = (width * 0.15f).toInt().coerceAtLeast(300)
-                        val maxH = (height * 0.15f).toInt().coerceAtLeast(150)
-                        
-                        if (boxW in 12..maxW && boxH in 6..maxH && aspect in 1.5f..2.5f) {
+                        if (isAcceptableBox(boxW, boxH, aspect, width, height)) {
                             PlateBox(
                                 x1 = origX1.toInt(),
                                 y1 = origY1.toInt(),
@@ -313,9 +322,7 @@ class PlateDetector private constructor() : AutoCloseable {
                                 y2 = origY2.toInt()
                             )
                         } else {
-                            if (aspect < 1.5f || aspect > 2.5f || boxW > maxW || boxH > maxH) {
-                                println("DEBUG: Filtered out box [${origX1.toInt()}, ${origY1.toInt()}, ${origX2.toInt()}, ${origY2.toInt()}] (w=$boxW, h=$boxH, aspect=$aspect)")
-                            }
+                            println("DEBUG: Filtered out box [${origX1.toInt()}, ${origY1.toInt()}, ${origX2.toInt()}, ${origY2.toInt()}] (w=$boxW, h=$boxH, aspect=$aspect)")
                             null
                         }
                     }
@@ -338,6 +345,12 @@ class PlateDetector private constructor() : AutoCloseable {
             }
         }
         return result
+    }
+
+    internal fun isAcceptableBox(boxW: Int, boxH: Int, aspect: Float, videoWidth: Int, videoHeight: Int): Boolean {
+        val maxW = (videoWidth * 0.15f).toInt().coerceAtLeast(300)
+        val maxH = (videoHeight * 0.15f).toInt().coerceAtLeast(150)
+        return boxW in 12..maxW && boxH in 6..maxH && aspect in 1.3f..3.3f
     }
 
     override fun close() {
