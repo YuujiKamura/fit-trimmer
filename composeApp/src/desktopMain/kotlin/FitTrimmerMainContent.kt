@@ -3065,7 +3065,11 @@ fun FitTrimmerMainContent(
                                             fontSize = 10.sp,
                                             color = Color(0xFF636366)
                                         )
-                                        listOf("plate" to "ぼかしマスク", "cut" to "カット除去").forEach { (mode, label) ->
+                                        listOf(
+                                            "plate" to "ナンバー特化ぼかし",
+                                            "vehicle" to "車体ベースぼかし",
+                                            "cut" to "カット除去"
+                                        ).forEach { (mode, label) ->
                                             val selected = settings.plateMaskMode == mode
                                             Text(
                                                 text = label,

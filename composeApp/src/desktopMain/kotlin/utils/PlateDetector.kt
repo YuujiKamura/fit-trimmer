@@ -11,12 +11,23 @@ import java.nio.FloatBuffer
 import fit.PlateBox
 
 class PlateDetector private constructor() : AutoCloseable {
+    private val env: OrtEnvironment = OrtEnvironment.getEnvironment()
+    
+    @Volatile
+    private var sessionVehicle: OrtSession? = null
+    @Volatile
+    private var sessionPlate: OrtSession? = null
+
+    // Thread-local input buffers to eliminate garbage collection pressure
+    private val threadLocalInput640 = ThreadLocal.withInitial { FloatArray(1 * 3 * 640 * 640) }
+    private val threadLocalInput1088 = ThreadLocal.withInitial { FloatArray(1 * 3 * 1088 * 1088) }
+
     // TDD Verification Flags
     var lastResizeBypassed = false
     var lastGetRgbBypassed = false
 
     // Performance tracking statistics
-    internal val activeProviderName: String = "Rule-based (Fast)"
+    internal val activeProviderName: String = "CPU/GPU (Dual Model)"
     internal var totalFramesProcessed = 0L
     private var totalResizeMs = 0.0
     private var totalPreprocessMs = 0.0
@@ -33,19 +44,50 @@ class PlateDetector private constructor() : AutoCloseable {
 
     fun printPerfStatsSummary() {
         if (totalFramesProcessed > 0L) {
+            val avgResize = totalResizeMs / totalFramesProcessed
+            val avgPre = totalPreprocessMs / totalFramesProcessed
+            val avgInf = totalInferenceMs / totalFramesProcessed
             val avgPost = totalPostprocessMs / totalFramesProcessed
+            val avgTotal = avgResize + avgPre + avgInf + avgPost
+            
             println(String.format(
                 java.util.Locale.US,
                 "DEBUG: === Plate Detection Average Performance Summary (Over %d frames) ===\n" +
-                "  - Avg Process:     %.2f ms\n" +
+                "  - Avg Resize:     %.2f ms\n" +
+                "  - Avg Preprocess: %.2f ms\n" +
+                "  - Avg Inference:  %.2f ms\n" +
+                "  - Avg Postprocess: %.2f ms\n" +
                 "  - Total Average:  %.2f ms per frame (approx. %.1f fps)",
-                totalFramesProcessed, avgPost, avgPost, 1000.0 / avgPost
+                totalFramesProcessed, avgResize, avgPre, avgInf, avgPost, avgTotal, 1000.0 / avgTotal
             ))
         }
     }
 
-    init {
-        println("DEBUG: Rule-based plate detector initialized successfully.")
+    private fun getVehicleSession(): OrtSession {
+        return sessionVehicle ?: synchronized(this) {
+            sessionVehicle ?: loadSession("/yolov8n.onnx").also { sessionVehicle = it }
+        }
+    }
+
+    private fun getPlateSession(): OrtSession {
+        return sessionPlate ?: synchronized(this) {
+            sessionPlate ?: loadSession("/yolov8n_plate.onnx").also { sessionPlate = it }
+        }
+    }
+
+    private fun loadSession(modelPath: String): OrtSession {
+        val modelStream = PlateDetector::class.java.getResourceAsStream(modelPath)
+            ?: throw IllegalStateException("Model $modelPath not found in resources")
+        val modelBytes = modelStream.use { it.readBytes() }
+        val availableProviders = OrtEnvironment.getAvailableProviders()
+        
+        val opts = OrtSession.SessionOptions()
+        val cores = Runtime.getRuntime().availableProcessors().coerceAtLeast(1)
+        val intraThreads = (cores / 2).coerceIn(1, 8)
+        opts.setIntraOpNumThreads(intraThreads)
+        opts.setInterOpNumThreads(1)
+        
+        return env.createSession(modelBytes, opts)
     }
 
     companion object {
@@ -61,163 +103,225 @@ class PlateDetector private constructor() : AutoCloseable {
 
     data class DetectedBox(val x1: Float, val y1: Float, val x2: Float, val y2: Float, val score: Float, val classId: Int)
 
-    fun detect(image: BufferedImage, confThreshold: Float = 0.25f, iouThreshold: Float = 0.45f, detectPedestrians: Boolean = false): List<PlateBox> {
+    fun detect(
+        image: BufferedImage, 
+        confThreshold: Float = 0.25f, 
+        iouThreshold: Float = 0.45f, 
+        detectPedestrians: Boolean = false,
+        maskMode: String = "vehicle"
+    ): List<PlateBox> {
         val t0 = System.nanoTime()
         val width = image.width
         val height = image.height
 
-        lastResizeBypassed = true
-        lastGetRgbBypassed = true
+        val isVehicleMode = !maskMode.equals("plate", ignoreCase = true)
+        val inputSize = if (isVehicleMode) 640 else 1088
 
-        val boxes = mutableListOf<PlateBox>()
+        // 1. Letterbox Preprocessing (preserving aspect ratio)
+        val scale = kotlin.math.min(inputSize.toFloat() / width, inputSize.toFloat() / height)
+        val newW = (width * scale).toInt()
+        val newH = (height * scale).toInt()
+        val offsetX = (inputSize - newW) / 2
+        val offsetY = (inputSize - newH) / 2
 
-        // Auto-expand ROI for non-standard driving frame sizes (e.g. screenshots) to find plates anywhere in the image
-        val isStandardDashcam = (width == 3840 && height == 2160) || (width == 1920 && height == 1080)
-        val roiMinX = if (isStandardDashcam) (width * 0.20).toInt() else 0
-        val roiMaxX = if (isStandardDashcam) (width * 0.80).toInt() else width
-        val roiMinY = if (isStandardDashcam) (height * 0.42).toInt() else 0
-        val roiMaxY = if (isStandardDashcam) (height * 0.88).toInt() else height
+        val letterbox = BufferedImage(inputSize, inputSize, BufferedImage.TYPE_3BYTE_BGR)
+        val g = letterbox.createGraphics()
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC)
+        g.drawImage(image, offsetX, offsetY, newW, newH, null)
+        g.dispose()
 
-        val step = 2 // Downsample step to prevent pixel-by-pixel scanning overhead
-        val binW = (roiMaxX - roiMinX) / step
-        val binH = (roiMaxY - roiMinY) / step
-        val binarized = java.util.BitSet(binW * binH)
+        // TDD compliance flags
+        lastResizeBypassed = (width == inputSize && height == inputSize)
+        val tResize = System.nanoTime()
 
-        for (y in 0 until binH) {
-            val imgY = roiMinY + y * step
-            for (x in 0 until binW) {
-                val imgX = roiMinX + x * step
-                val rgb = image.getRGB(imgX, imgY)
-                val r = (rgb shr 16) and 0xFF
-                val g = (rgb shr 8) and 0xFF
-                val b = rgb and 0xFF
+        // 2. Buffer extraction (optimized flat RGB format for ONNX)
+        val inputData = if (isVehicleMode) threadLocalInput640.get() else threadLocalInput1088.get()
+        val rOffset = 2 * inputSize * inputSize
+        val gOffset = inputSize * inputSize
+        val bOffset = 0
+        val inv255 = 1.0f / 255.0f
 
-                // Tight color thresholds matching Japanese plates (White/Yellow/Green)
-                val isWhite = (r > 160 && g > 160 && b > 155 && 
-                               kotlin.math.abs(r - g) < 20 && 
-                               kotlin.math.abs(g - b) < 20 && 
-                               kotlin.math.abs(r - b) < 20)
-                val isYellow = (r > 165 && g > 145 && b < 125 && 
-                                r - b > 45 && g - b > 35)
-                val isGreen = (g > 60 && g > r + 15 && g > b + 15 && r < 140 && b < 150)
-
-                if (isWhite || isYellow || isGreen) {
-                    binarized.set(y * binW + x)
-                }
+        val raster = letterbox.raster
+        val dataBuffer = raster.dataBuffer
+        if (letterbox.type == BufferedImage.TYPE_3BYTE_BGR && dataBuffer is java.awt.image.DataBufferByte) {
+            val bytes = dataBuffer.data
+            for (i in 0 until inputSize * inputSize) {
+                val base = i * 3
+                val b = (bytes[base].toInt() and 0xFF) * inv255
+                val g = (bytes[base + 1].toInt() and 0xFF) * inv255
+                val r = (bytes[base + 2].toInt() and 0xFF) * inv255
+                
+                inputData[rOffset + i] = r
+                inputData[gOffset + i] = g
+                inputData[bOffset + i] = b
             }
+            lastGetRgbBypassed = true
+        } else {
+            val rgbArray = IntArray(inputSize * inputSize)
+            letterbox.getRGB(0, 0, inputSize, inputSize, rgbArray, 0, inputSize)
+            for (i in 0 until inputSize * inputSize) {
+                val rgb = rgbArray[i]
+                val r = ((rgb shr 16) and 0xFF) * inv255
+                val g = ((rgb shr 8) and 0xFF) * inv255
+                val b = (rgb and 0xFF) * inv255
+                
+                inputData[rOffset + i] = r
+                inputData[gOffset + i] = g
+                inputData[bOffset + i] = b
+            }
+            lastGetRgbBypassed = false
         }
 
-        // Segment blobs using fast BFS flood fill
-        val visited = java.util.BitSet(binW * binH)
-        val queue = IntArray(binW * binH)
+        val tPreprocess = System.nanoTime()
 
-        for (y in 0 until binH) {
-            for (x in 0 until binW) {
-                val idx = y * binW + x
-                if (binarized.get(idx) && !visited.get(idx)) {
-                    var head = 0
-                    var tail = 0
-                    queue[tail++] = idx
-                    visited.set(idx)
+        // 3. Inference execution on ONNX Runtime
+        val inputBuffer = FloatBuffer.wrap(inputData)
+        val tensor = OnnxTensor.createTensor(env, inputBuffer, longArrayOf(1, 3, inputSize.toLong(), inputSize.toLong()))
+        
+        val activeSession = if (isVehicleMode) getVehicleSession() else getPlateSession()
+        
+        val result = tensor.use { t ->
+            activeSession.run(mapOf("images" to t)).use { outputs ->
+                val outputTensor = outputs[0] as OnnxTensor
+                val tInference = System.nanoTime()
+                
+                val buffer = outputTensor.floatBuffer
+                val rawBoxes = mutableListOf<DetectedBox>()
 
-                    var minX = x
-                    var maxX = x
-                    var minY = y
-                    var maxY = y
+                if (isVehicleMode) {
+                    // Standard YOLOv8 output is [1, 84, 8400] for 80 classes.
+                    val outputData = FloatArray(84 * 8400)
+                    buffer.get(outputData)
+                    
+                    // Target COCO classes: 2 (car), 3 (motorcycle), 5 (bus), 7 (truck).
+                    // If detectPedestrians is enabled, also include 0 (person) represented by offset 4.
+                    val targetOffsets = if (detectPedestrians) {
+                        intArrayOf(4, 6, 7, 9, 11) // 4=person, 6=car, 7=motorcycle, 9=bus, 11=truck
+                    } else {
+                        intArrayOf(6, 7, 9, 11)
+                    }
 
-                    while (head < tail) {
-                        val curr = queue[head++]
-                        val cx = curr % binW
-                        val cy = curr / binW
-
-                        if (cx < minX) minX = cx
-                        if (cx > maxX) maxX = cx
-                        if (cy < minY) minY = cy
-                        if (cy > maxY) maxY = cy
-
-                        val neighbors = arrayOf(
-                            Pair(cx - 1, cy), Pair(cx + 1, cy),
-                            Pair(cx, cy - 1), Pair(cx, cy + 1)
-                        )
-                        for (nb in neighbors) {
-                            val nx = nb.first
-                            val ny = nb.second
-                            if (nx in 0 until binW && ny in 0 until binH) {
-                                val nidx = ny * binW + nx
-                                if (binarized.get(nidx) && !visited.get(nidx)) {
-                                    visited.set(nidx)
-                                    if (tail < queue.size) {
-                                        queue[tail++] = nidx
-                                    }
-                                }
+                    for (i in 0 until 8400) {
+                        var maxScore = 0f
+                        var bestClassId = -1
+                        for (offset in targetOffsets) {
+                            val score = outputData[offset * 8400 + i]
+                            if (score > maxScore) {
+                                maxScore = score
+                                bestClassId = offset - 4 // classId: 0=person, 2=car, 3=motorcycle, 5=bus, 7=truck
                             }
                         }
+
+                        val classThreshold = if (bestClassId == 0) maxOf(confThreshold, 0.35f) else confThreshold
+                        if (maxScore >= classThreshold) {
+                            val cx = outputData[0 * 8400 + i]
+                            val cy = outputData[1 * 8400 + i]
+                            val w = outputData[2 * 8400 + i]
+                            val h = outputData[3 * 8400 + i]
+                            
+                            val x1 = cx - w / 2f
+                            val y1 = cy - h / 2f
+                            val x2 = cx + w / 2f
+                            val y2 = cy + h / 2f
+                            
+                            rawBoxes.add(DetectedBox(x1, y1, x2, y2, maxScore, bestClassId))
+                        }
                     }
+                } else {
+                    // Plate detection YOLOv8 model output is [1, 5, 24276]
+                    val outputData = FloatArray(5 * 24276)
+                    buffer.get(outputData)
 
-                    val boxW = (maxX - minX + 1) * step
-                    val boxH = (maxY - minY + 1) * step
-                    val boxX = roiMinX + minX * step
-                    val boxY = roiMinY + minY * step
-
-                    val aspect = boxW.toFloat() / boxH.toFloat()
-                    
-                    // Filter based on Japanese plate aspect ratio (2:1) and target physical width range
-                    if (boxW in 12..250 && boxH in 6..120 && aspect in 1.4f..2.8f) {
-                        boxes.add(PlateBox(boxX, boxY, boxX + boxW, boxY + boxH))
+                    for (i in 0 until 24276) {
+                        val score = outputData[4 * 24276 + i]
+                        if (score >= confThreshold) {
+                            val cx = outputData[0 * 24276 + i]
+                            val cy = outputData[1 * 24276 + i]
+                            val w = outputData[2 * 24276 + i]
+                            val h = outputData[3 * 24276 + i]
+                            
+                            val x1 = cx - w / 2f
+                            val y1 = cy - h / 2f
+                            val x2 = cx + w / 2f
+                            val y2 = cy + h / 2f
+                            
+                            rawBoxes.add(DetectedBox(x1, y1, x2, y2, score, 0))
+                        }
                     }
                 }
-            }
-        }
+                
+                val nmsBoxes = nms(rawBoxes, iouThreshold)
+                
+                // 4. Inverse map coordinates back to the original image scale and apply crop/offset if in Vehicle mode
+                val mapped = nmsBoxes.mapNotNull { box ->
+                    val origX1 = ((box.x1 - offsetX) / scale).coerceIn(0f, width.toFloat())
+                    val origY1 = ((box.y1 - offsetY) / scale).coerceIn(0f, height.toFloat())
+                    val origX2 = ((box.x2 - offsetX) / scale).coerceIn(0f, width.toFloat())
+                    val origY2 = ((box.y2 - offsetY) / scale).coerceIn(0f, height.toFloat())
 
-        val merged = mergeBoxes(boxes)
+                    if (isVehicleMode) {
+                        // Crop to vehicle bottom 50% for standard cars, 75% for motorcycles to handle rider height,
+                        // or 100% (cropRatio = 0.0f) for pedestrians to mask their entire body safely.
+                        val boxHeight = origY2 - origY1
+                        val cropRatio = when (box.classId) {
+                            0 -> 0.0f  // Pedestrian (full body)
+                            3 -> 0.25f // Motorcycle
+                            else -> 0.50f // Standard vehicle (car, truck, bus)
+                        }
+                        val finalY1 = origY1 + (boxHeight * cropRatio)
 
-        val tPostprocess = System.nanoTime()
-        totalFramesProcessed++
-        totalPostprocessMs += (tPostprocess - t0) / 1_000_000.0
-
-        return merged
-    }
-
-    private fun mergeBoxes(boxes: List<PlateBox>): List<PlateBox> {
-        if (boxes.size <= 1) return boxes
-        
-        fun intersects(a: PlateBox, b: PlateBox): Boolean {
-            return !(a.x2 < b.x1 || a.x1 > b.x2 || a.y2 < b.y1 || a.y1 > b.y2)
-        }
-
-        fun merge(a: PlateBox, b: PlateBox): PlateBox {
-            return PlateBox(
-                x1 = kotlin.math.min(a.x1, b.x1),
-                y1 = kotlin.math.min(a.y1, b.y1),
-                x2 = kotlin.math.max(a.x2, b.x2),
-                y2 = kotlin.math.max(a.y2, b.y2)
-            )
-        }
-
-        val result = boxes.toMutableList()
-        var merged = true
-        while (merged) {
-            merged = false
-            var i = 0
-            while (i < result.size) {
-                var j = i + 1
-                while (j < result.size) {
-                    if (intersects(result[i], result[j])) {
-                        result[i] = merge(result[i], result[j])
-                        result.removeAt(j)
-                        merged = true
+                        PlateBox(
+                            x1 = origX1.toInt(),
+                            y1 = finalY1.toInt(),
+                            x2 = origX2.toInt(),
+                            y2 = origY2.toInt()
+                        )
                     } else {
-                        j++
+                        val boxW = (origX2 - origX1).toInt()
+                        val boxH = (origY2 - origY1).toInt()
+                        val aspect = if (boxH > 0) boxW.toFloat() / boxH.toFloat() else 0f
+                        
+                        // Filter based on standard Japanese plate aspect ratio (typically 1.3 to 2.7)
+                        // and physically reasonable size limits to eliminate HUD/sky wire misdetections.
+                        val maxW = (width / 7).coerceAtLeast(400)
+                        val maxH = (height / 7).coerceAtLeast(200)
+                        
+                        if (boxW in 12..maxW && boxH in 6..maxH && aspect in 1.2f..2.8f) {
+                            PlateBox(
+                                x1 = origX1.toInt(),
+                                y1 = origY1.toInt(),
+                                x2 = origX2.toInt(),
+                                y2 = origY2.toInt()
+                            )
+                        } else {
+                            null
+                        }
                     }
                 }
-                i++
+
+                val tPostprocess = System.nanoTime()
+
+                val dResize = (tResize - t0) / 1_000_000.0
+                val dPre = (tPreprocess - tResize) / 1_000_000.0
+                val dInf = (tInference - tPreprocess) / 1_000_000.0
+                val dPost = (tPostprocess - tInference) / 1_000_000.0
+                
+                totalFramesProcessed++
+                totalResizeMs += dResize
+                totalPreprocessMs += dPre
+                totalInferenceMs += dInf
+                totalPostprocessMs += dPost
+
+                mapped
             }
         }
         return result
     }
 
     override fun close() {
-        // No resources to close
+        sessionVehicle?.close()
+        sessionPlate?.close()
+        env.close()
     }
 
     internal fun mapAndFilterBoxes(

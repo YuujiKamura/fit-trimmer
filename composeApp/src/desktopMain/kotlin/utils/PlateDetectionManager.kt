@@ -143,7 +143,12 @@ object PlateDetectionManager : fit.PlateDetector {
                             records.add(cachedRecord)
                         }
                     } else {
-                        val detectedBoxes = detector.detect(img, confThreshold = 0.25f)
+                        val detectedBoxes = detector.detect(
+                            img,
+                            confThreshold = 0.25f,
+                            detectPedestrians = settings.detectPedestrians,
+                            maskMode = settings.plateMaskMode
+                        )
                         if (detectedBoxes.isNotEmpty()) {
                             val filteredBoxes = filterBoxesForMaskSize(detectedBoxes, videoHeight, settings)
                             if (filteredBoxes.isNotEmpty()) {

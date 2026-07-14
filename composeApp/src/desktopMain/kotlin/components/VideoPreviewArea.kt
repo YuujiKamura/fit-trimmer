@@ -1110,29 +1110,12 @@ fun VideoPreviewArea(
                                 val ry1 = mapped.y
                                 val w = mapped.width
                                 val h = mapped.height
-                                val rx2 = rx1 + w
-                                val ry2 = ry1 + h
                                 
                                 if (w > 0 && h > 0) {
-                                    val radius = minOf(w, h) * 0.18f
-                                    drawRoundRect(
-                                        color = Color(0xAA1C1C1E),
+                                    drawRect(
+                                        color = Color(0xFF808080), // Flat solid gray
                                         topLeft = Offset(rx1, ry1),
-                                        size = Size(w, h),
-                                        cornerRadius = CornerRadius(radius, radius)
-                                    )
-                                    drawRoundRect(
-                                        color = Color.White.copy(alpha = 0.18f),
-                                        topLeft = Offset(rx1 + w * 0.08f, ry1 + h * 0.10f),
-                                        size = Size(w * 0.84f, h * 0.42f),
-                                        cornerRadius = CornerRadius(radius * 0.75f, radius * 0.75f)
-                                    )
-                                    drawRoundRect(
-                                        color = Color.White.copy(alpha = 0.28f),
-                                        topLeft = Offset(rx1, ry1),
-                                        size = Size(w, h),
-                                        cornerRadius = CornerRadius(radius, radius),
-                                        style = Stroke(width = 1f)
+                                        size = Size(w, h)
                                     )
                                 }
                             }

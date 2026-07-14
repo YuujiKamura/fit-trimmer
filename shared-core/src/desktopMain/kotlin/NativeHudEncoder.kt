@@ -1425,7 +1425,7 @@ class NativeHudEncoder(
             val remainingSourceDuration = (actualTrimStart + targetDurationSeconds) - ffmpegInputStartMapped
             val remainingDuration = remainingSourceDuration
 
-            val runBlur = settings.blurLicensePlates && plateCache != null && plateCache.records.isNotEmpty()
+            val runBlur = false // Force bypass FFmpeg mask video pipeline; license plates are drawn directly on canvas
             val fpsDouble = videoFps.toDoubleOrNull() ?: 30.0
             val totalFrames = (finalOutputDuration * fpsDouble).toInt()
             val resumeFrames = (resumeSeconds * fpsDouble).toInt()
@@ -1825,6 +1825,70 @@ class NativeHudEncoder(
                     }
                     profiler.addHudRender(System.nanoTime() - hudStartNs)
                     gHud.dispose()
+                    
+                    // Solid representative-color masking for license plates (drawn directly on the canvas)
+                    if (settings.blurLicensePlates && plateCache != null) {
+                        val currentRenderTimeMs = (currentSecInSource * 1000.0).toLong()
+                        val activeBoxes = plateCache.shouldBlurAt(currentRenderTimeMs, true)
+                        if (activeBoxes.isNotEmpty()) {
+                            val gMask = img.createGraphics()
+                            
+                            val is90Or270 = videoRotation == 90 || videoRotation == -270 || videoRotation == 270 || videoRotation == -90
+                            val fallbackSourceW = if (is90Or270) videoHeight else videoWidth
+                            val fallbackSourceH = if (is90Or270) videoWidth else videoHeight
+                            
+                            for (box in activeBoxes) {
+                                val maskBox = fit.PlateMaskExpander.expand(
+                                    box = box,
+                                    expandRatio = settings.plateMaskExpandRatio,
+                                    sourceWidth = plateCache.sourceWidth.takeIf { it > 0 } ?: fallbackSourceW,
+                                    sourceHeight = plateCache.sourceHeight.takeIf { it > 0 } ?: fallbackSourceH
+                                )
+                                val mapped = fit.PlateCoordinateMapper.mapToTarget(
+                                    box = maskBox,
+                                    cache = plateCache,
+                                    fallbackSourceWidth = fallbackSourceW,
+                                    fallbackSourceHeight = fallbackSourceH,
+                                    targetWidth = exportWidth.toFloat(),
+                                    targetHeight = exportHeight.toFloat(),
+                                    cropToSquare = settings.cropToSquare
+                                )
+                                
+                                val rx = mapped.x.toInt()
+                                val ry = mapped.y.toInt()
+                                val rw = mapped.width.toInt()
+                                val rh = mapped.height.toInt()
+                                
+                                if (rw > 0 && rh > 0) {
+                                    val fillColor = try {
+                                        // Sample 5 points (center and 4 inner corners) and average them to get a stable representative color
+                                        val px = intArrayOf(rx + rw / 2, rx + rw / 4, rx + 3 * rw / 4, rx + rw / 2, rx + rw / 2)
+                                        val py = intArrayOf(ry + rh / 2, ry + rh / 2, ry + rh / 2, ry + rh / 4, ry + 3 * rh / 4)
+                                        var rSum = 0
+                                        var gSum = 0
+                                        var bSum = 0
+                                        var count = 0
+                                        for (idx in px.indices) {
+                                            val cx = px[idx].coerceIn(0, img.width - 1)
+                                            val cy = py[idx].coerceIn(0, img.height - 1)
+                                            val rgb = img.getRGB(cx, cy)
+                                            rSum += (rgb shr 16) and 0xFF
+                                            gSum += (rgb shr 8) and 0xFF
+                                            bSum += rgb and 0xFF
+                                            count++
+                                        }
+                                        java.awt.Color(rSum / count, gSum / count, bSum / count)
+                                    } catch (e: Exception) {
+                                        java.awt.Color(128, 128, 128) // Fallback Gray
+                                    }
+                                    
+                                    gMask.color = fillColor
+                                    gMask.fillRect(rx, ry, rw, rh)
+                                }
+                            }
+                            gMask.dispose()
+                        }
+                    }
 
                     // Debug rendering: Draw green bounding boxes for detected license plates
                     if (plateCache != null) {
@@ -2163,7 +2227,7 @@ class NativeHudEncoder(
         trimStartSeconds: Double = 0.0
     ) {
         try { jobDir.mkdirs(); File(jobDir, ".video_source").writeText(videoPath) } catch(e: Exception) { e.printStackTrace() }
-        val runBlur = settings.blurLicensePlates && plateCache.records.isNotEmpty()
+        val runBlur = false // Bypass pre-compiling; handled in Kotlin rendering
         if (!runBlur) return
 
         val fpsDouble = videoFps.toDoubleOrNull() ?: 30.0
