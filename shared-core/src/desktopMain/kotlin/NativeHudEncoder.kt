@@ -1412,6 +1412,11 @@ class NativeHudEncoder(
             val fpsDouble = videoFps.toDoubleOrNull() ?: 30.0
             val totalFrames = (finalOutputDuration * fpsDouble).toInt()
             val resumeFrames = (resumeSeconds * fpsDouble).toInt()
+
+            val maskScale = 0.25
+            val maskW = (((exportWidth * maskScale).toInt() / 8) * 8).coerceAtLeast(16)
+            val maskH = (((exportHeight * maskScale).toInt() / 8) * 8).coerceAtLeast(16)
+
             val maskFramePlan = if (runBlur) {
                 val maskPlanStartNs = System.nanoTime()
                 val is90Or270 = videoRotation == 90 || videoRotation == -270 || videoRotation == 270 || videoRotation == -90
@@ -1424,8 +1429,8 @@ class NativeHudEncoder(
                     expandRatio = settings.plateMaskExpandRatio,
                     fallbackSourceWidth = fallbackSourceW,
                     fallbackSourceHeight = fallbackSourceH,
-                    targetWidth = exportWidth.toFloat(),
-                    targetHeight = exportHeight.toFloat(),
+                    targetWidth = maskW.toFloat(),
+                    targetHeight = maskH.toFloat(),
                     timeBufferMs = settings.plateMaskTimeBufferMs,
                     sourceStartTimeMs = (actualTrimStart * 1000.0).toLong(),
                     speedSegments = settings.speedSegments,
@@ -1462,8 +1467,8 @@ class NativeHudEncoder(
                     ffmpegPath = ffmpegPath,
                     outputFile = maskFile,
                     maskFramePlan = maskFramePlan,
-                    width = exportWidth,
-                    height = exportHeight,
+                    width = maskW,
+                    height = maskH,
                     fps = videoFps
                 )
                 profiler.addMaskVideo(System.nanoTime() - maskVideoStartNs)
@@ -2098,6 +2103,10 @@ class NativeHudEncoder(
         val fallbackSourceW = if (is90Or270) videoHeight else videoWidth
         val fallbackSourceH = if (is90Or270) videoWidth else videoHeight
         
+        val maskScale = 0.25
+        val maskW = (((exportWidth * maskScale).toInt() / 8) * 8).coerceAtLeast(16)
+        val maskH = (((exportHeight * maskScale).toInt() / 8) * 8).coerceAtLeast(16)
+
         val maskFramePlan = plateCache.buildMappedMaskFrames(
             totalFrames = totalFrames,
             fps = fpsDouble,
@@ -2105,8 +2114,8 @@ class NativeHudEncoder(
             expandRatio = settings.plateMaskExpandRatio,
             fallbackSourceWidth = fallbackSourceW,
             fallbackSourceHeight = fallbackSourceH,
-            targetWidth = exportWidth.toFloat(),
-            targetHeight = exportHeight.toFloat(),
+            targetWidth = maskW.toFloat(),
+            targetHeight = maskH.toFloat(),
             timeBufferMs = settings.plateMaskTimeBufferMs,
             sourceStartTimeMs = (trimStartSeconds * 1000.0).toLong()
         )
@@ -2120,8 +2129,8 @@ class NativeHudEncoder(
             ffmpegPath = try { findFfmpegPath() } catch (e: Exception) { "ffmpeg" },
             outputFile = maskVideoFile,
             maskFramePlan = maskFramePlan,
-            width = exportWidth,
-            height = exportHeight,
+            width = maskW,
+            height = maskH,
             fps = videoFps
         )
 
