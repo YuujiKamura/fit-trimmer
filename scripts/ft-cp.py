@@ -52,6 +52,9 @@ if __name__ == "__main__":
         print(send_cmd({"type": "restore_plate_cache"}))
     elif action == "discard_plate_cache":
         print(send_cmd({"type": "discard_plate_cache"}))
+    elif action == "redetect":
+        confThreshold = float(sys.argv[2]) if len(sys.argv) >= 3 else None
+        print(send_cmd({"type": "redetect", "confThreshold": confThreshold}))
     elif action == "seek_plate_detection":
         index = int(sys.argv[2]) if len(sys.argv) >= 3 else 0
         print(send_cmd({"type": "seek_plate_detection", "index": index}))

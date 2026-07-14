@@ -1202,6 +1202,12 @@ class AppViewModelTest {
     }
 
     @Test
+    fun testCpCommandRedetectCompilation() {
+        val cmd: fit.CpCommand = fit.CpCommand.Redetect(null)
+        assertEquals("redetect", cmd::class.simpleName?.lowercase())
+    }
+
+    @Test
     fun testShowDebugPlateBoxesSettingAndSerialization() {
         val settings = HudSettings(showDebugPlateBoxes = true)
         assertTrue(settings.showDebugPlateBoxes, "showDebugPlateBoxes should be set to true")

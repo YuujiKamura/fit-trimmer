@@ -1319,6 +1319,66 @@ fun FitTrimmerMainContent(
                                 is CpCommand.SetPlateCacheEnabled -> {
                                     // Cache is always enabled now, no-op
                                 }
+                                is CpCommand.Redetect -> {
+                                    val currentVideoPath = videoPath
+                                    if (currentVideoPath != null && java.io.File(currentVideoPath).exists()) {
+                                        val timeMs = videoCurrentTimeMs
+                                        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                            statusText = "YOLOで再検出を実行中..."
+                                            val img = utils.PlateDetectionManager.extractSingleFrame(currentVideoPath, timeMs)
+                                            if (img != null) {
+                                                val (videoW, videoH) = utils.PlateDetectionManager.getVideoResolution(currentVideoPath)
+                                                val detector = utils.PlateDetector.getInstance()
+                                                val isVehicleMode = !settings.plateMaskMode.equals("plate", ignoreCase = true)
+                                                val boxes = detector.detect(
+                                                    image = img,
+                                                    confThreshold = cmd.confThreshold ?: 0.25f,
+                                                    maskMode = settings.plateMaskMode,
+                                                    detectPedestrians = settings.detectPedestrians
+                                                )
+                                                
+                                                val scaleX = videoW.toFloat() / img.width.toFloat()
+                                                val scaleY = videoH.toFloat() / img.height.toFloat()
+                                                val scaledBoxes = boxes.map { box ->
+                                                    fit.PlateBox(
+                                                        x1 = (box.x1 * scaleX).toInt(),
+                                                        y1 = (box.y1 * scaleY).toInt(),
+                                                        x2 = (box.x2 * scaleX).toInt(),
+                                                        y2 = (box.y2 * scaleY).toInt()
+                                                    )
+                                                }
+                                                
+                                                var cache = viewModel.plateCache
+                                                if (cache == null) {
+                                                    cache = VideoPlatesCache(
+                                                        videoPath = currentVideoPath,
+                                                        records = emptyList(),
+                                                        sourceWidth = videoW,
+                                                        sourceHeight = videoH
+                                                    )
+                                                }
+                                                
+                                                val updatedRecords = cache.records.toMutableList()
+                                                val idx = updatedRecords.indexOfFirst { kotlin.math.abs(it.timeMs - timeMs) < 250L }
+                                                val newRecord = PlateRecord(timeMs, scaledBoxes)
+                                                if (idx != -1) {
+                                                    updatedRecords[idx] = newRecord
+                                                } else {
+                                                    updatedRecords.add(newRecord)
+                                                    updatedRecords.sortBy { it.timeMs }
+                                                }
+                                                
+                                                val newCache = cache.copy(records = updatedRecords)
+                                                viewModel.plateCache = newCache
+                                                fit.PlateCacheManager.saveCache(currentVideoPath, newCache)
+                                                
+                                                statusText = "再検出完了: ${scaledBoxes.size} 個のオブジェクト"
+                                            } else {
+                                                statusText = "フレーム画像の取得に失敗しました"
+                                            }
+                                        }
+                                    }
+                                }
                                 CpCommand.RestorePlateCache -> {
                                     viewModel.plateCache = fit.PlateCacheManager.loadCache(videoPath)
                                 }

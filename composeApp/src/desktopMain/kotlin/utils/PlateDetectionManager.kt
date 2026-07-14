@@ -278,4 +278,77 @@ object PlateDetectionManager : fit.PlateDetector {
         }
         return result
     }
+
+    fun extractSingleFrame(videoPath: String, timeMs: Long, targetWidth: Int = 1280, targetHeight: Int = 720): BufferedImage? {
+        val ffmpegPath = try { findFfmpegPath() } catch (e: Exception) { "ffmpeg" }
+        val startSec = timeMs / 1000.0
+        val pb = ProcessBuilder(
+            ffmpegPath,
+            "-ss", String.format(Locale.US, "%.3f", startSec),
+            "-i", videoPath,
+            "-vf", "scale=$targetWidth:$targetHeight",
+            "-vframes", "1",
+            "-f", "image2pipe",
+            "-vcodec", "rawvideo",
+            "-pix_fmt", "rgb24",
+            "-"
+        )
+        val p = pb.start()
+        val stream = BufferedInputStream(p.inputStream)
+        val frameBytes = targetWidth * targetHeight * 3
+        val buffer = ByteArray(frameBytes)
+        var bytesRead = 0
+        try {
+            while (bytesRead < frameBytes) {
+                val r = stream.read(buffer, bytesRead, frameBytes - bytesRead)
+                if (r == -1) break
+                bytesRead += r
+            }
+        } catch (e: Exception) {
+            p.destroy()
+            return null
+        }
+        p.destroy()
+
+        if (bytesRead < frameBytes) return null
+
+        val img = BufferedImage(targetWidth, targetHeight, BufferedImage.TYPE_3BYTE_BGR)
+        val dataBuffer = img.raster.dataBuffer as java.awt.image.DataBufferByte
+        val outData = dataBuffer.data
+        for (i in 0 until targetWidth * targetHeight) {
+            val r = buffer[i * 3]
+            val g = buffer[i * 3 + 1]
+            val b = buffer[i * 3 + 2]
+            outData[i * 3] = b
+            outData[i * 3 + 1] = g
+            outData[i * 3 + 2] = r
+        }
+        return img
+    }
+
+    fun getVideoResolution(videoPath: String): Pair<Int, Int> {
+        val ffmpegPath = try { findFfmpegPath() } catch (e: Exception) { "ffmpeg" }
+        val pbInfo = ProcessBuilder(ffmpegPath, "-i", videoPath)
+        pbInfo.redirectErrorStream(true)
+        val pInfo = pbInfo.start()
+        val outputInfo = pInfo.inputStream.bufferedReader().readText()
+        pInfo.waitFor()
+
+        var videoWidth = 1920
+        var videoHeight = 1080
+
+        val resMatch = Regex("""\b(\d{3,5})x(\d{3,5})\b""").find(outputInfo)
+        if (resMatch != null) {
+            videoWidth = resMatch.groupValues[1].toInt()
+            videoHeight = resMatch.groupValues[2].toInt()
+        }
+        
+        val rotationMatch = Regex("""(?:rotation of|rotate\s*:)\s*(-?\d+)""").find(outputInfo)
+        val rotationVal = rotationMatch?.groupValues?.get(1)?.toIntOrNull() ?: 0
+        val isRotated90Or270 = rotationVal == 90 || rotationVal == -90 || rotationVal == 270 || rotationVal == -270
+        if (isRotated90Or270) {
+            return videoHeight to videoWidth
+        }
+        return videoWidth to videoHeight
+    }
 }

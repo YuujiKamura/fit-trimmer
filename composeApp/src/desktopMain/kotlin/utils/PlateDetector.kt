@@ -130,14 +130,17 @@ class PlateDetector private constructor() : AutoCloseable {
 
         // 2. Buffer extraction (optimized flat RGB format for ONNX)
         val inputData = if (inputSize == 640) threadLocalInput640.get() else threadLocalInput1088.get()
-        val rOffset = 2 * inputSize * inputSize
+        val rOffset = 0
         val gOffset = inputSize * inputSize
-        val bOffset = 0
+        val bOffset = 2 * inputSize * inputSize
         val inv255 = 1.0f / 255.0f
 
         val raster = letterbox.raster
         val dataBuffer = raster.dataBuffer
-        if (letterbox.type == BufferedImage.TYPE_3BYTE_BGR && dataBuffer is java.awt.image.DataBufferByte) {
+        val sampleModel = raster.sampleModel as? java.awt.image.ComponentSampleModel
+        val scanlineStride = sampleModel?.scanlineStride ?: (inputSize * 3)
+
+        if (letterbox.type == BufferedImage.TYPE_3BYTE_BGR && dataBuffer is java.awt.image.DataBufferByte && scanlineStride == inputSize * 3) {
             val bytes = dataBuffer.data
             for (i in 0 until inputSize * inputSize) {
                 val base = i * 3

@@ -78,6 +78,9 @@ sealed class CpCommand {
 
     @Serializable @kotlinx.serialization.SerialName("early_finish")
     object EarlyFinish : CpCommand()
+
+    @Serializable @kotlinx.serialization.SerialName("redetect")
+    data class Redetect(val confThreshold: Float? = null) : CpCommand()
 }
 
 @Serializable
