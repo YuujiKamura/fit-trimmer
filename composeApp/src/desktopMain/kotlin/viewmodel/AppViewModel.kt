@@ -509,15 +509,16 @@ class AppViewModel(
                 }
 
             } finally {
-
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-
                     isDetectingPlates = false
-
                     plateDetectionJob = null
-
+                    
+                    // Always reload the cache from disk to ensure partial scan results are preserved on stop/cancel
+                    val saved = fit.PlateCacheManager.loadCache(path)
+                    if (saved != null) {
+                        plateCache = saved
+                    }
                 }
-
             }
 
         }

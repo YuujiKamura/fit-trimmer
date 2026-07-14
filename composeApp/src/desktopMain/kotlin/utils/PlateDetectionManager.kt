@@ -49,6 +49,16 @@ object PlateDetectionManager : fit.PlateDetector {
             videoHeight = resMatch.groupValues[2].toInt()
         }
 
+        // Parse rotation from ffmpeg output (e.g. 'rotate : 90' or 'rotation of -90.00 degrees')
+        val rotationMatch = Regex("""(?:rotation of|rotate\s*:)\s*(-?\d+)""").find(outputInfo)
+        val rotationVal = rotationMatch?.groupValues?.get(1)?.toIntOrNull() ?: 0
+        val isRotated90Or270 = rotationVal == 90 || rotationVal == -90 || rotationVal == 270 || rotationVal == -270
+        if (isRotated90Or270) {
+            val temp = videoWidth
+            videoWidth = videoHeight
+            videoHeight = temp
+        }
+
         // Parse duration: "Duration: 00:01:23.45"
         val durMatch = Regex("""Duration:\s*(\d+):(\d+):(\d+)\.(\d+)""").find(outputInfo)
         if (durMatch != null) {

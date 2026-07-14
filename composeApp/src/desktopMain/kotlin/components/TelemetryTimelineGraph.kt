@@ -680,7 +680,7 @@ fun TelemetryTimelineGraph(
                         // Draw license-plate detection distribution. This is intentionally
                         // independent from telemetry validity so privacy scan coverage is visible.
                         val plateRecords = plateCache?.records ?: emptyList()
-                        if (blurLicensePlates && plateRecords.isNotEmpty()) {
+                        if (plateRecords.isNotEmpty()) {
                             val markerColor = Color(0xFF5856D6)
                             val bandTop = 4.dp.toPx()
                             val bandHeight = 12.dp.toPx()
