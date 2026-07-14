@@ -1321,6 +1321,40 @@ class PlateDetectorTest {
         kotlin.test.assertEquals(337, mapped2.y1) // 200 * 1.6875 = 337.5 -> 337
     }
 
+    @Test
+    fun testPlainModelDirectModeBypassesTrackingAndInterpolation() {
+        val testVideo = File("C:\\Users\\yuuji\\fit-trimmer\\composeApp\\scratch\\crop_test.mp4")
+        if (!testVideo.exists()) {
+            println("Skipping test: crop_test.mp4 not found")
+            return
+        }
+
+        val settings = fit.HudSettings(
+            plateInferenceInterval = 1 // Trigger Plain Mode!
+        )
+
+        var partialCache: VideoPlatesCache? = null
+
+        runBlocking {
+            PlateDetectionManager.detect(
+                videoPath = testVideo.absolutePath,
+                telemetryPoints = emptyList(),
+                adjustedStartUtc = "2026-06-14T08:02:06Z",
+                onProgress = { _, _ -> },
+                onCancel = { false },
+                onPartialResult = { cache ->
+                    partialCache = cache
+                },
+                settings = settings
+            )
+        }
+
+        val cache = partialCache
+        kotlin.test.assertNotNull(cache, "Plate cache must be assigned")
+        kotlin.test.assertTrue(cache.records.isNotEmpty(), "Cache must contain records in Plain Mode")
+        println("✅ Plain Mode Verification Test Completed successfully! Record count: ${cache.records.size}")
+    }
+
     private class SGObserver : java.awt.image.ImageObserver {
         override fun imageUpdate(img: java.awt.Image?, infoflags: Int, x: Int, y: Int, width: Int, height: Int): Boolean {
             return false

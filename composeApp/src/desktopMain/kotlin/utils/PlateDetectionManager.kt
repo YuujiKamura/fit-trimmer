@@ -513,47 +513,54 @@ object PlateDetectionManager : fit.PlateDetector {
                     val rawBoxes = detector.detect(img, confThreshold = 0.20f, detectPedestrians = settings.detectPedestrians)
                     val maskBoxes = filterBoxesForMaskSize(rawBoxes, 640, settings)
 
-                    // Track previous positions for gap interpolation before association
-                    val trackLastInfo = tracker.activeTracks.associate { it.id to (it.lastUpdatedFrame to it.lastBox) }
+                    if (inferenceInterval <= 1) {
+                        // Plain Model Direct Mode: No tracking, no gap interpolation, no backtracking.
+                        // Rely purely on direct plate detection model output.
+                        mergeBoxesIntoRecords(frame.timeMs, maskBoxes)
+                        maskBoxes
+                    } else {
+                        // Track previous positions for gap interpolation before association
+                        val trackLastInfo = tracker.activeTracks.associate { it.id to (it.lastUpdatedFrame to it.lastBox) }
 
-                    val beforeTrackIds = tracker.activeTracks.map { it.id }.toSet()
-                    val matched = tracker.updateWithDetections(frame.frameIndex, frame.timeMs, maskBoxes, img)
-                    mergeBoxesIntoRecords(frame.timeMs, matched)
+                        val beforeTrackIds = tracker.activeTracks.map { it.id }.toSet()
+                        val matched = tracker.updateWithDetections(frame.frameIndex, frame.timeMs, maskBoxes, img)
+                        mergeBoxesIntoRecords(frame.timeMs, matched)
 
-                    // Retroactive backtracking for newly appeared objects to avoid frame-in leakage
-                    for (track in tracker.activeTracks) {
-                        if (track.id !in beforeTrackIds) {
-                            val backtrackMap = tracker.performBacktracking(track, frame.frameIndex, 640, 640)
-                            for ((backtrackFrame, backtrackBox) in backtrackMap) {
-                                val backtrackTimeMs = (backtrackFrame * 1000.0 / effectiveDetectionFps).toLong()
-                                mergeBoxesIntoRecords(backtrackTimeMs, listOf(backtrackBox))
-                            }
-                        }
-                    }
-
-                    // Retroactive gap interpolation for existing associated tracks to prevent blur leakage
-                    for (track in tracker.activeTracks) {
-                        val prevInfo = trackLastInfo[track.id]
-                        if (prevInfo != null) {
-                            val (prevFrame, prevBox) = prevInfo
-                            val gap = frame.frameIndex - prevFrame
-                            if (gap > 1) {
-                                for (f in (prevFrame + 1) until frame.frameIndex) {
-                                    val ratio = (f - prevFrame).toFloat() / gap.toFloat()
-                                    val interpBox = fit.PlateBox(
-                                        x1 = (prevBox.x1 + ratio * (track.lastBox.x1 - prevBox.x1)).toInt(),
-                                        y1 = (prevBox.y1 + ratio * (track.lastBox.y1 - prevBox.y1)).toInt(),
-                                        x2 = (prevBox.x2 + ratio * (track.lastBox.x2 - prevBox.x2)).toInt(),
-                                        y2 = (prevBox.y2 + ratio * (track.lastBox.y2 - prevBox.y2)).toInt()
-                                    )
-                                    val interpTimeMs = (f * 1000.0 / effectiveDetectionFps).toLong()
-                                    mergeBoxesIntoRecords(interpTimeMs, listOf(interpBox))
+                        // Retroactive backtracking for newly appeared objects to avoid frame-in leakage
+                        for (track in tracker.activeTracks) {
+                            if (track.id !in beforeTrackIds) {
+                                val backtrackMap = tracker.performBacktracking(track, frame.frameIndex, 640, 640)
+                                for ((backtrackFrame, backtrackBox) in backtrackMap) {
+                                    val backtrackTimeMs = (backtrackFrame * 1000.0 / effectiveDetectionFps).toLong()
+                                    mergeBoxesIntoRecords(backtrackTimeMs, listOf(backtrackBox))
                                 }
                             }
                         }
-                    }
 
-                    matched
+                        // Retroactive gap interpolation for existing associated tracks to prevent blur leakage
+                        for (track in tracker.activeTracks) {
+                            val prevInfo = trackLastInfo[track.id]
+                            if (prevInfo != null) {
+                                val (prevFrame, prevBox) = prevInfo
+                                val gap = frame.frameIndex - prevFrame
+                                if (gap > 1) {
+                                    for (f in (prevFrame + 1) until frame.frameIndex) {
+                                        val ratio = (f - prevFrame).toFloat() / gap.toFloat()
+                                        val interpBox = fit.PlateBox(
+                                            x1 = (prevBox.x1 + ratio * (track.lastBox.x1 - prevBox.x1)).toInt(),
+                                            y1 = (prevBox.y1 + ratio * (track.lastBox.y1 - prevBox.y1)).toInt(),
+                                            x2 = (prevBox.x2 + ratio * (track.lastBox.x2 - prevBox.x2)).toInt(),
+                                            y2 = (prevBox.y2 + ratio * (track.lastBox.y2 - prevBox.y2)).toInt()
+                                        )
+                                        val interpTimeMs = (f * 1000.0 / effectiveDetectionFps).toLong()
+                                        mergeBoxesIntoRecords(interpTimeMs, listOf(interpBox))
+                                    }
+                                }
+                            }
+                        }
+
+                        matched
+                    }
                 }
                 val tDetectEnd = System.nanoTime()
                 val dDetect = (tDetectEnd - tConsumeStart) / 1_000_000.0
