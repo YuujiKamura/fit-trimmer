@@ -1325,11 +1325,25 @@ fun FitTrimmerMainContent(
                                         val timeMs = videoCurrentTimeMs
                                         scope.launch(kotlinx.coroutines.Dispatchers.IO) {
                                             statusText = "YOLOで再検出を実行中..."
-                                            val img = utils.PlateDetectionManager.extractSingleFrame(currentVideoPath, timeMs)
+                                            val (videoW, videoH) = utils.PlateDetectionManager.getVideoResolution(currentVideoPath)
+                                            val maxScanDim = 1920
+                                            val targetW = if (videoW > maxScanDim || videoH > maxScanDim) {
+                                                val scale = maxScanDim.toFloat() / maxOf(videoW, videoH)
+                                                (videoW * scale).toInt() and -2
+                                            } else videoW
+                                            val targetH = if (videoW > maxScanDim || videoH > maxScanDim) {
+                                                val scale = maxScanDim.toFloat() / maxOf(videoW, videoH)
+                                                (videoH * scale).toInt() and -2
+                                            } else videoH
+
+                                            val img = utils.PlateDetectionManager.extractSingleFrame(
+                                                videoPath = currentVideoPath,
+                                                timeMs = timeMs,
+                                                targetWidth = targetW,
+                                                targetHeight = targetH
+                                            )
                                             if (img != null) {
-                                                val (videoW, videoH) = utils.PlateDetectionManager.getVideoResolution(currentVideoPath)
                                                 val detector = utils.PlateDetector.getInstance()
-                                                val isVehicleMode = !settings.plateMaskMode.equals("plate", ignoreCase = true)
                                                 val boxes = detector.detect(
                                                     image = img,
                                                     confThreshold = cmd.confThreshold ?: 0.25f,

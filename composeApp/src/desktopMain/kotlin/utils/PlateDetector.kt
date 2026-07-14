@@ -231,6 +231,20 @@ class PlateDetector private constructor() : AutoCloseable {
                     val outputData = FloatArray(5 * numAnchors)
                     buffer.get(outputData)
 
+                    println("DEBUG: Plate Model shape = ${shape.joinToString()}")
+                    var printed = 0
+                    for (i in 0 until numAnchors) {
+                        val score = outputData[4 * numAnchors + i]
+                        if (score >= confThreshold && printed < 5) {
+                            val cx = outputData[0 * numAnchors + i]
+                            val cy = outputData[1 * numAnchors + i]
+                            val w = outputData[2 * numAnchors + i]
+                            val h = outputData[3 * numAnchors + i]
+                            println("  Anchor $i: cx=$cx, cy=$cy, w=$w, h=$h, score=$score")
+                            printed++
+                        }
+                    }
+
                     for (i in 0 until numAnchors) {
                         val score = outputData[4 * numAnchors + i]
                         if (score >= confThreshold) {
@@ -282,10 +296,12 @@ class PlateDetector private constructor() : AutoCloseable {
                         
                         // Filter based on standard Japanese plate aspect ratio (typically 1.3 to 2.7)
                         // and physically reasonable size limits to eliminate HUD/sky wire misdetections.
-                        val maxW = (width / 7).coerceAtLeast(400)
-                        val maxH = (height / 7).coerceAtLeast(200)
+                        // Filter based on standard Japanese plate aspect ratio (typically 1.5 to 2.5)
+                        // and physically reasonable size limits to eliminate HUD/sky wire/vehicle body misdetections.
+                        val maxW = (width * 0.15f).toInt().coerceAtLeast(300)
+                        val maxH = (height * 0.15f).toInt().coerceAtLeast(150)
                         
-                        if (boxW in 12..maxW && boxH in 6..maxH && aspect in 1.2f..2.8f) {
+                        if (boxW in 12..maxW && boxH in 6..maxH && aspect in 1.5f..2.5f) {
                             PlateBox(
                                 x1 = origX1.toInt(),
                                 y1 = origY1.toInt(),
@@ -293,6 +309,9 @@ class PlateDetector private constructor() : AutoCloseable {
                                 y2 = origY2.toInt()
                             )
                         } else {
+                            if (aspect < 1.5f || aspect > 2.5f || boxW > maxW || boxH > maxH) {
+                                println("DEBUG: Filtered out box [${origX1.toInt()}, ${origY1.toInt()}, ${origX2.toInt()}, ${origY2.toInt()}] (w=$boxW, h=$boxH, aspect=$aspect)")
+                            }
                             null
                         }
                     }

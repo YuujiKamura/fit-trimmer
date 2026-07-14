@@ -73,8 +73,9 @@ object PlateDetectionManager : fit.PlateDetector {
         // Multiplier of 3x for active dynamic tracking, capped at 4.0fps to prevent extreme decoding overhead
         val effectiveDetectionFps = (baseDetectionFps * 3.0).coerceAtMost(4.0)
         
-        // Downscale to 1280x720 maximum to avoid memory bloat and pipe blocking
-        val maxScanDim = 1280
+        // Downscale limit depending on mask mode: 1280 for vehicle (640 model), 1920 for plate (1088 model)
+        val isVehicleMode = !settings.plateMaskMode.equals("plate", ignoreCase = true)
+        val maxScanDim = if (isVehicleMode) 1280 else 1920
         val (scanWidth, scanHeight) = if (videoWidth > maxScanDim || videoHeight > maxScanDim) {
             val scaleFactor = maxScanDim.toFloat() / maxOf(videoWidth, videoHeight)
             ((videoWidth * scaleFactor).toInt() and -2) to ((videoHeight * scaleFactor).toInt() and -2)
