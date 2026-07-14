@@ -158,7 +158,7 @@ object HudEncodePipeline {
             )
 
             val totalDuration = encodePlan.totalDurationSeconds
-            ensurePlateCacheForEncode(
+            val plateCache = ensurePlateCacheForEncode(
                 settings = s,
                 videoPath = videoPath,
                 telemetryPoints = plateTelemetryPoints,
@@ -168,6 +168,22 @@ object HudEncodePipeline {
                 cancelSupplier = cancelSupplier,
                 platePreScanner = platePreScanner
             )
+
+            val hasTelemetryDataToShow = s.showSpeed || s.showCadence || s.showHeartRate || 
+                                         s.showPower || s.showWkg || s.showPowerTrend || 
+                                         s.showGrade || s.showElevation || s.showDistanceTime
+                                         
+            val hasCaptions = s.roadCaptions.any { it.isEnabled } || s.customCaptions.any { it.isEnabled }
+            val hasMap = s.mapType != "none" && s.mapSizeScale > 0.0f
+            
+            val runBlur = s.blurLicensePlates && (plateCache?.records?.isNotEmpty() ?: false)
+            val runPedestrians = s.detectPedestrians
+            val runOverlay = hasTelemetryDataToShow || hasCaptions || hasMap
+            val hasSpeedChange = s.speedSegments.isNotEmpty()
+            val hasCrop = s.cropToSquare
+
+            val requiresRendering = runBlur || runPedestrians || runOverlay || hasSpeedChange || hasCrop
+
             var completedDuration = 0.0
             var hasCloudSyncMsg = false
             var finalOutPath = ""
@@ -189,9 +205,13 @@ object HudEncodePipeline {
                     partIndex = idx,
                     numParts = encodePlan.segments.size
                 )
-                val partOutPath = File(outputDir, outputFileName).absolutePath
-
+                
                 val finalDestFile = destFiles.getOrNull(idx)
+                val partOutPath = if (!requiresRendering && ranges.size == 1 && finalDestFile != null) {
+                    finalDestFile.absolutePath
+                } else {
+                    File(outputDir, outputFileName).absolutePath
+                }
                 val checkFile = if (skipConcat) File(partOutPath) else finalDestFile
                 if (shouldResume && checkFile != null && checkFile.exists() && checkFile.length() > 0L) {
                     println("DEBUG: Segment ${idx + 1} already finished. Skipping. File: ${checkFile.absolutePath}")
