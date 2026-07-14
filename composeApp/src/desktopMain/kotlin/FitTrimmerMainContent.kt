@@ -3039,26 +3039,33 @@ fun FitTrimmerMainContent(
                                             fontWeight = FontWeight.Medium
                                         )
                                     }
+                                    val isPlainMode = settings.plateInferenceInterval <= 1
                                     Text(
-                                        text = String.format(
-                                            java.util.Locale.US,
-                                            utils.Localizer.get("plate_scan_profile_status", settings.language),
-                                            viewModel.plateDetectionMaxSpeedKmh,
-                                            viewModel.plateDetectionFps
-                                        ),
+                                        text = if (isPlainMode) {
+                                            "検出モード: プレーン生モデル直接検出 (間隔=1)"
+                                        } else {
+                                            "検出モード: 間引き+色追跡補間 (間隔=${settings.plateInferenceInterval}フレーム)"
+                                        },
+                                        fontSize = 10.sp,
+                                        color = Color(0xFF1C1C1E),
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = "スキャン実効レート: %.1f fps (毎秒検出フレーム数)".format(viewModel.plateDetectionFps),
                                         fontSize = 10.sp,
                                         color = Color(0xFF636366)
                                     )
+                                    Spacer(Modifier.height(2.dp))
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
                                         Text(
-                                            text = "検出範囲:",
+                                            text = "検出範囲の処理方式:",
                                             fontSize = 10.sp,
                                             color = Color(0xFF636366)
                                         )
-                                        listOf("plate" to "マスク", "cut" to "カット").forEach { (mode, label) ->
+                                        listOf("plate" to "ぼかしマスク", "cut" to "カット除去").forEach { (mode, label) ->
                                             val selected = settings.plateMaskMode == mode
                                             Text(
                                                 text = label,
@@ -3075,36 +3082,20 @@ fun FitTrimmerMainContent(
                                             )
                                         }
                                     }
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        androidx.compose.material.Slider(
-                                            value = if (viewModel.plateDetectionMaxSpeedKmh > 100.0) 100f else viewModel.plateDetectionMaxSpeedKmh.toFloat(),
-                                            onValueChange = { newValue ->
-                                                val rounded = (kotlin.math.round(newValue / 10.0) * 10.0)
-                                                viewModel.plateDetectionMaxSpeedKmh = if (rounded >= 100.0) 999.0 else rounded
-                                            },
-                                            valueRange = 0f..100f,
-                                            steps = 9,
-                                            enabled = !isEncoding && !viewModel.isDetectingPlates,
-                                            modifier = Modifier.width(180.dp),
-                                            colors = androidx.compose.material.SliderDefaults.colors(
-                                                thumbColor = Color(0xFF007AFF),
-                                                activeTrackColor = Color(0xFF007AFF)
-                                            )
-                                        )
-                                        Text(
-                                            text = if (viewModel.plateDetectionMaxSpeedKmh > 100.0) {
-                                                utils.Localizer.get("plate_scan_careful", settings.language)
-                                            } else {
-                                                "${viewModel.plateDetectionMaxSpeedKmh.toInt()} km/h"
-                                            },
-                                            fontSize = 10.sp,
-                                            color = Color(0xFF1C1C1E),
-                                            fontWeight = FontWeight.Medium
-                                        )
-                                    }
+                                    
+                                    // 1. EXPAND RATIO (ぼかし領域の拡大率)
+                                    Spacer(Modifier.height(6.dp))
+                                    Text(
+                                        text = "ぼかし領域の拡大率 (Expand Ratio):",
+                                        fontSize = 10.sp,
+                                        color = Color(0xFF1C1C1E),
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = "検出枠の周囲を何%広げてぼかすかを設定します。ブレによる漏れを防ぎます。",
+                                        fontSize = 9.sp,
+                                        color = Color(0xFF636366)
+                                    )
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -3131,6 +3122,20 @@ fun FitTrimmerMainContent(
                                             fontWeight = FontWeight.Medium
                                         )
                                     }
+
+                                    // 2. MIN H RATIO (最小ぼかしサイズ)
+                                    Spacer(Modifier.height(6.dp))
+                                    Text(
+                                        text = "ぼかし対象の最小高さ比率 (Min Height Ratio):",
+                                        fontSize = 10.sp,
+                                        color = Color(0xFF1C1C1E),
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = "画面高さに対するプレート高の最小割合。遠すぎる極小サイズをスルーし、映像ノイズを防ぎます。(0.0%で全対象)",
+                                        fontSize = 9.sp,
+                                        color = Color(0xFF636366)
+                                    )
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -3157,12 +3162,20 @@ fun FitTrimmerMainContent(
                                             fontWeight = FontWeight.Medium
                                         )
                                     }
-                                     Spacer(Modifier.height(4.dp))
-                                     Text(
-                                         text = utils.Localizer.get("plate_mask_time_buffer_label", settings.language),
-                                         fontSize = 10.sp,
-                                         color = Color(0xFF636366)
-                                     )
+
+                                    // 3. TIME BUFFER (ロスト時ぼかし維持)
+                                    Spacer(Modifier.height(6.dp))
+                                    Text(
+                                        text = "ロスト時のぼかし維持秒数 (Time Buffer):",
+                                        fontSize = 10.sp,
+                                        color = Color(0xFF1C1C1E),
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = "AIが一瞬プレートを見失ったり画面外へ消えた後も、指定秒数の間ぼかしを残します。(フリッカー防止)",
+                                        fontSize = 9.sp,
+                                        color = Color(0xFF636366)
+                                    )
                                      Row(
                                          verticalAlignment = Alignment.CenterVertically,
                                          horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -3189,11 +3202,19 @@ fun FitTrimmerMainContent(
                                              fontWeight = FontWeight.Medium
                                          )
                                      }
+
+                                     // 4. CUT MIN REMAINING (カット後最小残存)
                                      if (settings.plateMaskMode == "cut") {
-                                         Spacer(Modifier.height(4.dp))
+                                         Spacer(Modifier.height(6.dp))
                                          Text(
-                                             text = "カット後最小残存秒数:",
+                                             text = "カット後最小残存秒数 (Min Remaining for Cut):",
                                              fontSize = 10.sp,
+                                             color = Color(0xFF1C1C1E),
+                                             fontWeight = FontWeight.Bold
+                                         )
+                                         Text(
+                                             text = "プレート検出区間をカット除去した際、前後のクリーンな動画が細切れになるのを防ぐための最小秒数です。",
+                                             fontSize = 9.sp,
                                              color = Color(0xFF636366)
                                          )
                                          Row(
