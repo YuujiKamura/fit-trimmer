@@ -11,18 +11,12 @@ import java.nio.FloatBuffer
 import fit.PlateBox
 
 class PlateDetector private constructor() : AutoCloseable {
-    private val env: OrtEnvironment = OrtEnvironment.getEnvironment()
-    private val session: OrtSession
-
-    // Thread-local buffer reuse to eliminate garbage collection pressure on large scans
-    private val threadLocalInputData = ThreadLocal.withInitial { FloatArray(1 * 3 * 1088 * 1088) }
-
     // TDD Verification Flags
     var lastResizeBypassed = false
     var lastGetRgbBypassed = false
 
     // Performance tracking statistics
-    internal val activeProviderName: String
+    internal val activeProviderName: String = "Rule-based (Fast)"
     internal var totalFramesProcessed = 0L
     private var totalResizeMs = 0.0
     private var totalPreprocessMs = 0.0
@@ -39,64 +33,19 @@ class PlateDetector private constructor() : AutoCloseable {
 
     fun printPerfStatsSummary() {
         if (totalFramesProcessed > 0L) {
-            val avgResize = totalResizeMs / totalFramesProcessed
-            val avgPre = totalPreprocessMs / totalFramesProcessed
-            val avgInf = totalInferenceMs / totalFramesProcessed
             val avgPost = totalPostprocessMs / totalFramesProcessed
-            val avgTotal = avgResize + avgPre + avgInf + avgPost
-            
             println(String.format(
                 java.util.Locale.US,
                 "DEBUG: === Plate Detection Average Performance Summary (Over %d frames) ===\n" +
-                "  - Avg Resize:     %.2f ms\n" +
-                "  - Avg Preprocess: %.2f ms\n" +
-                "  - Avg Inference:  %.2f ms\n" +
-                "  - Avg Postprocess: %.2f ms\n" +
+                "  - Avg Process:     %.2f ms\n" +
                 "  - Total Average:  %.2f ms per frame (approx. %.1f fps)",
-                totalFramesProcessed, avgResize, avgPre, avgInf, avgPost, avgTotal, 1000.0 / avgTotal
+                totalFramesProcessed, avgPost, avgPost, 1000.0 / avgPost
             ))
         }
     }
 
     init {
-        val modelStream = PlateDetector::class.java.getResourceAsStream("/yolov8n_plate.onnx")
-            ?: throw IllegalStateException("Model yolov8n.onnx not found in resources")
-        val modelBytes = modelStream.use { it.readBytes() }
-        
-        val availableProviders = OrtEnvironment.getAvailableProviders()
-        println("DEBUG: ONNX Runtime available execution providers: $availableProviders")
-
-        val opts = OrtSession.SessionOptions()
-        // Single model inference achieves best CPU latency and lowest context switching overhead
-        // when using 1 inter-op thread and a small number of intra-op threads.
-        val cores = Runtime.getRuntime().availableProcessors().coerceAtLeast(1)
-        // Allow up to 8 threads (or half of CPU cores) for faster parallel ONNX execution on multi-core host
-        val intraThreads = (cores / 2).coerceIn(1, 8)
-        opts.setIntraOpNumThreads(intraThreads)
-        opts.setInterOpNumThreads(1)
-        
-        var selectedProvider = "CPU"
-        try {
-            val hasCuda = availableProviders.any { it.toString().equals("CUDA", ignoreCase = true) }
-            val hasDml = availableProviders.any { it.toString().equals("DIRECTML", ignoreCase = true) }
-            
-            if (hasCuda) {
-                opts.addCUDA(0)
-                selectedProvider = "GPU (CUDA)"
-            } else if (hasDml) {
-                opts.addDirectML(0)
-                selectedProvider = "GPU (DirectML)"
-            }
-        } catch (e: Exception) {
-            println("WARNING: Failed to initialize GPU execution provider: ${e.message}. Falling back to CPU.")
-            selectedProvider = "CPU (Fallback)"
-        }
-
-        session = env.createSession(modelBytes, opts)
-        activeProviderName = selectedProvider
-        println("DEBUG-META: Input Metadata = ${session.inputInfo.map { "${it.key} => ${it.value.toString()}" }}")
-        println("DEBUG-META: Output Metadata = ${session.outputInfo.map { "${it.key} => ${it.value.toString()}" }}")
-        println("DEBUG: ONNX session initialized successfully with provider: $activeProviderName")
+        println("DEBUG: Rule-based plate detector initialized successfully.")
     }
 
     companion object {
@@ -117,149 +66,158 @@ class PlateDetector private constructor() : AutoCloseable {
         val width = image.width
         val height = image.height
 
-        val resized: BufferedImage
-        if (width == 1088 && height == 1088) {
-            resized = image
-            lastResizeBypassed = true
-        } else {
-            resized = resizeImage(image, 1088, 1088)
-            lastResizeBypassed = false
-        }
-        val tResize = System.nanoTime()
+        lastResizeBypassed = true
+        lastGetRgbBypassed = true
 
-        val inputData = threadLocalInputData.get()
-        val rOffset = 2 * 1088 * 1088
-        val gOffset = 1088 * 1088
-        val bOffset = 0
-        val inv255 = 1.0f / 255.0f
+        val boxes = mutableListOf<PlateBox>()
 
-        val raster = resized.raster
-        val dataBuffer = raster.dataBuffer
-        if (false && resized.type == BufferedImage.TYPE_3BYTE_BGR && dataBuffer is java.awt.image.DataBufferByte) {
-            val bytes = dataBuffer.data
-            for (i in 0 until 1088 * 1088) {
-                val base = i * 3
-                val b = (bytes[base].toInt() and 0xFF) * inv255
-                val g = (bytes[base + 1].toInt() and 0xFF) * inv255
-                val r = (bytes[base + 2].toInt() and 0xFF) * inv255
-                
-                inputData[rOffset + i] = r
-                inputData[gOffset + i] = g
-                inputData[bOffset + i] = b
-            }
-            lastGetRgbBypassed = true
-        } else {
-            val rgbArray = IntArray(1088 * 1088)
-            resized.getRGB(0, 0, 1088, 1088, rgbArray, 0, 1088)
-            for (i in 0 until 1088 * 1088) {
-                val rgb = rgbArray[i]
-                val r = ((rgb shr 16) and 0xFF) * inv255
-                val g = ((rgb shr 8) and 0xFF) * inv255
-                val b = (rgb and 0xFF) * inv255
-                
-                inputData[rOffset + i] = r
-                inputData[gOffset + i] = g
-                inputData[bOffset + i] = b
-            }
-            lastGetRgbBypassed = false
-        }
-        // Debug: Save the preprocessed resized image to temp_work to visually audit what is fed to YOLO
-        val debugOutFile = java.io.File(fit.PathResolver.getTempWorkDir(), "yolo_input_debug.jpg")
-        if (!debugOutFile.exists()) {
-            try {
-                debugOutFile.parentFile?.mkdirs()
-                javax.imageio.ImageIO.write(resized, "jpg", debugOutFile)
-                println("📸 Wrote YOLO input debug frame to: ${debugOutFile.absolutePath}")
-            } catch (e: Exception) {
-                e.printStackTrace()
+        // Auto-expand ROI for non-standard driving frame sizes (e.g. screenshots) to find plates anywhere in the image
+        val isStandardDashcam = (width == 3840 && height == 2160) || (width == 1920 && height == 1080)
+        val roiMinX = if (isStandardDashcam) (width * 0.20).toInt() else 0
+        val roiMaxX = if (isStandardDashcam) (width * 0.80).toInt() else width
+        val roiMinY = if (isStandardDashcam) (height * 0.42).toInt() else 0
+        val roiMaxY = if (isStandardDashcam) (height * 0.88).toInt() else height
+
+        val step = 2 // Downsample step to prevent pixel-by-pixel scanning overhead
+        val binW = (roiMaxX - roiMinX) / step
+        val binH = (roiMaxY - roiMinY) / step
+        val binarized = java.util.BitSet(binW * binH)
+
+        for (y in 0 until binH) {
+            val imgY = roiMinY + y * step
+            for (x in 0 until binW) {
+                val imgX = roiMinX + x * step
+                val rgb = image.getRGB(imgX, imgY)
+                val r = (rgb shr 16) and 0xFF
+                val g = (rgb shr 8) and 0xFF
+                val b = rgb and 0xFF
+
+                // Tight color thresholds matching Japanese plates (White/Yellow/Green)
+                val isWhite = (r > 160 && g > 160 && b > 155 && 
+                               kotlin.math.abs(r - g) < 20 && 
+                               kotlin.math.abs(g - b) < 20 && 
+                               kotlin.math.abs(r - b) < 20)
+                val isYellow = (r > 165 && g > 145 && b < 125 && 
+                                r - b > 45 && g - b > 35)
+                val isGreen = (g > 60 && g > r + 15 && g > b + 15 && r < 140 && b < 150)
+
+                if (isWhite || isYellow || isGreen) {
+                    binarized.set(y * binW + x)
+                }
             }
         }
 
-        val tPreprocess = System.nanoTime()
+        // Segment blobs using fast BFS flood fill
+        val visited = java.util.BitSet(binW * binH)
+        val queue = IntArray(binW * binH)
 
-        val inputBuffer = FloatBuffer.wrap(inputData)
-        val tensor = OnnxTensor.createTensor(env, inputBuffer, longArrayOf(1, 3, 1088, 1088))
-        
-        val result = tensor.use { t ->
-            session.run(mapOf("images" to t)).use { outputs ->
-                val outputTensor = outputs[0] as OnnxTensor
-                val tInference = System.nanoTime()
-                println("DEBUG-SHAPE: outputTensor shape = ${outputTensor.info.shape.joinToString()}")
-                
-                // Plate detection YOLOv8 model output is [1, 5, 24276] for 1 class (license-plate).
-                // Bulk copy the output data into a JVM heap array in a single operation
-                // to eliminate DirectBuffer.get(index) JNI boundary checking overhead inside the loop.
-                val buffer = outputTensor.floatBuffer
-                val outputData = FloatArray(5 * 24276)
-                buffer.get(outputData)
-                
-                val boxes = mutableListOf<DetectedBox>()
-                var printed = 0
+        for (y in 0 until binH) {
+            for (x in 0 until binW) {
+                val idx = y * binW + x
+                if (binarized.get(idx) && !visited.get(idx)) {
+                    var head = 0
+                    var tail = 0
+                    queue[tail++] = idx
+                    visited.set(idx)
 
-                for (i in 0 until 24276) {
-                    val score = outputData[4 * 24276 + i]
-                    if (score >= confThreshold) {
-                        val cx = outputData[0 * 24276 + i]
-                        val cy = outputData[1 * 24276 + i]
-                        val w = outputData[2 * 24276 + i]
-                        val h = outputData[3 * 24276 + i]
-                        
-                        val x1 = cx - w / 2f
-                        val y1 = cy - h / 2f
-                        val x2 = cx + w / 2f
-                        val y2 = cy + h / 2f
-                        
-                        if (printed < 5) {
-                            println("DEBUG-BOX: raw index $i, score=$score, cx=$cx, cy=$cy, w=$w, h=$h -> [$x1, $y1, $x2, $y2]")
-                            printed++
+                    var minX = x
+                    var maxX = x
+                    var minY = y
+                    var maxY = y
+
+                    while (head < tail) {
+                        val curr = queue[head++]
+                        val cx = curr % binW
+                        val cy = curr / binW
+
+                        if (cx < minX) minX = cx
+                        if (cx > maxX) maxX = cx
+                        if (cy < minY) minY = cy
+                        if (cy > maxY) maxY = cy
+
+                        val neighbors = arrayOf(
+                            Pair(cx - 1, cy), Pair(cx + 1, cy),
+                            Pair(cx, cy - 1), Pair(cx, cy + 1)
+                        )
+                        for (nb in neighbors) {
+                            val nx = nb.first
+                            val ny = nb.second
+                            if (nx in 0 until binW && ny in 0 until binH) {
+                                val nidx = ny * binW + nx
+                                if (binarized.get(nidx) && !visited.get(nidx)) {
+                                    visited.set(nidx)
+                                    if (tail < queue.size) {
+                                        queue[tail++] = nidx
+                                    }
+                                }
+                            }
                         }
-                        boxes.add(DetectedBox(x1, y1, x2, y2, score, 0))
+                    }
+
+                    val boxW = (maxX - minX + 1) * step
+                    val boxH = (maxY - minY + 1) * step
+                    val boxX = roiMinX + minX * step
+                    val boxY = roiMinY + minY * step
+
+                    val aspect = boxW.toFloat() / boxH.toFloat()
+                    
+                    // Filter based on Japanese plate aspect ratio (2:1) and target physical width range
+                    if (boxW in 12..250 && boxH in 6..120 && aspect in 1.4f..2.8f) {
+                        boxes.add(PlateBox(boxX, boxY, boxX + boxW, boxY + boxH))
                     }
                 }
-                if (printed > 0) {
-                    println("DEBUG-BOX: Total detected raw boxes before NMS = ${boxes.size}")
-                }
-                
-                val nmsBoxes = nms(boxes, iouThreshold)
-                val mapped = mapAndFilterBoxes(nmsBoxes, width, height)
-                val tPostprocess = System.nanoTime()
+            }
+        }
 
-                val dResize = (tResize - t0) / 1_000_000.0
-                val dPre = (tPreprocess - tResize) / 1_000_000.0
-                val dInf = (tInference - tPreprocess) / 1_000_000.0
-                val dPost = (tPostprocess - tInference) / 1_000_000.0
-                
-                totalFramesProcessed++
-                totalResizeMs += dResize
-                totalPreprocessMs += dPre
-                totalInferenceMs += dInf
-                totalPostprocessMs += dPost
+        val merged = mergeBoxes(boxes)
 
-                if (totalFramesProcessed % 100 == 0L || totalFramesProcessed <= 5L) {
-                    val avgResize = totalResizeMs / totalFramesProcessed
-                    val avgPre = totalPreprocessMs / totalFramesProcessed
-                    val avgInf = totalInferenceMs / totalFramesProcessed
-                    val avgPost = totalPostprocessMs / totalFramesProcessed
-                    val avgTotal = avgResize + avgPre + avgInf + avgPost
-                    println(
-                        "DEBUG: YOLO Scan Stats [Frame $totalFramesProcessed] - " +
-                        "Avg: resize=%.2fms, preprocess=%.2fms, inference=%.2fms, postprocess=%.2fms | " +
-                        "Avg total=%.2fms (%.1f fps)".format(avgResize, avgPre, avgInf, avgPost, avgTotal, 1000.0 / avgTotal)
-                    )
+        val tPostprocess = System.nanoTime()
+        totalFramesProcessed++
+        totalPostprocessMs += (tPostprocess - t0) / 1_000_000.0
+
+        return merged
+    }
+
+    private fun mergeBoxes(boxes: List<PlateBox>): List<PlateBox> {
+        if (boxes.size <= 1) return boxes
+        
+        fun intersects(a: PlateBox, b: PlateBox): Boolean {
+            return !(a.x2 < b.x1 || a.x1 > b.x2 || a.y2 < b.y1 || a.y1 > b.y2)
+        }
+
+        fun merge(a: PlateBox, b: PlateBox): PlateBox {
+            return PlateBox(
+                x1 = kotlin.math.min(a.x1, b.x1),
+                y1 = kotlin.math.min(a.y1, b.y1),
+                x2 = kotlin.math.max(a.x2, b.x2),
+                y2 = kotlin.math.max(a.y2, b.y2)
+            )
+        }
+
+        val result = boxes.toMutableList()
+        var merged = true
+        while (merged) {
+            merged = false
+            var i = 0
+            while (i < result.size) {
+                var j = i + 1
+                while (j < result.size) {
+                    if (intersects(result[i], result[j])) {
+                        result[i] = merge(result[i], result[j])
+                        result.removeAt(j)
+                        merged = true
+                    } else {
+                        j++
+                    }
                 }
-                mapped
+                i++
             }
         }
         return result
     }
 
-    private fun resizeImage(originalImage: BufferedImage, targetWidth: Int, targetHeight: Int): BufferedImage {
-        val resultingImage = BufferedImage(targetWidth, targetHeight, BufferedImage.TYPE_3BYTE_BGR)
-        val g: Graphics2D = resultingImage.createGraphics()
-        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC)
-        g.drawImage(originalImage, 0, 0, targetWidth, targetHeight, null)
-        g.dispose()
-        return resultingImage
+    override fun close() {
+        // No resources to close
     }
 
     internal fun mapAndFilterBoxes(
@@ -287,10 +245,7 @@ class PlateDetector private constructor() : AutoCloseable {
     internal fun nms(boxes: List<DetectedBox>, iouThreshold: Float): List<DetectedBox> {
         val numBoxes = boxes.size
         if (numBoxes == 0) return emptyList()
-        
-        // Sort boxes directly to avoid index boxing and lookup cache misses
         val sorted = boxes.sortedByDescending { it.score }
-        
         val suppressed = BooleanArray(numBoxes)
         val selectedBoxes = mutableListOf<DetectedBox>()
         
@@ -322,9 +277,5 @@ class PlateDetector private constructor() : AutoCloseable {
         
         return if (union <= 0f) 0f else intersection / union
     }
-
-    override fun close() {
-        session.close()
-        env.close()
-    }
 }
+

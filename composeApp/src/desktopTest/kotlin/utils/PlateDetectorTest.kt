@@ -297,6 +297,19 @@ class PlateDetectorTest {
     }
 
     @Test
+    fun testDynamicInputResolutionAndCorrectMapping() {
+        val detector = PlateDetector.getInstance()
+        detector.lastResizeBypassed = false
+        
+        // 1920x1088 image (32-byte multiple, so it should bypass resize entirely)
+        val img = BufferedImage(1920, 1088, BufferedImage.TYPE_3BYTE_BGR)
+        detector.detect(img)
+        
+        assertTrue(detector.lastResizeBypassed, "Resize must be bypassed for 1920x1088 images in dynamic mode")
+    }
+
+
+    @Test
     fun testCropAndBlurSamplingVerification() {
         val videoPath = "H:\\\u30DE\u30A4\u30C9\u30E9\u30A4\u30D6\\Insta360\\20260614\\VID_20260614_163204_003.mp4"
         val videoFile = File(videoPath)

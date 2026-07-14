@@ -29,6 +29,8 @@ object PlateDetectionManager : fit.PlateDetector {
         val videoFile = File(videoPath)
         if (!videoFile.exists()) return@withContext null
 
+        val existingCache = if (saveCache) fit.PlateCacheManager.loadCache(videoPath) else null
+
         // 1. Get video metadata using ffmpeg -i
         val pbInfo = ProcessBuilder(ffmpegPath, "-i", videoPath)
         pbInfo.redirectErrorStream(true)
@@ -132,13 +134,22 @@ object PlateDetectionManager : fit.PlateDetector {
                     System.arraycopy(frameBuffer, 0, imgData, 0, frameBytes)
 
                     val timeMs = ((startSec + i / effectiveDetectionFps) * 1000.0).toLong()
-                    val detectedBoxes = detector.detect(img, confThreshold = 0.25f)
-
-                    if (detectedBoxes.isNotEmpty()) {
-                        val filteredBoxes = filterBoxesForMaskSize(detectedBoxes, videoHeight, settings)
-                        if (filteredBoxes.isNotEmpty()) {
-                            val mergedBoxes = mergeOverlappingBoxes(filteredBoxes)
-                            records.add(PlateRecord(timeMs, mergedBoxes))
+                    
+                    // Skip inference if this timeMs is already within the existing cached scan ranges
+                    val isCached = existingCache?.scanRanges?.any { timeMs in it.startMs..it.endMs } == true
+                    if (isCached) {
+                        val cachedRecord = existingCache?.records?.find { it.timeMs == timeMs }
+                        if (cachedRecord != null) {
+                            records.add(cachedRecord)
+                        }
+                    } else {
+                        val detectedBoxes = detector.detect(img, confThreshold = 0.25f)
+                        if (detectedBoxes.isNotEmpty()) {
+                            val filteredBoxes = filterBoxesForMaskSize(detectedBoxes, videoHeight, settings)
+                            if (filteredBoxes.isNotEmpty()) {
+                                val mergedBoxes = mergeOverlappingBoxes(filteredBoxes)
+                                records.add(PlateRecord(timeMs, mergedBoxes))
+                            }
                         }
                     }
 
@@ -154,13 +165,15 @@ object PlateDetectionManager : fit.PlateDetector {
             }
         }
 
-        val finalCache = VideoPlatesCache(
+        val rawCache = VideoPlatesCache(
             videoPath = videoPath,
             sourceWidth = videoWidth,
             sourceHeight = videoHeight,
             records = records,
             scanRanges = normalizedScanRanges.map { PlateScanRange((it.first * 1000.0).toLong(), (it.second * 1000.0).toLong()) }
         )
+
+        val finalCache = if (existingCache != null) existingCache.mergedWith(rawCache) else rawCache
 
         if (saveCache) {
             fit.PlateCacheManager.saveCache(videoPath, finalCache)
