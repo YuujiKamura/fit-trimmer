@@ -120,6 +120,10 @@ class PlateDetector private constructor() : AutoCloseable {
 
         val letterbox = BufferedImage(inputSize, inputSize, BufferedImage.TYPE_3BYTE_BGR)
         val g = letterbox.createGraphics()
+        // Fill padding background with YOLO standard neutral gray (114, 114, 114)
+        g.color = java.awt.Color(114, 114, 114)
+        g.fillRect(0, 0, inputSize, inputSize)
+        
         g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC)
         g.drawImage(image, transformer.offsetX.toInt(), transformer.offsetY.toInt(), transformer.newW.toInt(), transformer.newH.toInt(), null)
         g.dispose()

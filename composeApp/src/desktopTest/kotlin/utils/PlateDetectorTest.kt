@@ -70,12 +70,12 @@ class PlateDetectorTest {
 
     @Test
     fun testDetectLicensePlateFromScreenshot() {
-        val screenshotPath = "C:\\Users\\yuuji\\OneDrive\\Pictures\\Screenshots\\\u30B9\u30AF\u30EA\u30FC\u30F3\u30B7\u30E7\u30C3\u30C8 2026-07-01 081110.png"
-        val file = File(screenshotPath)
-        assertTrue(file.exists(), "Screenshot file does not exist at $screenshotPath")
-
-        val image = ImageIO.read(file)
-        println("Loaded screenshot: ${image.width}x${image.height}")
+        val stream = javaClass.classLoader.getResourceAsStream("test_plate_screenshot.png")
+        kotlin.test.assertNotNull(stream, "test_plate_screenshot.png resource not found in classpath")
+        
+        val image = ImageIO.read(stream)
+        stream.close()
+        println("Loaded screenshot from classpath resource: ${image.width}x${image.height}")
 
         val detector = PlateDetector.getInstance()
         val boxes = detector.detect(image, confThreshold = 0.25f, maskMode = "plate")
