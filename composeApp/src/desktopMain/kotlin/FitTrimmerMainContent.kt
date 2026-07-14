@@ -1052,7 +1052,7 @@ fun FitTrimmerMainContent(
                 var exception: java.lang.reflect.InvocationTargetException? = null
                 var interruptedException: InterruptedException? = null
                 try {
-                    javax.swing.SwingUtilities.invokeLater {
+                    val runBlock = {
                         try {
                             when (cmd) {
                                 is CpCommand.SetLayout -> {
@@ -1360,6 +1360,13 @@ fun FitTrimmerMainContent(
                         } catch (e: Exception) {
                             e.printStackTrace()
                             result = "{\"status\": \"error\", \"message\": \"${e.message}\"}"
+                        }
+                    }
+                    if (javax.swing.SwingUtilities.isEventDispatchThread()) {
+                        runBlock()
+                    } else {
+                        javax.swing.SwingUtilities.invokeAndWait {
+                            runBlock()
                         }
                     }
                 } catch (e: java.lang.reflect.InvocationTargetException) {
