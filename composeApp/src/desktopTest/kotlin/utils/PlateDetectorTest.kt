@@ -1419,82 +1419,63 @@ class PlateDetectorTest {
             return
         }
 
-        val intervals = listOf(1, 3, 10)
-        var bestCache: VideoPlatesCache? = null
-        var bestSettings: fit.HudSettings? = null
-        
         val fitBytes = testFit.readBytes()
         val parser = FitParser(fitBytes)
         parser.parse()
         val telemetryPoints = parser.getTelemetry()
 
-        for (interval in intervals) {
-            println("==================================================")
-            println("🔍 Evaluating Continuity with inferenceInterval = $interval")
-            println("==================================================")
-            
-            val settings = fit.HudSettings(
-                blurLicensePlates = true,
-                plateInferenceInterval = interval,
-                plateDetectionFps = 1.0,
-                plateMinMaskHeightRatio = 0.0,
-                plateMaskTimeBufferMs = 5000L,
-                plateMaskExpandRatio = 0.6,
-                detectPedestrians = true
+        println("==================================================")
+        println("🔍 Evaluating 100s Continuity with inferenceInterval = 1")
+        println("==================================================")
+        
+        val settings = fit.HudSettings(
+            blurLicensePlates = true,
+            plateInferenceInterval = 1,
+            plateDetectionFps = 1.0,
+            plateMinMaskHeightRatio = 0.0,
+            plateMaskTimeBufferMs = 5000L,
+            plateMaskExpandRatio = 0.6,
+            detectPedestrians = true
+        )
+        
+        val cache = runBlocking {
+            PlateDetectionManager.detect(
+                videoPath = testVideo.absolutePath,
+                telemetryPoints = telemetryPoints,
+                adjustedStartUtc = "2026-07-12T08:09:10Z",
+                onProgress = { _, _ -> },
+                onCancel = { false },
+                saveCache = false,
+                settings = settings,
+                scanRanges = listOf(0.0 to 100.0)
             )
-            
-            val cache = runBlocking {
-                PlateDetectionManager.detect(
-                    videoPath = testVideo.absolutePath,
-                    telemetryPoints = telemetryPoints,
-                    adjustedStartUtc = "2026-07-12T08:09:10Z",
-                    onProgress = { _, _ -> },
-                    onCancel = { false },
-                    saveCache = false,
-                    settings = settings,
-                    scanRanges = listOf(0.0 to 10.0)
-                )
-            }
-            
-            kotlin.test.assertNotNull(cache, "Returned Plate cache must not be null")
-            println("Found ${cache.records.size} frames containing plates in first 10s")
-            
-            val recordsSorted = cache.records.sortedBy { it.timeMs }
-            for (rec in recordsSorted) {
-                val sec = rec.timeMs / 1000.0
-                println(String.format(java.util.Locale.US, "  Time: %.3fs (timeMs: %d) -> %d boxes: %s", sec, rec.timeMs, rec.boxes.size, rec.boxes.map { "[${it.x1}, ${it.y1}, ${it.x2}, ${it.y2}]" }))
-            }
-            
-            if (interval == 1) {
-                bestCache = cache
-                bestSettings = settings
-            }
         }
+        
+        kotlin.test.assertNotNull(cache, "Returned Plate cache must not be null")
+        println("Found ${cache.records.size} frames containing plates in first 100s")
 
-        if (bestCache != null && bestSettings != null) {
-            println("📹 Generating continuity demo video...")
-            val tempWorkDir = File("temp_work")
-            if (!tempWorkDir.exists()) tempWorkDir.mkdirs()
-            val outputMp4 = File(tempWorkDir, "mask_continuity_demo.mp4")
-            if (outputMp4.exists()) outputMp4.delete()
-            
-            fit.PlateCacheManager.saveCache(testVideo.absolutePath, bestCache)
-            
-            val encoder = fit.NativeHudEncoder(bestSettings)
-            runBlocking {
-                encoder.encode(
-                    fitPath = testFit.absolutePath,
-                    videoPath = testVideo.absolutePath,
-                    output = outputMp4.absolutePath,
-                    startUtc = "2026-07-12T08:09:10Z",
-                    maxDurationSeconds = 10,
-                    trimStartSeconds = 0.0,
-                    trimEndSeconds = 10.0
-                )
-            }
-            println("📹 Continuity demo video generated at: ${outputMp4.absolutePath}")
-            kotlin.test.assertTrue(outputMp4.exists() && outputMp4.length() > 0L)
+        println("📹 Generating 100s continuity demo video...")
+        val tempWorkDir = File("temp_work")
+        if (!tempWorkDir.exists()) tempWorkDir.mkdirs()
+        val outputMp4 = File(tempWorkDir, "mask_continuity_demo.mp4")
+        if (outputMp4.exists()) outputMp4.delete()
+        
+        fit.PlateCacheManager.saveCache(testVideo.absolutePath, cache)
+        
+        val encoder = fit.NativeHudEncoder(settings)
+        runBlocking {
+            encoder.encode(
+                fitPath = testFit.absolutePath,
+                videoPath = testVideo.absolutePath,
+                output = outputMp4.absolutePath,
+                startUtc = "2026-07-12T08:09:10Z",
+                maxDurationSeconds = 100,
+                trimStartSeconds = 0.0,
+                trimEndSeconds = 100.0
+            )
         }
+        println("📹 100s Continuity demo video generated at: ${outputMp4.absolutePath}")
+        kotlin.test.assertTrue(outputMp4.exists() && outputMp4.length() > 0L)
     }
 
     private class SGObserver : java.awt.image.ImageObserver {
