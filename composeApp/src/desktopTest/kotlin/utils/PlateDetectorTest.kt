@@ -305,9 +305,9 @@ class PlateDetectorTest {
         // 640x640 3BYTE_BGR image (simulating FFmpeg output)
         val img = BufferedImage(640, 640, BufferedImage.TYPE_3BYTE_BGR)
         
-        detector.detect(img, maskMode = "plate")
+        detector.detect(img, maskMode = "vehicle")
         
-        assertTrue(detector.lastResizeBypassed, "Resize should be bypassed for 640x640 images in plate mode")
+        assertTrue(detector.lastResizeBypassed, "Resize should be bypassed for 640x640 images in vehicle mode")
         assertTrue(detector.lastGetRgbBypassed, "getRGB should be bypassed for TYPE_3BYTE_BGR images")
     }
 

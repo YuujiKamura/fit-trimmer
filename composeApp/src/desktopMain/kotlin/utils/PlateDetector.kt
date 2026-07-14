@@ -116,16 +116,12 @@ class PlateDetector private constructor() : AutoCloseable {
         val inputSize = if (isVehicleMode) 640 else 1088
 
         // 1. Letterbox Preprocessing (preserving aspect ratio)
-        val scale = kotlin.math.min(inputSize.toFloat() / width, inputSize.toFloat() / height)
-        val newW = (width * scale).toInt()
-        val newH = (height * scale).toInt()
-        val offsetX = (inputSize - newW) / 2
-        val offsetY = (inputSize - newH) / 2
+        val transformer = fit.LetterboxTransformer(width.toFloat(), height.toFloat(), inputSize.toFloat())
 
         val letterbox = BufferedImage(inputSize, inputSize, BufferedImage.TYPE_3BYTE_BGR)
         val g = letterbox.createGraphics()
         g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC)
-        g.drawImage(image, offsetX, offsetY, newW, newH, null)
+        g.drawImage(image, transformer.offsetX.toInt(), transformer.offsetY.toInt(), transformer.newW.toInt(), transformer.newH.toInt(), null)
         g.dispose()
 
         // TDD compliance flags
@@ -254,10 +250,10 @@ class PlateDetector private constructor() : AutoCloseable {
                 
                 // 4. Inverse map coordinates back to the original image scale and apply crop/offset if in Vehicle mode
                 val mapped = nmsBoxes.mapNotNull { box ->
-                    val origX1 = ((box.x1 - offsetX) / scale).coerceIn(0f, width.toFloat())
-                    val origY1 = ((box.y1 - offsetY) / scale).coerceIn(0f, height.toFloat())
-                    val origX2 = ((box.x2 - offsetX) / scale).coerceIn(0f, width.toFloat())
-                    val origY2 = ((box.y2 - offsetY) / scale).coerceIn(0f, height.toFloat())
+                    val origX1 = transformer.toSourceX(box.x1)
+                    val origY1 = transformer.toSourceY(box.y1)
+                    val origX2 = transformer.toSourceX(box.x2)
+                    val origY2 = transformer.toSourceY(box.y2)
 
                     if (isVehicleMode) {
                         // Crop to vehicle bottom 50% for standard cars, 75% for motorcycles to handle rider height,
