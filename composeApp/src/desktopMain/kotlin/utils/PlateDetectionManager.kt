@@ -454,8 +454,8 @@ object PlateDetectionManager : fit.PlateDetector {
         var forceNextFrameONNX = true
 
         fun scaleToVideo(box: fit.PlateBox): fit.PlateBox {
-            val scaleX = videoWidth.toFloat() / 640f
-            val scaleY = videoHeight.toFloat() / 640f
+            val scaleX = videoWidth.toFloat() / 1088f
+            val scaleY = videoHeight.toFloat() / 1088f
             return fit.PlateBox(
                 x1 = (box.x1 * scaleX).toInt().coerceAtLeast(0),
                 y1 = (box.y1 * scaleY).toInt().coerceAtLeast(0),
