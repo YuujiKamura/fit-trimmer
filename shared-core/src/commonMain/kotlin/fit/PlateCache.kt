@@ -110,12 +110,16 @@ data class VideoPlatesCache(
         
         // 1. Primary interpolation for adjacent frames
         val primaryBoxes = if (prev != null && next != null) {
-            val interval = next.timeMs - prev.timeMs
-            if (interval <= 1500) { // Interpolate if interval is within 1.5 seconds
-                val alpha = (targetTimeMs - prev.timeMs).toFloat() / interval.toFloat()
-                interpolateBoxes(prev.boxes, next.boxes, alpha, width).map { it to 1.0f }
+            if (prev.timeMs == next.timeMs) {
+                prev.boxes.map { it to 1.0f }
             } else {
-                emptyList()
+                val interval = next.timeMs - prev.timeMs
+                if (interval <= 1500) { // Interpolate if interval is within 1.5 seconds
+                    val alpha = (targetTimeMs - prev.timeMs).toFloat() / interval.toFloat()
+                    interpolateBoxes(prev.boxes, next.boxes, alpha, width).map { it to 1.0f }
+                } else {
+                    emptyList()
+                }
             }
         } else {
             emptyList()
