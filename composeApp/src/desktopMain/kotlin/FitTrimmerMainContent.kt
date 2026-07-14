@@ -121,7 +121,7 @@ fun FitTrimmerMainContent(
     var pendingLoadActivity by remember { mutableStateOf<utils.DbActivity?>(null) }
     var showLoadConfirmDialog by remember { mutableStateOf(false) }
     // Dynamic Hud Proxy & Hot Reload State
-    val hudConfig = remember(settings) {
+    val hudConfig = remember(settings, viewModel.detectedSegments.toList()) {
         fit.HudConfig(
             valSize = settings.valSize,
             tightness = settings.tightness,
@@ -161,7 +161,8 @@ fun FitTrimmerMainContent(
             textShadowAlpha = settings.textShadowAlpha,
             showCumulativeDistanceTime = settings.showCumulativeDistanceTime,
             showAnimatedIcons = settings.showAnimatedIcons,
-            cropToSquare = settings.cropToSquare
+            cropToSquare = settings.cropToSquare,
+            detectedSegments = viewModel.detectedSegments.toList()
         )
     }
     var reloadTrigger by remember { mutableStateOf(0) }

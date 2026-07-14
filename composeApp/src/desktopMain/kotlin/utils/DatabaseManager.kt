@@ -23,7 +23,10 @@ data class DbActivity(
     val avgHr: Double?,
     val fitPath: String? = null,
     val segments: List<DbSegment> = emptyList(),
-    val telemetry: List<DbTelemetryPoint> = emptyList()
+    val telemetry: List<DbTelemetryPoint> = emptyList(),
+    val ctl: Double? = null,
+    val atl: Double? = null,
+    val tsb: Double? = null
 )
 
 @Serializable
@@ -100,9 +103,16 @@ object DatabaseManager {
                         normalized_power REAL,
                         avg_hr REAL,
                         fit_path TEXT,
+                        ctl REAL,
+                        atl REAL,
+                        tsb REAL,
                         payload TEXT NOT NULL
                     )
                 """.trimIndent())
+                // Safe migration columns if DB already exists
+                try { statement.execute("ALTER TABLE activities ADD COLUMN ctl REAL") } catch(_: Exception) {}
+                try { statement.execute("ALTER TABLE activities ADD COLUMN atl REAL") } catch(_: Exception) {}
+                try { statement.execute("ALTER TABLE activities ADD COLUMN tsb REAL") } catch(_: Exception) {}
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -116,8 +126,9 @@ object DatabaseManager {
                 INSERT OR REPLACE INTO activities (
                     id, name, start_date, start_date_local, distance, 
                     moving_time, elapsed_time, tss, suffer_score, 
-                    avg_power, normalized_power, avg_hr, fit_path, payload
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    avg_power, normalized_power, avg_hr, fit_path, 
+                    ctl, atl, tsb, payload
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """.trimIndent()
             
             val pstmt = conn.prepareStatement(sql)
@@ -134,7 +145,10 @@ object DatabaseManager {
             if (act.normalizedPower != null) pstmt.setDouble(11, act.normalizedPower) else pstmt.setNull(11, java.sql.Types.REAL)
             if (act.avgHr != null) pstmt.setDouble(12, act.avgHr) else pstmt.setNull(12, java.sql.Types.REAL)
             pstmt.setString(13, act.fitPath)
-            pstmt.setString(14, payload)
+            if (act.ctl != null) pstmt.setDouble(14, act.ctl) else pstmt.setNull(14, java.sql.Types.REAL)
+            if (act.atl != null) pstmt.setDouble(15, act.atl) else pstmt.setNull(15, java.sql.Types.REAL)
+            if (act.tsb != null) pstmt.setDouble(16, act.tsb) else pstmt.setNull(16, java.sql.Types.REAL)
+            pstmt.setString(17, payload)
             pstmt.executeUpdate()
         }
     }

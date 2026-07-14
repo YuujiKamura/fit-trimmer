@@ -1224,7 +1224,10 @@ class AppViewModel(
                 lon = pt.lon,
                 distance = pt.distance,
                 elapsedSeconds = pt.elapsedSeconds,
-                temperature = pt.temperature
+                temperature = pt.temperature,
+                ctl = act.ctl ?: 0.0,
+                atl = act.atl ?: 0.0,
+                tsb = act.tsb ?: 0.0
             )
         }
         updateTelemetry(points)
@@ -1360,7 +1363,10 @@ class AppViewModel(
             avgHr = if (avgHr > 0) avgHr else null,
             fitPath = fitPath,
             segments = dbSegs,
-            telemetry = dbPts
+            telemetry = dbPts,
+            ctl = telemetryPoints.firstOrNull()?.ctl ?: 0.0,
+            atl = telemetryPoints.firstOrNull()?.atl ?: 0.0,
+            tsb = telemetryPoints.firstOrNull()?.tsb ?: 0.0
         )
 
         DatabaseManager.saveActivity(act)

@@ -49,7 +49,8 @@ data class HudConfig(
     val textShadowAlpha: Float = 0.8f,
     val showCumulativeDistanceTime: Boolean = false,
     val showAnimatedIcons: Boolean = true,
-    val cropToSquare: Boolean = false
+    val cropToSquare: Boolean = false,
+    val detectedSegments: List<AutoDetectedSegment> = emptyList()
 )
 
 
@@ -971,6 +972,77 @@ class HudRenderer(val config: HudConfig) {
                         sf = sf
                     )
                 }
+            }
+        }
+
+        // 9. Rider Profile (CTL/ATL/TSB) mini card
+        if (isValid && telemetry.ctl > 0.0) {
+            val profW = 110f * sf
+            val profH = 64f * sf
+            val pX = 20f * sf
+            val pY = 20f * sf
+            
+            canvas.drawRect(pX, pY, profW, profH, "#000000", alpha = 0.65f, rx = 6f * sf, ry = 6f * sf)
+            canvas.drawRect(pX, pY, profW, profH, "#ffffff", alpha = 0.2f, outline = true, rx = 6f * sf, ry = 6f * sf)
+            
+            val titleSize = 9f * sf
+            val valueSize = 11f * sf
+            drawShadowedText(canvas, "RIDER PROFILE", pX + 8f * sf, pY + 6f * sf, titleSize, "#007AFF", bold = true, sf = sf)
+            
+            drawShadowedText(canvas, "CTL: ${telemetry.ctl.roundToInt()}", pX + 8f * sf, pY + 20f * sf, valueSize, "#ffffff", bold = true, sf = sf)
+            drawShadowedText(canvas, "ATL: ${telemetry.atl.roundToInt()}", pX + 8f * sf, pY + 34f * sf, valueSize, "#ffffff", bold = true, sf = sf)
+            
+            val tsbColor = if (telemetry.tsb >= 0.0) "#34C759" else "#FF3B30"
+            drawShadowedText(canvas, "TSB: ${telemetry.tsb.roundToInt()}", pX + 8f * sf, pY + 48f * sf, valueSize, tsbColor, bold = true, sf = sf)
+        }
+
+        // 10. Real-time Climbing Segment Overlay
+        val currentFitSec = telemetry.timestamp
+        val activeSeg = config.detectedSegments.find {
+            currentFitSec >= it.startFitTimestamp && currentFitSec <= it.endFitTimestamp
+        }
+        if (isValid && activeSeg != null) {
+            val segW = 320f * sf
+            val segH = 80f * sf
+            val segX = canvas.width / 2f - segW / 2f
+            val segY = 80f * sf
+            
+            canvas.drawRect(segX, segY, segW, segH, "#1c1c1e", alpha = 0.85f, rx = 8f * sf, ry = 8f * sf)
+            canvas.drawRect(segX, segY, segW, segH, "#34C759", alpha = 0.5f, outline = true, rx = 8f * sf, ry = 8f * sf)
+            
+            drawShadowedText(canvas, "⛰️ ${activeSeg.name}", segX + 12f * sf, segY + 8f * sf, 13f * sf, "#ffffff", bold = true, sf = sf)
+            
+            val barW = segW - 24f * sf
+            val barH = 4f * sf
+            val barX = segX + 12f * sf
+            val barY = segY + 30f * sf
+            canvas.drawRect(barX, barY, barW, barH, "#ffffff", alpha = 0.2f, rx = 2f * sf, ry = 2f * sf)
+            
+            val startPt = trimmedPoints.find { it.timestamp >= activeSeg.startFitTimestamp } ?: telemetry
+            val currentSegDist = (telemetry.distance - startPt.distance).coerceAtLeast(0.0)
+            val remainingDist = (activeSeg.distanceMeters - currentSegDist).coerceAtLeast(0.0)
+            val progressRatio = (currentSegDist / activeSeg.distanceMeters).coerceIn(0.0, 1.0).toFloat()
+            canvas.drawRect(barX, barY, barW * progressRatio, barH, "#34C759", alpha = 1.0f, rx = 2f * sf, ry = 2f * sf)
+            
+            val remText = if (config.useImperialUnits) {
+                "残り: ${String.format(java.util.Locale.US, "%.2f", remainingDist * 0.000621371)} mi"
+            } else {
+                "残り: ${String.format(java.util.Locale.US, "%.2f", remainingDist / 1000.0)} km"
+            }
+            drawShadowedText(canvas, remText, segX + 12f * sf, segY + 42f * sf, 11f * sf, "#e5e7eb", bold = true, sf = sf)
+            
+            val elapsedSegSec = (currentFitSec - activeSeg.startFitTimestamp).coerceAtLeast(0.0).roundToInt()
+            val elapsedStr = "タイム: ${elapsedSegSec / 60}:${(elapsedSegSec % 60).toString().padStart(2, '0')}"
+            drawShadowedText(canvas, elapsedStr, segX + segW - 12f * sf, segY + 42f * sf, 11f * sf, "#ffffff", bold = true, anchor = "top-right", sf = sf)
+            
+            val gradeStr = "平均勾配: ${String.format(java.util.Locale.US, "%.1f", activeSeg.averageGrade)}%"
+            drawShadowedText(canvas, gradeStr, segX + 12f * sf, segY + 58f * sf, 10f * sf, "#a1a1aa", bold = true, sf = sf)
+            
+            if (activeSeg.durationSeconds > 0.0) {
+                val prMin = (activeSeg.durationSeconds / 60).toInt()
+                val prSec = (activeSeg.durationSeconds % 60).toInt()
+                val prText = "自己ベスト: ${prMin}:${prSec.toString().padStart(2, '0')}"
+                drawShadowedText(canvas, prText, segX + segW - 12f * sf, segY + 58f * sf, 10f * sf, "#eab308", bold = true, anchor = "top-right", sf = sf)
             }
         }
     }

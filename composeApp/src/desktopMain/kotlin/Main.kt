@@ -2193,6 +2193,7 @@ object BatchJobRunner {
 
         
 
+        fit.HudEncoderSegmentRegistry.activeSegments = viewModel.detectedSegments.toList()
         val encoder = NativeHudEncoder(job.settings,
 
             onProgress = { prog, status ->

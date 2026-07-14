@@ -222,6 +222,7 @@ object HudEncodePipeline {
 
                 onSegmentStart(pStart, pEnd)
 
+                fit.HudEncoderSegmentRegistry.activeSegments = viewmodel.AppViewModel.activeInstance?.detectedSegments?.toList() ?: emptyList()
                 val encoder = hudEncoderFactory.create(s,
                     onProgress = { prog, status ->
                         val segmentProgress = prog.toDouble()

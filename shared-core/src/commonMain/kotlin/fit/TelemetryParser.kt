@@ -12,9 +12,17 @@ data class TelemetryPoint(
     val lon: Double = 0.0,
     val distance: Double = 0.0,
     val elapsedSeconds: Int = 0,
-    val temperature: Double = 0.0
+    val temperature: Double = 0.0,
+    var ctl: Double = 0.0,
+    var atl: Double = 0.0,
+    var tsb: Double = 0.0
 )
 
 interface TelemetryParser {
     fun parse(bytes: ByteArray): List<TelemetryPoint>
+}
+
+object HudEncoderSegmentRegistry {
+    @kotlin.jvm.Volatile
+    var activeSegments: List<AutoDetectedSegment> = emptyList()
 }
