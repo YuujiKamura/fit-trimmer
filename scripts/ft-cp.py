@@ -19,7 +19,7 @@ def send_cmd(cmd):
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python ft-cp.py <get_state|fire|run_plate_detection|stop_plate_detection|reset_plate_detection|seek_plate_detection|set_plate_cache_enabled|restore_plate_cache|discard_plate_cache|set_files|set_layout|update_settings|capture>")
+        print("Usage: python ft-cp.py <get_state|fire|run_plate_detection|stop_plate_detection|reset_plate_detection|seek_plate_detection|seek|set_plate_cache_enabled|restore_plate_cache|discard_plate_cache|set_files|set_layout|update_settings|capture>")
         sys.exit(1)
 
     action = sys.argv[1]
@@ -55,6 +55,12 @@ if __name__ == "__main__":
     elif action == "seek_plate_detection":
         index = int(sys.argv[2]) if len(sys.argv) >= 3 else 0
         print(send_cmd({"type": "seek_plate_detection", "index": index}))
+    elif action == "seek":
+        if len(sys.argv) < 3:
+            print("Usage: python ft-cp.py seek <timeMs>")
+            sys.exit(1)
+        timeMs = int(sys.argv[2])
+        print(send_cmd({"type": "seek", "timeMs": timeMs}))
     elif action == "fire":
         print(send_cmd({"type": "fire"}))
     elif action == "set_files":

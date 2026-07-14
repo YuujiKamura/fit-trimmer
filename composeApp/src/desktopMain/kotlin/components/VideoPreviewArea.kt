@@ -1118,19 +1118,28 @@ fun VideoPreviewArea(
                                 val h = mapped.height
                                 
                                 if (w > 0 && h > 0) {
-                                    drawRect(
-                                        color = Color(0xFF808080), // Flat solid gray
-                                        topLeft = Offset(rx1, ry1),
-                                        size = Size(w, h)
-                                    )
-                                    if (settings.showDebugPlateBoxes) {
-                                        drawRect(
-                                            color = Color.Green,
-                                            topLeft = Offset(rx1, ry1),
-                                            size = Size(w, h),
-                                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3f * density)
-                                        )
-                                    }
+                                     if (settings.showDebugPlateBoxes) {
+                                         // Semi-transparent gray to reveal underlying details
+                                         drawRect(
+                                             color = Color(0xFF808080).copy(alpha = 0.3f),
+                                             topLeft = Offset(rx1, ry1),
+                                             size = Size(w, h)
+                                         )
+                                         // Green bounding box border
+                                         drawRect(
+                                             color = Color.Green,
+                                             topLeft = Offset(rx1, ry1),
+                                             size = Size(w, h),
+                                             style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3f * density)
+                                         )
+                                     } else {
+                                         // Default solid gray mask
+                                         drawRect(
+                                             color = Color(0xFF808080),
+                                             topLeft = Offset(rx1, ry1),
+                                             size = Size(w, h)
+                                         )
+                                     }
                                 }
                             }
                         }
