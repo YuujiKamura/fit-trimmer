@@ -3123,6 +3123,56 @@ fun FitTrimmerMainContent(
                                         )
                                     }
 
+                                    // 1. INFERENCE DEVICE / GPU ACCELERATION
+                                    Spacer(Modifier.height(6.dp))
+                                    Text(
+                                        text = "推論アクセラレーション (AI処理デバイス):",
+                                        fontSize = 10.sp,
+                                        color = Color(0xFF1C1C1E),
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    val provider = viewModel.activePlateDetectorProvider
+                                    val isGpu = provider.contains("GPU") || provider.contains("CUDA") || provider.contains("DirectML")
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .background(
+                                                    if (isGpu) Color(0xFF34C759) else Color(0xFFFF9500),
+                                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+                                                )
+                                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                        ) {
+                                            Text(
+                                                text = provider,
+                                                color = Color.White,
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                        if (!isGpu) {
+                                            androidx.compose.material.TextButton(
+                                                onClick = {
+                                                    try {
+                                                        java.awt.Desktop.getDesktop().browse(java.net.URI("https://developer.nvidia.com/cuda-downloads"))
+                                                    } catch (e: Exception) {
+                                                        e.printStackTrace()
+                                                    }
+                                                },
+                                                contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                                            ) {
+                                                Text(
+                                                    text = "⚠️ GPU(CUDA)を有効化して処理を最大50倍高速化する手順",
+                                                    color = Color(0xFF007AFF),
+                                                    fontSize = 9.sp,
+                                                    textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline
+                                                )
+                                            }
+                                        }
+                                    }
+
                                     // 2. MIN H RATIO (最小ぼかしサイズ)
                                     Spacer(Modifier.height(6.dp))
                                     Text(

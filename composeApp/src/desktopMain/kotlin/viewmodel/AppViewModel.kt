@@ -839,6 +839,7 @@ class AppViewModel(
     )
 
     var plateDetector: fit.PlateDetector = PlateDetectionManager
+    val activePlateDetectorProvider: String get() = utils.PlateDetector.getInstance().activeProviderName
 
     // Derived States
 
