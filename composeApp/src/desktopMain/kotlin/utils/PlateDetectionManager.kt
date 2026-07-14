@@ -226,17 +226,8 @@ object PlateDetectionManager : fit.PlateDetector {
             val currentUtcSeconds = startEpochSecond + currentSec
             val currentFitTs = currentUtcSeconds - fitEpoch
             
-            var skip = false
-            if (telemetryPoints.isNotEmpty() && startTimeAdjusted != null) {
-                val fStart = telemetryPoints.first().timestamp
-                val fEnd = telemetryPoints.last().timestamp
-                if (currentFitTs in fStart..fEnd) {
-                    val point = findClosestTelemetryPoint(telemetryPoints, currentFitTs)
-                    if (point != null && point.speed >= effectiveMaxSpeedKmh) {
-                        skip = true
-                    }
-                }
-            }
+            // Speed-based skip is removed to ensure full scan coverage across all speed ranges.
+            val skip = false
             rawRequired[f.toInt()] = !skip
         }
 
