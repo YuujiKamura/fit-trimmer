@@ -4,6 +4,7 @@ import fit.TelemetryPoint
 import androidx.compose.runtime.*
 import fit.HudSettings
 import fit.FitParser
+import fit.AutoDetectedSegment
 import java.io.File
 import java.time.Instant
 import java.time.ZoneId
@@ -11,6 +12,11 @@ import java.time.format.DateTimeFormatter
 import java.util.Base64
 import java.net.URI
 import java.awt.Desktop
+import utils.DatabaseManager
+import utils.DbActivity
+import utils.DbSegment
+import utils.DbTelemetryPoint
+import utils.PmcViewerImportServer
 
 import TimeAlignmentState
 
@@ -1170,6 +1176,208 @@ class AppViewModel(
         }
     }
 
+    var isPmcServerRunning by mutableStateOf(false)
+        private set
+        
+    val dbActivities = mutableStateListOf<DbActivity>()
+    var loadedActivityId by mutableStateOf<String?>(null)
+    var hasUnsavedChanges by mutableStateOf(false)
+
+    private var pmcServer: PmcViewerImportServer? = null
+
+    fun togglePmcServer() {
+        if (isPmcServerRunning) {
+            pmcServer?.stop()
+            pmcServer = null
+            isPmcServerRunning = false
+        } else {
+            pmcServer = PmcViewerImportServer(18082) { importedAct ->
+                kotlinx.coroutines.GlobalScope.launch(Dispatchers.Main) {
+                    refreshDbActivities()
+                    loadActivityFromDb(importedAct)
+                }
+            }
+            pmcServer?.start()
+            isPmcServerRunning = pmcServer?.isRunning == true
+        }
+    }
+
+    fun refreshDbActivities() {
+        dbActivities.clear()
+        dbActivities.addAll(DatabaseManager.getAllActivities())
+    }
+
+    fun loadActivityFromDb(act: DbActivity) {
+        loadedActivityId = act.id
+        hasUnsavedChanges = false
+
+        val points = act.telemetry.map { pt ->
+            TelemetryPoint(
+                timestamp = pt.timestamp,
+                speed = pt.speed,
+                power = pt.power,
+                cadence = pt.cadence,
+                heartRate = pt.heartRate,
+                elevation = pt.elevation,
+                grade = pt.grade,
+                lat = pt.lat,
+                lon = pt.lon,
+                distance = pt.distance,
+                elapsedSeconds = pt.elapsedSeconds,
+                temperature = pt.temperature
+            )
+        }
+        updateTelemetry(points)
+
+        detectedSegments.clear()
+        detectedSegments.addAll(act.segments.map { seg ->
+            AutoDetectedSegment(
+                id = java.util.UUID.randomUUID().toString(),
+                name = seg.name,
+                startIndex = seg.startIndex,
+                endIndex = seg.endIndex,
+                distanceMeters = seg.distanceMeters,
+                durationSeconds = seg.durationSeconds,
+                averageGrade = seg.averageGrade,
+                startLat = seg.startLat,
+                startLon = seg.startLon,
+                endLat = seg.endLat,
+                endLon = seg.endLon,
+                startElev = seg.startElev,
+                endElev = seg.endElev,
+                minGrade = seg.minGrade,
+                maxGrade = seg.maxGrade,
+                startFitTimestamp = seg.startFitTimestamp,
+                endFitTimestamp = seg.endFitTimestamp
+            )
+        })
+
+        if (telemetryPoints.isNotEmpty()) {
+            trimStartSeconds = 0.0
+            trimEndSeconds = (telemetryPoints.last().timestamp - telemetryPoints.first().timestamp)
+        }
+    }
+
+    fun saveCurrentActivityToDb(name: String) {
+        val firstPt = telemetryPoints.firstOrNull() ?: return
+        val lastPt = telemetryPoints.lastOrNull() ?: return
+        
+        val fitEpochSec = 631065600L
+        val startTimeSec = firstPt.timestamp
+        val unixSec = (startTimeSec + fitEpochSec).toLong()
+        val instant = Instant.ofEpochSecond(unixSec)
+        val utcStr = DateTimeFormatter.ISO_INSTANT.format(instant)
+        val localStr = DateTimeFormatter.ISO_LOCAL_DATE_TIME.withZone(ZoneId.systemDefault()).format(instant) + "Z"
+
+        val distanceMeters = lastPt.distance - firstPt.distance
+        val movingTimeSec = lastPt.elapsedSeconds - firstPt.elapsedSeconds
+
+        val powers = telemetryPoints.map { it.power }.filter { it > 0 }
+        var tss = 0.0
+        var avgPower = 0.0
+        var normalizedPower = 0.0
+        var avgHr = 0.0
+
+        if (powers.isNotEmpty()) {
+            avgPower = powers.average()
+            if (powers.size >= 30) {
+                val p4s = mutableListOf<Double>()
+                for (i in 29 until powers.size) {
+                    val sum = powers.subList(i - 29, i + 1).sum()
+                    val avg = sum / 30.0
+                    p4s.add(Math.pow(avg, 4.0))
+                }
+                if (p4s.isNotEmpty()) {
+                    normalizedPower = Math.pow(p4s.average(), 0.25)
+                }
+            } else {
+                normalizedPower = avgPower
+            }
+            val ftp = 200.0
+            val intensityFactor = normalizedPower / ftp
+            tss = (movingTimeSec / 3600.0) * intensityFactor * intensityFactor * 100.0
+        } else {
+            val hrs = telemetryPoints.map { it.heartRate }.filter { it > 0 }
+            if (hrs.isNotEmpty()) {
+                avgHr = hrs.average()
+                tss = (movingTimeSec / 3600.0) * 50.0
+            } else {
+                tss = (movingTimeSec / 3600.0) * 60.0
+            }
+        }
+
+        val dbSegs = detectedSegments.map { seg ->
+            DbSegment(
+                name = seg.name,
+                distanceMeters = seg.distanceMeters,
+                durationSeconds = seg.durationSeconds,
+                averageGrade = seg.averageGrade,
+                startIndex = seg.startIndex,
+                endIndex = seg.endIndex,
+                startLat = seg.startLat,
+                startLon = seg.startLon,
+                endLat = seg.endLat,
+                endLon = seg.endLon,
+                startElev = seg.startElev,
+                endElev = seg.endElev,
+                minGrade = seg.minGrade,
+                maxGrade = seg.maxGrade,
+                startFitTimestamp = seg.startFitTimestamp,
+                endFitTimestamp = seg.endFitTimestamp
+            )
+        }
+
+        val dbPts = telemetryPoints.map { pt ->
+            DbTelemetryPoint(
+                timestamp = pt.timestamp,
+                speed = pt.speed,
+                power = pt.power,
+                cadence = pt.cadence,
+                heartRate = pt.heartRate,
+                elevation = pt.elevation,
+                grade = pt.grade,
+                lat = pt.lat,
+                lon = pt.lon,
+                distance = pt.distance,
+                elapsedSeconds = pt.elapsedSeconds,
+                temperature = pt.temperature
+            )
+        }
+
+        val id = loadedActivityId ?: "fit_${startTimeSec.toLong()}"
+        val act = DbActivity(
+            id = id,
+            name = name,
+            startDate = utcStr,
+            startDateLocal = localStr,
+            distance = distanceMeters,
+            movingTime = movingTimeSec,
+            elapsedTime = movingTimeSec,
+            tss = Math.round(tss * 10.0) / 10.0,
+            sufferScore = if (avgHr > 0) Math.round((movingTimeSec / 3600.0) * 50.0).toInt() else null,
+            avgPower = if (avgPower > 0) avgPower else null,
+            normalizedPower = if (normalizedPower > 0) normalizedPower else null,
+            avgHr = if (avgHr > 0) avgHr else null,
+            fitPath = fitPath,
+            segments = dbSegs,
+            telemetry = dbPts
+        )
+
+        DatabaseManager.saveActivity(act)
+        loadedActivityId = act.id
+        hasUnsavedChanges = false
+        refreshDbActivities()
+    }
+
+    fun deleteActivityFromDb(id: String) {
+        DatabaseManager.deleteActivity(id)
+        if (loadedActivityId == id) {
+            loadedActivityId = null
+            hasUnsavedChanges = false
+        }
+        refreshDbActivities()
+    }
+
     fun cutTelemetry(trimStartSec: Double, trimEndSec: Double, videoStartUtcStr: String) {
         if (originalTelemetryPoints.isEmpty()) return
         try {
@@ -1403,6 +1611,7 @@ class AppViewModel(
 
     init {
         activeInstance = this
+        refreshDbActivities()
         refreshAvailableCacheJobs()
         try {
             val savedJobs = utils.BatchQueueCache.load()

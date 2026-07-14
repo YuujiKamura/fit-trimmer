@@ -40,6 +40,7 @@ kotlin {
                 implementation("io.github.kdroidfilter:composemediaplayer:0.6.4")
                 implementation("net.java.dev.jna:jna:5.14.0")
                 implementation("com.microsoft.onnxruntime:onnxruntime:1.18.0")
+                implementation("org.xerial:sqlite-jdbc:3.46.0.0")
             }
         }
         val desktopTest by getting {

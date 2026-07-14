@@ -116,6 +116,10 @@ fun FitTrimmerMainContent(
     var tempSelectedLanguage by remember { mutableStateOf("en") }
     var shouldResumeNextEncode by remember { mutableStateOf(false) }
     var showResumeDialog by remember { mutableStateOf(false) }
+    var showSaveDbDialog by remember { mutableStateOf(false) }
+    var saveDbActivityName by remember { mutableStateOf("") }
+    var pendingLoadActivity by remember { mutableStateOf<utils.DbActivity?>(null) }
+    var showLoadConfirmDialog by remember { mutableStateOf(false) }
     // Dynamic Hud Proxy & Hot Reload State
     val hudConfig = remember(settings) {
         fit.HudConfig(
@@ -1530,6 +1534,7 @@ fun FitTrimmerMainContent(
                 val scrollStateTab2 = rememberScrollState()
                 val scrollStateTab3 = rememberScrollState()
                 val scrollStateTab4 = rememberScrollState()
+                val scrollStateTab5 = rememberScrollState()
 
                 val sidebarWidth = if (showSidebar) 320.dp else 0.dp
                 Box(modifier = Modifier.width(sidebarWidth).fillMaxHeight()) {
@@ -1558,13 +1563,14 @@ fun FitTrimmerMainContent(
                             Unit
                         }
                     }
-                        // 5つのタブに対応する ScrollState を決定
+                        // 6つのタブに対応する ScrollState を決定
                         val currentScrollState = when (selectedTab) {
                             0 -> scrollStateTab0
                             1 -> scrollStateTab1
                             2 -> scrollStateTab2
                             3 -> scrollStateTab3
-                            else -> scrollStateTab4
+                            4 -> scrollStateTab4
+                            else -> scrollStateTab5
                         }
 
                         // タブ選択 UI
@@ -1608,6 +1614,11 @@ fun FitTrimmerMainContent(
                                 selected = selectedTab == 4,
                                 onClick = { selectedTab = 4 },
                                 text = { Text("セグメント", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                            )
+                            Tab(
+                                selected = selectedTab == 5,
+                                onClick = { selectedTab = 5 },
+                                text = { Text("履歴", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
                             )
                         }
 
@@ -4434,6 +4445,223 @@ fun FitTrimmerMainContent(
                                         }
                                     }
 
+                                    if (selectedTab == 5) {
+                                        Column(
+                                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            // 1. PMC Connection Server Card
+                                            Card(
+                                                backgroundColor = Color.White,
+                                                shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                                                border = BorderStroke(1.dp, Color(0xFFE5E5EA)),
+                                                elevation = 1.dp,
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Column(
+                                                    modifier = Modifier.padding(12.dp),
+                                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                                ) {
+                                                    Text("PMCビューワ連携", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 0.5.sp)
+                                                    Text("PMCビューワからアクティビティデータ（GPS、パワー、心拍、セグメント）を直接このアプリに取り込むための接続用ローカルサーバーを起動します。", color = Color(0xFF636366), fontSize = 10.sp, lineHeight = 13.sp)
+                                                    
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+                                                    ) {
+                                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .size(8.dp)
+                                                                    .clip(androidx.compose.foundation.shape.CircleShape)
+                                                                    .background(if (viewModel.isPmcServerRunning) Color(0xFF34C759) else Color(0xFF8E8E93))
+                                                            )
+                                                            Text(
+                                                                text = if (viewModel.isPmcServerRunning) "サーバー稼働中 (ポート 18082)" else "サーバー停止中",
+                                                                color = Color(0xFF1C1C1E),
+                                                                fontSize = 11.sp,
+                                                                fontWeight = FontWeight.Medium
+                                                            )
+                                                        }
+                                                        Button(
+                                                            onClick = { viewModel.togglePmcServer() },
+                                                            colors = ButtonDefaults.buttonColors(
+                                                                backgroundColor = if (viewModel.isPmcServerRunning) Color(0xFFFF3B30) else Color(0xFF007AFF),
+                                                                contentColor = Color.White
+                                                            ),
+                                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp),
+                                                            modifier = Modifier.height(28.dp)
+                                                        ) {
+                                                            Text(if (viewModel.isPmcServerRunning) "停止" else "起動", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                                        }
+                                                    }
+                                                }
+                                            }
+
+                                            // 2. Current Activity State Card
+                                            Card(
+                                                backgroundColor = Color.White,
+                                                shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                                                border = BorderStroke(1.dp, Color(0xFFE5E5EA)),
+                                                elevation = 1.dp,
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Column(
+                                                    modifier = Modifier.padding(12.dp),
+                                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                                ) {
+                                                    Text("ロード中のアクティビティ", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 0.5.sp)
+                                                    
+                                                    if (viewModel.telemetryPoints.isEmpty()) {
+                                                        Text("アクティビティはロードされていません。", color = Color(0xFF8E8E93), fontSize = 11.sp)
+                                                    } else {
+                                                        val loadedAct = viewModel.dbActivities.find { it.id == viewModel.loadedActivityId }
+                                                        Text(
+                                                            text = "名前: ${loadedAct?.name ?: "ローカルロード (未保存)"}",
+                                                            color = Color(0xFF1C1C1E),
+                                                            fontSize = 11.sp,
+                                                            fontWeight = FontWeight.Bold
+                                                        )
+                                                        Text(
+                                                            text = "データ件数: ${viewModel.telemetryPoints.size} pts / 検出セグメント: ${viewModel.detectedSegments.size}",
+                                                            color = Color(0xFF636366),
+                                                            fontSize = 10.sp
+                                                        )
+                                                        if (viewModel.hasUnsavedChanges || viewModel.loadedActivityId == null) {
+                                                            Row(
+                                                                verticalAlignment = Alignment.CenterVertically,
+                                                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                                modifier = Modifier.padding(vertical = 4.dp)
+                                                            ) {
+                                                                Text("⚠️ 未保存の変更があります", color = Color(0xFFFF9500), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                                            }
+                                                        }
+                                                        Button(
+                                                            onClick = {
+                                                                saveDbActivityName = loadedAct?.name ?: "ライド履歴"
+                                                                showSaveDbDialog = true
+                                                            },
+                                                            colors = ButtonDefaults.buttonColors(
+                                                                backgroundColor = Color(0xFF34C759),
+                                                                contentColor = Color.White
+                                                            ),
+                                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp),
+                                                            modifier = Modifier.fillMaxWidth().height(32.dp)
+                                                        ) {
+                                                            Text("データベースに保存 / 更新", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                                        }
+                                                    }
+                                                }
+                                            }
+
+                                            // 3. Activity History List Card
+                                            Card(
+                                                backgroundColor = Color.White,
+                                                shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                                                border = BorderStroke(1.dp, Color(0xFFE5E5EA)),
+                                                elevation = 1.dp,
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Column(
+                                                    modifier = Modifier.padding(12.dp),
+                                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                                ) {
+                                                    Row(
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        modifier = Modifier.fillMaxWidth()
+                                                    ) {
+                                                        Text("走行履歴データベース", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 0.5.sp)
+                                                        Button(
+                                                            onClick = { viewModel.refreshDbActivities() },
+                                                            modifier = Modifier.height(24.dp),
+                                                            colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFE5E5EA)),
+                                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+                                                        ) {
+                                                            Text("更新 🔄", fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                                        }
+                                                    }
+
+                                                    if (viewModel.dbActivities.isEmpty()) {
+                                                        Text("保存された履歴はありません。", color = Color(0xFF8E8E93), fontSize = 11.sp, modifier = Modifier.padding(vertical = 12.dp))
+                                                    } else {
+                                                        Column(
+                                                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                                                            modifier = Modifier.fillMaxWidth()
+                                                        ) {
+                                                            viewModel.dbActivities.forEach { act ->
+                                                                Card(
+                                                                    backgroundColor = Color(0xFFF2F2F7),
+                                                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp),
+                                                                    modifier = Modifier.fillMaxWidth()
+                                                                ) {
+                                                                    Column(
+                                                                        modifier = Modifier.padding(8.dp),
+                                                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                                                    ) {
+                                                                        Row(
+                                                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                                                            verticalAlignment = Alignment.Top,
+                                                                            modifier = Modifier.fillMaxWidth()
+                                                                        ) {
+                                                                            Column(modifier = Modifier.weight(1f)) {
+                                                                                Text(act.name, color = Color(0xFF1C1C1E), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                                                Text(act.startDateLocal.replace("T", " ").replace("Z", ""), color = Color(0xFF636366), fontSize = 9.sp)
+                                                                            }
+                                                                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                                                Button(
+                                                                                    onClick = {
+                                                                                        if (viewModel.hasUnsavedChanges || (viewModel.loadedActivityId == null && viewModel.telemetryPoints.isNotEmpty())) {
+                                                                                            pendingLoadActivity = act
+                                                                                            showLoadConfirmDialog = true
+                                                                                        } else {
+                                                                                            viewModel.loadActivityFromDb(act)
+                                                                                        }
+                                                                                    },
+                                                                                    colors = ButtonDefaults.buttonColors(
+                                                                                        backgroundColor = Color(0xFF007AFF),
+                                                                                        contentColor = Color.White
+                                                                                    ),
+                                                                                    modifier = Modifier.height(22.dp).padding(horizontal = 6.dp),
+                                                                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+                                                                                ) {
+                                                                                    Text("選択", fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                                                                }
+                                                                                Button(
+                                                                                    onClick = { viewModel.deleteActivityFromDb(act.id) },
+                                                                                    colors = ButtonDefaults.buttonColors(
+                                                                                        backgroundColor = Color(0xFFFF3B30),
+                                                                                        contentColor = Color.White
+                                                                                    ),
+                                                                                    modifier = Modifier.height(22.dp).padding(horizontal = 6.dp),
+                                                                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+                                                                                ) {
+                                                                                    Text("削除", fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                                                                }
+                                                                            }
+                                                                        }
+                                                                        Row(
+                                                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                                            modifier = Modifier.fillMaxWidth()
+                                                                        ) {
+                                                                            Text("${String.format(java.util.Locale.US, "%.2f", act.distance / 1000.0)} km", color = Color(0xFF1C1C1E), fontSize = 10.sp)
+                                                                            Text("${act.movingTime / 60}m ${act.movingTime % 60}s", color = Color(0xFF1C1C1E), fontSize = 10.sp)
+                                                                            Text("TSS: ${act.tss}", color = Color(0xFF007AFF), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                                                            if (act.segments.isNotEmpty()) {
+                                                                                Text("⛰️ ${act.segments.size}", color = Color(0xFF34C759), fontSize = 10.sp)
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
                                 VerticalScrollbar(
                                     adapter = rememberScrollbarAdapter(currentScrollState),
                                     modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight()
@@ -4737,6 +4965,121 @@ fun FitTrimmerMainContent(
                     isEncoding = AppViewModel.activeInstance?.isEncoding ?: false,
                     onClose = { showManualJstSyncDialog = false }
                 )
+            }
+
+            if (showSaveDbDialog) {
+                Box(
+                    modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Card(
+                        modifier = Modifier.width(360.dp).padding(16.dp),
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                        elevation = 8.dp
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(20.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            Text(
+                                text = "履歴をデータベースに保存",
+                                style = MaterialTheme.typography.h6,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF007AFF)
+                            )
+                            OutlinedTextField(
+                                value = saveDbActivityName,
+                                onValueChange = { saveDbActivityName = it },
+                                label = { Text("アクティビティ名") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Button(
+                                    onClick = {
+                                        showSaveDbDialog = false
+                                        viewModel.saveCurrentActivityToDb(saveDbActivityName)
+                                    },
+                                    colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF34C759)),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text("保存", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                                Button(
+                                    onClick = { showSaveDbDialog = false },
+                                    colors = ButtonDefaults.buttonColors(backgroundColor = Color.Gray),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text("キャンセル", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (showLoadConfirmDialog) {
+                Box(
+                    modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Card(
+                        modifier = Modifier.width(360.dp).padding(16.dp),
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                        elevation = 8.dp
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(20.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            Text(
+                                text = "未保存の変更の確認",
+                                style = MaterialTheme.typography.h6,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFFF9500)
+                            )
+                            Text(
+                                text = "現在のアクティビティに未保存の変更があります。別のアクティビティをロードすると変更が失われますが、よろしいですか？",
+                                fontSize = 12.sp,
+                                color = Color.Gray,
+                                textAlign = TextAlign.Center
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Button(
+                                    onClick = {
+                                        showLoadConfirmDialog = false
+                                        pendingLoadActivity?.let {
+                                            viewModel.loadActivityFromDb(it)
+                                        }
+                                        pendingLoadActivity = null
+                                    },
+                                    colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFFF3B30)),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text("破棄してロード", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                                Button(
+                                    onClick = {
+                                        showLoadConfirmDialog = false
+                                        pendingLoadActivity = null
+                                    },
+                                    colors = ButtonDefaults.buttonColors(backgroundColor = Color.Gray),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text("キャンセル", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             if (showResumeDialog) {
