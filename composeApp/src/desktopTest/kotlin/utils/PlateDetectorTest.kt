@@ -544,7 +544,7 @@ class PlateDetectorTest {
                 adjustedStartUtc = "2026-06-14T08:02:06Z",
                 onProgress = { _, _ -> },
                 onCancel = { false },
-                settings = fit.HudSettings(plateMaxSpeedKmh = 10.0)
+                settings = fit.HudSettings(plateMaxSpeedKmh = 10.0, plateInferenceInterval = 10)
             )
         }
 

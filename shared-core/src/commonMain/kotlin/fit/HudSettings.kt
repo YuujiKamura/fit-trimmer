@@ -47,7 +47,7 @@ data class HudSettings(
     val plateMaskExpandRatio: Double = 0.2,
     val plateMinMaskHeightRatio: Double = 0.006,
     val plateMaskTimeBufferMs: Long = 300L,
-    val plateInferenceInterval: Int = 10,
+    val plateInferenceInterval: Int = 1,
     val minRemainingSecondsForCut: Double = 5.0,
     val elevationGraphScope: String = "video", // "video" or "activity"
     val heartRateAccumulationScope: String = "activity", // "video" or "activity"

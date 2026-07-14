@@ -503,6 +503,9 @@ object PlateDetectionManager : fit.PlateDetector {
                     System.arraycopy(frame.buffer, 0, imgData, 0, frameBytes)
                     val tracked = tracker.trackIntermediateFrame(frame.frameIndex, frame.timeMs, img)
                     mergeBoxesIntoRecords(frame.timeMs, tracked)
+                    if (tracker.hasTrackingLoss) {
+                        forceNextFrameONNX = true
+                    }
                     tracked
                 } else {
                     inferencePerformed = true

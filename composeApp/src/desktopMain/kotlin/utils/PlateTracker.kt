@@ -21,6 +21,9 @@ class PlateTracker(
     internal val activeTracks = mutableListOf<TrackedObject>()
     private var nextTrackId = 1
 
+    var hasTrackingLoss: Boolean = false
+        private set
+
     /**
      * Intermediate frame tracking (Forward Tracking).
      * Predicts the location of existing tracks using a motion model and refines it via HSV histogram matching.
@@ -30,6 +33,7 @@ class PlateTracker(
         timeMs: Long,
         image: BufferedImage
     ): List<PlateBox> {
+        hasTrackingLoss = false
         for (track in activeTracks) {
             // 1. Motion prediction
             val tw = track.lastBox.x2 - track.lastBox.x1
@@ -70,6 +74,7 @@ class PlateTracker(
             // Discard tracking for this frame if color similarity is poor (Bhattacharyya distance >= 0.55)
             if (bestDist > 0.55f) {
                 track.consecutiveMissedFrames++
+                hasTrackingLoss = true
                 continue
             }
 
