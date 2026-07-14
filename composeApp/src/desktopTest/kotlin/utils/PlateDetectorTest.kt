@@ -87,6 +87,15 @@ class PlateDetectorTest {
 
         assertTrue(boxes.isNotEmpty(), "Should have detected at least one license plate")
         
+        // Assert that the bus plate is detected at the exact expected coordinates (2787, 1043, 2967, 1129)
+        // specifying a tight tolerance of <= 3 pixels to prevent mapping regression.
+        val busPlate = boxes.find { it.x1 in 2784..2790 && it.y1 in 1040..1046 }
+        kotlin.test.assertNotNull(busPlate, "Bus license plate should be detected at expected coordinates")
+        kotlin.test.assertEquals(2787, busPlate.x1, "Plate x1 coordinate misalignment")
+        kotlin.test.assertEquals(1043, busPlate.y1, "Plate y1 coordinate misalignment")
+        kotlin.test.assertEquals(2967, busPlate.x2, "Plate x2 coordinate misalignment")
+        kotlin.test.assertEquals(1129, busPlate.y2, "Plate y2 coordinate misalignment")
+
         // Draw green bounding boxes on the image to verify exact model alignment
         val g2d = image.createGraphics()
         g2d.color = java.awt.Color.GREEN
@@ -101,9 +110,6 @@ class PlateDetectorTest {
         val destFile = File(tempDir, "raw_plate_detection_screenshot.png")
         ImageIO.write(image, "png", destFile)
         println("Saved raw plate detection demo to: ${destFile.absolutePath}")
-        
-        val rightSidePlates = boxes.filter { it.x1 > image.width / 2 }
-        assertTrue(rightSidePlates.isNotEmpty(), "Should detect the bus license plate on the right half of the image")
     }
 
     @Test
