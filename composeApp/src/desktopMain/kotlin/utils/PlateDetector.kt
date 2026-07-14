@@ -113,7 +113,7 @@ class PlateDetector private constructor() : AutoCloseable {
         val height = image.height
 
         val isVehicleMode = !maskMode.equals("plate", ignoreCase = true)
-        val inputSize = if (isVehicleMode) 640 else 1088
+        val inputSize = 640
 
         // 1. Letterbox Preprocessing (preserving aspect ratio)
         val scale = kotlin.math.min(inputSize.toFloat() / width, inputSize.toFloat() / height)
@@ -184,11 +184,13 @@ class PlateDetector private constructor() : AutoCloseable {
                 val tInference = System.nanoTime()
                 
                 val buffer = outputTensor.floatBuffer
+                val shape = outputTensor.info.shape
+                val numAnchors = shape[2].toInt()
                 val rawBoxes = mutableListOf<DetectedBox>()
 
                 if (isVehicleMode) {
-                    // Standard YOLOv8 output is [1, 84, 8400] for 80 classes.
-                    val outputData = FloatArray(84 * 8400)
+                    // Standard YOLOv8 output is [1, 84, numAnchors] for 80 classes.
+                    val outputData = FloatArray(84 * numAnchors)
                     buffer.get(outputData)
                     
                     // Target COCO classes: 2 (car), 3 (motorcycle), 5 (bus), 7 (truck).
@@ -199,11 +201,11 @@ class PlateDetector private constructor() : AutoCloseable {
                         intArrayOf(6, 7, 9, 11)
                     }
 
-                    for (i in 0 until 8400) {
+                    for (i in 0 until numAnchors) {
                         var maxScore = 0f
                         var bestClassId = -1
                         for (offset in targetOffsets) {
-                            val score = outputData[offset * 8400 + i]
+                            val score = outputData[offset * numAnchors + i]
                             if (score > maxScore) {
                                 maxScore = score
                                 bestClassId = offset - 4 // classId: 0=person, 2=car, 3=motorcycle, 5=bus, 7=truck
@@ -212,10 +214,10 @@ class PlateDetector private constructor() : AutoCloseable {
 
                         val classThreshold = if (bestClassId == 0) maxOf(confThreshold, 0.35f) else confThreshold
                         if (maxScore >= classThreshold) {
-                            val cx = outputData[0 * 8400 + i]
-                            val cy = outputData[1 * 8400 + i]
-                            val w = outputData[2 * 8400 + i]
-                            val h = outputData[3 * 8400 + i]
+                            val cx = outputData[0 * numAnchors + i]
+                            val cy = outputData[1 * numAnchors + i]
+                            val w = outputData[2 * numAnchors + i]
+                            val h = outputData[3 * numAnchors + i]
                             
                             val x1 = cx - w / 2f
                             val y1 = cy - h / 2f
@@ -226,17 +228,17 @@ class PlateDetector private constructor() : AutoCloseable {
                         }
                     }
                 } else {
-                    // Plate detection YOLOv8 model output is [1, 5, 24276]
-                    val outputData = FloatArray(5 * 24276)
+                    // Plate detection YOLOv8 model output is [1, 5, numAnchors]
+                    val outputData = FloatArray(5 * numAnchors)
                     buffer.get(outputData)
 
-                    for (i in 0 until 24276) {
-                        val score = outputData[4 * 24276 + i]
+                    for (i in 0 until numAnchors) {
+                        val score = outputData[4 * numAnchors + i]
                         if (score >= confThreshold) {
-                            val cx = outputData[0 * 24276 + i]
-                            val cy = outputData[1 * 24276 + i]
-                            val w = outputData[2 * 24276 + i]
-                            val h = outputData[3 * 24276 + i]
+                            val cx = outputData[0 * numAnchors + i]
+                            val cy = outputData[1 * numAnchors + i]
+                            val w = outputData[2 * numAnchors + i]
+                            val h = outputData[3 * numAnchors + i]
                             
                             val x1 = cx - w / 2f
                             val y1 = cy - h / 2f
