@@ -155,7 +155,17 @@ object PlateDetectionManager : fit.PlateDetector {
                             maskMode = settings.plateMaskMode
                         )
                         if (detectedBoxes.isNotEmpty()) {
-                            val filteredBoxes = filterBoxesForMaskSize(detectedBoxes, videoHeight, settings)
+                            val scaleX = videoWidth.toFloat() / scanWidth.toFloat()
+                            val scaleY = videoHeight.toFloat() / scanHeight.toFloat()
+                            val scaledBoxes = detectedBoxes.map { box ->
+                                fit.PlateBox(
+                                    x1 = (box.x1 * scaleX).toInt(),
+                                    y1 = (box.y1 * scaleY).toInt(),
+                                    x2 = (box.x2 * scaleX).toInt(),
+                                    y2 = (box.y2 * scaleY).toInt()
+                                )
+                            }
+                            val filteredBoxes = filterBoxesForMaskSize(scaledBoxes, videoHeight, settings)
                             if (filteredBoxes.isNotEmpty()) {
                                 val mergedBoxes = mergeOverlappingBoxes(filteredBoxes)
                                 records.add(PlateRecord(timeMs, mergedBoxes))
