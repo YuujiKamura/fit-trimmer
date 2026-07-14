@@ -80,9 +80,8 @@ data class VideoPlatesCache(
 
     fun shouldBlurAt(targetTimeMs: Long, isBlurEnabled: Boolean, timeBufferMs: Long = 300L): List<PlateBox> {
         if (!isBlurEnabled || records.isEmpty()) return emptyList()
-        
         val (prev, next) = findNeighborRecords(targetTimeMs)
-        return boxesForTargetTime(targetTimeMs, prev, next, timeBufferMs)
+        return boxesForTargetTime(targetTimeMs, prev, next, timeBufferMs).map { it.first }
     }
 
     private fun expandBoxRatio(box: PlateBox, scale: Float): PlateBox {
@@ -106,16 +105,16 @@ data class VideoPlatesCache(
         prev: PlateRecord?,
         next: PlateRecord?,
         timeBufferMs: Long = 300L
-    ): List<PlateBox> {
+    ): List<Pair<PlateBox, Float>> {
         val width = if (sourceWidth > 0) sourceWidth else 2704 // fallback to 2.7K width
-        val result = mutableListOf<PlateBox>()
+        val result = mutableListOf<Pair<PlateBox, Float>>()
         
         // 1. Primary interpolation for adjacent frames
         val primaryBoxes = if (prev != null && next != null) {
             val interval = next.timeMs - prev.timeMs
             if (interval <= 1500) { // Interpolate if interval is within 1.5 seconds
                 val alpha = (targetTimeMs - prev.timeMs).toFloat() / interval.toFloat()
-                interpolateBoxes(prev.boxes, next.boxes, alpha, width)
+                interpolateBoxes(prev.boxes, next.boxes, alpha, width).map { it to 1.0f }
             } else {
                 emptyList()
             }
@@ -131,8 +130,8 @@ data class VideoPlatesCache(
         }
         for (rec in bufferRecords) {
             val dist = kotlin.math.abs(rec.timeMs - targetTimeMs)
-            val scale = 1.0f + (dist.toFloat() / timeBufferMs.toFloat()) * 0.4f
-            result.addAll(rec.boxes.map { expandBoxRatio(it, scale) })
+            val intensity = (1.0f - (dist.toFloat() / timeBufferMs.toFloat())).coerceIn(0.0f, 1.0f)
+            result.addAll(rec.boxes.map { it to intensity })
         }
         
         // 3. Apply buffer scale to prev/next if they were not interpolated
@@ -140,20 +139,29 @@ data class VideoPlatesCache(
             if (prev != null) {
                 val dist = targetTimeMs - prev.timeMs
                 if (dist <= timeBufferMs) {
-                    val scale = 1.0f + (dist.toFloat() / timeBufferMs.toFloat()) * 0.4f
-                    result.addAll(prev.boxes.map { expandBoxRatio(it, scale) })
+                    val intensity = (1.0f - (dist.toFloat() / timeBufferMs.toFloat())).coerceIn(0.0f, 1.0f)
+                    result.addAll(prev.boxes.map { it to intensity })
                 }
             }
             if (next != null) {
                 val dist = next.timeMs - targetTimeMs
                 if (dist <= timeBufferMs) {
-                    val scale = 1.0f + (dist.toFloat() / timeBufferMs.toFloat()) * 0.4f
-                    result.addAll(next.boxes.map { expandBoxRatio(it, scale) })
+                    val intensity = (1.0f - (dist.toFloat() / timeBufferMs.toFloat())).coerceIn(0.0f, 1.0f)
+                    result.addAll(next.boxes.map { it to intensity })
                 }
             }
         }
         
-        return result.distinct()
+        // Merge duplicates by keeping the maximum intensity
+        val merged = mutableMapOf<PlateBox, Float>()
+        for ((box, intensity) in result) {
+            val current = merged[box]
+            if (current == null || intensity > current) {
+                merged[box] = intensity
+            }
+        }
+        
+        return merged.map { it.key to it.value }
     }
     
     private fun interpolateBoxes(
@@ -222,7 +230,13 @@ data class VideoPlatesCache(
         return result
     }
 }
-data class MappedPlateBox(val x: Float, val y: Float, val width: Float, val height: Float)
+data class MappedPlateBox(
+    val x: Float,
+    val y: Float,
+    val width: Float,
+    val height: Float,
+    val intensity: Float = 1.0f
+)
 
 fun VideoPlatesCache.buildMappedMaskFrames(
     totalFrames: Int,
@@ -268,7 +282,7 @@ fun VideoPlatesCache.buildMappedMaskFrames(
             else -> null
         }
 
-        boxesForTargetTime(targetTimeMs, prev, next, timeBufferMs).mapNotNull { box ->
+        boxesForTargetTime(targetTimeMs, prev, next, timeBufferMs).mapNotNull { (box, intensity) ->
             val expanded = PlateMaskExpander.expand(
                 box = box,
                 expandRatio = expandRatio,
@@ -282,7 +296,8 @@ fun VideoPlatesCache.buildMappedMaskFrames(
                 fallbackSourceHeight = fallbackSourceHeight,
                 targetWidth = targetWidth,
                 targetHeight = targetHeight,
-                cropToSquare = cropToSquare
+                cropToSquare = cropToSquare,
+                intensity = intensity
             ).takeIf { it.width > 0f && it.height > 0f }
         }
     }
@@ -318,7 +333,8 @@ object PlateCoordinateMapper {
         fallbackSourceHeight: Int,
         targetWidth: Float,
         targetHeight: Float,
-        cropToSquare: Boolean = false
+        cropToSquare: Boolean = false,
+        intensity: Float = 1.0f
     ): MappedPlateBox {
         val sourceWidth = cache?.sourceWidth?.takeIf { it > 0 } ?: fallbackSourceWidth.coerceAtLeast(1)
         val sourceHeight = cache?.sourceHeight?.takeIf { it > 0 } ?: fallbackSourceHeight.coerceAtLeast(1)
@@ -348,7 +364,8 @@ object PlateCoordinateMapper {
             x = x1,
             y = y1,
             width = x2 - x1,
-            height = y2 - y1
+            height = y2 - y1,
+            intensity = intensity
         )
     }
 }

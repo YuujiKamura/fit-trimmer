@@ -752,14 +752,15 @@ class NativeHudEncoder(
                     // Directly write the pre-cached black frame to FFmpeg pipeline.
                     process.outputStream.write(blackFrame)
                 } else {
-                    // Mask boxes exist: clean transient buffer, draw white rects, and write.
+                    // Mask boxes exist: clean transient buffer, draw grayscale rects based on intensity, and write.
                     java.util.Arrays.fill(data, 0.toByte())
-                    g.color = java.awt.Color.WHITE
                     for (box in boxes) {
                         val x = box.x.toInt()
                         val y = box.y.toInt()
                         val w = box.width.toInt()
                         val h = box.height.toInt()
+                        val gray = (box.intensity * 255.0f).toInt().coerceIn(0, 255)
+                        g.color = java.awt.Color(gray, gray, gray)
                         if (w > 0 && h > 0) {
                             g.fillRect(x, y, w, h)
                         }
