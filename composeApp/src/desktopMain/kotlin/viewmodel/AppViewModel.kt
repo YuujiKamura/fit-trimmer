@@ -1,16 +1,16 @@
 package viewmodel
 
 import fit.TelemetryPoint
-
-
-
 import androidx.compose.runtime.*
-
 import fit.HudSettings
-
 import fit.FitParser
-
 import java.io.File
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Base64
+import java.net.URI
+import java.awt.Desktop
 
 import TimeAlignmentState
 
@@ -1060,6 +1060,113 @@ class AppViewModel(
                     segmentDetectionProgressText = "Error: ${e.message}"
                 }
             }
+        }
+    }
+
+    fun exportToPmcViewer() {
+        if (telemetryPoints.isEmpty() || !timeSynchronizer.isReady) return
+
+        try {
+            val startFitTime = timeSynchronizer.videoSecondsToFit(trimStartSeconds)
+            val endFitTime = timeSynchronizer.videoSecondsToFit(trimEndSeconds)
+
+            val trimmedPoints = telemetryPoints.filter { it.timestamp in startFitTime..endFitTime }
+            if (trimmedPoints.isEmpty()) return
+
+            val fitEpochSec = 631065600L
+            val firstPt = trimmedPoints.first()
+            val lastPt = trimmedPoints.last()
+
+            val startTimeSec = firstPt.timestamp
+            val unixSec = (startTimeSec + fitEpochSec).toLong()
+            val instant = Instant.ofEpochSecond(unixSec)
+            val utcStr = DateTimeFormatter.ISO_INSTANT.format(instant)
+            val localStr = DateTimeFormatter.ISO_LOCAL_DATE_TIME.withZone(ZoneId.systemDefault()).format(instant) + "Z"
+
+            val distanceMeters = lastPt.distance - firstPt.distance
+            val elapsedTimeSec = endFitTime - startFitTime
+            val movingTimeSec = elapsedTimeSec
+
+            val powers = trimmedPoints.map { it.power }.filter { it > 0 }
+            var tss = 0.0
+            var avgPower = 0.0
+            var normalizedPower = 0.0
+            var avgHr = 0.0
+
+            if (powers.isNotEmpty()) {
+                avgPower = powers.average()
+                if (powers.size >= 30) {
+                    val p4s = mutableListOf<Double>()
+                    for (i in 29 until powers.size) {
+                        val sum = powers.subList(i - 29, i + 1).sum()
+                        val avg = sum / 30.0
+                        p4s.add(Math.pow(avg, 4.0))
+                    }
+                    if (p4s.isNotEmpty()) {
+                        normalizedPower = Math.pow(p4s.average(), 0.25)
+                    }
+                } else {
+                    normalizedPower = avgPower
+                }
+                val ftp = 200.0
+                val intensityFactor = normalizedPower / ftp
+                tss = (movingTimeSec / 3600.0) * intensityFactor * intensityFactor * 100.0
+            } else {
+                val hrs = trimmedPoints.map { it.heartRate }.filter { it > 0 }
+                if (hrs.isNotEmpty()) {
+                    avgHr = hrs.average()
+                    tss = (movingTimeSec / 3600.0) * 50.0
+                } else {
+                    tss = (movingTimeSec / 3600.0) * 60.0
+                }
+            }
+
+            val overlapSegments = detectedSegments.filter { seg ->
+                val segStartSec = timeSynchronizer.fitToVideoSeconds(seg.startFitTimestamp)
+                val segEndSec = timeSynchronizer.fitToVideoSeconds(seg.endFitTimestamp)
+                segStartSec >= trimStartSeconds && segEndSec <= trimEndSeconds
+            }
+
+            val segmentsJson = overlapSegments.map { seg ->
+                """
+                {
+                  "name": "${seg.name.replace("\"", "\\\"")}",
+                  "distanceMeters": ${seg.distanceMeters},
+                  "durationSeconds": ${seg.durationSeconds},
+                  "averageGrade": ${seg.averageGrade}
+                }
+                """.trimIndent()
+            }
+
+            val actName = File(fitPath).nameWithoutExtension
+            val jsonPayload = """
+            {
+              "id": "fit_${(startTimeSec).toLong()}",
+              "name": "${actName.replace("\"", "\\\"")}_trimmed",
+              "start_date": "$utcStr",
+              "start_date_local": "$localStr",
+              "sport_type": "Ride",
+              "distance": ${if (distanceMeters > 0) distanceMeters else 0.0},
+              "moving_time": ${movingTimeSec.toInt()},
+              "elapsed_time": ${elapsedTimeSec.toInt()},
+              "tss": ${Math.round(tss * 10.0) / 10.0},
+              "suffer_score": ${if (avgHr > 0) Math.round((movingTimeSec / 3600.0) * 50.0) else null},
+              "weighted_average_watts": ${if (normalizedPower > 0) Math.round(normalizedPower * 10.0) / 10.0 else null},
+              "average_watts": ${if (avgPower > 0) Math.round(avgPower * 10.0) / 10.0 else null},
+              "average_heartrate": ${if (avgHr > 0) Math.round(avgHr * 10.0) / 10.0 else null},
+              "segments": [${segmentsJson.joinToString(",")}]
+            }
+            """.trimIndent()
+
+            val base64 = Base64.getUrlEncoder().encodeToString(jsonPayload.toByteArray(Charsets.UTF_8))
+            val baseUrl = "https://yuujikamura.github.io/strava-pmc-viewer/"
+            val url = "$baseUrl?import_activity=$base64"
+
+            if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
+                Desktop.getDesktop().browse(URI(url))
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 

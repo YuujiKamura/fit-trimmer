@@ -4310,7 +4310,27 @@ fun FitTrimmerMainContent(
                                                     modifier = Modifier.padding(12.dp),
                                                     verticalArrangement = Arrangement.spacedBy(8.dp)
                                                 ) {
-                                                    Text("検出されたセグメント (${viewModel.detectedSegments.size}件)", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Text("検出されたセグメント (${viewModel.detectedSegments.size}件)", color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                                        if (telemetryPoints.isNotEmpty() && viewModel.timeSynchronizer.isReady) {
+                                                            Button(
+                                                                onClick = { viewModel.exportToPmcViewer() },
+                                                                colors = ButtonDefaults.buttonColors(
+                                                                    backgroundColor = Color(0xFFE5E5EA),
+                                                                    contentColor = Color(0xFF1C1C1E)
+                                                                ),
+                                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                                                shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp),
+                                                                modifier = Modifier.height(24.dp)
+                                                            ) {
+                                                                Text("PMCビューワへ送信 ↗", fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                                            }
+                                                        }
+                                                    }
 
                                                     if (viewModel.detectedSegments.isEmpty()) {
                                                         Text("検出された区間はありません。ログをロードした後にスキャンを実行してください。", color = Color.Gray, fontSize = 10.sp)
