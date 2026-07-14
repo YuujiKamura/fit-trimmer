@@ -175,7 +175,7 @@ class PlateDetector private constructor() : AutoCloseable {
                 // Bulk copy the output data into a JVM heap array in a single operation
                 // to eliminate DirectBuffer.get(index) JNI boundary checking overhead inside the loop.
                 val buffer = outputTensor.floatBuffer
-                val outputData = FloatArray(6 * 24276)
+                val outputData = FloatArray(5 * 24276)
                 buffer.get(outputData)
                 
                 val boxes = mutableListOf<DetectedBox>()
