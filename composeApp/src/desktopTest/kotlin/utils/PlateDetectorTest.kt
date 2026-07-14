@@ -1431,7 +1431,7 @@ class PlateDetectorTest {
         val settings = fit.HudSettings(
             blurLicensePlates = true,
             plateInferenceInterval = 1,
-            plateDetectionFps = 1.0,
+            plateDetectionFps = 3.0,
             plateMinMaskHeightRatio = 0.0,
             plateMaskTimeBufferMs = 5000L,
             plateMaskExpandRatio = 0.6,
@@ -1453,6 +1453,11 @@ class PlateDetectorTest {
         
         kotlin.test.assertNotNull(cache, "Returned Plate cache must not be null")
         println("Found ${cache.records.size} frames containing plates in first 100s")
+
+        println("=== DUMPING RECORDS BETWEEN 15s and 35s ===")
+        cache.records.filter { it.timeMs in 15000..35000 }.sortedBy { it.timeMs }.forEach { rec ->
+            println("Time: ${rec.timeMs}ms -> ${rec.boxes.size} boxes: ${rec.boxes.map { "[${it.x1}, ${it.y1}, ${it.x2}, ${it.y2}]" }}")
+        }
 
         println("📹 Generating 100s continuity demo video...")
         val tempWorkDir = File("temp_work")

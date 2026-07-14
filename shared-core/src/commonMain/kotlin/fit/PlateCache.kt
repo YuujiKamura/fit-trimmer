@@ -107,53 +107,53 @@ data class VideoPlatesCache(
         next: PlateRecord?,
         timeBufferMs: Long = 300L
     ): List<PlateBox> {
-        if (prev == null && next == null) return emptyList()
-        if (prev != null && next != null && prev.timeMs == next.timeMs) {
-            return prev.boxes
+        val width = if (sourceWidth > 0) sourceWidth else 2704 // fallback to 2.7K width
+        val result = mutableListOf<PlateBox>()
+        
+        // 1. Primary interpolation for adjacent frames
+        val primaryBoxes = if (prev != null && next != null) {
+            val interval = next.timeMs - prev.timeMs
+            if (interval <= 1500) { // Interpolate if interval is within 1.5 seconds
+                val alpha = (targetTimeMs - prev.timeMs).toFloat() / interval.toFloat()
+                interpolateBoxes(prev.boxes, next.boxes, alpha, width)
+            } else {
+                emptyList()
+            }
+        } else {
+            emptyList()
+        }
+        result.addAll(primaryBoxes)
+        
+        // 2. Fallback buffer processing: Gather buffer boxes from ALL records within timeBufferMs to prevent vehicle-blocking issues
+        val bufferRecords = records.filter { 
+            val dist = kotlin.math.abs(it.timeMs - targetTimeMs)
+            dist <= timeBufferMs && it.timeMs != prev?.timeMs && it.timeMs != next?.timeMs
+        }
+        for (rec in bufferRecords) {
+            val dist = kotlin.math.abs(rec.timeMs - targetTimeMs)
+            val scale = 1.0f + (dist.toFloat() / timeBufferMs.toFloat()) * 0.4f
+            result.addAll(rec.boxes.map { expandBoxRatio(it, scale) })
         }
         
-        val width = if (sourceWidth > 0) sourceWidth else 2704 // fallback to 2.7K width
-
-        if (prev != null && next != null) {
-            val interval = next.timeMs - prev.timeMs
-            if (interval <= 1000) { // Interpolate if interval is within 1.0 second
-                val alpha = (targetTimeMs - prev.timeMs).toFloat() / interval.toFloat()
-                return interpolateBoxes(prev.boxes, next.boxes, alpha, width)
-            } else {
-                // Interval too large, only apply close to boundaries (within timeBufferMs)
-                val distPrev = targetTimeMs - prev.timeMs
-                val distNext = next.timeMs - targetTimeMs
-                return when {
-                    distPrev <= timeBufferMs -> {
-                        val scale = 1.0f + (distPrev.toFloat() / timeBufferMs.toFloat()) * 0.4f
-                        prev.boxes.map { expandBoxRatio(it, scale) }
-                    }
-                    distNext <= timeBufferMs -> {
-                        val scale = 1.0f + (distNext.toFloat() / timeBufferMs.toFloat()) * 0.4f
-                        next.boxes.map { expandBoxRatio(it, scale) }
-                    }
-                    else -> emptyList()
+        // 3. Apply buffer scale to prev/next if they were not interpolated
+        if (primaryBoxes.isEmpty()) {
+            if (prev != null) {
+                val dist = targetTimeMs - prev.timeMs
+                if (dist <= timeBufferMs) {
+                    val scale = 1.0f + (dist.toFloat() / timeBufferMs.toFloat()) * 0.4f
+                    result.addAll(prev.boxes.map { expandBoxRatio(it, scale) })
+                }
+            }
+            if (next != null) {
+                val dist = next.timeMs - targetTimeMs
+                if (dist <= timeBufferMs) {
+                    val scale = 1.0f + (dist.toFloat() / timeBufferMs.toFloat()) * 0.4f
+                    result.addAll(next.boxes.map { expandBoxRatio(it, scale) })
                 }
             }
         }
         
-        // Single-sided boundary cases (within timeBufferMs)
-        if (prev != null) {
-            val dist = targetTimeMs - prev.timeMs
-            if (dist <= timeBufferMs) {
-                val scale = 1.0f + (dist.toFloat() / timeBufferMs.toFloat()) * 0.4f
-                return prev.boxes.map { expandBoxRatio(it, scale) }
-            }
-        }
-        if (next != null) {
-            val dist = next.timeMs - targetTimeMs
-            if (dist <= timeBufferMs) {
-                val scale = 1.0f + (dist.toFloat() / timeBufferMs.toFloat()) * 0.4f
-                return next.boxes.map { expandBoxRatio(it, scale) }
-            }
-        }
-        
-        return emptyList()
+        return result.distinct()
     }
     
     private fun interpolateBoxes(
