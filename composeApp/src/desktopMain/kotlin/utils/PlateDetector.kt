@@ -229,16 +229,19 @@ class PlateDetector private constructor() : AutoCloseable {
                     }
                 } else {
                     // Plate detection YOLOv8 model output is [1, 5, numAnchors]
+                    // The model is trained/exported with a 1088x1088 grid internally,
+                    // so we scale the coordinates from 1088 back to the 640 inputSize.
                     val outputData = FloatArray(5 * numAnchors)
                     buffer.get(outputData)
+                    val coordScale = 640f / 1088f
 
                     for (i in 0 until numAnchors) {
                         val score = outputData[4 * numAnchors + i]
                         if (score >= confThreshold) {
-                            val cx = outputData[0 * numAnchors + i]
-                            val cy = outputData[1 * numAnchors + i]
-                            val w = outputData[2 * numAnchors + i]
-                            val h = outputData[3 * numAnchors + i]
+                            val cx = outputData[0 * numAnchors + i] * coordScale
+                            val cy = outputData[1 * numAnchors + i] * coordScale
+                            val w = outputData[2 * numAnchors + i] * coordScale
+                            val h = outputData[3 * numAnchors + i] * coordScale
                             
                             val x1 = cx - w / 2f
                             val y1 = cy - h / 2f
