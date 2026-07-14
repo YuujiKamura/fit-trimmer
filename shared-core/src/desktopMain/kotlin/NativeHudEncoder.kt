@@ -1019,6 +1019,10 @@ class NativeHudEncoder(
         exportWidth = (exportWidth / 2) * 2
         exportHeight = (exportHeight / 2) * 2
 
+        val plateCache = if (settings.blurLicensePlates) {
+            PlateCacheManager.loadCache(videoPath)
+        } else null
+
         val actualTrimStart = trimStartSeconds.coerceIn(0.0, videoDurationSeconds.toDouble())
         val actualTrimEnd = if (trimEndSeconds <= 0.0 || trimEndSeconds > videoDurationSeconds.toDouble()) {
             videoDurationSeconds.toDouble()
@@ -1058,9 +1062,24 @@ class NativeHudEncoder(
             targetEnd - targetStart
         }
 
-        if (!hasTelemetry || telemetry.isEmpty()) {
+        val hasTelemetryDataToShow = settings.showSpeed || settings.showCadence || settings.showHeartRate || 
+                                     settings.showPower || settings.showWkg || settings.showPowerTrend || 
+                                     settings.showGrade || settings.showElevation || settings.showDistanceTime
+                                     
+        val hasCaptions = settings.roadCaptions.any { it.isEnabled } || settings.customCaptions.any { it.isEnabled }
+        val hasMap = settings.mapType != "none" && settings.mapSizeScale > 0.0f
+        
+        val runBlur = settings.blurLicensePlates && (plateCache?.records?.isNotEmpty() ?: false)
+        val runPedestrians = settings.detectPedestrians
+        val runOverlay = hasTelemetryDataToShow || hasCaptions || hasMap
+        val hasSpeedChange = settings.speedSegments.isNotEmpty()
+        val hasCrop = settings.cropToSquare
+
+        val requiresRendering = runBlur || runPedestrians || runOverlay || hasSpeedChange || hasCrop
+
+        if (!hasTelemetry || telemetry.isEmpty() || !requiresRendering) {
             // HUD-less fast stream copy trimming mode (extremely fast, zero re-encoding)
-            println("ℹ️ No FIT file / telemetry provided or empty. Running fast trim (stream copy) mode...")
+            println("ℹ️ No HUD or overlays required. Running fast trim (stream copy) mode...")
             onProgress(0.0f, "Running fast trim (stream copy)...")
             
             val pbArgs = mutableListOf<String>()
@@ -1193,9 +1212,6 @@ class NativeHudEncoder(
         )
         println("DEBUG: NativeHudEncoder.encode config=$config, videoWidth=$videoWidth, videoHeight=$videoHeight")
         val renderer = HudRenderer(config)
-        val plateCache = if (settings.blurLicensePlates) {
-            PlateCacheManager.loadCache(videoPath)
-        } else null
         if (plateCache != null) {
             println("DEBUG: Loaded ${plateCache.records.size} plate records for rendering.")
         }

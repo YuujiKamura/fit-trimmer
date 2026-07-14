@@ -1350,6 +1350,66 @@ class PlateDetectorTest {
         println("✅ Plain Mode Verification Test Completed successfully!")
     }
 
+    @Test
+    fun testFastTrimCopyBypassWhenNoHudOrBlurEnabled() {
+        val testVideo = File("C:\\Users\\yuuji\\fit-trimmer\\composeApp\\scratch\\crop_test.mp4")
+        if (!testVideo.exists()) {
+            println("Skipping test: crop_test.mp4 not found")
+            return
+        }
+
+        // All overlay and blur options disabled, no speed changes, no crop
+        val settings = fit.HudSettings(
+            blurLicensePlates = false,
+            detectPedestrians = false,
+            showSpeed = false,
+            showCadence = false,
+            showHeartRate = false,
+            showPower = false,
+            showWkg = false,
+            showPowerTrend = false,
+            showGrade = false,
+            showElevation = false,
+            showDistanceTime = false,
+            mapType = "none",
+            mapSizeScale = 0.0f
+        )
+
+        val outputTmp = File("C:\\Users\\yuuji\\fit-trimmer\\temp_work\\fast_trim_test_out.mp4")
+        if (outputTmp.exists()) outputTmp.delete()
+
+        val encoder = fit.NativeHudEncoder(
+            settings = settings,
+            onProgress = { _, _ -> },
+            cancelSupplier = { false },
+            pauseSupplier = { false }
+        )
+
+        val tStart = System.currentTimeMillis()
+        runBlocking {
+            encoder.encode(
+                fitPath = "",
+                videoPath = testVideo.absolutePath,
+                output = outputTmp.absolutePath,
+                startUtc = "2026-06-14T08:02:06Z",
+                maxDurationSeconds = 2,
+                trimStartSeconds = 0.0,
+                trimEndSeconds = 2.0
+            )
+        }
+        val tEnd = System.currentTimeMillis()
+        val durationMs = tEnd - tStart
+
+        kotlin.test.assertTrue(outputTmp.exists(), "Fast-trimmed output file must exist")
+        kotlin.test.assertTrue(outputTmp.length() > 0L, "Output file must not be empty")
+        
+        // Lossless stream copy should take less than 2000ms
+        kotlin.test.assertTrue(durationMs < 2000L, "Fast trim-copy must execute in under 2 seconds. Took: ${durationMs}ms")
+        println("✅ Fast trim-copy bypass test completed successfully in ${durationMs}ms!")
+
+        if (outputTmp.exists()) outputTmp.delete()
+    }
+
     private class SGObserver : java.awt.image.ImageObserver {
         override fun imageUpdate(img: java.awt.Image?, infoflags: Int, x: Int, y: Int, width: Int, height: Int): Boolean {
             return false
