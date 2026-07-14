@@ -19,7 +19,7 @@ def send_cmd(cmd):
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python ft-cp.py <get_state|fire|run_plate_detection|stop_plate_detection|reset_plate_detection|seek_plate_detection|set_plate_cache_enabled|restore_plate_cache|discard_plate_cache|set_files|set_layout|capture>")
+        print("Usage: python ft-cp.py <get_state|fire|run_plate_detection|stop_plate_detection|reset_plate_detection|seek_plate_detection|set_plate_cache_enabled|restore_plate_cache|discard_plate_cache|set_files|set_layout|update_settings|capture>")
         sys.exit(1)
 
     action = sys.argv[1]
@@ -79,6 +79,22 @@ if __name__ == "__main__":
             "graphW": float(sys.argv[8])
         }
         print(send_cmd({"type": "set_layout", "settings": settings}))
+    elif action == "update_settings":
+        if len(sys.argv) < 3:
+            print("Usage: python ft-cp.py update_settings <json_string>")
+            sys.exit(1)
+        state = send_cmd({"type": "get_state"})
+        if not state or "settings" not in state:
+            print("❌ Failed to get current settings")
+            sys.exit(1)
+        current_settings = state["settings"]
+        try:
+            updates = json.loads(sys.argv[2])
+            current_settings.update(updates)
+        except Exception as e:
+            print(f"❌ Invalid JSON updates: {e}")
+            sys.exit(1)
+        print(json.dumps(send_cmd({"type": "set_layout", "settings": current_settings}), indent=2))
     elif action == "capture":
         res = send_cmd({"type": "capture"})
         if res and res.get("status") == "ok":

@@ -1123,6 +1123,14 @@ fun VideoPreviewArea(
                                         topLeft = Offset(rx1, ry1),
                                         size = Size(w, h)
                                     )
+                                    if (settings.showDebugPlateBoxes) {
+                                        drawRect(
+                                            color = Color.Green,
+                                            topLeft = Offset(rx1, ry1),
+                                            size = Size(w, h),
+                                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3f * density)
+                                        )
+                                    }
                                 }
                             }
                         }

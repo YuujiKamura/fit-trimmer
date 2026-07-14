@@ -1202,6 +1202,18 @@ class AppViewModelTest {
     }
 
     @Test
+    fun testShowDebugPlateBoxesSettingAndSerialization() {
+        val settings = HudSettings(showDebugPlateBoxes = true)
+        assertTrue(settings.showDebugPlateBoxes, "showDebugPlateBoxes should be set to true")
+        
+        val json = kotlinx.serialization.json.Json.encodeToString(HudSettings.serializer(), settings)
+        assertTrue(json.contains("\"showDebugPlateBoxes\":true"), "Serialized JSON must contain showDebugPlateBoxes field")
+        
+        val restored = kotlinx.serialization.json.Json.decodeFromString(HudSettings.serializer(), json)
+        assertTrue(restored.showDebugPlateBoxes, "Deserialized setting must preserve showDebugPlateBoxes value")
+    }
+
+    @Test
     fun testInitializationWithCacheRestoresPlateCache() {
         val videoFile = File(System.getProperty("java.io.tmpdir"), "fittrimmer-restore-init-test.mp4")
         videoFile.writeText("placeholder")

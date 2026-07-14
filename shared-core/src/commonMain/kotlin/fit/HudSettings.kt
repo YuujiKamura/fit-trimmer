@@ -76,5 +76,6 @@ data class HudSettings(
     val detectPedestrians: Boolean = false,
     val showCumulativeDistanceTime: Boolean = false,
     val showAnimatedIcons: Boolean = true,
-    val cropToSquare: Boolean = false
+    val cropToSquare: Boolean = false,
+    val showDebugPlateBoxes: Boolean = false
 )
