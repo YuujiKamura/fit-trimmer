@@ -15,13 +15,14 @@ class CascadePlateTracker {
         val id: Int,
         var lastBbox: PlateBox,
         var lastSeenTimeMs: Long,
-        var relPlateBox: RelativePlateBox? = null
+        var relPlateBox: RelativePlateBox? = null,
+        var plateDetectedCount: Int = 0
     )
 
     private val activeTracks = mutableListOf<VehicleTrack>()
     private var nextTrackId = 1
 
-    private val iouThreshold = 0.2f
+    private val iouThreshold = 0.4f // Tightened from 0.2f to prevent cross-vehicle tracking jumps
     private val maxMissedTimeMs = 1500L // 1.5 seconds tracking timeout
 
     private fun log(msg: String) {
@@ -101,19 +102,22 @@ class CascadePlateTracker {
                 val ry2 = (plate.y2 - veh.y1).toFloat() / vh.toFloat()
 
                 track.relPlateBox = RelativePlateBox(rx1, ry1, rx2, ry2)
+                track.plateDetectedCount++
                 outputPlates.add(plate)
-                log("Frame at ${timeMs}ms: Track #${track.id} matched with plate at [${plate.x1}, ${plate.y1}, ${plate.x2}, ${plate.y2}] (Relative ratios set)")
+                log("Frame at ${timeMs}ms: Track #${track.id} matched with plate at [${plate.x1}, ${plate.y1}, ${plate.x2}, ${plate.y2}] (Count: ${track.plateDetectedCount})")
             } else {
-                // Reconstruct from relative coordinates if we have a cached relative position
+                // Reconstruct from relative coordinates only if we have confirmed the plate (detected at least 2 times)
                 val rel = track.relPlateBox
-                if (rel != null) {
+                if (rel != null && track.plateDetectedCount >= 2) {
                     val px1 = veh.x1 + (rel.rx1 * vw.toFloat()).toInt()
                     val py1 = veh.y1 + (rel.ry1 * vh.toFloat()).toInt()
                     val px2 = veh.x1 + (rel.rx2 * vw.toFloat()).toInt()
                     val py2 = veh.y1 + (rel.ry2 * vh.toFloat()).toInt()
 
                     outputPlates.add(PlateBox(px1, py1, px2, py2))
-                    log("Frame at ${timeMs}ms: Track #${track.id} plate lost. Reconstructed relative box at [$px1, $py1, $px2, $py2]")
+                    log("Frame at ${timeMs}ms: Track #${track.id} plate lost. Reconstructed relative box at [$px1, $py1, $px2, $py2] (Confirmed)")
+                } else if (rel != null) {
+                    log("Frame at ${timeMs}ms: Track #${track.id} plate lost. Skipped reconstruction as it is unconfirmed (Count: ${track.plateDetectedCount})")
                 }
             }
         }

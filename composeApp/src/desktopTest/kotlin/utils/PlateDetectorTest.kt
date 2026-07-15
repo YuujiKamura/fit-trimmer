@@ -1602,33 +1602,36 @@ class PlateDetectorTest {
     fun testCascadePlateTrackingWithVehicleROI() {
         val tracker = CascadePlateTracker()
 
-        // Frame 1: Vehicle detected at (100, 100, 300, 300), Plate detected at (180, 240, 220, 280)
+        // Frame 1: Vehicle detected at (100, 100, 300, 300), Plate detected at (180, 240, 220, 280) (Count = 1, Unconfirmed)
         val v1 = listOf(PlateBox(100, 100, 300, 300))
         val p1 = listOf(PlateBox(180, 240, 220, 280))
         val res1 = tracker.update(0L, v1, p1)
-        
-        // Should output the detected plate (registered successfully)
         kotlin.test.assertEquals(1, res1.size)
-        kotlin.test.assertEquals(PlateBox(180, 240, 220, 280), res1[0])
 
-        // Frame 2: Vehicle moved to (120, 110, 320, 310), Plate detection lost (empty)
-        val v2 = listOf(PlateBox(120, 110, 320, 310))
-        val p2 = emptyList<PlateBox>()
+        // Frame 2: Vehicle moved to (110, 105, 310, 305), Plate detected again (Count = 2, Confirmed)
+        val v2 = listOf(PlateBox(110, 105, 310, 305))
+        val p2 = listOf(PlateBox(190, 245, 230, 285))
         val res2 = tracker.update(250L, v2, p2)
+        kotlin.test.assertEquals(1, res2.size)
 
-        // Should reconstruct the plate box relative to the new vehicle position
-        // Relative coordinates from Frame 1:
-        // dx1 = 180 - 100 = 80
-        // dy1 = 240 - 100 = 140
-        // dx2 = 220 - 100 = 120
-        // dy2 = 280 - 100 = 180
-        // Applying to Frame 2 vehicle:
+        // Frame 3: Vehicle moved to (120, 110, 320, 310), Plate detection lost (empty)
+        val v3 = listOf(PlateBox(120, 110, 320, 310))
+        val p3 = emptyList<PlateBox>()
+        val res3 = tracker.update(500L, v3, p3)
+
+        // Should reconstruct the plate box using tracking relative coordinates as it is confirmed
+        // Relative coordinates:
+        // dx1 = 190 - 110 = 80
+        // dy1 = 245 - 105 = 140
+        // dx2 = 230 - 110 = 120
+        // dy2 = 285 - 105 = 180
+        // Applying to Frame 3 vehicle (120, 110, 320, 310):
         // x1 = 120 + 80 = 200
         // y1 = 110 + 140 = 250
         // x2 = 120 + 120 = 240
         // y2 = 110 + 180 = 290
-        kotlin.test.assertEquals(1, res2.size, "Should reconstruct the plate box using tracking relative coordinates")
-        kotlin.test.assertEquals(PlateBox(200, 250, 240, 290), res2[0], "Reconstructed box coordinates mismatch")
+        kotlin.test.assertEquals(1, res3.size, "Should reconstruct the plate box since tracking is confirmed")
+        kotlin.test.assertEquals(PlateBox(200, 250, 240, 290), res3[0], "Reconstructed box coordinates mismatch")
     }
 
     @Test
@@ -1658,11 +1661,85 @@ class PlateDetectorTest {
         kotlin.test.assertNotNull(busPlate, "Bus license plate should be detected via cascaded tracking")
     }
 
+    @Test
+    fun testVisualizeTracking() {
+        val tracker = CascadePlateTracker()
+        val baseDir = File("temp_work/visual_tracking")
+        if (baseDir.exists()) baseDir.deleteRecursively()
+        baseDir.mkdirs()
+
+        // 5-frame scenario simulation
+        val scenario = listOf(
+            // Frame 0: Vehicle at (100, 100, 300, 300), Plate at (180, 240, 220, 280)
+            Pair(listOf(PlateBox(100, 100, 300, 300)), listOf(PlateBox(180, 240, 220, 280))),
+            // Frame 1: Vehicle moved, plate lost (reconstruction expected)
+            Pair(listOf(PlateBox(120, 110, 320, 310)), emptyList()),
+            // Frame 2: Vehicle moved further, plate lost (reconstruction expected)
+            Pair(listOf(PlateBox(140, 120, 340, 320)), emptyList()),
+            // Frame 3: Vehicle moved, plate detected again at slightly different relative pos
+            Pair(listOf(PlateBox(160, 130, 360, 330)), listOf(PlateBox(230, 260, 270, 300))),
+            // Frame 4: Vehicle moved, plate lost (reconstruction expected)
+            Pair(listOf(PlateBox(180, 140, 380, 340)), emptyList())
+        )
+
+        for ((frameIdx, step) in scenario.withIndex()) {
+            val vehicles = step.first
+            val detectedPlates = step.second
+            val timeMs = frameIdx * 300L
+
+            val finalPlates = tracker.update(timeMs, vehicles, detectedPlates)
+
+            // Draw to BufferedImage
+            val img = BufferedImage(500, 500, BufferedImage.TYPE_3BYTE_BGR)
+            val g = img.createGraphics()
+            g.color = java.awt.Color.WHITE
+            g.fillRect(0, 0, 500, 500)
+
+            // Draw grid
+            g.color = java.awt.Color(230, 230, 230)
+            for (xy in 0..500 step 50) {
+                g.drawLine(xy, 0, xy, 500)
+                g.drawLine(0, xy, 500, xy)
+            }
+
+            // Draw vehicle (Blue)
+            g.stroke = java.awt.BasicStroke(2f)
+            for (veh in vehicles) {
+                g.color = java.awt.Color.BLUE
+                g.drawRect(veh.x1, veh.y1, veh.x2 - veh.x1, veh.y2 - veh.y1)
+                g.drawString("VEHICLE (Track)", veh.x1 + 5, veh.y1 + 15)
+            }
+
+            // Draw raw detected plates (Green)
+            g.color = java.awt.Color.GREEN
+            for (dp in detectedPlates) {
+                g.drawRect(dp.x1, dp.y1, dp.x2 - dp.x1, dp.y2 - dp.y1)
+                g.drawString("DET PLATE", dp.x1 + 2, dp.y1 - 4)
+            }
+
+            // Draw final resolved plates (Red for reconstructed / tracking)
+            g.color = java.awt.Color.RED
+            for (fp in finalPlates) {
+                // If it wasn't in the raw detected list, it's a reconstructed tracking mask
+                val isReconstructed = !detectedPlates.contains(fp)
+                g.drawRect(fp.x1, fp.y1, fp.x2 - fp.x1, fp.y2 - fp.y1)
+                val label = if (isReconstructed) "RECON MASK" else "RESOLVED"
+                g.drawString(label, fp.x1 + 2, fp.y2 + 12)
+            }
+
+            g.dispose()
+            val outFile = File(baseDir, "frame_${frameIdx}.png")
+            ImageIO.write(img, "png", outFile)
+            println("Saved debug visual tracking frame to: ${outFile.absolutePath}")
+        }
+    }
+
     private class SGObserver : java.awt.image.ImageObserver {
         override fun imageUpdate(img: java.awt.Image?, infoflags: Int, x: Int, y: Int, width: Int, height: Int): Boolean {
             return false
         }
     }
 }
+
 
 

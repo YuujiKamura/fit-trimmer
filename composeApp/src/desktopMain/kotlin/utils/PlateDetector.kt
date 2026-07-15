@@ -8,6 +8,7 @@ import java.awt.Image
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage
 import java.nio.FloatBuffer
+import java.io.File
 import fit.PlateBox
 
 class PlateDetector private constructor() : AutoCloseable {
@@ -418,11 +419,73 @@ class PlateDetector private constructor() : AutoCloseable {
             }
         }
 
-        return if (tracker != null) {
+        val finalPlates = if (tracker != null) {
             tracker.update(timeMs, vehicles, detectedPlates)
         } else {
             detectedPlates.distinct()
         }
+
+        // Save debug visual scans for first 15 seconds of the video to allow visual validation
+        if (timeMs in 1L..15000L) {
+            try {
+                val debugDir = File("temp_work/scan_debug")
+                if (!debugDir.exists()) debugDir.mkdirs()
+
+                val debugImg = BufferedImage(image.width, image.height, BufferedImage.TYPE_3BYTE_BGR)
+                val g2d = debugImg.createGraphics()
+                g2d.drawImage(image, 0, 0, null)
+                g2d.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON)
+
+                // 1. Draw vehicle bounds (Blue) and ROI search areas (Cyan dashed)
+                g2d.stroke = java.awt.BasicStroke(3f)
+                for (veh in vehicles) {
+                    g2d.color = java.awt.Color.BLUE
+                    g2d.drawRect(veh.x1, veh.y1, veh.x2 - veh.x1, veh.y2 - veh.y1)
+
+                    val vw = veh.x2 - veh.x1
+                    val vh = veh.y2 - veh.y1
+                    val padX = (vw * 0.15).toInt()
+                    val padY = (vh * 0.15).toInt()
+                    val cropX1 = (veh.x1 - padX).coerceIn(0, image.width - 1)
+                    val cropY1 = (veh.y1 + (vh * 0.3).toInt()).coerceIn(0, image.height - 1)
+                    val cropX2 = (veh.x2 + padX).coerceIn(0, image.width)
+                    val cropY2 = (veh.y2 + padY).coerceIn(0, image.height)
+
+                    g2d.color = java.awt.Color.CYAN
+                    val dashedStroke = java.awt.BasicStroke(1f, java.awt.BasicStroke.CAP_BUTT, java.awt.BasicStroke.JOIN_MITER, 10f, floatArrayOf(5f), 0f)
+                    g2d.stroke = dashedStroke
+                    g2d.drawRect(cropX1, cropY1, cropX2 - cropX1, cropY2 - cropY1)
+                }
+
+                // 2. Draw raw detected plates (Green)
+                g2d.stroke = java.awt.BasicStroke(3f)
+                g2d.color = java.awt.Color.GREEN
+                for (plate in detectedPlates) {
+                    g2d.drawRect(plate.x1, plate.y1, plate.x2 - plate.x1, plate.y2 - plate.y1)
+                }
+
+                // 3. Draw final resolved/reconstructed plates (Red)
+                g2d.color = java.awt.Color.RED
+                for (fp in finalPlates) {
+                    val isRecon = !detectedPlates.contains(fp)
+                    g2d.drawRect(fp.x1, fp.y1, fp.x2 - fp.x1, fp.y2 - fp.y1)
+                    if (isRecon) {
+                        g2d.drawString("RECON", fp.x1, (fp.y1 - 4).coerceAtLeast(10))
+                    }
+                }
+                g2d.dispose()
+
+                val outFile = File(debugDir, "frame_${timeMs}.jpg")
+                javax.imageio.ImageIO.write(debugImg, "jpg", outFile)
+
+                // Output clickable link to logs
+                PlateDetectionManager.trackingLogs.add("Saved debug image to file:///${outFile.absolutePath.replace("\\", "/")}")
+            } catch (e: Exception) {
+                println("DEBUG: Failed to write scan debug frame: ${e.message}")
+            }
+        }
+
+        return finalPlates
     }
 
     internal fun isAcceptableBox(boxW: Int, boxH: Int, aspect: Float, videoWidth: Int, videoHeight: Int, isCrop: Boolean = false): Boolean {
