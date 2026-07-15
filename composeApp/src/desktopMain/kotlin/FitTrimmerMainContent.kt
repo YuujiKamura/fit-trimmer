@@ -3156,8 +3156,9 @@ fun FitTrimmerMainContent(
                                             color = Color(0xFF636366)
                                         )
                                         listOf(
-                                            "plate" to "ナンバー特化ぼかし",
-                                            "vehicle" to "車体ベースぼかし",
+                                            "plate" to "ナンバー(高速/近中距離)",
+                                            "plate_cascade" to "ナンバー(高精度/遠距離)",
+                                            "vehicle" to "車体ベース",
                                             "cut" to "カット除去"
                                         ).forEach { (mode, label) ->
                                             val selected = settings.plateMaskMode == mode

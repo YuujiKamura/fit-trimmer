@@ -175,8 +175,8 @@ object PlateDetectionManager : fit.PlateDetector {
                             records.add(cachedRecord)
                         }
                     } else {
-                        val isPlateMode = settings.plateMaskMode.equals("plate", ignoreCase = true)
-                        val detectedBoxes = if (isPlateMode) {
+                        val isCascadeMode = settings.plateMaskMode.equals("plate_cascade", ignoreCase = true)
+                        val detectedBoxes = if (isCascadeMode) {
                             detector.detectCascaded(
                                 image = img,
                                 confThreshold = 0.25f,
@@ -185,11 +185,13 @@ object PlateDetectionManager : fit.PlateDetector {
                                 timeMs = timeMs
                             )
                         } else {
+                            // If it's "plate" mode, we use direct fast mode. 
+                            val internalMaskMode = if (settings.plateMaskMode.equals("plate", ignoreCase = true)) "plate_direct" else settings.plateMaskMode
                             detector.detect(
                                 image = img,
                                 confThreshold = 0.25f,
                                 detectPedestrians = settings.detectPedestrians,
-                                maskMode = settings.plateMaskMode
+                                maskMode = internalMaskMode
                             )
                         }
                         if (detectedBoxes.isNotEmpty()) {

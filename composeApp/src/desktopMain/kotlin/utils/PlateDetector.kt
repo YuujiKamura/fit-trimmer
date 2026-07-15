@@ -72,7 +72,7 @@ class PlateDetector private constructor() : AutoCloseable {
 
     private fun getPlateSession(): OrtSession {
         return sessionPlate ?: synchronized(this) {
-            sessionPlate ?: loadSession("/yolov8n_plate.onnx").also { sessionPlate = it }
+            sessionPlate ?: loadSession("/PlateYOLO-JP-640x640.onnx").also { sessionPlate = it }
         }
     }
 
@@ -113,9 +113,9 @@ class PlateDetector private constructor() : AutoCloseable {
         val width = image.width
         val height = image.height
 
-        val isVehicleMode = !maskMode.equals("plate", ignoreCase = true) && !maskMode.equals("plate_crop", ignoreCase = true)
+        val isVehicleMode = !maskMode.equals("plate", ignoreCase = true) && !maskMode.equals("plate_crop", ignoreCase = true) && !maskMode.equals("plate_direct", ignoreCase = true)
         
-        // Cascaded check: Run vehicle detection first if we are in plate detection mode
+        // Legacy Cascaded check: Run vehicle detection first if we are in plate detection mode (unless plate_direct)
         if (maskMode.equals("plate", ignoreCase = true)) {
             val vehicleBoxes = detect(
                 image = image,
@@ -128,7 +128,7 @@ class PlateDetector private constructor() : AutoCloseable {
             }
         }
 
-        val inputSize = if (isVehicleMode) 640 else 1088
+        val inputSize = 640
 
         // 1. Letterbox Preprocessing (preserving aspect ratio)
         val transformer = fit.LetterboxTransformer(width.toFloat(), height.toFloat(), inputSize.toFloat())
@@ -246,38 +246,49 @@ class PlateDetector private constructor() : AutoCloseable {
                         }
                     }
                 } else {
-                    // Plate detection YOLOv8 model output is [1, 5, numAnchors]
-                    val outputData = FloatArray(5 * numAnchors)
-                    buffer.get(outputData)
-
                     println("DEBUG: Plate Model shape = ${shape.joinToString()}")
-                    var printed = 0
-                    for (i in 0 until numAnchors) {
-                        val score = outputData[4 * numAnchors + i]
-                        if (score >= confThreshold && printed < 5) {
-                            val cx = outputData[0 * numAnchors + i]
-                            val cy = outputData[1 * numAnchors + i]
-                            val w = outputData[2 * numAnchors + i]
-                            val h = outputData[3 * numAnchors + i]
-                            println("  Anchor $i: cx=$cx, cy=$cy, w=$w, h=$h, score=$score")
-                            printed++
+                    if (shape.size == 3 && shape[2] == 6L) {
+                        // Format: [1, num_boxes, 6] -> typically [x1, y1, x2, y2, score, class_id] or [cx, cy, w, h, score, class_id]
+                        // NMS applied output or transposed output. Usually YOLO exports with NMS are [x1, y1, x2, y2, score, class]
+                        val numBoxes = shape[1].toInt()
+                        val outputData = FloatArray(numBoxes * 6)
+                        buffer.get(outputData)
+                        
+                        for (i in 0 until numBoxes) {
+                            val v0 = outputData[i * 6 + 0]
+                            val v1 = outputData[i * 6 + 1]
+                            val v2 = outputData[i * 6 + 2]
+                            val v3 = outputData[i * 6 + 3]
+                            val score = outputData[i * 6 + 4]
+                            
+                            if (score >= confThreshold) {
+                                // We assume [x1, y1, x2, y2] based on typical NMS output, but it could be [cx, cy, w, h].
+                                // Let's try [x1, y1, x2, y2] first. If boxes are wildly wrong size, it's [cx, cy, w, h].
+                                // Note: In YOLOv8 NMS export, it is [x1, y1, x2, y2].
+                                rawBoxes.add(DetectedBox(v0, v1, v2, v3, score, 0))
+                            }
                         }
-                    }
+                    } else if (shape.size == 3 && shape[1] == 5L) {
+                        // Plate detection YOLOv8 model standard raw output is [1, 5, numAnchors]
+                        val numAnchors = shape[2].toInt()
+                        val outputData = FloatArray(5 * numAnchors)
+                        buffer.get(outputData)
 
-                    for (i in 0 until numAnchors) {
-                        val score = outputData[4 * numAnchors + i]
-                        if (score >= confThreshold) {
-                            val cx = outputData[0 * numAnchors + i]
-                            val cy = outputData[1 * numAnchors + i]
-                            val w = outputData[2 * numAnchors + i]
-                            val h = outputData[3 * numAnchors + i]
-                            
-                            val x1 = cx - w / 2f
-                            val y1 = cy - h / 2f
-                            val x2 = cx + w / 2f
-                            val y2 = cy + h / 2f
-                            
-                            rawBoxes.add(DetectedBox(x1, y1, x2, y2, score, 0))
+                        for (i in 0 until numAnchors) {
+                            val score = outputData[4 * numAnchors + i]
+                            if (score >= confThreshold) {
+                                val cx = outputData[0 * numAnchors + i]
+                                val cy = outputData[1 * numAnchors + i]
+                                val w = outputData[2 * numAnchors + i]
+                                val h = outputData[3 * numAnchors + i]
+                                
+                                val x1 = cx - w / 2f
+                                val y1 = cy - h / 2f
+                                val x2 = cx + w / 2f
+                                val y2 = cy + h / 2f
+                                
+                                rawBoxes.add(DetectedBox(x1, y1, x2, y2, score, 0))
+                            }
                         }
                     }
                 }
@@ -386,7 +397,7 @@ class PlateDetector private constructor() : AutoCloseable {
             val padY = (vh * 0.15).toInt()
 
             val cropX1 = (veh.x1 - padX).coerceIn(0, imgW - 1)
-            val cropY1 = (veh.y1 + (vh * 0.3).toInt()).coerceIn(0, imgH - 1)
+            val cropY1 = (veh.y1 - padY).coerceIn(0, imgH - 1)
             val cropX2 = (veh.x2 + padX).coerceIn(0, imgW)
             val cropY2 = (veh.y2 + padY).coerceIn(0, imgH)
 
