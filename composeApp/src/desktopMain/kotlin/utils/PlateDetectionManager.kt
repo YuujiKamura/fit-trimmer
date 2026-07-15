@@ -80,7 +80,7 @@ object PlateDetectionManager : fit.PlateDetector {
         // Downscale limit depending on mask mode: 1280 for vehicle (640 model) to maintain processing efficiency.
         // For plate mask mode, bypass intermediate downscaling and decode at the original video resolution
         // (e.g. 4K) to preserve high-fidelity plate details for direct 1088px model preprocessing.
-        val isVehicleMode = !settings.plateMaskMode.equals("plate", ignoreCase = true)
+        val isVehicleMode = !settings.plateMaskMode.startsWith("plate", ignoreCase = true)
         val (scanWidth, scanHeight) = if (isVehicleMode) {
             val maxScanDim = 1280
             if (videoWidth > maxScanDim || videoHeight > maxScanDim) {

@@ -81,10 +81,10 @@ class PlateCacheManagerTest {
         val res3 = cacheSingle.shouldBlurAt(600, isBlurEnabled = true) // 400ms before
         assertEquals(0, res3.size) // Limit is 300ms for boundary/outer
 
-        // Within 300ms boundary limit (with time-proportional dilation scaling)
+        // Within 300ms boundary limit (exact fallback, no dilation scaling anymore)
         val res4 = cacheSingle.shouldBlurAt(750, isBlurEnabled = true) // 250ms before
         assertEquals(1, res4.size)
-        assertEquals(PlateBox(3, 3, 56, 56), res4.first())
+        assertEquals(PlateBox(10, 10, 50, 50), res4.first())
     }
 
     @Test

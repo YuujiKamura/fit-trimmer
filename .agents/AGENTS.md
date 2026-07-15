@@ -91,17 +91,14 @@
   - セッション終了前およびコミット前には、必ずルート直下のファイルを点検し、不要なファイルが残存している場合は直ちにクリーンアップすること。
 
 ## Clickable Links & Media Rules (Ctrl+クリックでのリンク連携)
-- **【必須】Clickableな絶対URI表記**:
-  - ユーザーに対してファイル、画像、動画、ソースコードのクラスやメソッドなどを提示する際は、IDEがハイパーリンクとして認識できるように、常に `[表示名](file:///絶対パス)` 形式（`file://` スキーム）で表記すること。
-  - Windows 環境の絶対パスにおいては、パス区切り文字にバックスラッシュ（`\`）ではなくスラッシュ（`/`）を使用すること（例: `file:///C:/Users/yuuji/...`）。
-- **【必須】リンク表示テキストへのフルパス明記**:
-  - リンクの表示名（`[表示名]` の部分）にファイル名（ベースネーム）だけを書くと、実際の絶対パスが隠蔽されてしまうため、表示名にも絶対パス（フルパス）を省略せずに含めなければならない。
-  - 正しい例: `[C:/Users/yuuji/fit-trimmer/composeApp/temp_work/scan_debug/frame_1000.jpg](file:///C:/Users/yuuji/fit-trimmer/composeApp/temp_work/scan_debug/frame_1000.jpg)`
-  - 誤った例: `[frame_1000.jpg](file:///C:/Users/yuuji/fit-trimmer/composeApp/temp_work/scan_debug/frame_1000.jpg)`
+- **【必須】Gemini環境におけるファイルパスの生のテキスト出力**:
+  - 現在のGemini (Antigravity CLI) 環境では、Markdown形式のリンク（`[表示名](file:///絶対パス)`）はUIのレンダラによって正しくリンク化されず、クリックできなくなる欠陥が存在する。
+  - そのため、ユーザーに対してファイル、画像、動画等を提示する際は、Markdownリンクの構文（`[]()`）を**一切使用せず**、**生の絶対パス（Windows形式のバックスラッシュを含む）をプレーンテキストでそのまま出力すること。**
+  - IDE（Cursor等）のターミナルやチャットウィンドウは、生のバックスラッシュパス（例: `C:\Users\yuuji\fit-trimmer\...`）を自動的に認識してクリック可能なハイパーリンクに変換する。
+  - 正しい例: `C:\Users\yuuji\fit-trimmer\composeApp\temp_work\scan_debug\frame_1000.jpg`
+  - 誤った例（機能しない）: `[frame_1000.jpg](file:///C:/Users/yuuji/...)`
 - **【厳禁】バッククォートによるリンク無効化の回避**:
-  - リンクテキストやリンク全体をバッククォート（`` ` ``）で囲むと、IDEのハイパーリンク認識が壊れて Ctrl+クリックで開けなくなるため、絶対リンクにバッククォートを付与することを禁止する。
-    * 正しい例: [C:/Users/yuuji/fit-trimmer/.agents/AGENTS.md](file:///C:/Users/yuuji/fit-trimmer/.agents/AGENTS.md)
-    * 誤った例: [`AGENTS.md`](file:///C:/Users/yuuji/fit-trimmer/.agents/AGENTS.md)
+  - 生のパスをバッククォート（`` ` ``）で囲むと、IDEの自動リンク認識が壊れて Ctrl+クリックで開けなくなるため、絶対にバッククォートで囲まないこと。
 
 ## 物理的な「触る」「観る」による最終確認の義務
 - **【必須】「触る（物理的操作）」による動作検証**:

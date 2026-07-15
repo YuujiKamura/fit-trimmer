@@ -106,67 +106,29 @@ data class VideoPlatesCache(
         timeBufferMs: Long = 300L
     ): List<Pair<PlateBox, Float>> {
         val width = if (sourceWidth > 0) sourceWidth else 2704 // fallback to 2.7K width
-        val result = mutableListOf<Pair<PlateBox, Float>>()
         
         // 1. Primary interpolation for adjacent frames
-        val primaryBoxes = if (prev != null && next != null) {
+        if (prev != null && next != null) {
             if (prev.timeMs == next.timeMs) {
-                prev.boxes.map { it to 1.0f }
-            } else {
-                val interval = next.timeMs - prev.timeMs
-                if (interval <= 1500) { // Interpolate if interval is within 1.5 seconds
-                    val alpha = (targetTimeMs - prev.timeMs).toFloat() / interval.toFloat()
-                    interpolateBoxes(prev.boxes, next.boxes, alpha, width).map { it to 1.0f }
-                } else {
-                    emptyList()
-                }
+                return prev.boxes.map { it to 1.0f }
             }
-        } else {
-            emptyList()
-        }
-        result.addAll(primaryBoxes)
-        
-        // 2. Fallback buffer processing: Gather buffer boxes from ALL records within timeBufferMs to prevent vehicle-blocking issues
-        val bufferRecords = records.filter { 
-            val dist = kotlin.math.abs(it.timeMs - targetTimeMs)
-            dist <= timeBufferMs && it.timeMs != prev?.timeMs && it.timeMs != next?.timeMs
-        }
-        for (rec in bufferRecords) {
-            val dist = kotlin.math.abs(rec.timeMs - targetTimeMs)
-            // Shrink size gradually from 1.0f down to 0.4f
-            val scale = 1.0f - (dist.toFloat() / timeBufferMs.toFloat()) * 0.6f
-            // Absolute concealment: intensity is always 1.0f
-            result.addAll(rec.boxes.map { scaleBoxRatio(it, scale) to 1.0f })
-        }
-        
-        // 3. Apply buffer scale to prev/next if they were not interpolated
-        if (primaryBoxes.isEmpty()) {
-            if (prev != null) {
-                val dist = targetTimeMs - prev.timeMs
-                if (dist <= timeBufferMs) {
-                    val scale = 1.0f - (dist.toFloat() / timeBufferMs.toFloat()) * 0.6f
-                    result.addAll(prev.boxes.map { scaleBoxRatio(it, scale) to 1.0f })
-                }
-            }
-            if (next != null) {
-                val dist = next.timeMs - targetTimeMs
-                if (dist <= timeBufferMs) {
-                    val scale = 1.0f - (dist.toFloat() / timeBufferMs.toFloat()) * 0.6f
-                    result.addAll(next.boxes.map { scaleBoxRatio(it, scale) to 1.0f })
-                }
+            val interval = next.timeMs - prev.timeMs
+            if (interval <= 1500) { // Interpolate if interval is within 1.5 seconds
+                val alpha = (targetTimeMs - prev.timeMs).toFloat() / interval.toFloat()
+                return interpolateBoxes(prev.boxes, next.boxes, alpha, width).map { it to 1.0f }
             }
         }
         
-        // Merge duplicates by keeping the maximum intensity
-        val merged = mutableMapOf<PlateBox, Float>()
-        for ((box, intensity) in result) {
-            val current = merged[box]
-            if (current == null || intensity > current) {
-                merged[box] = intensity
+        // 2. If interpolation is not possible, just use the nearest record within timeBufferMs
+        val nearest = listOfNotNull(prev, next).minByOrNull { kotlin.math.abs(it.timeMs - targetTimeMs) }
+        if (nearest != null) {
+            val dist = kotlin.math.abs(nearest.timeMs - targetTimeMs)
+            if (dist <= timeBufferMs) {
+                return nearest.boxes.map { it to 1.0f }
             }
         }
         
-        return merged.map { it.key to it.value }
+        return emptyList()
     }
     
     private fun interpolateBoxes(
@@ -357,12 +319,36 @@ object PlateCoordinateMapper {
             x2 = (box.x2 - xOffset) * scale
             y2 = box.y2 * scale
         } else {
-            val scaleX = targetWidth / sourceWidth.toFloat()
-            val scaleY = targetHeight / sourceHeight.toFloat()
-            x1 = box.x1 * scaleX
-            y1 = box.y1 * scaleY
-            x2 = box.x2 * scaleX
-            y2 = box.y2 * scaleY
+            // Calculate effective drawing area while maintaining aspect ratio (letterboxing)
+            val sourceAspect = sourceWidth.toFloat() / sourceHeight.toFloat()
+            val targetAspect = targetWidth / targetHeight
+            
+            val drawW: Float
+            val drawH: Float
+            val offsetX: Float
+            val offsetY: Float
+            
+            if (targetAspect > sourceAspect) {
+                // Target is wider -> pillarbox (black bars on left/right)
+                drawH = targetHeight
+                drawW = targetHeight * sourceAspect
+                offsetX = (targetWidth - drawW) / 2f
+                offsetY = 0f
+            } else {
+                // Target is taller -> letterbox (black bars on top/bottom)
+                drawW = targetWidth
+                drawH = targetWidth / sourceAspect
+                offsetX = 0f
+                offsetY = (targetHeight - drawH) / 2f
+            }
+            
+            val scaleX = drawW / sourceWidth.toFloat()
+            val scaleY = drawH / sourceHeight.toFloat()
+            
+            x1 = (box.x1 * scaleX) + offsetX
+            y1 = (box.y1 * scaleY) + offsetY
+            x2 = (box.x2 * scaleX) + offsetX
+            y2 = (box.y2 * scaleY) + offsetY
         }
         
         return MappedPlateBox(
