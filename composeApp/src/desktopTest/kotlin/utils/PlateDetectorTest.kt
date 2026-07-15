@@ -1872,6 +1872,53 @@ class PlateDetectorTest {
         kotlin.test.assertEquals(1, resolvedPlates.size, "Only the real bus plate should be outputted")
     }
 
+    @Test
+    fun testScanFirst10FramesOfGuiVideo() {
+        val videoPath = "F:\\Insta360\\20260712\\VID_20260712_163908_005.mp4"
+        val videoFile = File(videoPath)
+        if (!videoFile.exists()) {
+            println("Skipping test: F drive video file does not exist at $videoPath")
+            return
+        }
+
+        println("STARTING VISUAL SCAN FOR GUI VIDEO: $videoPath")
+        val detector = PlateDetector.getInstance()
+        val tracker = CascadePlateTracker()
+
+        val settings = fit.HudSettings().copy(
+            plateMaskMode = "plate",
+            plateDetectionFps = 1.0
+        )
+
+        PlateDetectionManager.trackingLogs.clear()
+
+        val cache = kotlinx.coroutines.runBlocking {
+            PlateDetectionManager.detect(
+                videoPath = videoPath,
+                telemetryPoints = emptyList(),
+                adjustedStartUtc = "",
+                onProgress = { progress, status ->
+                    println("Progress: ${(progress * 100).toInt()}% - $status")
+                },
+                onCancel = { false },
+                onPartialResult = {},
+                maxRecords = 10,
+                saveCache = false,
+                settings = settings
+            )
+        }
+
+        println("SCAN COMPLETED. Dumped tracking logs:")
+        var logMsg = PlateDetectionManager.trackingLogs.poll()
+        while (logMsg != null) {
+            println("  LOG: $logMsg")
+            logMsg = PlateDetectionManager.trackingLogs.poll()
+        }
+
+        kotlin.test.assertNotNull(cache, "Scan should complete and return cache")
+        println("Generated cache with ${cache.records.size} frame records")
+    }
+
     private class SGObserver : java.awt.image.ImageObserver {
         override fun imageUpdate(img: java.awt.Image?, infoflags: Int, x: Int, y: Int, width: Int, height: Int): Boolean {
             return false
