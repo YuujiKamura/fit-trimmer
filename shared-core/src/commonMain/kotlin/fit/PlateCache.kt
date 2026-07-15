@@ -153,72 +153,7 @@ data class VideoPlatesCache(
         return emptyList()
     }
     
-    private fun interpolateBoxes(
-        prevBoxes: List<PlateBox>,
-        nextBoxes: List<PlateBox>,
-        alpha: Float,
-        width: Int
-    ): List<PlateBox> {
-        val result = mutableListOf<PlateBox>()
-        val matchedNextIndices = mutableSetOf<Int>()
-        val maxDist = (width.toDouble() * 0.5).coerceAtLeast(400.0) // 50% of screen width tracking limit
-        
-        for (pb in prevBoxes) {
-            val pCx = (pb.x1 + pb.x2) / 2.0
-            val pCy = (pb.y1 + pb.y2) / 2.0
-            val pArea = (pb.x2 - pb.x1).coerceAtLeast(1) * (pb.y2 - pb.y1).coerceAtLeast(1)
-            
-            var bestIdx = -1
-            var minDistance = Double.MAX_VALUE
-            
-            for (i in nextBoxes.indices) {
-                if (i in matchedNextIndices) continue
-                val nb = nextBoxes[i]
-                val nCx = (nb.x1 + nb.x2) / 2.0
-                val nCy = (nb.y1 + nb.y2) / 2.0
-                val nArea = (nb.x2 - nb.x1).coerceAtLeast(1) * (nb.y2 - nb.y1).coerceAtLeast(1)
-                
-                // Exclude matches with extreme size scaling mismatch (e.g. area ratio >= 3.0) to prevent ghost mapping between different vehicles
-                val areaRatio = if (pArea > nArea) pArea.toDouble() / nArea.toDouble() else nArea.toDouble() / pArea.toDouble()
-                if (areaRatio >= 3.0) continue
 
-                val dist = kotlin.math.hypot(nCx - pCx, nCy - pCy)
-                if (dist < minDistance && dist < maxDist) {
-                    minDistance = dist
-                    bestIdx = i
-                }
-            }
-            
-            if (bestIdx != -1) {
-                matchedNextIndices.add(bestIdx)
-                val nb = nextBoxes[bestIdx]
-                val lerp = { a: Int, b: Int -> (a + (b - a) * alpha).toInt() }
-                result.add(
-                    PlateBox(
-                        x1 = lerp(pb.x1, nb.x1),
-                        y1 = lerp(pb.y1, nb.y1),
-                        x2 = lerp(pb.x2, nb.x2),
-                        y2 = lerp(pb.y2, nb.y2)
-                    )
-                )
-            } else {
-                if (alpha < 0.5f) {
-                    result.add(pb)
-                }
-            }
-        }
-        
-        if (alpha >= 0.5f) {
-            for (i in nextBoxes.indices) {
-                if (i !in matchedNextIndices) {
-                    result.add(nextBoxes[i])
-                }
-            }
-        }
-        
-        return result
-    }
-}
 data class MappedPlateBox(
     val x: Float,
     val y: Float,
