@@ -152,7 +152,7 @@ data class VideoPlatesCache(
         
         return emptyList()
     }
-    
+}
 
 data class MappedPlateBox(
     val x: Float,
