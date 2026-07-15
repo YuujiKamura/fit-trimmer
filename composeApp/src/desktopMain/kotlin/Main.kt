@@ -1003,19 +1003,7 @@ fun buildEncodeRangesWithPlatePolicy(
         trimEndSeconds
     }
     val baseRanges = buildEncodeRanges(trimStartSeconds, actualEnd, splitPoints)
-    if (settings.plateMaskMode != "cut") return baseRanges
-    val cutSpans = buildPlateCutSpans(
-        plateCache = plateCache,
-        trimStartSeconds = trimStartSeconds,
-        trimEndSeconds = trimEndSeconds,
-        bufferMs = settings.plateMaskTimeBufferMs
-    )
-    val subtracted = subtractCutSpansFromRanges(baseRanges, cutSpans)
-    val totalRemaining = subtracted.sumOf { it.second - it.first }
-    if (totalRemaining < settings.minRemainingSecondsForCut) {
-        return emptyList()
-    }
-    return subtracted.ifEmpty { baseRanges }
+    return baseRanges
 }
 
 
@@ -1773,11 +1761,7 @@ object BatchJobRunner {
 
         }
 
-        val plateCache = if (job.settings.plateMaskMode == "cut") {
-            fit.PlateCacheManager.loadCache(job.videoPath)
-        } else {
-            null
-        }
+        val plateCache: fit.VideoPlatesCache? = null
         val ranges = buildEncodeRangesWithPlatePolicy(
             trimStartSeconds = job.trimStartSeconds,
             trimEndSeconds = job.trimEndSeconds,
@@ -1785,20 +1769,7 @@ object BatchJobRunner {
             settings = job.settings,
             plateCache = plateCache
         )
-        if (job.settings.plateMaskMode == "cut" && ranges.isEmpty()) {
-            phase.status = BatchJobPhaseStatus.SKIPPED
-            phase.progress = 1.0f
-            updateOverallJobProgress(job, activePhases)
-            viewModel.progress = job.progress
-            viewModel.saveBatchQueue()
-            onProgressUpdate()
-            return
-        }
-        val pipelineSettings = if (encodeSettings.plateMaskMode == "cut") {
-            encodeSettings.copy(blurLicensePlates = false)
-        } else {
-            encodeSettings
-        }
+        val pipelineSettings = encodeSettings
 
         val encodePlan = buildEncodePlan(
 
@@ -1828,9 +1799,7 @@ object BatchJobRunner {
 
         )
 
-        val shouldMergePlateCut = job.settings.plateMaskMode == "cut" &&
-            job.splitPoints.isEmpty() &&
-            ranges.size > 1
+        val shouldMergePlateCut = false
         val mergeOutputFile = if (shouldMergePlateCut) {
             buildEncodePlan(
                 settings = pipelineSettings,
@@ -1864,7 +1833,7 @@ object BatchJobRunner {
 
         val nextConcatMerge = activePhases.find { it.type == BatchJobPhaseType.CONCAT_MERGE }
 
-        val skipConcat = nextConcatMerge != null && job.settings.plateMaskMode != "cut"
+        val skipConcat = nextConcatMerge != null
 
         
 
@@ -2002,15 +1971,7 @@ object BatchJobRunner {
 
         viewModel.batchStatusText = "[${jobIdx + 1}/$totalJobs] 動画を結合マージ中..."
 
-        if (job.settings.plateMaskMode == "cut") {
-            phase.status = BatchJobPhaseStatus.SKIPPED
-            phase.progress = 1.0f
-            updateOverallJobProgress(job, activePhases)
-            viewModel.progress = job.progress
-            viewModel.saveBatchQueue()
-            onProgressUpdate()
-            return
-        }
+
 
         val detectedVideoDurationSeconds = getVideoDuration(job.videoPath)?.toDouble()?.div(1000.0)
         val ranges = buildEncodeRangesWithPlatePolicy(
@@ -2018,7 +1979,7 @@ object BatchJobRunner {
             trimEndSeconds = job.trimEndSeconds,
             splitPoints = job.splitPoints,
             settings = job.settings,
-            plateCache = if (job.settings.plateMaskMode == "cut") fit.PlateCacheManager.loadCache(job.videoPath) else null
+            plateCache = null
         )
 
         val encodePlan = buildEncodePlan(

@@ -110,10 +110,10 @@ data class VideoPlatesCache(
         return Pair(prev, next)
     }
 
-    fun shouldBlurAt(targetTimeMs: Long, isBlurEnabled: Boolean, timeBufferMs: Long = 300L): List<PlateBox> {
+    fun shouldBlurAt(targetTimeMs: Long, isBlurEnabled: Boolean): List<PlateBox> {
         if (!isBlurEnabled || records.isEmpty()) return emptyList()
         val (prev, next) = findNeighborRecords(targetTimeMs)
-        return boxesForTargetTime(targetTimeMs, prev, next, timeBufferMs).map { it.first }
+        return boxesForTargetTime(targetTimeMs, prev, next).map { it.first }
     }
 
     private fun scaleBoxRatio(box: PlateBox, scale: Float): PlateBox {
@@ -134,12 +134,10 @@ data class VideoPlatesCache(
     fun boxesForTargetTime(
         targetTimeMs: Long,
         prev: PlateRecord?,
-        next: PlateRecord?,
-        timeBufferMs: Long = 300L
+        next: PlateRecord?
     ): List<Pair<PlateBox, Float>> {
         val width = if (sourceWidth > 0) sourceWidth else 2704 // fallback to 2.7K width
-        
-        // Disable linear interpolation (Lerp) because the interval is typically 0.5s (2fps) to 0.25s (4fps),
+        val areaLimit = (width * 0.5) * (width * 0.5)// Disable linear interpolation (Lerp) because the interval is typically 0.5s (2fps) to 0.25s (4fps),
         // and perspective movement of approaching vehicles is highly non-linear. 
         // Lerping across such large gaps causes bounding boxes to drift significantly off the vehicle.
         // Instead, we use Nearest Neighbor approach to keep boxes perfectly locked onto the vehicle's detected position.
@@ -147,7 +145,7 @@ data class VideoPlatesCache(
         val nearest = listOfNotNull(prev, next).minByOrNull { kotlin.math.abs(it.timeMs - targetTimeMs) }
         if (nearest != null) {
             val dist = kotlin.math.abs(nearest.timeMs - targetTimeMs)
-            if (dist <= timeBufferMs) {
+            if (dist <= 300L) {
                 return nearest.boxes.map { it to 1.0f }
             }
         }
@@ -233,12 +231,10 @@ fun VideoPlatesCache.buildMappedMaskFrames(
     totalFrames: Int,
     fps: Double,
     isBlurEnabled: Boolean,
-    expandRatio: Double,
     fallbackSourceWidth: Int,
     fallbackSourceHeight: Int,
     targetWidth: Float,
     targetHeight: Float,
-    timeBufferMs: Long = 300L,
     sourceStartTimeMs: Long = 0L,
     speedSegments: List<SpeedSegment> = emptyList(),
     cropToSquare: Boolean = false
@@ -276,10 +272,9 @@ fun VideoPlatesCache.buildMappedMaskFrames(
         val actualSourceW = sourceWidth.takeIf { it > 0 } ?: fallbackSourceWidth
         val actualSourceH = sourceHeight.takeIf { it > 0 } ?: fallbackSourceHeight
 
-        boxesForTargetTime(targetTimeMs, prev, next, timeBufferMs).mapNotNull { (box, intensity) ->
+        boxesForTargetTime(targetTimeMs, prev, next).mapNotNull { (box, intensity) ->
             val expanded = PlateMaskExpander.expand(
                 box = box,
-                expandRatio = expandRatio,
                 sourceWidth = actualSourceW,
                 sourceHeight = actualSourceH
             )
@@ -299,7 +294,6 @@ fun VideoPlatesCache.buildMappedMaskFrames(
 object PlateMaskExpander {
     fun expand(
         box: PlateBox,
-        expandRatio: Double,
         sourceWidth: Int,
         sourceHeight: Int
     ): PlateBox {

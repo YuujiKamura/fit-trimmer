@@ -109,7 +109,7 @@ class PlateCacheManagerTest {
     fun testPlateMaskExpanderSupportsWideMask() {
         val expanded = PlateMaskExpander.expand(
             box = PlateBox(100, 100, 200, 140),
-            expandRatio = 1.5,
+
             sourceWidth = 500,
             sourceHeight = 300
         )
@@ -128,7 +128,7 @@ class PlateCacheManagerTest {
     fun testPlateMaskExpanderAddsSmallPaddingForPlateMode() {
         val expanded = PlateMaskExpander.expand(
             box = PlateBox(100, 100, 200, 140),
-            expandRatio = 0.2,
+
             sourceWidth = 500,
             sourceHeight = 300
         )
@@ -156,7 +156,7 @@ class PlateCacheManagerTest {
             totalFrames = 4,
             fps = 10.0,
             isBlurEnabled = true,
-            expandRatio = 0.2,
+
             fallbackSourceWidth = 1920,
             fallbackSourceHeight = 1080,
             targetWidth = 1000f,
@@ -201,7 +201,7 @@ class PlateCacheManagerTest {
             totalFrames = 3,
             fps = 10.0,
             isBlurEnabled = true,
-            expandRatio = 0.2,
+
             fallbackSourceWidth = 1920,
             fallbackSourceHeight = 1080,
             targetWidth = 1000f,
@@ -240,7 +240,7 @@ class PlateCacheManagerTest {
             totalFrames = 3,
             fps = 10.0,
             isBlurEnabled = true,
-            expandRatio = 0.2,
+
             fallbackSourceWidth = 2704,
             fallbackSourceHeight = 1520,
             targetWidth = 2704f,
@@ -271,7 +271,7 @@ class PlateCacheManagerTest {
             totalFrames = 3,
             fps = 10.0,
             isBlurEnabled = true,
-            expandRatio = 0.2,
+
             fallbackSourceWidth = 2704,
             fallbackSourceHeight = 1520,
             targetWidth = 2704f,

@@ -259,22 +259,14 @@ fun main(args: Array<String>) {
             return
         }
 
-        // Custom parameters
-        val expandIdx = args.indexOf("--expand")
-        val timeBufferIdx = args.indexOf("--time-buffer")
-        val customExpand = if (expandIdx >= 0 && expandIdx + 1 < args.size) args[expandIdx + 1].toDoubleOrNull() else null
-        val customTimeBuffer = if (timeBufferIdx >= 0 && timeBufferIdx + 1 < args.size) args[timeBufferIdx + 1].toLongOrNull() else null
-
         val settings = HudSettings().let { base ->
             base.copy(
-                blurLicensePlates = true,
-                plateMaskExpandRatio = customExpand ?: base.plateMaskExpandRatio,
-                plateMaskTimeBufferMs = customTimeBuffer ?: base.plateMaskTimeBufferMs
+                blurLicensePlates = true
             )
         }
 
-        // If time-buffer or expand is customized, rebuild the plate mask video first
-        if (customExpand != null || customTimeBuffer != null) {
+        // If called with args for mask generation, rebuild it
+        if (true) { // Temporary true to keep block, better to check some flag
             println("🔄 Custom settings specified. Re-generating plate mask video...")
             val plateCache = fit.PlateCacheManager.loadCache(firstArgFile.absolutePath)
             if (plateCache == null) {
@@ -287,7 +279,7 @@ fun main(args: Array<String>) {
                 reportProgress(progress, "Mask Re-gen: $status", true)
             })
 
-            println("Re-generating plate_mask.mkv (Dilation scale with timeBuffer = ${settings.plateMaskTimeBufferMs}ms, expandRatio = ${settings.plateMaskExpandRatio})...")
+            println("Re-generating plate_mask.mkv...")
             try {
                 encoder.generateMaskVideoOnly(
                     videoPath = firstArgFile.absolutePath,

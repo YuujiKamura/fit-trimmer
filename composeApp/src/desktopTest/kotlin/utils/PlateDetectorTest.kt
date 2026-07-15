@@ -344,7 +344,6 @@ class PlateDetectorTest {
         if (!scratchDir.exists()) scratchDir.mkdirs()
 
         val cropTestMp4 = File(scratchDir, "crop_test.mp4")
-        val cropBlurredMp4 = File(scratchDir, "crop_blurred_output.mp4")
 
         // 1. Crop 2 seconds from 390.0s to 392.0s using FFmpeg (with copy to preserve rotate metadata)
         println("🎬 Cropping video...")
@@ -447,17 +446,15 @@ class PlateDetectorTest {
             println("  - timeMs: ${rec.timeMs} -> boxes: ${rec.boxes}")
         }
 
-        // 3. Run NativeHudEncoder for both standard and wide expand ratios to compare
-        for (expandRatio in listOf(0.2, 1.5)) {
-            val ratioLabel = if (expandRatio == 0.2) "plate" else "wide"
-            println("📹 Encoding blurred video for expandRatio: $expandRatio...")
-            val cropBlurredMp4 = File(scratchDir, "crop_blurred_${ratioLabel}_output.mp4")
-            val settings = fit.HudSettings(
-                blurLicensePlates = true,
-                exportResolution = "original",
-                plateMaskExpandRatio = expandRatio
-            )
-            val encoder = fit.NativeHudEncoder(settings)
+        // 3. Run NativeHudEncoder
+        val ratioLabel = "plate"
+        println("📹 Encoding blurred video...")
+        val cropBlurredMp4 = File(scratchDir, "crop_blurred_${ratioLabel}_output.mp4")
+        val settings = fit.HudSettings(
+            blurLicensePlates = true,
+            exportResolution = "original"
+        )
+        val encoder = fit.NativeHudEncoder(settings)
             fit.PlateCacheManager.saveCache(cropTestMp4.absolutePath, cache)
 
             encoder.encode(
@@ -490,7 +487,6 @@ class PlateDetectorTest {
                 println("📸 Wrote sample frame at crop time ${st}s for ratio $ratioLabel to: ${sampleImgFile.absolutePath}")
                 assertTrue(sampleImgFile.exists() && sampleImgFile.length() > 0, "Sample frame ($ratioLabel) should be written successfully")
             }
-        }
     }
 
     @Test
@@ -586,46 +582,6 @@ class PlateDetectorTest {
         kotlin.test.assertNotNull(cache, "Scan cache must be successfully built")
         kotlin.test.assertTrue(cache.records.isEmpty(), "Should skip all plates at high speeds (>= 10km/h)")
         println("✅ High Speed Plate Detection Test Completed Successfully!")
-    }
-
-    @Test
-    fun testPlateDetectionPaddingAndBufferExtension() {
-        val cropTestMp4 = File("C:\\Users\\yuuji\\fit-trimmer\\composeApp\\scratch\\crop_test.mp4")
-        if (!cropTestMp4.exists()) {
-            println("Skipping padding and buffer extension test: crop_test.mp4 not found")
-            return
-        }
-
-        // 1. Verify PlateCache boxesForTargetTime maintains boxes within timeBufferMs (5.0s)
-        val dummyRecord = fit.PlateRecord(timeMs = 10000L, boxes = listOf(fit.PlateBox(10, 10, 50, 50)))
-        val cache = fit.VideoPlatesCache(
-            videoPath = "dummy.mp4",
-            records = listOf(dummyRecord),
-            sourceWidth = 640,
-            sourceHeight = 640
-        )
-        
-        // Test at target time 6000ms (4.0s before record, which is within 5.0s buffer but outside default 300ms/2.0s buffer)
-        val boxesAt6s = cache.boxesForTargetTime(
-            targetTimeMs = 6000L,
-            prev = null,
-            next = dummyRecord,
-            timeBufferMs = 5000L
-        )
-        kotlin.test.assertTrue(boxesAt6s.isNotEmpty(), "Boxes should be maintained at 6.0s with 5.0s timeBufferMs")
-
-        // Test at target time 4000ms (6.0s before record, which is outside 5.0s buffer)
-        val boxesAt4s = cache.boxesForTargetTime(
-            targetTimeMs = 4000L,
-            prev = null,
-            next = dummyRecord,
-            timeBufferMs = 5000L
-        )
-        kotlin.test.assertTrue(boxesAt4s.isEmpty(), "Boxes should be empty at 4.0s (outside 5.0s buffer)")
-
-        // 2. Verify settings has plateMaskTimeBufferMs up to 5000L
-        val settings = fit.HudSettings(plateMaskTimeBufferMs = 5000L)
-        kotlin.test.assertEquals(5000L, settings.plateMaskTimeBufferMs)
     }
 
     @Test
@@ -815,23 +771,6 @@ class PlateDetectorTest {
         // Verify detect signature accepts detectPedestrians
         val result = detector.detect(dummyImage, confThreshold = 0.25f, iouThreshold = 0.45f, detectPedestrians = true)
         kotlin.test.assertNotNull(result)
-    }
-
-    @Test
-    fun testSmallPlateMaskCandidatesCanBeSuppressedByHeightRatio() {
-        val settings = fit.HudSettings(plateMinMaskHeightRatio = 0.01)
-        val boxes = listOf(
-            PlateBox(10, 10, 60, 18),
-            PlateBox(20, 20, 90, 36)
-        )
-
-        val filtered = PlateDetectionManager.filterBoxesForMaskSize(
-            boxes = boxes,
-            videoHeight = 1000,
-            settings = settings
-        )
-
-        kotlin.test.assertEquals(listOf(boxes[1]), filtered)
     }
 
     @Test
@@ -1529,9 +1468,6 @@ class PlateDetectorTest {
             blurLicensePlates = true,
             plateInferenceInterval = 1,
             plateDetectionFps = 3.0,
-            plateMinMaskHeightRatio = 0.0,
-            plateMaskTimeBufferMs = 5000L,
-            plateMaskExpandRatio = 0.6,
             detectPedestrians = true
         )
         
@@ -1886,7 +1822,6 @@ class PlateDetectorTest {
         val tracker = CascadePlateTracker()
 
         val settings = fit.HudSettings().copy(
-            plateMaskMode = "plate",
             plateDetectionFps = 1.0
         )
 

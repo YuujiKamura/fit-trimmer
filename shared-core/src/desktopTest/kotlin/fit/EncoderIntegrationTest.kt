@@ -29,7 +29,7 @@ class EncoderIntegrationTest {
         val settings = HudSettings(
             exportResolution = "1080p",
             blurLicensePlates = true,
-            plateMaskExpandRatio = 0.5
+
         )
 
         val plateCache = VideoPlatesCache(
@@ -67,7 +67,9 @@ class EncoderIntegrationTest {
         val longHash = kotlin.math.abs((
             fitPath + videoPath + startUtc + (-1) + 0.0 + 10.0 +
                 videoWidth + videoHeight + exportWidth + exportHeight + config.hashCode() +
-                settings.exportResolution + settings.blurLicensePlates + settings.plateMaskExpandRatio.toString() +
+                settings.exportResolution + settings.blurLicensePlates +
+                settings.useImperialUnits.toString() +
+
                 (plateCache.sourceWidth) + (plateCache.sourceHeight) +
                 (plateCache.records.hashCode())
         ).hashCode()).toString()
@@ -143,7 +145,7 @@ class EncoderIntegrationTest {
                     settings = HudSettings(
                         exportResolution = "360p",
                         blurLicensePlates = (maskMode != "off"),
-                        plateMaskExpandRatio = if (maskMode == "wide") 1.5 else 0.2
+
                     ),
                     showLivePreviewSupplier = { false },
                     profileSink = { report ->

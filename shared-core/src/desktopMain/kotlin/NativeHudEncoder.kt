@@ -1444,12 +1444,10 @@ class NativeHudEncoder(
                     totalFrames = totalFrames,
                     fps = fpsDouble,
                     isBlurEnabled = settings.blurLicensePlates,
-                    expandRatio = settings.plateMaskExpandRatio,
                     fallbackSourceWidth = fallbackSourceW,
                     fallbackSourceHeight = fallbackSourceH,
                     targetWidth = maskW.toFloat(),
                     targetHeight = maskH.toFloat(),
-                    timeBufferMs = settings.plateMaskTimeBufferMs,
                     sourceStartTimeMs = (actualTrimStart * 1000.0).toLong(),
                     speedSegments = settings.speedSegments,
                     cropToSquare = settings.cropToSquare
@@ -1843,7 +1841,6 @@ class NativeHudEncoder(
                             for (box in activeBoxes) {
                                 val maskBox = fit.PlateMaskExpander.expand(
                                     box = box,
-                                    expandRatio = settings.plateMaskExpandRatio,
                                     sourceWidth = sourceW,
                                     sourceHeight = sourceH
                                 )
@@ -2182,12 +2179,10 @@ class NativeHudEncoder(
             totalFrames = totalFrames,
             fps = fpsDouble,
             isBlurEnabled = settings.blurLicensePlates,
-            expandRatio = settings.plateMaskExpandRatio,
             fallbackSourceWidth = fallbackSourceW,
             fallbackSourceHeight = fallbackSourceH,
             targetWidth = maskW.toFloat(),
             targetHeight = maskH.toFloat(),
-            timeBufferMs = settings.plateMaskTimeBufferMs,
             sourceStartTimeMs = (trimStartSeconds * 1000.0).toLong()
         )
 
@@ -2317,7 +2312,8 @@ class NativeHudEncoder(
             return kotlin.math.abs((
                 fitPath + videoPath + startUtc + maxDurationSeconds + actualTrimStart + actualTrimEnd +
                     videoWidth + videoHeight + exportWidth + exportHeight + config.hashCode() +
-                    settings.exportResolution + settings.blurLicensePlates + settings.plateMaskExpandRatio.toString() +
+                    settings.exportResolution + settings.blurLicensePlates +
+                    settings.useImperialUnits.toString() +
                     (plateCache?.sourceWidth ?: 0) + (plateCache?.sourceHeight ?: 0) +
                     (plateCache?.records?.hashCode() ?: 0)
             ).hashCode()).toString()

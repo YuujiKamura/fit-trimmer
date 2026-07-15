@@ -520,8 +520,7 @@ class AppViewModelTest {
         val viewModel = AppViewModel(null)
         viewModel.videoPath = "/tmp/ride.mp4"
         viewModel.settings = viewModel.settings.copy(
-            detectPedestrians = true,
-            plateMinMaskHeightRatio = 0.02
+            detectPedestrians = true
         )
 
         var capturedSettings: fit.HudSettings? = null
@@ -555,7 +554,6 @@ class AppViewModelTest {
         )
 
         assertEquals(true, capturedSettings?.detectPedestrians)
-        assertEquals(0.02, capturedSettings?.plateMinMaskHeightRatio)
         assertEquals(40.0, capturedSettings?.plateMaxSpeedKmh)
     }
 

@@ -1108,16 +1108,7 @@ fun FitTrimmerMainContent(
                                                 settings = encodeSettings,
                                                 plateCache = viewModel.plateCache
                                             )
-                                            if (encodeSettings.plateMaskMode == "cut" && ranges.isEmpty()) {
-                                                statusText = "Skipped: Remaining duration is less than threshold (${encodeSettings.minRemainingSecondsForCut}s)"
-                                                isEncoding = false
-                                                return@launch
-                                            }
-                                            val pipelineSettings = if (encodeSettings.plateMaskMode == "cut") {
-                                                encodeSettings.copy(blurLicensePlates = false)
-                                            } else {
-                                                encodeSettings
-                                            }
+                                            val pipelineSettings = encodeSettings
                                             val encodePlan = buildEncodePlan(
                                                 settings = pipelineSettings,
                                                 videoPath = videoPath,
@@ -1125,9 +1116,7 @@ fun FitTrimmerMainContent(
                                                 moveOutputToSource = moveOutputToSource,
                                                 ranges = ranges
                                             )
-                                            val shouldMergePlateCut = encodeSettings.plateMaskMode == "cut" &&
-                                                viewModel.splitPoints.isEmpty() &&
-                                                ranges.size > 1
+                                            val shouldMergePlateCut = false
                                             val mergeOutputFile = if (shouldMergePlateCut) {
                                                 buildEncodePlan(
                                                     settings = pipelineSettings,
@@ -1348,7 +1337,7 @@ fun FitTrimmerMainContent(
                                                 val boxes = detector.detect(
                                                     image = img,
                                                     confThreshold = cmd.confThreshold ?: 0.25f,
-                                                    maskMode = settings.plateMaskMode,
+                                                    maskMode = "plate_direct",
                                                     detectPedestrians = settings.detectPedestrians
                                                 )
                                                 
@@ -3169,79 +3158,6 @@ fun FitTrimmerMainContent(
                                             color = Color.Gray
                                         )
                                     }
-                                    Spacer(Modifier.height(2.dp))
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Text(
-                                            text = "検出範囲の処理方式:",
-                                            fontSize = 10.sp,
-                                            color = Color(0xFF636366)
-                                        )
-                                        listOf(
-                                            "plate" to "ナンバー(高速/近中距離)",
-                                            "plate_cascade" to "ナンバー(高精度/遠距離)",
-                                            "vehicle" to "車体ベース",
-                                            "cut" to "カット除去"
-                                        ).forEach { (mode, label) ->
-                                            val selected = settings.plateMaskMode == mode
-                                            Text(
-                                                text = label,
-                                                fontSize = 10.sp,
-                                                color = if (selected) Color.White else Color(0xFF1C1C1E),
-                                                fontWeight = FontWeight.Bold,
-                                                modifier = Modifier
-                                                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(5.dp))
-                                                    .background(if (selected) Color(0xFF007AFF) else Color(0xFFE5E5EA))
-                                                    .clickable(enabled = !isEncoding && !viewModel.isDetectingPlates) {
-                                                        settings = settings.copy(plateMaskMode = mode)
-                                                    }
-                                                    .padding(horizontal = 10.dp, vertical = 5.dp)
-                                            )
-                                        }
-                                    }
-                                    
-                                    // 1. EXPAND RATIO (ぼかし領域の拡大率)
-                                    Spacer(Modifier.height(6.dp))
-                                    Text(
-                                        text = "ぼかし領域の拡大率 (Expand Ratio):",
-                                        fontSize = 10.sp,
-                                        color = Color(0xFF1C1C1E),
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Text(
-                                        text = "検出枠の周囲を何%広げてぼかすかを設定します。ブレによる漏れを防ぎます。",
-                                        fontSize = 9.sp,
-                                        color = Color(0xFF636366)
-                                    )
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        androidx.compose.material.Slider(
-                                            value = settings.plateMaskExpandRatio.toFloat(),
-                                            onValueChange = { newValue ->
-                                                val rounded = (kotlin.math.round(newValue * 10f) / 10f).toDouble()
-                                                settings = settings.copy(plateMaskExpandRatio = rounded.coerceIn(0.2, 1.5))
-                                            },
-                                            valueRange = 0.2f..1.5f,
-                                            steps = 12,
-                                            enabled = !isEncoding,
-                                            modifier = Modifier.width(180.dp),
-                                            colors = androidx.compose.material.SliderDefaults.colors(
-                                                thumbColor = Color(0xFF34C759),
-                                                activeTrackColor = Color(0xFF34C759)
-                                            )
-                                        )
-                                        Text(
-                                            text = String.format(java.util.Locale.US, "+%.0f%%", settings.plateMaskExpandRatio * 100),
-                                            fontSize = 10.sp,
-                                            color = Color(0xFF1C1C1E),
-                                            fontWeight = FontWeight.Medium
-                                        )
-                                    }
-
                                     // 1. INFERENCE DEVICE / GPU ACCELERATION
                                     Spacer(Modifier.height(6.dp))
                                     Text(
@@ -3292,127 +3208,9 @@ fun FitTrimmerMainContent(
                                         }
                                     }
 
-                                    // 2. MIN H RATIO (最小ぼかしサイズ)
-                                    Spacer(Modifier.height(6.dp))
-                                    Text(
-                                        text = "ぼかし対象の最小高さ比率 (Min Height Ratio):",
-                                        fontSize = 10.sp,
-                                        color = Color(0xFF1C1C1E),
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Text(
-                                        text = "画面高さに対するプレート高の最小割合。遠すぎる極小サイズをスルーし、映像ノイズを防ぎます。(0.0%で全対象)",
-                                        fontSize = 9.sp,
-                                        color = Color(0xFF636366)
-                                    )
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        androidx.compose.material.Slider(
-                                            value = (settings.plateMinMaskHeightRatio * 100.0).toFloat(),
-                                            onValueChange = { newValue ->
-                                                val rounded = kotlin.math.round(newValue * 10f) / 10f
-                                                settings = settings.copy(plateMinMaskHeightRatio = (rounded / 100f).toDouble().coerceIn(0.0, 0.03))
-                                            },
-                                            valueRange = 0.0f..3.0f,
-                                            steps = 29,
-                                            enabled = !isEncoding && !viewModel.isDetectingPlates,
-                                            modifier = Modifier.width(180.dp),
-                                            colors = androidx.compose.material.SliderDefaults.colors(
-                                                thumbColor = Color(0xFFFF9500),
-                                                activeTrackColor = Color(0xFFFF9500)
-                                            )
-                                        )
-                                        Text(
-                                            text = String.format(java.util.Locale.US, "min %.1f%%H", settings.plateMinMaskHeightRatio * 100.0),
-                                            fontSize = 10.sp,
-                                            color = Color(0xFF1C1C1E),
-                                            fontWeight = FontWeight.Medium
-                                        )
-                                    }
 
-                                    // 3. TIME BUFFER (ロスト時ぼかし維持)
-                                    Spacer(Modifier.height(6.dp))
-                                    Text(
-                                        text = "ロスト時のぼかし維持秒数 (Time Buffer):",
-                                        fontSize = 10.sp,
-                                        color = Color(0xFF1C1C1E),
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Text(
-                                        text = "AIが一瞬プレートを見失ったり画面外へ消えた後も、指定秒数の間ぼかしを残します。(フリッカー防止)",
-                                        fontSize = 9.sp,
-                                        color = Color(0xFF636366)
-                                    )
-                                     Row(
-                                         verticalAlignment = Alignment.CenterVertically,
-                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                     ) {
-                                         androidx.compose.material.Slider(
-                                             value = settings.plateMaskTimeBufferMs.toFloat() / 1000f,
-                                             onValueChange = { newValue ->
-                                                 val roundedMs = (kotlin.math.round(newValue * 10f) / 10f * 1000f).toLong()
-                                                 settings = settings.copy(plateMaskTimeBufferMs = roundedMs.coerceIn(0L, 5000L))
-                                             },
-                                             valueRange = 0.0f..5.0f,
-                                             steps = 50,
-                                             enabled = !isEncoding,
-                                             modifier = Modifier.width(180.dp),
-                                             colors = androidx.compose.material.SliderDefaults.colors(
-                                                 thumbColor = Color(0xFF5856D6),
-                                                 activeTrackColor = Color(0xFF5856D6)
-                                             )
-                                         )
-                                         Text(
-                                             text = String.format(java.util.Locale.US, "%.1f s", settings.plateMaskTimeBufferMs.toDouble() / 1000.0),
-                                             fontSize = 10.sp,
-                                             color = Color(0xFF1C1C1E),
-                                             fontWeight = FontWeight.Medium
-                                         )
-                                     }
 
-                                     // 4. CUT MIN REMAINING (カット後最小残存)
-                                     if (settings.plateMaskMode == "cut") {
-                                         Spacer(Modifier.height(6.dp))
-                                         Text(
-                                             text = "カット後最小残存秒数 (Min Remaining for Cut):",
-                                             fontSize = 10.sp,
-                                             color = Color(0xFF1C1C1E),
-                                             fontWeight = FontWeight.Bold
-                                         )
-                                         Text(
-                                             text = "プレート検出区間をカット除去した際、前後のクリーンな動画が細切れになるのを防ぐための最小秒数です。",
-                                             fontSize = 9.sp,
-                                             color = Color(0xFF636366)
-                                         )
-                                         Row(
-                                             verticalAlignment = Alignment.CenterVertically,
-                                             horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                         ) {
-                                             androidx.compose.material.Slider(
-                                                 value = settings.minRemainingSecondsForCut.toFloat(),
-                                                 onValueChange = { newValue ->
-                                                     val rounded = (kotlin.math.round(newValue * 2f) / 2f).toDouble()
-                                                     settings = settings.copy(minRemainingSecondsForCut = rounded.coerceIn(0.5, 30.0))
-                                                 },
-                                                 valueRange = 0.5f..30.0f,
-                                                 steps = 59,
-                                                 enabled = !isEncoding,
-                                                 modifier = Modifier.width(180.dp),
-                                                 colors = androidx.compose.material.SliderDefaults.colors(
-                                                     thumbColor = Color(0xFFFF2D55),
-                                                     activeTrackColor = Color(0xFFFF2D55)
-                                                 )
-                                             )
-                                             Text(
-                                                 text = String.format(java.util.Locale.US, "%.1f s", settings.minRemainingSecondsForCut),
-                                                 fontSize = 10.sp,
-                                                 color = Color(0xFF1C1C1E),
-                                                 fontWeight = FontWeight.Medium
-                                             )
-                                         }
-                                     }
+
                                     if (viewModel.isDetectingPlates) {
                                         Row(
                                             verticalAlignment = Alignment.CenterVertically,

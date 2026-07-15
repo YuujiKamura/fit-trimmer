@@ -80,7 +80,7 @@ object PlateDetectionManager : fit.PlateDetector {
         // Downscale limit depending on mask mode: 1280 for vehicle (640 model) to maintain processing efficiency.
         // For plate mask mode, bypass intermediate downscaling and decode at the original video resolution
         // (e.g. 4K) to preserve high-fidelity plate details for direct 1088px model preprocessing.
-        val isVehicleMode = !settings.plateMaskMode.startsWith("plate", ignoreCase = true)
+        val isVehicleMode = false
         val (scanWidth, scanHeight) = if (isVehicleMode) {
             val maxScanDim = 1280
             if (videoWidth > maxScanDim || videoHeight > maxScanDim) {
@@ -175,7 +175,7 @@ object PlateDetectionManager : fit.PlateDetector {
                             records.add(cachedRecord)
                         }
                     } else {
-                        val isCascadeMode = settings.plateMaskMode.equals("plate_cascade", ignoreCase = true)
+                        val isCascadeMode = false
                         val detectedBoxes = if (isCascadeMode) {
                             detector.detectCascaded(
                                 image = img,
@@ -186,7 +186,7 @@ object PlateDetectionManager : fit.PlateDetector {
                             )
                         } else {
                             // If it's "plate" mode, we use direct fast mode. 
-                            val internalMaskMode = if (settings.plateMaskMode.equals("plate", ignoreCase = true)) "plate_direct" else settings.plateMaskMode
+                            val internalMaskMode = "plate_direct"
                             detector.detect(
                                 image = img,
                                 confThreshold = 0.25f,
@@ -265,7 +265,7 @@ object PlateDetectionManager : fit.PlateDetector {
         videoHeight: Int,
         settings: fit.HudSettings
     ): List<fit.PlateBox> {
-        val minHeight = (videoHeight.coerceAtLeast(1) * settings.plateMinMaskHeightRatio.coerceAtLeast(0.0))
+        val minHeight = 0.0
             .coerceAtLeast(1.0)
         return boxes.filter { box ->
             (box.y2 - box.y1).coerceAtLeast(0) >= minHeight
