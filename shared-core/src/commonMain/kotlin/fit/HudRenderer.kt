@@ -1476,7 +1476,22 @@ class HudRenderer(val config: HudConfig) {
             }
         }
 
-        // 4. Downsample route points for drawing performance (max 100 points)
+        // Draw global route line (FIT entire route) first
+        val globalMaxMapPoints = 200
+        val globalDrawPoints = if (globalRoutePoints.size <= globalMaxMapPoints) {
+            globalRoutePoints
+        } else {
+            val step = (globalRoutePoints.size - 1).toFloat() / (globalMaxMapPoints - 1)
+            (0 until globalMaxMapPoints).map { i ->
+                val index = (i * step).roundToInt().coerceIn(globalRoutePoints.indices)
+                globalRoutePoints[index]
+            }
+        }
+        val globalRouteLinePoints = globalDrawPoints.map { projectPoint(it) }
+        canvas.drawLine(globalRouteLinePoints, "#ffffff", width = 3.6f * sf, alpha = 0.6f)
+        canvas.drawLine(globalRouteLinePoints, "#22c55e", width = 2.4f * sf, alpha = 0.8f) // Green
+
+        // 4. Downsample trimmed route points for drawing performance (max 100 points)
         val maxMapPoints = 100
         val drawPoints = if (validRoutePoints.size <= maxMapPoints) {
             validRoutePoints
@@ -1488,7 +1503,7 @@ class HudRenderer(val config: HudConfig) {
             }
         }
 
-        // Draw route line (with scaled line width and black outline shadow)
+        // Draw trimmed route line (with scaled line width and black outline shadow)
         val routeLinePoints = drawPoints.map { projectPoint(it) }
         canvas.drawLine(routeLinePoints, "#ffffff", width = 4.2f * sf, alpha = 0.8f)
         canvas.drawLine(routeLinePoints, "#007AFF", width = 2.8f * sf, alpha = 0.9f)
