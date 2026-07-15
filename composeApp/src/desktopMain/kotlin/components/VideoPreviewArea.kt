@@ -1147,7 +1147,7 @@ fun VideoPreviewArea(
                         rendererProxy.renderFrame(
                             composeCanvas,
                             telemetryPoint,
-                            if (originalTelemetryPoints.isNotEmpty()) originalTelemetryPoints else telemetryPoints,
+                            telemetryPoints,
                             trimmedTelemetryPoints,
                             pBuf,
                             currentSeconds,
