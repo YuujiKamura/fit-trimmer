@@ -112,10 +112,10 @@ class PlateDetector private constructor() : AutoCloseable {
         val width = image.width
         val height = image.height
 
-        val isVehicleMode = !maskMode.equals("plate", ignoreCase = true)
+        val isVehicleMode = !maskMode.equals("plate", ignoreCase = true) && !maskMode.equals("plate_crop", ignoreCase = true)
         
         // Cascaded check: Run vehicle detection first if we are in plate detection mode
-        if (!isVehicleMode) {
+        if (maskMode.equals("plate", ignoreCase = true)) {
             val vehicleBoxes = detect(
                 image = image,
                 confThreshold = 0.35f,
@@ -314,7 +314,7 @@ class PlateDetector private constructor() : AutoCloseable {
                         
                         // Filter based on standard Japanese plate aspect ratio (typically 1.3 to 3.3)
                         // and physically reasonable size limits to eliminate HUD/sky wire/vehicle body misdetections.
-                        if (isAcceptableBox(boxW, boxH, aspect, width, height)) {
+                        if (isAcceptableBox(boxW, boxH, aspect, width, height, isCrop = maskMode.equals("plate_crop", ignoreCase = true))) {
                             PlateBox(
                                 x1 = origX1.toInt(),
                                 y1 = origY1.toInt(),
@@ -347,11 +347,97 @@ class PlateDetector private constructor() : AutoCloseable {
         return result
     }
 
-    internal fun isAcceptableBox(boxW: Int, boxH: Int, aspect: Float, videoWidth: Int, videoHeight: Int): Boolean {
-        val maxW = (videoWidth * 0.15f).toInt().coerceAtLeast(300)
-        val maxH = (videoHeight * 0.15f).toInt().coerceAtLeast(150)
+    fun detectCascaded(
+        image: BufferedImage,
+        confThreshold: Float = 0.25f,
+        iouThreshold: Float = 0.45f,
+        detectPedestrians: Boolean = false,
+        tracker: CascadePlateTracker? = null,
+        timeMs: Long = 0L
+    ): List<PlateBox> {
+        val vehicles = detect(
+            image = image,
+            confThreshold = 0.35f,
+            maskMode = "wide",
+            detectPedestrians = detectPedestrians
+        )
+
+        println("DEBUG detectCascaded: Found ${vehicles.size} vehicles:")
+        for ((idx, veh) in vehicles.withIndex()) {
+            println("  [$idx] vehicle: x1=${veh.x1}, y1=${veh.y1}, x2=${veh.x2}, y2=${veh.y2} (w=${veh.x2 - veh.x1}, h=${veh.y2 - veh.y1})")
+        }
+
+        if (vehicles.isEmpty()) {
+            return emptyList()
+        }
+
+
+        val detectedPlates = mutableListOf<PlateBox>()
+        val imgW = image.width
+        val imgH = image.height
+
+        for (veh in vehicles) {
+            val vw = veh.x2 - veh.x1
+            val vh = veh.y2 - veh.y1
+            if (vw < 20 || vh < 10) continue
+
+            val padX = (vw * 0.15).toInt()
+            val padY = (vh * 0.15).toInt()
+
+            val cropX1 = (veh.x1 - padX).coerceIn(0, imgW - 1)
+            val cropY1 = (veh.y1 + (vh * 0.3).toInt()).coerceIn(0, imgH - 1)
+            val cropX2 = (veh.x2 + padX).coerceIn(0, imgW)
+            val cropY2 = (veh.y2 + padY).coerceIn(0, imgH)
+
+            val cropW = cropX2 - cropX1
+            val cropH = cropY2 - cropY1
+            if (cropW <= 10 || cropH <= 5) continue
+
+            try {
+                val croppedImg = image.getSubimage(cropX1, cropY1, cropW, cropH)
+                val platesInCrop = detect(
+                    image = croppedImg,
+                    confThreshold = confThreshold,
+                    iouThreshold = iouThreshold,
+                    detectPedestrians = false,
+                    maskMode = "plate_crop"
+                )
+
+                for (plate in platesInCrop) {
+                    detectedPlates.add(
+                        PlateBox(
+                            x1 = cropX1 + plate.x1,
+                            y1 = cropY1 + plate.y1,
+                            x2 = cropX1 + plate.x2,
+                            y2 = cropY1 + plate.y2
+                        )
+                    )
+                }
+            } catch (e: Exception) {
+                println("DEBUG: Failed to crop or detect on vehicle $veh: ${e.message}")
+            }
+        }
+
+        return if (tracker != null) {
+            tracker.update(timeMs, vehicles, detectedPlates)
+        } else {
+            detectedPlates.distinct()
+        }
+    }
+
+    internal fun isAcceptableBox(boxW: Int, boxH: Int, aspect: Float, videoWidth: Int, videoHeight: Int, isCrop: Boolean = false): Boolean {
+        if (isCrop) {
+            // Bypass strict size limits for crop-zoomed detection, use relaxed aspect limits
+            return boxW >= 12 && boxH >= 6 && aspect in 1.1f..3.5f
+        }
+        val refW = if (videoWidth < 1000) 1920 else videoWidth
+        val refH = if (videoHeight < 600) 1080 else videoHeight
+        val maxW = (refW * 0.15f).toInt().coerceAtLeast(300)
+        val maxH = (refH * 0.15f).toInt().coerceAtLeast(150)
         return boxW in 12..maxW && boxH in 6..maxH && aspect in 1.3f..3.3f
     }
+
+
 
     override fun close() {
         sessionVehicle?.close()

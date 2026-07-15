@@ -1598,9 +1598,71 @@ class PlateDetectorTest {
         kotlin.test.assertTrue(outputMp4.exists() && outputMp4.length() > 0L)
     }
 
+    @Test
+    fun testCascadePlateTrackingWithVehicleROI() {
+        val tracker = CascadePlateTracker()
+
+        // Frame 1: Vehicle detected at (100, 100, 300, 300), Plate detected at (180, 240, 220, 280)
+        val v1 = listOf(PlateBox(100, 100, 300, 300))
+        val p1 = listOf(PlateBox(180, 240, 220, 280))
+        val res1 = tracker.update(0L, v1, p1)
+        
+        // Should output the detected plate (registered successfully)
+        kotlin.test.assertEquals(1, res1.size)
+        kotlin.test.assertEquals(PlateBox(180, 240, 220, 280), res1[0])
+
+        // Frame 2: Vehicle moved to (120, 110, 320, 310), Plate detection lost (empty)
+        val v2 = listOf(PlateBox(120, 110, 320, 310))
+        val p2 = emptyList<PlateBox>()
+        val res2 = tracker.update(250L, v2, p2)
+
+        // Should reconstruct the plate box relative to the new vehicle position
+        // Relative coordinates from Frame 1:
+        // dx1 = 180 - 100 = 80
+        // dy1 = 240 - 100 = 140
+        // dx2 = 220 - 100 = 120
+        // dy2 = 280 - 100 = 180
+        // Applying to Frame 2 vehicle:
+        // x1 = 120 + 80 = 200
+        // y1 = 110 + 140 = 250
+        // x2 = 120 + 120 = 240
+        // y2 = 110 + 180 = 290
+        kotlin.test.assertEquals(1, res2.size, "Should reconstruct the plate box using tracking relative coordinates")
+        kotlin.test.assertEquals(PlateBox(200, 250, 240, 290), res2[0], "Reconstructed box coordinates mismatch")
+    }
+
+    @Test
+    fun testCascadePlateDetectionFromScreenshot() {
+        val stream = javaClass.classLoader.getResourceAsStream("test_plate_screenshot.png")
+        kotlin.test.assertNotNull(stream, "test_plate_screenshot.png resource not found in classpath")
+        
+        val image = ImageIO.read(stream)
+        stream.close()
+
+        val detector = PlateDetector.getInstance()
+        val tracker = CascadePlateTracker()
+
+        // Run cascaded detection
+        val boxes = detector.detectCascaded(image, confThreshold = 0.25f, tracker = tracker, timeMs = 0L)
+        
+        println("Cascaded Detected ${boxes.size} license plates:")
+        for ((idx, box) in boxes.withIndex()) {
+            println("  [$idx] x1=${box.x1}, y1=${box.y1}, x2=${box.x2}, y2=${box.y2} (w=${box.x2 - box.x1}, h=${box.y2 - box.y1})")
+        }
+
+        assertTrue(boxes.isNotEmpty(), "Should have detected at least one license plate via cascaded tracking")
+        
+        // Assert that the bus plate is detected at the exact expected coordinates (2787, 1043, 2967, 1129)
+        // with tolerance of <= 4 pixels
+        val busPlate = boxes.find { it.x1 in 2783..2791 && it.y1 in 1039..1047 }
+        kotlin.test.assertNotNull(busPlate, "Bus license plate should be detected via cascaded tracking")
+    }
+
     private class SGObserver : java.awt.image.ImageObserver {
         override fun imageUpdate(img: java.awt.Image?, infoflags: Int, x: Int, y: Int, width: Int, height: Int): Boolean {
             return false
         }
     }
 }
+
+

@@ -105,6 +105,7 @@ object PlateDetectionManager : fit.PlateDetector {
             .filter { it.second > it.first }
             .ifEmpty { listOf(0.0 to durationSec) }
 
+        val tracker = CascadePlateTracker()
         val records = mutableListOf<PlateRecord>()
         val detector = PlateDetector.getInstance()
         detector.resetPerfStats()
@@ -170,12 +171,23 @@ object PlateDetectionManager : fit.PlateDetector {
                             records.add(cachedRecord)
                         }
                     } else {
-                        val detectedBoxes = detector.detect(
-                            img,
-                            confThreshold = 0.25f,
-                            detectPedestrians = settings.detectPedestrians,
-                            maskMode = settings.plateMaskMode
-                        )
+                        val isPlateMode = settings.plateMaskMode.equals("plate", ignoreCase = true)
+                        val detectedBoxes = if (isPlateMode) {
+                            detector.detectCascaded(
+                                image = img,
+                                confThreshold = 0.25f,
+                                detectPedestrians = settings.detectPedestrians,
+                                tracker = tracker,
+                                timeMs = timeMs
+                            )
+                        } else {
+                            detector.detect(
+                                image = img,
+                                confThreshold = 0.25f,
+                                detectPedestrians = settings.detectPedestrians,
+                                maskMode = settings.plateMaskMode
+                            )
+                        }
                         if (detectedBoxes.isNotEmpty()) {
                             val scaleX = videoWidth.toFloat() / scanWidth.toFloat()
                             val scaleY = videoHeight.toFloat() / scanHeight.toFloat()
