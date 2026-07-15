@@ -235,7 +235,7 @@ object PlateMaskExpander {
         val width = (box.x2 - box.x1).coerceAtLeast(1)
         val height = (box.y2 - box.y1).coerceAtLeast(1)
 
-        // Match video-privacy-blur logic: expand from center by 1.35x
+        // The model is a dedicated plate detector. Expand from center by 1.35x to add margin.
         val scale = 1.35
         val cx = box.x1 + width / 2.0
         val cy = box.y1 + height / 2.0

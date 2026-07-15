@@ -352,14 +352,15 @@ fun main(args: Array<String>) {
         println("SYNC START (UTC): $startUtc")
         println("--------------------------------------------------")
         
-        val encoder = NativeHudEncoder(HudSettings(), onProgress = { progress, status ->
+        val settings = HudSettings(blurLicensePlates = true)
+        val encoder = NativeHudEncoder(settings, onProgress = { progress, status ->
             reportProgress(progress, status, true)
         })
         
         val output = videoFile.absolutePath.replace(".mp4", if(isTest) "_TEST_HUD.mp4" else "_CLI_HUD.mp4")
         
         try {
-            val duration = if (isTest) 5 else -1
+            val duration = if (isTest) 15 else -1
             encoder.encode(fitFile.absolutePath, videoFile.absolutePath, output, startUtc, maxDurationSeconds = duration)
             reportProgress(1.0f, "Finished", false)
             println("✨ SUCCESS: $output")

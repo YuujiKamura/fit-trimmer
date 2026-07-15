@@ -755,14 +755,38 @@ class NativeHudEncoder(
                     // Mask boxes exist: clean transient buffer, draw grayscale rects based on intensity, and write.
                     java.util.Arrays.fill(data, 0.toByte())
                     for (box in boxes) {
-                        val x = box.x.toInt()
-                        val y = box.y.toInt()
+                        val x1 = box.x.toInt().coerceIn(0, width - 1)
+                        val y1 = box.y.toInt().coerceIn(0, height - 1)
                         val w = box.width.toInt()
                         val h = box.height.toInt()
-                        val gray = (box.intensity * 255.0f).toInt().coerceIn(0, 255)
-                        g.color = java.awt.Color(gray, gray, gray)
-                        if (w > 0 && h > 0) {
-                            g.fillRect(x, y, w, h)
+                        val x2 = (x1 + w).coerceIn(0, width)
+                        val y2 = (y1 + h).coerceIn(0, height)
+                        
+                        val bw = x2 - x1
+                        val bh = y2 - y1
+                        if (bw <= 0 || bh <= 0) continue
+                        
+                        val baseGray = (box.intensity * 255.0f).toInt().coerceIn(0, 255)
+                        val feather = minOf(15, bh / 2, bw / 2).coerceAtLeast(0)
+                        
+                        for (py in 0 until bh) {
+                            for (px in 0 until bw) {
+                                var alpha = 1.0f
+                                if (feather > 0) {
+                                    if (py < feather) alpha *= (py.toFloat() / feather)
+                                    if (py >= bh - feather) alpha *= ((bh - 1 - py).toFloat() / feather)
+                                    if (px < feather) alpha *= (px.toFloat() / feather)
+                                    if (px >= bw - feather) alpha *= ((bw - 1 - px).toFloat() / feather)
+                                }
+                                val pGray = (baseGray * alpha).toInt().coerceIn(0, 255).toByte()
+                                
+                                val idx = (y1 + py) * width + (x1 + px)
+                                if (idx in data.indices) {
+                                    val current = data[idx].toInt() and 0xFF
+                                    val nextVal = pGray.toInt() and 0xFF
+                                    data[idx] = maxOf(current, nextVal).toByte()
+                                }
+                            }
                         }
                     }
                     process.outputStream.write(data)
@@ -1538,7 +1562,7 @@ class NativeHudEncoder(
                     "[0:v]setpts=PTS-STARTPTS[hud];" +
                     "[2:v]scale=$exportWidth:$exportHeight,format=yuv420p,setpts=PTS-STARTPTS[mask];" +
                     "[1:v]${cropExpr}scale=$exportWidth:$exportHeight,setpts='$setptsExpr',split[vid_orig][vid_blur_src];" +
-                    "[vid_blur_src]scale=w=${exportWidth}/20:h=${exportHeight}/20,scale=w=$exportWidth:h=$exportHeight:flags=neighbor[vid_blurred];" +
+                    "[vid_blur_src]gblur=sigma=15[vid_blurred];" +
                     "[vid_orig][vid_blurred][mask]maskedmerge[vid_merged];" +
                     "[vid_merged][hud]overlay=0:0:shortest=1[outv]"
                 } else {
@@ -1580,7 +1604,7 @@ class NativeHudEncoder(
                         "[0:v]setpts=PTS-STARTPTS[hud];" +
                         "[2:v]scale=$exportWidth:$exportHeight,format=yuv420p,setpts=PTS-STARTPTS[mask];" +
                         "[1:v]${cropExpr}scale=$exportWidth:$exportHeight,setpts=PTS-STARTPTS,split[vid_orig][vid_blur_src];" +
-                        "[vid_blur_src]scale=w=${exportWidth}/20:h=${exportHeight}/20,scale=w=$exportWidth:h=$exportHeight:flags=neighbor[vid_blurred];" +
+                        "[vid_blur_src]gblur=sigma=15[vid_blurred];" +
                         "[vid_orig][vid_blurred][mask]maskedmerge[vid_merged];" +
                         "[vid_merged][hud]overlay=0:0:shortest=1"
                     )
