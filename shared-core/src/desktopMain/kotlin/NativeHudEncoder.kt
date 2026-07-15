@@ -1623,15 +1623,17 @@ class NativeHudEncoder(
             pbArgs.add("-r")
             pbArgs.add(videoFps)
             
-            val qualityVal = "21"
+            val qualityVal = "17"
             if (encoderName.endsWith("_qsv")) {
                 pbArgs.add("-global_quality")
                 pbArgs.add(qualityVal)
             } else if (encoderName.endsWith("_nvenc")) {
                 pbArgs.add("-rc")
-                pbArgs.add("constqp")
-                pbArgs.add("-qp")
+                pbArgs.add("vbr")
+                pbArgs.add("-cq")
                 pbArgs.add(qualityVal)
+                pbArgs.add("-b:v")
+                pbArgs.add("0")
             } else {
                 pbArgs.add("-crf")
                 pbArgs.add(qualityVal)
