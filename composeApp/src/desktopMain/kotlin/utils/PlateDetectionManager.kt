@@ -73,9 +73,9 @@ object PlateDetectionManager : fit.PlateDetector {
             durationSec = h * 3600.0 + m * 60.0 + s + ms
         }
 
-        val baseDetectionFps = settings.plateDetectionFps.coerceIn(0.25, 4.0)
-        // Multiplier of 3x for active dynamic tracking, capped at 4.0fps to prevent extreme decoding overhead
-        val effectiveDetectionFps = (baseDetectionFps * 3.0).coerceAtMost(4.0)
+        val baseDetectionFps = settings.plateDetectionFps.coerceIn(0.25, 60.0)
+        // Multiplier of 3x for active dynamic tracking, capped at 60.0fps to allow smooth full-frame encoding
+        val effectiveDetectionFps = (baseDetectionFps * 3.0).coerceAtMost(60.0)
         
         // Downscale limit depending on mask mode: 1280 for vehicle (640 model) to maintain processing efficiency.
         // For plate mask mode, bypass intermediate downscaling and decode at the original video resolution
@@ -215,7 +215,9 @@ object PlateDetectionManager : fit.PlateDetector {
 
                     processedFramesCount++
                     val progressPercent = processedFramesCount.toFloat() / totalEstimatedFrames.toFloat()
-                    onProgress(progressPercent.coerceIn(0f, 1f), "Scanning plates: ${(progressPercent * 100).toInt()}%")
+                    val timeSec = processedFramesCount.toDouble() / effectiveDetectionFps
+                    val timeStr = String.format(java.util.Locale.US, "%.1f", timeSec)
+                    onProgress(progressPercent.coerceIn(0f, 1f), "Scan: $processedFramesCount / $totalEstimatedFrames frames (${timeStr}s)")
 
                     // Trigger periodic partial result updates to populate the telemetry timeline UI
                     if (processedFramesCount % 3L == 0L) {
@@ -246,7 +248,7 @@ object PlateDetectionManager : fit.PlateDetector {
             scanRanges = normalizedScanRanges.map { PlateScanRange((it.first * 1000.0).toLong(), (it.second * 1000.0).toLong()) }
         )
 
-        val finalCache = if (existingCache != null) existingCache.mergedWith(rawCache) else rawCache
+        val finalCache = (if (existingCache != null) existingCache.mergedWith(rawCache) else rawCache).smoothed(alpha = 0.3f)
 
         if (saveCache) {
             fit.PlateCacheManager.saveCache(videoPath, finalCache)

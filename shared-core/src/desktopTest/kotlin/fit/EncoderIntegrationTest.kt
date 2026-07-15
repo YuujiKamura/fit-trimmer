@@ -174,8 +174,7 @@ class EncoderIntegrationTest {
                     assertEquals(0.0, report.maskVideoMs, "Mask video generation should be 0 for off mode.")
                 } else {
                     assertTrue(report.maskPlanMs >= 0.0, "Profile must include mask planning time for mode: $maskMode")
-                    // maskVideoMs is now expected to be 0 since mask generation was moved directly to Kotlin canvas rendering
-                    assertEquals(0.0, report.maskVideoMs, "Mask video generation should be bypassed for canvas-based blur mode: $maskMode")
+                    assertTrue(report.maskVideoMs > 0.0, "Mask video generation should be active for FFmpeg-based blur mode: $maskMode")
                 }
                 
                 assertTrue(report.hudRenderMs > 0.0, "Profile must include HUD render time for mode: $maskMode")

@@ -1087,27 +1087,21 @@ fun VideoPreviewArea(
                             val wState = playerState as? WindowsVideoPlayerState
                             val videoW = wState?.videoWidth?.takeIf { it > 0 } ?: 1920
                             val videoH = wState?.videoHeight?.takeIf { it > 0 } ?: 1080
-                            val is90Or270 = videoRotation == 90 || videoRotation == -270 || videoRotation == 270 || videoRotation == -90
-                            val fallbackSourceW = if (is90Or270) videoH else videoW
-                            val fallbackSourceH = if (is90Or270) videoW else videoH
                             
-                            val rawCacheW = plateCache?.sourceWidth ?: 0
-                            val rawCacheH = plateCache?.sourceHeight ?: 0
-                            val cacheSourceW = if (is90Or270 && rawCacheW > rawCacheH) rawCacheH else rawCacheW
-                            val cacheSourceH = if (is90Or270 && rawCacheW > rawCacheH) rawCacheW else rawCacheH
+                            val sourceW = plateCache?.sourceWidth?.takeIf { it > 0 } ?: videoW
+                            val sourceH = plateCache?.sourceHeight?.takeIf { it > 0 } ?: videoH
                             
                             for (box in blurBoxes) {
                                 val maskBox = fit.PlateMaskExpander.expand(
                                     box = box,
                                     expandRatio = settings.plateMaskExpandRatio,
-                                    sourceWidth = if (cacheSourceW > 0) cacheSourceW else fallbackSourceW,
-                                    sourceHeight = if (cacheSourceH > 0) cacheSourceH else fallbackSourceH
+                                    sourceWidth = sourceW,
+                                    sourceHeight = sourceH
                                 )
                                 val mapped = fit.PlateCoordinateMapper.mapToTarget(
                                     box = maskBox,
-                                    cache = null,
-                                    fallbackSourceWidth = if (cacheSourceW > 0) cacheSourceW else fallbackSourceW,
-                                    fallbackSourceHeight = if (cacheSourceH > 0) cacheSourceH else fallbackSourceH,
+                                    sourceWidth = sourceW,
+                                    sourceHeight = sourceH,
                                     targetWidth = size.width,
                                     targetHeight = size.height,
                                     cropToSquare = settings.cropToSquare

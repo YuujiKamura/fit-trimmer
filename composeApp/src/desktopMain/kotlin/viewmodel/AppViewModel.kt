@@ -419,7 +419,7 @@ class AppViewModel(
 
         plateDetectionMaxSpeedKmh = maxSpeedKmh.coerceAtLeast(0.0)
 
-        plateDetectionFps = detectionFps.coerceIn(0.25, 4.0)
+        plateDetectionFps = detectionFps.coerceIn(0.25, 60.0)
 
         plateDetectionPaddingSeconds = paddingSeconds.coerceAtLeast(0.0)
 
@@ -452,7 +452,7 @@ class AppViewModel(
                     onProgress = { progress, status ->
                         val suffix = if (telemetryPoints.isNotEmpty() && videoStartUtc.isNotEmpty()) "" else " (No Telemetry)"
                         coroutineScope.launch(kotlinx.coroutines.Dispatchers.Main) {
-                            plateDetectionProgress = String.format(java.util.Locale.US, "%.1f%%", progress * 100f) + " ($status)" + suffix
+                            plateDetectionProgress = "$status$suffix"
                             
                             // Drain and accumulate tracking logs from CascadePlateTracker
                             var logMsg = utils.PlateDetectionManager.trackingLogs.poll()
@@ -731,7 +731,7 @@ class AppViewModel(
 
         plateDetectionMaxSpeedKmh = maxSpeedKmh.coerceAtLeast(0.0)
 
-        plateDetectionFps = detectionFps.coerceIn(0.25, 4.0)
+        plateDetectionFps = detectionFps.coerceIn(0.25, 60.0)
 
         plateDetectionPaddingSeconds = paddingSeconds.coerceAtLeast(0.0)
 
@@ -1804,8 +1804,9 @@ class AppViewModel(
                 BatchJobPhase(BatchJobPhaseType.FAST_TRIM, initialEnabled = true)
             )
         } else {
+            val hasPlateCache = plateCache?.records?.isNotEmpty() == true
             listOf(
-                BatchJobPhase(BatchJobPhaseType.PLATE_SCAN, initialEnabled = jobSettings.blurLicensePlates),
+                BatchJobPhase(BatchJobPhaseType.PLATE_SCAN, initialEnabled = jobSettings.blurLicensePlates && !hasPlateCache),
                 BatchJobPhase(BatchJobPhaseType.ROAD_SCAN, initialEnabled = jobAutoDetectRoadCaptionsOnEncode),
                 BatchJobPhase(BatchJobPhaseType.HUD_ENCODE, initialEnabled = true),
                 BatchJobPhase(BatchJobPhaseType.CONCAT_MERGE, initialEnabled = true)

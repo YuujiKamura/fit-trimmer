@@ -3145,6 +3145,30 @@ fun FitTrimmerMainContent(
                                         fontSize = 10.sp,
                                         color = Color(0xFF636366)
                                     )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        androidx.compose.material.Slider(
+                                            value = viewModel.plateDetectionFps.toFloat(),
+                                            onValueChange = { newValue ->
+                                                viewModel.plateDetectionFps = newValue.toDouble()
+                                            },
+                                            valueRange = 0.5f..60.0f,
+                                            steps = 119, // 0.5 steps
+                                            enabled = !isEncoding && !viewModel.isDetectingPlates,
+                                            modifier = Modifier.width(180.dp),
+                                            colors = androidx.compose.material.SliderDefaults.colors(
+                                                thumbColor = Color(0xFF007AFF),
+                                                activeTrackColor = Color(0xFF007AFF)
+                                            )
+                                        )
+                                        Text(
+                                            text = "Full Frame (30/60)推奨",
+                                            fontSize = 9.sp,
+                                            color = Color.Gray
+                                        )
+                                    }
                                     Spacer(Modifier.height(2.dp))
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
@@ -3392,7 +3416,8 @@ fun FitTrimmerMainContent(
                                     if (viewModel.isDetectingPlates) {
                                         Row(
                                             verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            modifier = Modifier.fillMaxWidth()
                                         ) {
                                             CircularProgressIndicator(
                                                 modifier = Modifier.size(12.dp),
@@ -3400,15 +3425,10 @@ fun FitTrimmerMainContent(
                                                 color = Color(0xFF007AFF)
                                             )
                                             Text(
-                                                text = utils.Localizer.get("plate_status_scanning", settings.language) + " " + viewModel.plateDetectionProgress,
+                                                text = viewModel.plateDetectionProgress,
                                                 fontSize = 10.sp,
-                                                color = Color.Gray
-                                            )
-                                            Text(
-                                                text = "Details",
-                                                fontSize = 10.sp,
-                                                color = Color(0xFF007AFF),
-                                                modifier = Modifier.clickable { showPlateDetailsDialog = true }
+                                                color = Color.Gray,
+                                                modifier = Modifier.weight(1f)
                                             )
                                             Text(
                                                 text = "Stop",
@@ -3423,17 +3443,30 @@ fun FitTrimmerMainContent(
                                         } else {
                                             "-"
                                         }
-                                        Text(
-                                            text = String.format(
-                                                java.util.Locale.US,
-                                                utils.Localizer.get("plate_status_detected", settings.language),
-                                                viewModel.plateRecordCount,
-                                                viewModel.plateBoxCount,
-                                                timeRange
-                                            ),
-                                            fontSize = 10.sp,
-                                            color = Color(0xFF34C759)
-                                        )
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text(
+                                                text = String.format(
+                                                    java.util.Locale.US,
+                                                    utils.Localizer.get("plate_status_detected", settings.language),
+                                                    viewModel.plateRecordCount,
+                                                    viewModel.plateBoxCount,
+                                                    timeRange
+                                                ),
+                                                fontSize = 10.sp,
+                                                color = Color(0xFF34C759),
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            Text(
+                                                text = "Details",
+                                                fontSize = 10.sp,
+                                                color = Color(0xFF007AFF),
+                                                modifier = Modifier.clickable { showPlateDetailsDialog = true }
+                                            )
+                                        }
                                     } else {
                                         Text(
                                             text = utils.Localizer.get("plate_status_not_scanned", settings.language),

@@ -3,7 +3,7 @@ package fit
 import kotlinx.serialization.Serializable
 
 @Serializable
-data class PlateBox(val x1: Int, val y1: Int, val x2: Int, val y2: Int)
+data class PlateBox(val x1: Int, val y1: Int, val x2: Int, val y2: Int, val trackId: Int = 0)
 
 @Serializable
 data class PlateRecord(val timeMs: Long, val boxes: List<PlateBox>)
@@ -19,6 +19,38 @@ data class VideoPlatesCache(
     val sourceHeight: Int = 0,
     val scanRanges: List<PlateScanRange> = emptyList()
 ) {
+    fun smoothed(alpha: Float = 0.5f): VideoPlatesCache {
+        val sortedRecords = records.sortedBy { it.timeMs }
+        val smoothedRecords = mutableListOf<PlateRecord>()
+        val trackMap = mutableMapOf<Int, PlateBox>()
+        
+        for (record in sortedRecords) {
+            val newBoxes = mutableListOf<PlateBox>()
+            for (box in record.boxes) {
+                if (box.trackId == 0) {
+                    newBoxes.add(box)
+                } else {
+                    val prev = trackMap[box.trackId]
+                    if (prev != null) {
+                        val nx1 = (prev.x1 * (1 - alpha) + box.x1 * alpha).toInt()
+                        val ny1 = (prev.y1 * (1 - alpha) + box.y1 * alpha).toInt()
+                        val nx2 = (prev.x2 * (1 - alpha) + box.x2 * alpha).toInt()
+                        val ny2 = (prev.y2 * (1 - alpha) + box.y2 * alpha).toInt()
+                        val smoothedBox = PlateBox(nx1, ny1, nx2, ny2, box.trackId)
+                        newBoxes.add(smoothedBox)
+                        trackMap[box.trackId] = smoothedBox
+                    } else {
+                        newBoxes.add(box)
+                        trackMap[box.trackId] = box
+                    }
+                }
+            }
+            smoothedRecords.add(PlateRecord(record.timeMs, newBoxes))
+        }
+        
+        return copy(records = smoothedRecords)
+    }
+
     fun coversRange(startSeconds: Double, endSeconds: Double): Boolean {
         if (scanRanges.isEmpty()) return true
         val startMs = (startSeconds * 1000.0).toLong()
@@ -107,19 +139,11 @@ data class VideoPlatesCache(
     ): List<Pair<PlateBox, Float>> {
         val width = if (sourceWidth > 0) sourceWidth else 2704 // fallback to 2.7K width
         
-        // 1. Primary interpolation for adjacent frames
-        if (prev != null && next != null) {
-            if (prev.timeMs == next.timeMs) {
-                return prev.boxes.map { it to 1.0f }
-            }
-            val interval = next.timeMs - prev.timeMs
-            if (interval <= 1500) { // Interpolate if interval is within 1.5 seconds
-                val alpha = (targetTimeMs - prev.timeMs).toFloat() / interval.toFloat()
-                return interpolateBoxes(prev.boxes, next.boxes, alpha, width).map { it to 1.0f }
-            }
-        }
+        // Disable linear interpolation (Lerp) because the interval is typically 0.5s (2fps) to 0.25s (4fps),
+        // and perspective movement of approaching vehicles is highly non-linear. 
+        // Lerping across such large gaps causes bounding boxes to drift significantly off the vehicle.
+        // Instead, we use Nearest Neighbor approach to keep boxes perfectly locked onto the vehicle's detected position.
         
-        // 2. If interpolation is not possible, just use the nearest record within timeBufferMs
         val nearest = listOfNotNull(prev, next).minByOrNull { kotlin.math.abs(it.timeMs - targetTimeMs) }
         if (nearest != null) {
             val dist = kotlin.math.abs(nearest.timeMs - targetTimeMs)
@@ -249,18 +273,20 @@ fun VideoPlatesCache.buildMappedMaskFrames(
             else -> null
         }
 
+        val actualSourceW = sourceWidth.takeIf { it > 0 } ?: fallbackSourceWidth
+        val actualSourceH = sourceHeight.takeIf { it > 0 } ?: fallbackSourceHeight
+
         boxesForTargetTime(targetTimeMs, prev, next, timeBufferMs).mapNotNull { (box, intensity) ->
             val expanded = PlateMaskExpander.expand(
                 box = box,
                 expandRatio = expandRatio,
-                sourceWidth = sourceWidth.takeIf { it > 0 } ?: fallbackSourceWidth,
-                sourceHeight = sourceHeight.takeIf { it > 0 } ?: fallbackSourceHeight
+                sourceWidth = actualSourceW,
+                sourceHeight = actualSourceH
             )
             PlateCoordinateMapper.mapToTarget(
                 box = expanded,
-                cache = this,
-                fallbackSourceWidth = fallbackSourceWidth,
-                fallbackSourceHeight = fallbackSourceHeight,
+                sourceWidth = actualSourceW,
+                sourceHeight = actualSourceH,
                 targetWidth = targetWidth,
                 targetHeight = targetHeight,
                 cropToSquare = cropToSquare,
@@ -280,14 +306,18 @@ object PlateMaskExpander {
         val width = (box.x2 - box.x1).coerceAtLeast(1)
         val height = (box.y2 - box.y1).coerceAtLeast(1)
 
-        val padX = width * expandRatio
-        val padY = height * (expandRatio * 1.5)
+        // Match video-privacy-blur logic: expand from center by 1.35x
+        val scale = 1.35
+        val cx = box.x1 + width / 2.0
+        val cy = box.y1 + height / 2.0
+        val newW = width * scale
+        val newH = height * scale
 
         return PlateBox(
-            x1 = (box.x1 - padX).toInt().coerceIn(0, sourceWidth.coerceAtLeast(1)),
-            y1 = (box.y1 - padY).toInt().coerceIn(0, sourceHeight.coerceAtLeast(1)),
-            x2 = (box.x2 + padX).toInt().coerceIn(0, sourceWidth.coerceAtLeast(1)),
-            y2 = (box.y2 + padY).toInt().coerceIn(0, sourceHeight.coerceAtLeast(1))
+            x1 = (cx - newW / 2.0).toInt().coerceIn(0, sourceWidth.coerceAtLeast(1)),
+            y1 = (cy - newH / 2.0).toInt().coerceIn(0, sourceHeight.coerceAtLeast(1)),
+            x2 = (cx + newW / 2.0).toInt().coerceIn(0, sourceWidth.coerceAtLeast(1)),
+            y2 = (cy + newH / 2.0).toInt().coerceIn(0, sourceHeight.coerceAtLeast(1))
         )
     }
 }
@@ -295,16 +325,15 @@ object PlateMaskExpander {
 object PlateCoordinateMapper {
     fun mapToTarget(
         box: PlateBox,
-        cache: VideoPlatesCache?,
-        fallbackSourceWidth: Int,
-        fallbackSourceHeight: Int,
+        sourceWidth: Int,
+        sourceHeight: Int,
         targetWidth: Float,
         targetHeight: Float,
         cropToSquare: Boolean = false,
         intensity: Float = 1.0f
     ): MappedPlateBox {
-        val sourceWidth = cache?.sourceWidth?.takeIf { it > 0 } ?: fallbackSourceWidth.coerceAtLeast(1)
-        val sourceHeight = cache?.sourceHeight?.takeIf { it > 0 } ?: fallbackSourceHeight.coerceAtLeast(1)
+        val safeSourceW = sourceWidth.coerceAtLeast(1)
+        val safeSourceH = sourceHeight.coerceAtLeast(1)
         
         val x1: Float
         val y1: Float
@@ -312,15 +341,15 @@ object PlateCoordinateMapper {
         val y2: Float
         
         if (cropToSquare) {
-            val scale = targetHeight / sourceHeight.toFloat()
-            val xOffset = (sourceWidth - sourceHeight) / 2f
+            val scale = targetHeight / safeSourceH.toFloat()
+            val xOffset = (safeSourceW - safeSourceH) / 2f
             x1 = (box.x1 - xOffset) * scale
             y1 = box.y1 * scale
             x2 = (box.x2 - xOffset) * scale
             y2 = box.y2 * scale
         } else {
             // Calculate effective drawing area while maintaining aspect ratio (letterboxing)
-            val sourceAspect = sourceWidth.toFloat() / sourceHeight.toFloat()
+            val sourceAspect = safeSourceW.toFloat() / safeSourceH.toFloat()
             val targetAspect = targetWidth / targetHeight
             
             val drawW: Float
@@ -342,8 +371,8 @@ object PlateCoordinateMapper {
                 offsetY = (targetHeight - drawH) / 2f
             }
             
-            val scaleX = drawW / sourceWidth.toFloat()
-            val scaleY = drawH / sourceHeight.toFloat()
+            val scaleX = drawW / safeSourceW.toFloat()
+            val scaleY = drawH / safeSourceH.toFloat()
             
             x1 = (box.x1 * scaleX) + offsetX
             y1 = (box.y1 * scaleY) + offsetY

@@ -66,14 +66,10 @@ class PlateCacheManagerTest {
         assertEquals(1, res1.size)
         assertEquals(box1, res1.first())
 
-        // Linear interpolation at exactly mid-point (alpha = 0.5)
-        // x1: 10 -> 20 => 15
-        // y1: 10 -> 20 => 15
-        // x2: 50 -> 60 => 55
-        // y2: 50 -> 60 => 55
+        // Nearest neighbor at mid-point (1100). Since both are 100ms away, minByOrNull picks the first (1000).
         val res2 = cache.shouldBlurAt(1100, isBlurEnabled = true)
         assertEquals(1, res2.size)
-        assertEquals(PlateBox(15, 15, 55, 55), res2.first())
+        assertEquals(box1, res2.first())
 
         // Boundary limit: 10.4s to 10.8s case where distance is 400ms.
         // If single record exists at 1000, should not blur at 600 (400ms before)
@@ -97,9 +93,8 @@ class PlateCacheManagerTest {
         )
         val mapped = PlateCoordinateMapper.mapToTarget(
             box = PlateBox(1352, 760, 2704, 1520),
-            cache = cache,
-            fallbackSourceWidth = 1920,
-            fallbackSourceHeight = 1080,
+            sourceWidth = cache.sourceWidth,
+            sourceHeight = cache.sourceHeight,
             targetWidth = 1352f,
             targetHeight = 760f
         )
@@ -119,10 +114,14 @@ class PlateCacheManagerTest {
             sourceHeight = 300
         )
 
-        assertEquals(0, expanded.x1)
-        assertEquals(10, expanded.y1)
-        assertEquals(350, expanded.x2)
-        assertEquals(230, expanded.y2)
+        // With 1.35x scaling on 100x40 box centered at (150, 120):
+        // newW = 135, newH = 54
+        // x1 = 150 - 67.5 = 82, y1 = 120 - 27 = 93
+        // x2 = 150 + 67.5 = 217, y2 = 120 + 27 = 147
+        assertEquals(82, expanded.x1)
+        assertEquals(93, expanded.y1)
+        assertEquals(217, expanded.x2)
+        assertEquals(147, expanded.y2)
     }
 
     @Test
@@ -134,10 +133,11 @@ class PlateCacheManagerTest {
             sourceHeight = 300
         )
 
-        assertEquals(80, expanded.x1)
-        assertEquals(88, expanded.y1)
-        assertEquals(220, expanded.x2)
-        assertEquals(152, expanded.y2)
+        // Same as above due to fixed 1.35x scale regardless of expandRatio param
+        assertEquals(82, expanded.x1)
+        assertEquals(93, expanded.y1)
+        assertEquals(217, expanded.x2)
+        assertEquals(147, expanded.y2)
     }
 
     @Test
@@ -165,21 +165,24 @@ class PlateCacheManagerTest {
 
         assertEquals(4, frames.size)
         assertEquals(1, frames[0].size) // 0ms exact
-        assertEquals(1, frames[1].size) // 100ms interpolated
+        assertEquals(1, frames[1].size) // 100ms nearest (0ms box)
         assertEquals(1, frames[2].size) // 200ms exact
-        assertEquals(1, frames[3].size) // 300ms boundary hold
+        assertEquals(1, frames[3].size) // 300ms nearest (200ms box)
 
         val first = frames[0].first()
-        assertEquals(160f, first.x)
-        assertEquals(176f, first.y)
-        assertEquals(280f, first.width)
-        assertEquals(128f, first.height)
+        // Box: 100, 100, 200, 140
+        // Expanded: 82, 93, 217, 147
+        // Mapped (500x300 -> 1000x600, scale=2.0)
+        assertEquals(164f, first.x)
+        assertEquals(186f, first.y)
+        assertEquals(270f, first.width)
+        assertEquals(108f, first.height)
 
-        val interpolated = frames[1].first()
-        assertEquals(180f, interpolated.x)
-        assertEquals(196f, interpolated.y)
-        assertEquals(280f, interpolated.width)
-        assertEquals(128f, interpolated.height)
+        val nearest = frames[1].first()
+        assertEquals(164f, nearest.x)
+        assertEquals(186f, nearest.y)
+        assertEquals(270f, nearest.width)
+        assertEquals(108f, nearest.height)
     }
 
     @Test
@@ -212,8 +215,11 @@ class PlateCacheManagerTest {
         assertEquals(1, frames[2].size)
 
         val first = frames[0].first()
-        assertEquals(160f, first.x)
-        assertEquals(176f, first.y)
+        // Box: 100, 100, 200, 140
+        // Expanded: 82, 93, 217, 147
+        // Mapped (500x300 -> 1000x600, scale=2.0)
+        assertEquals(164f, first.x)
+        assertEquals(186f, first.y)
     }
 
     @Test
@@ -272,13 +278,14 @@ class PlateCacheManagerTest {
             targetHeight = 1520f
         )
 
-        // Interpolation (Lerp) should be blocked due to area mismatch.
-        // Instead, fallback single-sided next-frame block should be outputted as-is (alpha >= 0.5 fallback).
+        // Interpolation (Lerp) is disabled globally. Nearest neighbor is used.
+        // At 100ms, both 0ms and 200ms are 100ms away. minByOrNull picks 0ms record.
         assertEquals(3, frames.size)
         assertEquals(1, frames[1].size) 
         
         val box = frames[1].first()
-        // If Lerp was active, x would be 95f. Since Lerp is blocked, x must be 110f (exact next box expanded).
-        assertEquals(110f, box.x)
+        // Expanded 0ms box: x1=100 -> center=150, width=100. 1.35x scale -> newW=135. x1 = 150 - 67.5 = 82
+        // mapped x = 82 * (2704 / 2704) = 82f
+        assertEquals(82f, box.x)
     }
 }

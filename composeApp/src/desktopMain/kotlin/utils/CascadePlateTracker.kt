@@ -118,7 +118,7 @@ class CascadePlateTracker {
 
                 track.relPlateBox = RelativePlateBox(rx1, ry1, rx2, ry2)
                 track.plateDetectedCount++
-                outputPlates.add(plate)
+                outputPlates.add(plate.copy(trackId = track.id))
                 log("Frame at ${timeMs}ms: Track #${track.id} matched with closest plate at [${plate.x1}, ${plate.y1}, ${plate.x2}, ${plate.y2}] (DistX: $minDistanceX, Count: ${track.plateDetectedCount})")
             } else {
                 // Reconstruct from relative coordinates only if we have confirmed the plate (detected at least 2 times)
@@ -129,7 +129,7 @@ class CascadePlateTracker {
                     val px2 = veh.x1 + (rel.rx2 * vw.toFloat()).toInt()
                     val py2 = veh.y1 + (rel.ry2 * vh.toFloat()).toInt()
 
-                    outputPlates.add(PlateBox(px1, py1, px2, py2))
+                    outputPlates.add(PlateBox(px1, py1, px2, py2, track.id))
                     log("Frame at ${timeMs}ms: Track #${track.id} plate lost. Reconstructed relative box at [$px1, $py1, $px2, $py2] (Confirmed)")
                 } else if (rel != null) {
                     log("Frame at ${timeMs}ms: Track #${track.id} plate lost. Skipped reconstruction as it is unconfirmed (Count: ${track.plateDetectedCount})")

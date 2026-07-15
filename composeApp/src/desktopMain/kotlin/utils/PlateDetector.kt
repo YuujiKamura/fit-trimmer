@@ -393,13 +393,14 @@ class PlateDetector private constructor() : AutoCloseable {
             val vh = veh.y2 - veh.y1
             if (vw < 20 || vh < 10) continue
 
-            val padX = (vw * 0.15).toInt()
-            val padY = (vh * 0.15).toInt()
+            val padX = (vw * 0.25).toInt()
+            val padYTop = (vh * 0.35).toInt() // More padding on top to include headlights/grill context
+            val padYBottom = (vh * 0.25).toInt()
 
             val cropX1 = (veh.x1 - padX).coerceIn(0, imgW - 1)
-            val cropY1 = (veh.y1 - padY).coerceIn(0, imgH - 1)
+            val cropY1 = (veh.y1 - padYTop).coerceIn(0, imgH - 1)
             val cropX2 = (veh.x2 + padX).coerceIn(0, imgW)
-            val cropY2 = (veh.y2 + padY).coerceIn(0, imgH)
+            val cropY2 = (veh.y2 + padYBottom).coerceIn(0, imgH)
 
             val cropW = cropX2 - cropX1
             val cropH = cropY2 - cropY1
@@ -455,12 +456,13 @@ class PlateDetector private constructor() : AutoCloseable {
 
                     val vw = veh.x2 - veh.x1
                     val vh = veh.y2 - veh.y1
-                    val padX = (vw * 0.15).toInt()
-                    val padY = (vh * 0.15).toInt()
+                    val padX = (vw * 0.25).toInt()
+                    val padYTop = (vh * 0.35).toInt()
+                    val padYBottom = (vh * 0.25).toInt()
                     val cropX1 = (veh.x1 - padX).coerceIn(0, image.width - 1)
-                    val cropY1 = (veh.y1 + (vh * 0.3).toInt()).coerceIn(0, image.height - 1)
+                    val cropY1 = (veh.y1 - padYTop).coerceIn(0, image.height - 1)
                     val cropX2 = (veh.x2 + padX).coerceIn(0, image.width)
-                    val cropY2 = (veh.y2 + padY).coerceIn(0, image.height)
+                    val cropY2 = (veh.y2 + padYBottom).coerceIn(0, image.height)
 
                     g2d.color = java.awt.Color.CYAN
                     val dashedStroke = java.awt.BasicStroke(1f, java.awt.BasicStroke.CAP_BUTT, java.awt.BasicStroke.JOIN_MITER, 10f, floatArrayOf(5f), 0f)

@@ -1634,9 +1634,8 @@ class HudRendererTest {
         // 16:9 (3840x2160) -> 1:1 (1080x1080)
         val mapped = PlateCoordinateMapper.mapToTarget(
             box = box,
-            cache = null,
-            fallbackSourceWidth = 3840,
-            fallbackSourceHeight = 2160,
+            sourceWidth = 3840,
+            sourceHeight = 2160,
             targetWidth = 1080f,
             targetHeight = 1080f,
             cropToSquare = true
