@@ -2621,7 +2621,7 @@ fun FitTrimmerMainContent(
                             ControlSlider("MAP SIZE", settings.mapSizeScale, 0.2f, 3.0f, enabled = !isEncoding) { settings = settings.copy(mapSizeScale = it) }
                             ControlSlider("HUD BG ALPHA", settings.hudBgAlpha, 0f, 1f, enabled = !isEncoding) { settings = settings.copy(hudBgAlpha = it) }
                             ControlSlider("MAP ZOOM", settings.mapZoomScale, 0.3f, 0.9f, enabled = !isEncoding) { settings = settings.copy(mapZoomScale = it) }
-                            ControlSlider("MAP LEVEL OFFSET", settings.mapZoomOffset.toFloat(), -3f, 3f, enabled = !isEncoding) { settings = settings.copy(mapZoomOffset = it.roundToInt()) }
+                            ControlSlider("MAP LEVEL OFFSET", settings.mapZoomOffset.toFloat(), -10f, 3f, enabled = !isEncoding) { settings = settings.copy(mapZoomOffset = it.roundToInt()) }
                             ControlSlider("MAP MARKER SIZE", settings.mapMarkerSizeScale, 0.5f, 2.5f, enabled = !isEncoding) { settings = settings.copy(mapMarkerSizeScale = it) }
                             ControlSlider("MAP TEXT SIZE", settings.mapTextSizeScale, 0.5f, 2.5f, enabled = !isEncoding) { settings = settings.copy(mapTextSizeScale = it) }
                             ControlSlider("TEXT SHADOW", settings.textShadowAlpha, 0f, 1f, enabled = !isEncoding) { settings = settings.copy(textShadowAlpha = it) }

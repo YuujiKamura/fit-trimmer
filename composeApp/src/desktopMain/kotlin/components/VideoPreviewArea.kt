@@ -193,7 +193,7 @@ class ComposeHudCanvas(
         val maxLon = meanLon + maxR_local / cosLat
         
         val calculatedZ = calculateBestZoom(minLat, maxLat, minLon, maxLon)
-        val z = (calculatedZ + settings.mapZoomOffset).coerceIn(9, 18)
+        val z = (calculatedZ + settings.mapZoomOffset).coerceIn(5, 18)
         val actualMapType = if (settings.mapType == "auto") {
             when {
                 z >= 14 -> "openstreetmap"

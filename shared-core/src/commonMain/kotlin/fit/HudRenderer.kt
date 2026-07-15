@@ -829,7 +829,7 @@ class HudRenderer(val config: HudConfig) {
             }
 
             // 8.4.5. Mini Route Map in top-right
-            drawMiniMap(canvas, videoPoints, telemetry, isValid, sf)
+            drawMiniMap(canvas, originalPoints, videoPoints, telemetry, isValid, sf)
 
             cy = eGy + graphH + itemSpacing
         } else {
@@ -1328,12 +1328,15 @@ class HudRenderer(val config: HudConfig) {
 
     private fun drawMiniMap(
         canvas: HudCanvas,
+        originalPoints: List<TelemetryPoint>,
         videoPoints: List<TelemetryPoint>,
         telemetry: TelemetryPoint,
         isValid: Boolean,
         sf: Float
     ) {
         // Filter out invalid GPS coordinates (0.0, 0.0)
+        val globalRoutePoints = originalPoints.filter { it.lat != 0.0 || it.lon != 0.0 }
+        if (globalRoutePoints.size < 2) return
         val baseRoutePoints = videoPoints.filter { it.lat != 0.0 || it.lon != 0.0 }
         if (baseRoutePoints.size < 2) return
 
@@ -1377,9 +1380,9 @@ class HudRenderer(val config: HudConfig) {
         }
         canvas.drawPolygon(circlePoints, "#000000", alpha = 0.5f)
 
-        // 3. Coordinate alignment (Path-up projection)
-        val startPt = validRoutePoints.first()
-        val endPt = validRoutePoints.last()
+        // 3. Coordinate alignment (Path-up projection) using global route
+        val startPt = globalRoutePoints.first()
+        val endPt = globalRoutePoints.last()
 
         // Calculate aspect ratio correction cos(lat)
         val meanLat = (startPt.lat + endPt.lat) / 2.0
@@ -1398,14 +1401,14 @@ class HudRenderer(val config: HudConfig) {
         val pathBearing = calculateBearing(startPt, endPt) ?: 0.0
         val effectiveBearing = if (config.fixMapNorthUp) 0.0 else pathBearing
 
-        // 1. Project all points onto local heading-up plane and calculate bounding box
+        // 1. Project all global points onto local heading-up plane and calculate bounding box
         // lx: Rightward component (orthogonal to heading)
         // ly: Upward component (along heading, negated for screen Y coordinates)
         var minX = Double.MAX_VALUE
         var maxX = -Double.MAX_VALUE
         var minY = Double.MAX_VALUE
         var maxY = -Double.MAX_VALUE
-        val localCoords = validRoutePoints.map { pt ->
+        globalRoutePoints.forEach { pt ->
             val px = (pt.lon - startPt.lon) * cosLat
             val py = pt.lat - startPt.lat
             
@@ -1416,7 +1419,6 @@ class HudRenderer(val config: HudConfig) {
             if (lx > maxX) maxX = lx
             if (ly < minY) minY = ly
             if (ly > maxY) maxY = ly
-            lx to ly
         }
 
         val Wl = maxX - minX
@@ -1433,7 +1435,7 @@ class HudRenderer(val config: HudConfig) {
 
         if (isValid && validRoutePoints.isNotEmpty()) {
             canvas.drawMapBackground(
-                videoPoints = validRoutePoints,
+                videoPoints = globalRoutePoints,
                 mcx = mcx,
                 mcy = mcy,
                 R = R,
