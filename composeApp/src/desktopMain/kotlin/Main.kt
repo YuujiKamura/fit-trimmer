@@ -1536,19 +1536,13 @@ object BatchJobRunner {
 
             adjustedStartUtc = job.adjustedStartUtc,
 
-            onProgress = { percent, status ->
-
+            onProgress = { prog, status ->
                 val now = System.currentTimeMillis()
-
-                if (percent >= 100f || now - lastProgressUpdateTime >= 100) {
-
+                if (prog >= 1.0f || now - lastProgressUpdateTime >= 100) {
                     lastProgressUpdateTime = now
-
                     mainScope.launch {
-
-                        phase.progress = percent / 100f
-
-                        viewModel.batchStatusText = "[${jobIdx + 1}/$totalJobs] プレートスキャンを実行中: ${"%.1f".format(java.util.Locale.US, percent)}% ($status)"
+                        phase.progress = prog
+                        viewModel.batchStatusText = "[${jobIdx + 1}/$totalJobs] プレートスキャンを実行中: ${"%.1f".format(java.util.Locale.US, prog * 100)}% ($status)"
 
                         updateOverallJobProgress(job, activePhases)
 
