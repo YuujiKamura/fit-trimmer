@@ -13,6 +13,8 @@ import java.util.Locale
 
 object PlateDetectionManager : fit.PlateDetector {
 
+    val trackingLogs = java.util.concurrent.ConcurrentLinkedQueue<String>()
+
     override suspend fun detect(
         videoPath: String,
         telemetryPoints: List<fit.TelemetryPoint>,
@@ -25,7 +27,9 @@ object PlateDetectionManager : fit.PlateDetector {
         settings: fit.HudSettings,
         scanRanges: List<Pair<Double, Double>>?
     ): VideoPlatesCache? = withContext(Dispatchers.IO) {
+        trackingLogs.clear()
         val ffmpegPath = try { findFfmpegPath() } catch (e: Exception) { "ffmpeg" }
+
         val videoFile = File(videoPath)
         if (!videoFile.exists()) return@withContext null
 

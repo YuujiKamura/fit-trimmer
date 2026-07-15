@@ -24,13 +24,23 @@ class CascadePlateTracker {
     private val iouThreshold = 0.2f
     private val maxMissedTimeMs = 1500L // 1.5 seconds tracking timeout
 
+    private fun log(msg: String) {
+        PlateDetectionManager.trackingLogs.add(msg)
+    }
+
     fun update(
         timeMs: Long,
         detectedVehicles: List<PlateBox>,
         detectedPlates: List<PlateBox>
     ): List<PlateBox> {
         // 1. Clean up stale tracks (timeout)
-        activeTracks.removeAll { timeMs - it.lastSeenTimeMs > maxMissedTimeMs }
+        activeTracks.removeAll { track ->
+            val isStale = timeMs - track.lastSeenTimeMs > maxMissedTimeMs
+            if (isStale) {
+                log("Frame at ${timeMs}ms: Track #${track.id} lost (timeout)")
+            }
+            isStale
+        }
 
         val unmatchedVehicles = detectedVehicles.toMutableList()
         val matchedTracks = mutableSetOf<VehicleTrack>()
@@ -55,6 +65,7 @@ class CascadePlateTracker {
             matchedTracks.add(track)
             matchedVehicles.add(veh)
             unmatchedVehicles.remove(veh)
+            log("Frame at ${timeMs}ms: Track #${track.id} updated (followed vehicle to [${veh.x1}, ${veh.y1}, ${veh.x2}, ${veh.y2}])")
         }
 
         // Create new tracks for unmatched vehicles
@@ -66,6 +77,7 @@ class CascadePlateTracker {
             )
             activeTracks.add(newTrack)
             matchedTracks.add(newTrack)
+            log("Frame at ${timeMs}ms: Track #${newTrack.id} created for vehicle at [${veh.x1}, ${veh.y1}, ${veh.x2}, ${veh.y2}]")
         }
 
         // 3. Associate detected plates with active vehicle tracks
@@ -90,6 +102,7 @@ class CascadePlateTracker {
 
                 track.relPlateBox = RelativePlateBox(rx1, ry1, rx2, ry2)
                 outputPlates.add(plate)
+                log("Frame at ${timeMs}ms: Track #${track.id} matched with plate at [${plate.x1}, ${plate.y1}, ${plate.x2}, ${plate.y2}] (Relative ratios set)")
             } else {
                 // Reconstruct from relative coordinates if we have a cached relative position
                 val rel = track.relPlateBox
@@ -100,12 +113,16 @@ class CascadePlateTracker {
                     val py2 = veh.y1 + (rel.ry2 * vh.toFloat()).toInt()
 
                     outputPlates.add(PlateBox(px1, py1, px2, py2))
+                    log("Frame at ${timeMs}ms: Track #${track.id} plate lost. Reconstructed relative box at [$px1, $py1, $px2, $py2]")
                 }
             }
         }
 
         // Add any remaining unassociated plates directly to preserve safety
-        outputPlates.addAll(unmatchedPlates)
+        for (plate in unmatchedPlates) {
+            outputPlates.add(plate)
+            log("Frame at ${timeMs}ms: Unassociated plate detected directly at [${plate.x1}, ${plate.y1}, ${plate.x2}, ${plate.y2}]")
+        }
 
         return outputPlates.distinct()
     }

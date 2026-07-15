@@ -116,6 +116,7 @@ fun FitTrimmerMainContent(
     var tempSelectedLanguage by remember { mutableStateOf("en") }
     var shouldResumeNextEncode by remember { mutableStateOf(false) }
     var showResumeDialog by remember { mutableStateOf(false) }
+    var showPlateDetailsDialog by remember { mutableStateOf(false) }
     var showSaveDbDialog by remember { mutableStateOf(false) }
     var saveDbActivityName by remember { mutableStateOf("") }
     var pendingLoadActivity by remember { mutableStateOf<utils.DbActivity?>(null) }
@@ -3403,6 +3404,12 @@ fun FitTrimmerMainContent(
                                                 color = Color.Gray
                                             )
                                             Text(
+                                                text = "Details",
+                                                fontSize = 10.sp,
+                                                color = Color(0xFF007AFF),
+                                                modifier = Modifier.clickable { showPlateDetailsDialog = true }
+                                            )
+                                            Text(
                                                 text = "Stop",
                                                 fontSize = 10.sp,
                                                 color = Color(0xFFFF9500),
@@ -4955,6 +4962,13 @@ fun FitTrimmerMainContent(
                         playerState.seekTo(ratio * 1000f)
                         videoCurrentTimeMs = targetMs
                     }
+                )
+            }
+
+            if (showPlateDetailsDialog) {
+                components.PlateTrackingLogsDialog(
+                    logs = viewModel.plateDetectionLogs,
+                    onClose = { showPlateDetailsDialog = false }
                 )
             }
 

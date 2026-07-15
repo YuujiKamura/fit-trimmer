@@ -275,6 +275,8 @@ class AppViewModel(
 
     var plateDetectionProgress by mutableStateOf("")
 
+    val plateDetectionLogs = androidx.compose.runtime.mutableStateListOf<String>()
+
     var plateDetectionError by mutableStateOf<String?>(null)
 
     var plateDetectionMaxSpeedKmh by mutableStateOf(fit.HudSettings().plateMaxSpeedKmh)
@@ -427,6 +429,8 @@ class AppViewModel(
 
         plateDetectionError = null
 
+        plateDetectionLogs.clear()
+
 
 
         plateDetectionJob = coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
@@ -449,6 +453,13 @@ class AppViewModel(
                         val suffix = if (telemetryPoints.isNotEmpty() && videoStartUtc.isNotEmpty()) "" else " (No Telemetry)"
                         coroutineScope.launch(kotlinx.coroutines.Dispatchers.Main) {
                             plateDetectionProgress = String.format(java.util.Locale.US, "%.1f%%", progress * 100f) + " ($status)" + suffix
+                            
+                            // Drain and accumulate tracking logs from CascadePlateTracker
+                            var logMsg = utils.PlateDetectionManager.trackingLogs.poll()
+                            while (logMsg != null) {
+                                plateDetectionLogs.add(logMsg)
+                                logMsg = utils.PlateDetectionManager.trackingLogs.poll()
+                            }
                         }
                     },
                     onCancel = { plateDetectionStopRequested || !isActive },
