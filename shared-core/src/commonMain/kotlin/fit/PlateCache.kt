@@ -277,36 +277,15 @@ object PlateCoordinateMapper {
             x2 = (box.x2 - xOffset) * scale
             y2 = box.y2 * scale
         } else {
-            // Calculate effective drawing area while maintaining aspect ratio (letterboxing)
-            val sourceAspect = safeSourceW.toFloat() / safeSourceH.toFloat()
-            val targetAspect = targetWidth / targetHeight
+            // FFmpeg's scale=W:H filter stretches the video ignoring aspect ratio.
+            // We must map the coordinates using direct stretch to match exactly.
+            val scaleX = targetWidth / safeSourceW.toFloat()
+            val scaleY = targetHeight / safeSourceH.toFloat()
             
-            val drawW: Float
-            val drawH: Float
-            val offsetX: Float
-            val offsetY: Float
-            
-            if (targetAspect > sourceAspect) {
-                // Target is wider -> pillarbox (black bars on left/right)
-                drawH = targetHeight
-                drawW = targetHeight * sourceAspect
-                offsetX = (targetWidth - drawW) / 2f
-                offsetY = 0f
-            } else {
-                // Target is taller -> letterbox (black bars on top/bottom)
-                drawW = targetWidth
-                drawH = targetWidth / sourceAspect
-                offsetX = 0f
-                offsetY = (targetHeight - drawH) / 2f
-            }
-            
-            val scaleX = drawW / safeSourceW.toFloat()
-            val scaleY = drawH / safeSourceH.toFloat()
-            
-            x1 = (box.x1 * scaleX) + offsetX
-            y1 = (box.y1 * scaleY) + offsetY
-            x2 = (box.x2 * scaleX) + offsetX
-            y2 = (box.y2 * scaleY) + offsetY
+            x1 = box.x1 * scaleX
+            y1 = box.y1 * scaleY
+            x2 = box.x2 * scaleX
+            y2 = box.y2 * scaleY
         }
         
         return MappedPlateBox(
