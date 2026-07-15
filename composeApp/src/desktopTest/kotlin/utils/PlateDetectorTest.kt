@@ -1734,6 +1734,144 @@ class PlateDetectorTest {
         }
     }
 
+    @Test
+    fun testDebugCascadeCoordinates() {
+        val stream = javaClass.classLoader.getResourceAsStream("test_plate_screenshot.png")
+        kotlin.test.assertNotNull(stream, "test_plate_screenshot.png resource not found in classpath")
+        
+        val image = ImageIO.read(stream)
+        stream.close()
+
+        val debugDir = File("temp_work/coordinate_debug")
+        if (debugDir.exists()) debugDir.deleteRecursively()
+        debugDir.mkdirs()
+
+        val detector = PlateDetector.getInstance()
+
+        // 1. Vehicle detection
+        val vehicles = detector.detect(image, confThreshold = 0.35f, maskMode = "wide")
+        println("STEP 1: Found ${vehicles.size} vehicles in full image")
+
+        val fullDebugImg = BufferedImage(image.width, image.height, BufferedImage.TYPE_3BYTE_BGR)
+        val gFull = fullDebugImg.createGraphics()
+        gFull.drawImage(image, 0, 0, null)
+
+        for ((idx, veh) in vehicles.withIndex()) {
+            // Draw vehicle on full image (Blue)
+            gFull.color = java.awt.Color.BLUE
+            gFull.stroke = java.awt.BasicStroke(3f)
+            gFull.drawRect(veh.x1, veh.y1, veh.x2 - veh.x1, veh.y2 - veh.y1)
+            gFull.drawString("VEHICLE #$idx", veh.x1 + 5, veh.y1 + 15)
+
+            // Crop area
+            val vw = veh.x2 - veh.x1
+            val vh = veh.y2 - veh.y1
+            val padX = (vw * 0.15).toInt()
+            val padY = (vh * 0.15).toInt()
+            val cropX1 = (veh.x1 - padX).coerceIn(0, image.width - 1)
+            val cropY1 = (veh.y1 + (vh * 0.3).toInt()).coerceIn(0, image.height - 1)
+            val cropX2 = (veh.x2 + padX).coerceIn(0, image.width)
+            val cropY2 = (veh.y2 + padY).coerceIn(0, image.height)
+
+            val cropW = cropX2 - cropX1
+            val cropH = cropY2 - cropY1
+            if (cropW <= 10 || cropH <= 5) continue
+
+            // Save cropped raw image
+            val croppedImg = image.getSubimage(cropX1, cropY1, cropW, cropH)
+            val cropFile = File(debugDir, "vehicle_${idx}_crop.png")
+            ImageIO.write(croppedImg, "png", cropFile)
+            println("STEP 2: Saved crop for vehicle #$idx to file:///${cropFile.absolutePath.replace("\\", "/")}")
+
+            // Run plate detection on cropped image
+            val platesInCrop = detector.detect(
+                image = croppedImg,
+                confThreshold = 0.25f,
+                maskMode = "plate_crop"
+            )
+            println("STEP 3: Found ${platesInCrop.size} plates inside crop for vehicle #$idx")
+
+            // Draw plate detections on the cropped image
+            val cropDebugImg = BufferedImage(cropW, cropH, BufferedImage.TYPE_3BYTE_BGR)
+            val gCrop = cropDebugImg.createGraphics()
+            gCrop.drawImage(croppedImg, 0, 0, null)
+            gCrop.color = java.awt.Color.GREEN
+            gCrop.stroke = java.awt.BasicStroke(2f)
+
+            for ((pIdx, plate) in platesInCrop.withIndex()) {
+                gCrop.drawRect(plate.x1, plate.y1, plate.x2 - plate.x1, plate.y2 - plate.y1)
+                gCrop.drawString("PLATE #$pIdx", plate.x1 + 2, plate.y1 - 4)
+                println("  - Crop-relative Plate #$pIdx: [x1=${plate.x1}, y1=${plate.y1}, x2=${plate.x2}, y2=${plate.y2}]")
+
+                // Map back to full coordinates
+                val fx1 = cropX1 + plate.x1
+                val fy1 = cropY1 + plate.y1
+                val fx2 = cropX1 + plate.x2
+                val fy2 = cropY1 + plate.y2
+                println("  - Mapped-to-Full Plate #$pIdx: [x1=$fx1, y1=$fy1, x2=$fx2, y2=$fy2]")
+
+                // Draw on full image (Red)
+                gFull.color = java.awt.Color.RED
+                gFull.stroke = java.awt.BasicStroke(3f)
+                gFull.drawRect(fx1, fy1, fx2 - fx1, fy2 - fy1)
+                gFull.drawString("MAPPED #$idx-$pIdx", fx1 + 2, fy2 + 12)
+            }
+            gCrop.dispose()
+            
+            val cropDebugFile = File(debugDir, "vehicle_${idx}_crop_detected.png")
+            ImageIO.write(cropDebugImg, "png", cropDebugFile)
+            println("Saved crop detection visual validation to file:///${cropDebugFile.absolutePath.replace("\\", "/")}")
+        }
+        gFull.dispose()
+
+        val fullDebugFile = File(debugDir, "full_mapped.png")
+        ImageIO.write(fullDebugImg, "png", fullDebugFile)
+        println("STEP 4: Saved full mapped visual validation to file:///${fullDebugFile.absolutePath.replace("\\", "/")}")
+    }
+
+    @Test
+    fun testValidateNoiseRemoval() {
+        val stream = javaClass.classLoader.getResourceAsStream("test_plate_screenshot.png")
+        kotlin.test.assertNotNull(stream, "test_plate_screenshot.png resource not found")
+        val image = ImageIO.read(stream)
+        stream.close()
+
+        val detector = PlateDetector.getInstance()
+        val tracker = CascadePlateTracker()
+
+        // Run cascaded detection which internally calls tracker.update
+        val resolvedPlates = detector.detectCascaded(image, confThreshold = 0.25f, tracker = tracker, timeMs = 1000L)
+
+        val outImg = BufferedImage(image.width, image.height, BufferedImage.TYPE_3BYTE_BGR)
+        val g = outImg.createGraphics()
+        g.drawImage(image, 0, 0, null)
+
+        // Draw vehicle bounds (Blue)
+        val vehicles = detector.detect(image, confThreshold = 0.35f, maskMode = "wide")
+        g.color = java.awt.Color.BLUE
+        g.stroke = java.awt.BasicStroke(3f)
+        for (veh in vehicles) {
+            g.drawRect(veh.x1, veh.y1, veh.x2 - veh.x1, veh.y2 - veh.y1)
+        }
+
+        // Draw final resolved plates (Red)
+        g.color = java.awt.Color.RED
+        g.stroke = java.awt.BasicStroke(4f)
+        for (plate in resolvedPlates) {
+            g.drawRect(plate.x1, plate.y1, plate.x2 - plate.x1, plate.y2 - plate.y1)
+        }
+        g.dispose()
+
+        val outFile = File("temp_work/validation_result.png")
+        ImageIO.write(outImg, "png", outFile)
+        println("Saved validation result to: file:///${outFile.absolutePath.replace("\\", "/")}")
+
+        // Assert that the fake plate (which was around x=1826, y=1007) is NOT in the resolvedPlates
+        val hasFakePlate = resolvedPlates.any { it.x1 < 2000 }
+        kotlin.test.assertFalse(hasFakePlate, "The top-left background noise plate should be discarded by the tracker")
+        kotlin.test.assertEquals(1, resolvedPlates.size, "Only the real bus plate should be outputted")
+    }
+
     private class SGObserver : java.awt.image.ImageObserver {
         override fun imageUpdate(img: java.awt.Image?, infoflags: Int, x: Int, y: Int, width: Int, height: Int): Boolean {
             return false

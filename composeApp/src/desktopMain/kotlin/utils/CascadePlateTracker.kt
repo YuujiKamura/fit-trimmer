@@ -90,10 +90,25 @@ class CascadePlateTracker {
             val vw = (veh.x2 - veh.x1).coerceAtLeast(1)
             val vh = (veh.y2 - veh.y1).coerceAtLeast(1)
 
-            // Find plate belonging to this vehicle
-            val plateIndex = unmatchedPlates.indexOfFirst { isPlateInsideVehicle(it, veh) }
-            if (plateIndex != -1) {
-                val plate = unmatchedPlates.removeAt(plateIndex)
+            // Find the best plate candidate belonging to this vehicle (closest to vehicle horizontal center)
+            val vehicleCenterX = (veh.x1 + veh.x2) / 2
+            var bestPlateIndex = -1
+            var minDistanceX = Int.MAX_VALUE
+
+            for (pIdx in unmatchedPlates.indices) {
+                val plate = unmatchedPlates[pIdx]
+                if (isPlateInsideVehicle(plate, veh)) {
+                    val plateCenterX = (plate.x1 + plate.x2) / 2
+                    val distX = kotlin.math.abs(plateCenterX - vehicleCenterX)
+                    if (distX < minDistanceX) {
+                        minDistanceX = distX
+                        bestPlateIndex = pIdx
+                    }
+                }
+            }
+
+            if (bestPlateIndex != -1) {
+                val plate = unmatchedPlates.removeAt(bestPlateIndex)
                 
                 // Calculate relative plate box ratios
                 val rx1 = (plate.x1 - veh.x1).toFloat() / vw.toFloat()
@@ -104,7 +119,7 @@ class CascadePlateTracker {
                 track.relPlateBox = RelativePlateBox(rx1, ry1, rx2, ry2)
                 track.plateDetectedCount++
                 outputPlates.add(plate)
-                log("Frame at ${timeMs}ms: Track #${track.id} matched with plate at [${plate.x1}, ${plate.y1}, ${plate.x2}, ${plate.y2}] (Count: ${track.plateDetectedCount})")
+                log("Frame at ${timeMs}ms: Track #${track.id} matched with closest plate at [${plate.x1}, ${plate.y1}, ${plate.x2}, ${plate.y2}] (DistX: $minDistanceX, Count: ${track.plateDetectedCount})")
             } else {
                 // Reconstruct from relative coordinates only if we have confirmed the plate (detected at least 2 times)
                 val rel = track.relPlateBox
@@ -122,10 +137,11 @@ class CascadePlateTracker {
             }
         }
 
-        // Add any remaining unassociated plates directly to preserve safety
+        // DO NOT add unassociated plates directly in Cascade Tracking!
+        // These are noise detections from the cropped background (e.g. roadside posts, trees, or side mirrors).
+        // If a plate is real, it must associate with an active vehicle track.
         for (plate in unmatchedPlates) {
-            outputPlates.add(plate)
-            log("Frame at ${timeMs}ms: Unassociated plate detected directly at [${plate.x1}, ${plate.y1}, ${plate.x2}, ${plate.y2}]")
+            log("Frame at ${timeMs}ms: Discarded unassociated noise plate at [${plate.x1}, ${plate.y1}, ${plate.x2}, ${plate.y2}]")
         }
 
         return outputPlates.distinct()
@@ -148,10 +164,18 @@ class CascadePlateTracker {
         val px = (plate.x1 + plate.x2) / 2
         val py = (plate.y1 + plate.y2) / 2
 
+        val vw = vehicle.x2 - vehicle.x1
         val vh = vehicle.y2 - vehicle.y1
+
+        // Plate must be strictly inside the horizontal bounds of the vehicle
         val isInsideX = px in vehicle.x1..vehicle.x2
-        // Plate is typically in the bottom 60% of the vehicle area
-        val isInsideY = py in (vehicle.y1 + (vh * 0.4f).toInt())..vehicle.y2
+
+        // Plate is typically in the bottom 60% of the vehicle area,
+        // and we allow it to extend up to 10% of vehicle height below the bumper
+        val yMin = vehicle.y1 + (vh * 0.4f).toInt()
+        val yMax = vehicle.y2 + (vh * 0.1f).toInt()
+        val isInsideY = py in yMin..yMax
+
         return isInsideX && isInsideY
     }
 }
