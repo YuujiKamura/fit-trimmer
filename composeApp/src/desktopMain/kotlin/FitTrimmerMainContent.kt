@@ -3335,7 +3335,6 @@ fun FitTrimmerMainContent(
                                         )
                                     }
                                 }
-                                }
                             }
                             } // End of if (false) for omitted masking UI
                             Spacer(Modifier.height(4.dp))
