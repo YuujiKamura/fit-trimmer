@@ -682,7 +682,7 @@ fun BatchQueueDialog(
 
                                         
 
-                                        if (job.settings.blurLicensePlates && job.fitPath.isNotEmpty()) {
+                                        if (false /* job.settings.blurLicensePlates && job.fitPath.isNotEmpty() */) {
 
                                             DialogBadge(text = "プレートぼかし", backgroundColor = Color(0xFFE2F9E9), textColor = Color(0xFF34C759))
 
@@ -894,7 +894,7 @@ fun BatchQueueDialog(
 
                                         ) {
 
-                                            job.phases.forEach { phase ->
+                                            job.phases.filter { it.type != BatchJobPhaseType.PLATE_SCAN }.forEach { phase ->
 
                                                 val canEditPhase = canEditJob && phase.type != BatchJobPhaseType.FAST_TRIM
 
