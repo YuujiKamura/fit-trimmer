@@ -37,6 +37,7 @@ data class HudConfig(
     val bodyWeightKg: Double = 0.0,
     val customCaptions: List<CustomCaptionSegment> = emptyList(),
     val trimStartSeconds: Double = 0.0,
+    val trimEndSeconds: Double? = null,
     val mapSizeScale: Float = 1.0f,
     val mapType: String = "auto",
     val mapPosition: String = "top_right",
@@ -97,8 +98,6 @@ class HudRenderer(val config: HudConfig) {
     private var hrAccumPhase: Double = 0.0
     private var powerAccumPhase: Double = 0.0
     private val speedThetaHistory = mutableListOf<Double>()
-
-
 
     // Cache fields for elevation points to avoid recalculation/reallocation every frame
     private var cachedOriginalPoints: List<TelemetryPoint>? = null

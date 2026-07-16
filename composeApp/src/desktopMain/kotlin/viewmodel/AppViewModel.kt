@@ -1596,37 +1596,12 @@ class AppViewModel(
 
 
     val trimmedTelemetryPoints by derivedStateOf {
-
-        val videoStart = videoStartInstant
-
-        if (telemetryPoints.isNotEmpty() && videoStart != null) {
-
-            try {
-
-                val fitEpoch = java.time.Instant.parse("1989-12-31T00:00:00Z").epochSecond
-
-                val videoStartFit = videoStart.epochSecond - fitEpoch
-
-                val trimStartFit = videoStartFit + trimStartSeconds
-
-                val trimEndFit = videoStartFit + trimEndSeconds
-
-                val filtered = telemetryPoints.filter { it.timestamp in trimStartFit..trimEndFit }
-
-                if (filtered.isNotEmpty()) filtered else telemetryPoints
-
-            } catch (e: Exception) {
-
-                telemetryPoints
-
-            }
-
-        } else {
-
-            telemetryPoints
-
-        }
-
+        fit.TelemetryTrimmer.trim(
+            allPoints = telemetryPoints,
+            videoStartUtc = videoStartUtc,
+            trimStartSeconds = trimStartSeconds,
+            trimEndSeconds = trimEndSeconds
+        )
     }
 
 

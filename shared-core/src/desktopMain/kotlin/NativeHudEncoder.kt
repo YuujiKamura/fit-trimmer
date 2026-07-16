@@ -1189,7 +1189,6 @@ class NativeHudEncoder(
         val startTime = try { Instant.parse(startUtc) } catch(e: Exception) { Instant.EPOCH }
         val fitEpoch = Instant.parse("1989-12-31T00:00:00Z").epochSecond
 
-        val startUtcSeconds = startTime.toEpochMilli() / 1000.0
         val hudTelemetryStart = hudTelemetryStartSeconds
             ?.coerceIn(0.0, videoDurationSeconds.toDouble())
             ?: actualTrimStart
@@ -1197,10 +1196,13 @@ class NativeHudEncoder(
             ?.takeIf { it > hudTelemetryStart }
             ?.coerceIn(hudTelemetryStart, videoDurationSeconds.toDouble())
             ?: actualTrimEnd
-        val videoStartFit = startUtcSeconds + hudTelemetryStart - fitEpoch
-        val videoEndFit = startUtcSeconds + hudTelemetryEnd - fitEpoch
-        val trimmedTelemetryRaw = telemetry.filter { it.timestamp in videoStartFit..videoEndFit }
-        val trimmedTelemetry = if (trimmedTelemetryRaw.isNotEmpty()) trimmedTelemetryRaw else telemetry
+            
+        val trimmedTelemetry = fit.TelemetryTrimmer.trim(
+            allPoints = telemetry,
+            videoStartUtc = startUtc,
+            trimStartSeconds = hudTelemetryStart,
+            trimEndSeconds = hudTelemetryEnd
+        )
 
         val config = HudConfig(
             valSize = settings.valSize, tightness = settings.tightness, spacing = settings.spacing,
