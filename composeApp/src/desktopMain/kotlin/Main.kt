@@ -3573,13 +3573,39 @@ fun runCli(args: Array<String>) {
 
     }
 
-    println("Loaded settings: $settings")
+    // Enforce source resolution and increase inference interval to 15 (0.5s) to avoid CPU thermal throttling
+    val finalSettings = settings.copy(exportResolution = "Source", plateInferenceInterval = 15)
+    println("Loaded settings: $finalSettings")
 
     kotlinx.coroutines.runBlocking {
 
         try {
+            val safeVideo = video!!
+            val safeFit = fit!!
+            if (!PlateCacheManager.cacheExists(safeVideo)) {
+                println("No plate cache found. Running plate detection automatically...")
+                val fitBytes = File(safeFit).readBytes()
+                val parser = FitParser(fitBytes)
+                parser.parse()
+                val telemetryPoints = parser.getTelemetry()
+                
+                utils.PlateDetectionManager.detect(
+                    videoPath = safeVideo,
+                    telemetryPoints = telemetryPoints,
+                    adjustedStartUtc = startUtc!!,
+                    onProgress = { progress, status ->
+                        print("\r[Plate Detection] ${(progress * 100).toInt()}% | $status")
+                    },
+                    onCancel = { false },
+                    onPartialResult = {},
+                    maxRecords = if (duration > 0) (duration * 30) else null,
+                    saveCache = true,
+                    settings = finalSettings
+                )
+                println()
+            }
 
-            val encoder = NativeHudEncoder(settings,
+            val encoder = NativeHudEncoder(finalSettings,
 
                 onProgress = { prog, status ->
 
@@ -3589,7 +3615,7 @@ fun runCli(args: Array<String>) {
 
             )
 
-            encoder.encode(fit, video, output, startUtc,
+            encoder.encode(safeFit, safeVideo, output!!, startUtc!!,
 
                 maxDurationSeconds = duration,
 

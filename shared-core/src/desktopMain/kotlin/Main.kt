@@ -352,7 +352,11 @@ fun main(args: Array<String>) {
         println("SYNC START (UTC): $startUtc")
         println("--------------------------------------------------")
         
-        val settings = HudSettings(blurLicensePlates = true)
+        
+        val settings = HudSettings(blurLicensePlates = true, exportResolution = "Source")
+        
+
+
         val encoder = NativeHudEncoder(settings, onProgress = { progress, status ->
             reportProgress(progress, status, true)
         })

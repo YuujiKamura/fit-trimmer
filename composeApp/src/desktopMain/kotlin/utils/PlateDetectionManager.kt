@@ -124,6 +124,8 @@ object PlateDetectionManager : fit.PlateDetector {
         
         val img = BufferedImage(scanWidth, scanHeight, BufferedImage.TYPE_3BYTE_BGR)
         val imgData = (img.raster.dataBuffer as java.awt.image.DataBufferByte).data
+        
+        var lastDetectedScaledBoxes = emptyList<fit.PlateBox>()
 
         for ((startSec, endSec) in normalizedScanRanges) {
             if (onCancel()) break
@@ -176,36 +178,43 @@ object PlateDetectionManager : fit.PlateDetector {
                         }
                     } else {
                         val isCascadeMode = false
-                        val detectedBoxes = if (isCascadeMode) {
-                            detector.detectCascaded(
-                                image = img,
-                                confThreshold = 0.25f,
-                                detectPedestrians = settings.detectPedestrians,
-                                tracker = tracker,
-                                timeMs = timeMs
-                            )
-                        } else {
-                            // If it's "plate" mode, we use direct fast mode. 
-                            val internalMaskMode = "plate_direct"
-                            detector.detect(
-                                image = img,
-                                confThreshold = 0.25f,
-                                detectPedestrians = settings.detectPedestrians,
-                                maskMode = internalMaskMode
-                            )
-                        }
-                        if (detectedBoxes.isNotEmpty()) {
-                            val scaleX = videoWidth.toFloat() / scanWidth.toFloat()
-                            val scaleY = videoHeight.toFloat() / scanHeight.toFloat()
-                            val scaledBoxes = detectedBoxes.map { box ->
-                                fit.PlateBox(
-                                    x1 = (box.x1 * scaleX).toInt(),
-                                    y1 = (box.y1 * scaleY).toInt(),
-                                    x2 = (box.x2 * scaleX).toInt(),
-                                    y2 = (box.y2 * scaleY).toInt()
+                        if (i % settings.plateInferenceInterval == 0) {
+                            val detectedBoxes = if (isCascadeMode) {
+                                detector.detectCascaded(
+                                    image = img,
+                                    confThreshold = 0.25f,
+                                    detectPedestrians = settings.detectPedestrians,
+                                    tracker = tracker,
+                                    timeMs = timeMs
+                                )
+                            } else {
+                                // If it's "plate" mode, we use direct fast mode. 
+                                val internalMaskMode = "plate_direct"
+                                detector.detect(
+                                    image = img,
+                                    confThreshold = 0.25f,
+                                    detectPedestrians = settings.detectPedestrians,
+                                    maskMode = internalMaskMode
                                 )
                             }
-                            val filteredBoxes = filterBoxesForMaskSize(scaledBoxes, videoHeight, settings)
+                            if (detectedBoxes.isNotEmpty()) {
+                                val scaleX = videoWidth.toFloat() / scanWidth.toFloat()
+                                val scaleY = videoHeight.toFloat() / scanHeight.toFloat()
+                                lastDetectedScaledBoxes = detectedBoxes.map { box ->
+                                    fit.PlateBox(
+                                        x1 = (box.x1 * scaleX).toInt(),
+                                        y1 = (box.y1 * scaleY).toInt(),
+                                        x2 = (box.x2 * scaleX).toInt(),
+                                        y2 = (box.y2 * scaleY).toInt()
+                                    )
+                                }
+                            } else {
+                                lastDetectedScaledBoxes = emptyList()
+                            }
+                        }
+
+                        if (lastDetectedScaledBoxes.isNotEmpty()) {
+                            val filteredBoxes = filterBoxesForMaskSize(lastDetectedScaledBoxes, videoHeight, settings)
                             if (filteredBoxes.isNotEmpty()) {
                                 val mergedBoxes = mergeOverlappingBoxes(filteredBoxes)
                                 records.add(PlateRecord(timeMs, mergedBoxes))
