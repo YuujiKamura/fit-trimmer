@@ -1920,7 +1920,7 @@ object BatchJobRunner {
 
             skipConcat = skipConcat,
             mergeOutputFile = mergeOutputFile,
-            hudTelemetryRange = mergeOutputFile?.let { job.trimStartSeconds to job.trimEndSeconds }
+            hudTelemetryRange = job.trimStartSeconds to job.trimEndSeconds
 
         )
 
