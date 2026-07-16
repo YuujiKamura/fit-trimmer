@@ -56,6 +56,11 @@ object HudEncodePipeline {
             return PlateCacheManager.loadCache(videoPath)
         }
 
+        // TEMP: Disable automatic pre-scanning during GUI encode as requested by user.
+        // Inference on CPU is currently too slow, so we only use existing caches.
+        return PlateCacheManager.loadCache(videoPath)
+
+        /*
         val requestedRanges = ranges.filter { it.second > it.first }
         val existingCache = PlateCacheManager.loadCache(videoPath)
         if (existingCache != null && (requestedRanges.isEmpty() || existingCache.coversRanges(requestedRanges))) {
@@ -85,6 +90,7 @@ object HudEncodePipeline {
         PlateCacheManager.saveCache(videoPath, mergedCache)
         onProgress(0f, "Plate scan complete. Starting encode...")
         return mergedCache
+        */
     }
     suspend fun execute(
         s: HudSettings,
