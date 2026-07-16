@@ -19,36 +19,61 @@ data class VideoPlatesCache(
     val sourceHeight: Int = 0,
     val scanRanges: List<PlateScanRange> = emptyList()
 ) {
-    fun smoothed(alpha: Float = 0.5f): VideoPlatesCache {
-        val sortedRecords = records.sortedBy { it.timeMs }
-        val smoothedRecords = mutableListOf<PlateRecord>()
-        val trackMap = mutableMapOf<Int, PlateBox>()
+    fun filledGaps(holdFrames: Int = 10, iouThreshold: Float = 0.1f): VideoPlatesCache {
+        if (records.isEmpty()) return this
         
-        for (record in sortedRecords) {
-            val newBoxes = mutableListOf<PlateBox>()
-            for (box in record.boxes) {
-                if (box.trackId == 0) {
-                    newBoxes.add(box)
-                } else {
-                    val prev = trackMap[box.trackId]
-                    if (prev != null) {
-                        val nx1 = (prev.x1 * (1 - alpha) + box.x1 * alpha).toInt()
-                        val ny1 = (prev.y1 * (1 - alpha) + box.y1 * alpha).toInt()
-                        val nx2 = (prev.x2 * (1 - alpha) + box.x2 * alpha).toInt()
-                        val ny2 = (prev.y2 * (1 - alpha) + box.y2 * alpha).toInt()
-                        val smoothedBox = PlateBox(nx1, ny1, nx2, ny2, box.trackId)
-                        newBoxes.add(smoothedBox)
-                        trackMap[box.trackId] = smoothedBox
-                    } else {
-                        newBoxes.add(box)
-                        trackMap[box.trackId] = box
+        val sortedRecords = records.sortedBy { it.timeMs }
+        val mutableBoxesMap = sortedRecords.associate { it.timeMs to it.boxes.toMutableList() }
+        
+        // 順行で操作した後に、歯抜けを探す処理
+        for (i in 0 until sortedRecords.size) {
+            val currentRecord = sortedRecords[i]
+            val currentBoxes = mutableBoxesMap[currentRecord.timeMs] ?: continue
+            
+            // 過去のフレームを遡って問い合わせる (最大 holdFrames 回)
+            for (k in 1..holdFrames) {
+                val pastOlderIdx = i - k - 1
+                val pastNewerIdx = i - k
+                
+                if (pastOlderIdx < 0) break
+                
+                val boxesOlder = sortedRecords[pastOlderIdx].boxes // 是であるべき
+                val boxesNewer = sortedRecords[pastNewerIdx].boxes // 否であるべき
+                
+                for (boxOld in boxesOlder) {
+                    // 連続2フレームを比較し、否是の組み合わせを探す
+                    val hasOverlapInNewer = boxesNewer.any { calculateIoU(it, boxOld) > iouThreshold }
+                    if (!hasOverlapInNewer) {
+                        // 否是の組み合わせ（消失）を発見。現在フレームにその座標を補完する。
+                        // ただし、現在フレームにすでに重なるものが無い場合のみ。
+                        val hasOverlapInCurrent = currentBoxes.any { calculateIoU(it, boxOld) > iouThreshold }
+                        if (!hasOverlapInCurrent) {
+                            currentBoxes.add(boxOld)
+                        }
                     }
                 }
             }
-            smoothedRecords.add(PlateRecord(record.timeMs, newBoxes))
         }
         
-        return copy(records = smoothedRecords)
+        val finalRecords = sortedRecords.map { PlateRecord(it.timeMs, mutableBoxesMap[it.timeMs]?.toList() ?: emptyList()) }
+        return copy(records = finalRecords)
+    }
+
+    private fun calculateIoU(a: PlateBox, b: PlateBox): Float {
+        val interX1 = maxOf(a.x1, b.x1)
+        val interY1 = maxOf(a.y1, b.y1)
+        val interX2 = minOf(a.x2, b.x2)
+        val interY2 = minOf(a.y2, b.y2)
+        
+        val interW = maxOf(0, interX2 - interX1)
+        val interH = maxOf(0, interY2 - interY1)
+        val interArea = interW * interH
+        
+        val areaA = (a.x2 - a.x1) * (a.y2 - a.y1)
+        val areaB = (b.x2 - b.x1) * (b.y2 - b.y1)
+        val unionArea = areaA + areaB - interArea
+        
+        return if (unionArea <= 0) 0f else interArea.toFloat() / unionArea.toFloat()
     }
 
     fun coversRange(startSeconds: Double, endSeconds: Double): Boolean {

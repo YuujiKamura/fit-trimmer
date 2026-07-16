@@ -3069,7 +3069,9 @@ fun FitTrimmerMainContent(
                                     fontWeight = FontWeight.Medium
                                 )
                             }
-                            Row(
+                            // TODO: Temporarily omitted masking UI due to quality issues
+                            if (false) {
+                                Row(
                                 modifier = Modifier.fillMaxWidth().clickable(enabled = !isEncoding) {
                                     handlePlateBlurToggle(!viewModel.settings.blurLicensePlates)
                                 },
@@ -3333,7 +3335,9 @@ fun FitTrimmerMainContent(
                                         )
                                     }
                                 }
+                                }
                             }
+                            } // End of if (false) for omitted masking UI
                             Spacer(Modifier.height(4.dp))
                             Text(utils.Localizer.get("power_trend_span", settings.language).uppercase(), color = Color(0xFF1C1C1E), fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 0.5.sp)
                             Row(

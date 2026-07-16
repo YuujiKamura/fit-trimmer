@@ -248,7 +248,8 @@ object PlateDetectionManager : fit.PlateDetector {
             scanRanges = normalizedScanRanges.map { PlateScanRange((it.first * 1000.0).toLong(), (it.second * 1000.0).toLong()) }
         )
 
-        val finalCache = (if (existingCache != null) existingCache.mergedWith(rawCache) else rawCache).smoothed(alpha = 0.3f)
+        val finalCache = (if (existingCache != null) existingCache.mergedWith(rawCache) else rawCache)
+            .filledGaps(holdFrames = 10, iouThreshold = 0.1f)
 
         if (saveCache) {
             fit.PlateCacheManager.saveCache(videoPath, finalCache)

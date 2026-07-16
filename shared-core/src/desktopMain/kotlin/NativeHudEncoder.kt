@@ -1092,7 +1092,7 @@ class NativeHudEncoder(
                                      settings.showGrade || settings.showElevation || settings.showDistanceTime
                                      
         val hasCaptions = settings.roadCaptions.any { it.isEnabled } || settings.customCaptions.any { it.isEnabled }
-        val hasMap = settings.mapType != "none" && settings.mapSizeScale > 0.0f
+        val hasMap = hasTelemetry && settings.mapType != "none" && settings.mapSizeScale > 0.0f
         
         val runBlur = settings.blurLicensePlates && (plateCache?.records?.isNotEmpty() ?: false)
         val runPedestrians = settings.detectPedestrians
@@ -1102,7 +1102,8 @@ class NativeHudEncoder(
 
         val requiresRendering = runBlur || runPedestrians || runOverlay || hasSpeedChange || hasCrop
 
-        if (!hasTelemetry || telemetry.isEmpty() || !requiresRendering) {
+        // If no rendering features are requested, run fast trim mode
+        if (!requiresRendering) {
             // HUD-less fast stream copy trimming mode (extremely fast, zero re-encoding)
             println("ℹ️ No HUD or overlays required. Running fast trim (stream copy) mode...")
             onProgress(0.0f, "Running fast trim (stream copy)...")
@@ -1834,7 +1835,7 @@ class NativeHudEncoder(
                     g.fillRect(0, 0, exportWidth, exportHeight)
                     g.composite = AlphaComposite.SrcOver
 
-                    val isValid = currentFitTs >= telemetry.first().timestamp && currentFitTs <= telemetry.last().timestamp
+                    val isValid = if (telemetry.isNotEmpty()) currentFitTs >= telemetry.first().timestamp && currentFitTs <= telemetry.last().timestamp else false
 
                     // Render HUD in the top half
                     val gHud = g.create() as java.awt.Graphics2D

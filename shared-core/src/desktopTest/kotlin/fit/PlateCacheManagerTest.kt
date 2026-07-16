@@ -288,4 +288,38 @@ class PlateCacheManagerTest {
         // mapped x = 82 * (2704 / 2704) = 82f
         assertEquals(82f, box.x)
     }
+
+    @Test
+    fun testFilledGapsBackfill() {
+        // Frame 1 (0ms): plate detected at (100, 100, 200, 150)
+        // Frame 2 (250ms): MISSING
+        // Frame 3 (500ms): plate detected at (150, 100, 250, 150) -> moves +50px
+        
+        val box0 = PlateBox(100, 100, 200, 150)
+        val box500 = PlateBox(150, 100, 250, 150)
+        
+        val cache = VideoPlatesCache(
+            videoPath = "test.mp4",
+            records = listOf(
+                PlateRecord(0, listOf(box0)),
+                PlateRecord(250, emptyList()), // Empty record
+                PlateRecord(500, listOf(box500))
+            )
+        )
+        
+        // Fill gaps with maxGapMs = 1000L and iouThreshold = 0.3
+        val filled = cache.filledGaps(1000L, 0.3f)
+        
+        // Should have 3 records
+        assertEquals(3, filled.records.size)
+        
+        // Middle record (250ms) should now be filled with interpolated box
+        val middleBoxes = filled.records[1].boxes
+        assertEquals(1, middleBoxes.size)
+        
+        // Expected interpolation at 250ms (exactly half-way)
+        val expectedMid = PlateBox(125, 100, 225, 150)
+        assertEquals(expectedMid.x1, middleBoxes[0].x1)
+        assertEquals(expectedMid.x2, middleBoxes[0].x2)
+    }
 }

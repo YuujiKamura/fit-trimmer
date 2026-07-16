@@ -116,6 +116,8 @@ class PlateDetector private constructor() : AutoCloseable {
 
         val isVehicleMode = !maskMode.equals("plate", ignoreCase = true) && !maskMode.equals("plate_crop", ignoreCase = true) && !maskMode.equals("plate_direct", ignoreCase = true)
         
+        val actualInputSize = if (isVehicleMode) 640 else inputSize
+
         // Legacy Cascaded check: Run vehicle detection first if we are in plate detection mode (unless plate_direct)
         if (maskMode.equals("plate", ignoreCase = true)) {
             val vehicleBoxes = detect(
@@ -123,7 +125,7 @@ class PlateDetector private constructor() : AutoCloseable {
                 confThreshold = 0.35f,
                 maskMode = "wide", // Trigger vehicle mode internally
                 detectPedestrians = detectPedestrians,
-                inputSize = inputSize
+                inputSize = 640 // Force 640 for vehicle model
             )
             if (vehicleBoxes.isEmpty()) {
                 return emptyList()
@@ -131,37 +133,37 @@ class PlateDetector private constructor() : AutoCloseable {
         }
 
         // 1. Letterbox Preprocessing (preserving aspect ratio)
-        val transformer = fit.LetterboxTransformer(width.toFloat(), height.toFloat(), inputSize.toFloat())
+        val transformer = fit.LetterboxTransformer(width.toFloat(), height.toFloat(), actualInputSize.toFloat())
 
-        val letterbox = BufferedImage(inputSize, inputSize, BufferedImage.TYPE_3BYTE_BGR)
+        val letterbox = BufferedImage(actualInputSize, actualInputSize, BufferedImage.TYPE_3BYTE_BGR)
         val g = letterbox.createGraphics()
         // Fill padding background with YOLO standard neutral gray (114, 114, 114)
         g.color = java.awt.Color(114, 114, 114)
-        g.fillRect(0, 0, inputSize, inputSize)
+        g.fillRect(0, 0, actualInputSize, actualInputSize)
         
         g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC)
         g.drawImage(image, transformer.offsetX.toInt(), transformer.offsetY.toInt(), transformer.newW.toInt(), transformer.newH.toInt(), null)
         g.dispose()
 
         // TDD compliance flags
-        lastResizeBypassed = (width == inputSize && height == inputSize)
+        lastResizeBypassed = (width == actualInputSize && height == actualInputSize)
         val tResize = System.nanoTime()
 
         // 2. Buffer extraction (optimized flat RGB format for ONNX)
-        val inputData = if (inputSize == 640) threadLocalInput640.get() else threadLocalInput1088.get()
+        val inputData = if (actualInputSize == 640) threadLocalInput640.get() else threadLocalInput1088.get()
         val rOffset = 0
-        val gOffset = inputSize * inputSize
-        val bOffset = 2 * inputSize * inputSize
+        val gOffset = actualInputSize * actualInputSize
+        val bOffset = 2 * actualInputSize * actualInputSize
         val inv255 = 1.0f / 255.0f
 
         val raster = letterbox.raster
         val dataBuffer = raster.dataBuffer
         val sampleModel = raster.sampleModel as? java.awt.image.ComponentSampleModel
-        val scanlineStride = sampleModel?.scanlineStride ?: (inputSize * 3)
+        val scanlineStride = sampleModel?.scanlineStride ?: (actualInputSize * 3)
 
-        if (letterbox.type == BufferedImage.TYPE_3BYTE_BGR && dataBuffer is java.awt.image.DataBufferByte && scanlineStride == inputSize * 3) {
+        if (letterbox.type == BufferedImage.TYPE_3BYTE_BGR && dataBuffer is java.awt.image.DataBufferByte && scanlineStride == actualInputSize * 3) {
             val bytes = dataBuffer.data
-            for (i in 0 until inputSize * inputSize) {
+            for (i in 0 until actualInputSize * actualInputSize) {
                 val base = i * 3
                 val b = (bytes[base].toInt() and 0xFF) * inv255
                 val g = (bytes[base + 1].toInt() and 0xFF) * inv255
@@ -173,9 +175,9 @@ class PlateDetector private constructor() : AutoCloseable {
             }
             lastGetRgbBypassed = true
         } else {
-            val rgbArray = IntArray(inputSize * inputSize)
-            letterbox.getRGB(0, 0, inputSize, inputSize, rgbArray, 0, inputSize)
-            for (i in 0 until inputSize * inputSize) {
+            val rgbArray = IntArray(actualInputSize * actualInputSize)
+            letterbox.getRGB(0, 0, actualInputSize, actualInputSize, rgbArray, 0, actualInputSize)
+            for (i in 0 until actualInputSize * actualInputSize) {
                 val rgb = rgbArray[i]
                 val r = ((rgb shr 16) and 0xFF) * inv255
                 val g = ((rgb shr 8) and 0xFF) * inv255
@@ -192,7 +194,7 @@ class PlateDetector private constructor() : AutoCloseable {
 
         // 3. Inference execution on ONNX Runtime
         val inputBuffer = FloatBuffer.wrap(inputData)
-        val tensor = OnnxTensor.createTensor(env, inputBuffer, longArrayOf(1, 3, inputSize.toLong(), inputSize.toLong()))
+        val tensor = OnnxTensor.createTensor(env, inputBuffer, longArrayOf(1, 3, actualInputSize.toLong(), actualInputSize.toLong()))
         
         val activeSession = if (isVehicleMode) getVehicleSession() else getPlateSession()
         
