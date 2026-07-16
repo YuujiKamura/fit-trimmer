@@ -1503,26 +1503,23 @@ object BatchJobRunner {
 
 
     private suspend fun executePlateScan(
-
         viewModel: AppViewModel,
-
         job: BatchJob,
-
         phase: BatchJobPhase,
-
         activePhases: List<BatchJobPhase>,
-
         jobIdx: Int,
-
         totalJobs: Int,
-
         mainScope: CoroutineScope,
-
         onProgressUpdate: () -> Unit
-
     ) {
-
         viewModel.batchStatusText = "[${jobIdx + 1}/$totalJobs] プレートスキャンを実行中..."
+
+        // TEMP: Disable automatic pre-scanning during GUI/batch encode as requested by user.
+        phase.status = BatchJobPhaseStatus.COMPLETED
+        phase.progress = 1.0f
+        viewModel.saveBatchQueue()
+        onProgressUpdate()
+        return
 
         val points = loadTelemetryPointsForRoadDetection(job.fitPath) { viewModel.isCanceled }
 
