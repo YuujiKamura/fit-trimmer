@@ -1380,9 +1380,9 @@ class HudRenderer(val config: HudConfig) {
         }
         canvas.drawPolygon(circlePoints, "#000000", alpha = 0.5f)
 
-        // 3. Coordinate alignment (Path-up projection) using global route
-        val startPt = globalRoutePoints.first()
-        val endPt = globalRoutePoints.last()
+        // 3. Coordinate alignment (Path-up projection) using valid route
+        val startPt = validRoutePoints.first()
+        val endPt = validRoutePoints.last()
 
         // Calculate aspect ratio correction cos(lat)
         val meanLat = (startPt.lat + endPt.lat) / 2.0
@@ -1401,14 +1401,14 @@ class HudRenderer(val config: HudConfig) {
         val pathBearing = calculateBearing(startPt, endPt) ?: 0.0
         val effectiveBearing = if (config.fixMapNorthUp) 0.0 else pathBearing
 
-        // 1. Project all global points onto local heading-up plane and calculate bounding box
+        // 1. Project all local points onto local heading-up plane and calculate bounding box
         // lx: Rightward component (orthogonal to heading)
         // ly: Upward component (along heading, negated for screen Y coordinates)
         var minX = Double.MAX_VALUE
         var maxX = -Double.MAX_VALUE
         var minY = Double.MAX_VALUE
         var maxY = -Double.MAX_VALUE
-        globalRoutePoints.forEach { pt ->
+        validRoutePoints.forEach { pt ->
             val px = (pt.lon - startPt.lon) * cosLat
             val py = pt.lat - startPt.lat
             
@@ -1435,7 +1435,7 @@ class HudRenderer(val config: HudConfig) {
 
         if (isValid && validRoutePoints.isNotEmpty()) {
             canvas.drawMapBackground(
-                videoPoints = globalRoutePoints,
+                videoPoints = validRoutePoints,
                 mcx = mcx,
                 mcy = mcy,
                 R = R,
